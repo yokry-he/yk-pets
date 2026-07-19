@@ -1,0 +1,19 @@
+{
+  "name": "@yk-pets/pet-local-agent-host",
+  "version": "0.7.8",
+  "description": "Strict repository RPC and real shell-free local Git/worktree workspace host for controlled YK Pets commits.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"}},
+  "files": ["dist", "README.md"],
+  "scripts": {"build": "tsc -p tsconfig.json"},
+  "engines": {"node": ">=22"},
+  "dependencies": {
+    "@yk-pets/pet-file-transaction": "0.7.8",
+    "@yk-pets/pet-git-worktree": "0.7.8",
+    "@yk-pets/pet-patch-plan": "0.7.8",
+    "@yk-pets/pet-repository-policy": "0.7.8"
+  }
+}

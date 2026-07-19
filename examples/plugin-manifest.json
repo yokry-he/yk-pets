@@ -1,0 +1,23 @@
+{
+  "schema": "yk-pets.plugin/v1",
+  "id": "com.example.audit-rules",
+  "name": "Example Audit Rules",
+  "version": "1.0.0",
+  "engines": {
+    "ykPets": "^0.7.3",
+    "petCore": "^0.7.2",
+    "api": "^1.0.0"
+  },
+  "entrypoints": {
+    "browser": "./dist/browser.js"
+  },
+  "capabilities": {
+    "provides": [
+      { "id": "audit.rules.example", "version": "1.0.0" }
+    ]
+  },
+  "permissions": {
+    "tools": ["patch.generate"],
+    "scopes": ["project:read"]
+  }
+}

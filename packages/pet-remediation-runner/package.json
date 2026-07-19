@@ -1,0 +1,30 @@
+{
+  "name": "@yk-pets/pet-remediation-runner",
+  "version": "0.7.8",
+  "description": "Approval-gated patch execution with verification and fail-closed automatic rollback for YK Pets.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@yk-pets/pet-file-transaction": "0.7.8",
+    "@yk-pets/pet-patch-plan": "0.7.8",
+    "@yk-pets/pet-scope-approval": "0.7.8"
+  }
+}

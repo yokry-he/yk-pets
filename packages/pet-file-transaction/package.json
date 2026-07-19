@@ -1,0 +1,28 @@
+{
+  "name": "@yk-pets/pet-file-transaction",
+  "version": "0.7.8",
+  "description": "Compare-and-swap file transactions, rollback journals, and conflict-safe recovery for YK Pets patch plans.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@yk-pets/pet-patch-plan": "0.7.8"
+  }
+}

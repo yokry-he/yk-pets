@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "paths": {
+      "@yk-pets/pet-runtime-adaptive": ["packages/pet-runtime-adaptive/dist/index.d.ts"],
+      "@yk-pets/pet-feature-loader": ["packages/pet-feature-loader/dist/index.d.ts"],
+      "@yk-pets/pet-runtime-lifecycle": ["packages/pet-runtime-lifecycle/dist/index.d.ts"],
+      "@yk-pets/pet-site-policy": ["packages/pet-site-policy/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

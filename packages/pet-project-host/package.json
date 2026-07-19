@@ -1,0 +1,29 @@
+{
+  "name": "@yk-pets/pet-project-host",
+  "version": "0.7.8",
+  "description": "Strict Background and CI workspace RPC protocol for YK Pets file transactions without dynamic method or shell execution.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@yk-pets/pet-file-transaction": "0.7.8",
+    "@yk-pets/pet-patch-plan": "0.7.8"
+  }
+}

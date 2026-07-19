@@ -1,0 +1,33 @@
+{
+  "name": "@yk-pets/pet-runtime-adaptive",
+  "version": "0.7.8",
+  "description": "Adaptive renderer orchestration for YK Pets pets with WebGL and low-power 2D fallback.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "@yk-pets/pet-core": "0.7.8"
+  },
+  "peerDependenciesMeta": {
+    "@yk-pets/pet-core": {
+      "optional": true
+    }
+  }
+}

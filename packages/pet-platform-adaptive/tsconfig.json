@@ -1,0 +1,94 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "paths": {
+      "@yk-pets/pet-runtime-adaptive": [
+        "packages/pet-runtime-adaptive/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-renderer-canvas2d": [
+        "packages/pet-renderer-canvas2d/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-agent-policy": [
+        "packages/pet-agent-policy/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-plugin-registry": [
+        "packages/pet-plugin-registry/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-site-policy": [
+        "packages/pet-site-policy/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-runtime-lifecycle": [
+        "packages/pet-runtime-lifecycle/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-feature-loader": [
+        "packages/pet-feature-loader/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-extension-runtime": [
+        "packages/pet-extension-runtime/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-devtools-bridge": [
+        "packages/pet-devtools-bridge/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-source-mapper": [
+        "packages/pet-source-mapper/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-verification-runner": [
+        "packages/pet-verification-runner/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-change-report": [
+        "packages/pet-change-report/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-patch-plan": [
+        "packages/pet-patch-plan/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-scope-approval": [
+        "packages/pet-scope-approval/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-file-transaction": [
+        "packages/pet-file-transaction/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-project-host": [
+        "packages/pet-project-host/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-remediation-runner": [
+        "packages/pet-remediation-runner/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-repository-policy": [
+        "packages/pet-repository-policy/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-git-worktree": [
+        "packages/pet-git-worktree/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-commit-ledger": [
+        "packages/pet-commit-ledger/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-local-agent-host": [
+        "packages/pet-local-agent-host/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-repository-publisher": [
+        "packages/pet-repository-publisher/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-github-provider": [
+        "packages/pet-github-provider/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-pr-lifecycle": [
+        "packages/pet-pr-lifecycle/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-review-governance": [
+        "packages/pet-review-governance/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-merge-gate": [
+        "packages/pet-merge-gate/dist/index.d.ts"
+      ],
+      "@yk-pets/pet-remote-release": [
+        "packages/pet-remote-release/dist/index.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@yk-pets/pet-runtime-adaptive": [
+        "packages/pet-runtime-adaptive/src/index.ts"
+      ],
+      "@yk-pets/pet-renderer-canvas2d": [
+        "packages/pet-renderer-canvas2d/src/index.ts"
+      ],
+      "@yk-pets/pet-agent-policy": [
+        "packages/pet-agent-policy/src/index.ts"
+      ],
+      "@yk-pets/pet-plugin-registry": [
+        "packages/pet-plugin-registry/src/index.ts"
+      ],
+      "@yk-pets/pet-site-policy": [
+        "packages/pet-site-policy/src/index.ts"
+      ],
+      "@yk-pets/pet-runtime-lifecycle": [
+        "packages/pet-runtime-lifecycle/src/index.ts"
+      ],
+      "@yk-pets/pet-feature-loader": [
+        "packages/pet-feature-loader/src/index.ts"
+      ],
+      "@yk-pets/pet-extension-runtime": [
+        "packages/pet-extension-runtime/src/index.ts"
+      ],
+      "@yk-pets/pet-devtools-bridge": [
+        "packages/pet-devtools-bridge/src/index.ts"
+      ],
+      "@yk-pets/pet-source-mapper": [
+        "packages/pet-source-mapper/src/index.ts"
+      ],
+      "@yk-pets/pet-verification-runner": [
+        "packages/pet-verification-runner/src/index.ts"
+      ],
+      "@yk-pets/pet-change-report": [
+        "packages/pet-change-report/src/index.ts"
+      ],
+      "@yk-pets/pet-patch-plan": [
+        "packages/pet-patch-plan/src/index.ts"
+      ],
+      "@yk-pets/pet-scope-approval": [
+        "packages/pet-scope-approval/src/index.ts"
+      ],
+      "@yk-pets/pet-file-transaction": [
+        "packages/pet-file-transaction/src/index.ts"
+      ],
+      "@yk-pets/pet-project-host": [
+        "packages/pet-project-host/src/index.ts"
+      ],
+      "@yk-pets/pet-remediation-runner": [
+        "packages/pet-remediation-runner/src/index.ts"
+      ],
+      "@yk-pets/pet-repository-policy": [
+        "packages/pet-repository-policy/src/index.ts"
+      ],
+      "@yk-pets/pet-git-worktree": [
+        "packages/pet-git-worktree/src/index.ts"
+      ],
+      "@yk-pets/pet-commit-ledger": [
+        "packages/pet-commit-ledger/src/index.ts"
+      ],
+      "@yk-pets/pet-local-agent-host": [
+        "packages/pet-local-agent-host/src/index.ts"
+      ],
+      "@yk-pets/pet-repository-publisher": [
+        "packages/pet-repository-publisher/src/index.ts"
+      ],
+      "@yk-pets/pet-github-provider": [
+        "packages/pet-github-provider/src/index.ts"
+      ],
+      "@yk-pets/pet-pr-lifecycle": [
+        "packages/pet-pr-lifecycle/src/index.ts"
+      ],
+      "@yk-pets/pet-review-governance": [
+        "packages/pet-review-governance/src/index.ts"
+      ],
+      "@yk-pets/pet-merge-gate": [
+        "packages/pet-merge-gate/src/index.ts"
+      ],
+      "@yk-pets/pet-remote-release": [
+        "packages/pet-remote-release/src/index.ts"
+      ]
+    }
+  }
+}
