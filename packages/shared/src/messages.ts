@@ -55,8 +55,8 @@ export const YK_PETS_VOICE_PRESETS = ['alien', 'cute-girl', 'cute-animal', 'mute
 export type YkPetVoicePreset = typeof YK_PETS_VOICE_PRESETS[number]
 
 export interface YkPetVisualState {
-  /** Optional during the v0.6.10 migration; consumers should fall back to ZEPH_CLOUD_FOX_IDENTITY. */
-  identity?: PetIdentity
+  /** 迁移期间可选；消费者应回退到 ZEPH_CLOUD_FOX_IDENTITY。 / Optional during migration; consumers should fall back to ZEPH_CLOUD_FOX_IDENTITY. */
+  identity?: Readonly<PetIdentity>
   behavior: YkPetBehavior
   speech: string
   score: number
@@ -69,8 +69,8 @@ export interface YkPetVisualState {
 }
 
 /**
- * Wire message strings keep the v0.6.10 NOVA prefix for one compatibility cycle.
- * New application code should use the YkPetsRuntimeMessage type; a later protocol version can migrate wire identifiers separately.
+ * Wire Message 在一个兼容周期内保留 v0.6.10 的 NOVA 前缀。
+ * Wire messages retain the v0.6.10 NOVA prefix for one compatibility cycle.
  */
 export type YkPetsRuntimeMessage =
   | { type: 'NOVA_OPEN_SIDE_PANEL'; action?: YkPetAction; issueId?: string }
