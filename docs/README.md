@@ -9,6 +9,7 @@ YK-PETS is the product brand. The current default pet is a Cloud Fox named Zeph�
 | Topic | 简体中文 | English |
 |---|---|---|
 | Brand and pet identity | [品牌与宠物身份](./zh-CN/BRAND-AND-PET-IDENTITY.md) | [Brand and pet identity](./en/BRAND-AND-PET-IDENTITY.md) |
+| Cloud Fox Studio | [云狐工坊](./zh-CN/CLOUD-FOX-STUDIO.md) | [Cloud Fox Studio](./en/CLOUD-FOX-STUDIO.md) |
 | Project status | [当前项目状态](./zh-CN/PROJECT-STATUS.md) | [Current project status](./en/PROJECT-STATUS.md) |
 | User guide | [使用操作手册](./zh-CN/USER-GUIDE.md) | [User Guide](./en/USER-GUIDE.md) |
 | Network Lab | [网络实验室与 Mock 工作台](./zh-CN/NETWORK-LAB-OPERATIONS.md) | [Network Lab and Mock Workbench](./en/NETWORK-LAB-OPERATIONS.md) |
@@ -32,6 +33,7 @@ YK-PETS is the product brand. The current default pet is a Cloud Fox named Zeph�
 
 | Topic | 简体中文 | English |
 |---|---|---|
+| Cloud Fox Studio | [外观配方、部件槽位与动作验证](./zh-CN/CLOUD-FOX-STUDIO.md) | [Appearance recipes, part slots, and motion validation](./en/CLOUD-FOX-STUDIO.md) |
 | In-page interaction | [网页内 3D 云灵交互](./zh-CN/PET-INTERACTION.md) | [In-page 3D Zeph interaction](./en/PET-INTERACTION.md) |
 | Radial menu | [星云透明层与环形菜单](./zh-CN/NEBULA-RADIAL-MENU.md) | [Nebula transparency and radial menu](./en/NEBULA-RADIAL-MENU.md) |
 | Tail design | [云狐尾巴设计](./zh-CN/TAIL-DESIGN.md) | [Cloud Fox tail design](./en/TAIL-DESIGN.md) |
