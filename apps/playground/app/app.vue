@@ -1,46 +1,9 @@
-
-<!--
-  文件职责 / File responsibility
-  Nuxt Playground 根组件，提供演示页面壳与云狐工坊全局入口。
-  Nuxt Playground root component providing the demo shell and global Cloud Fox Studio entry.
--->
 <script setup lang="ts">
 const route = useRoute()
+const studioTarget = computed(() => route.path === '/studio' ? '/studio-presets' : '/studio')
+const studioLabel = computed(() => route.path === '/studio' ? '预设与风格' : '宠物工坊')
 </script>
-
-<template>
-  <NuxtPage />
-  <NuxtLink v-if="route.path !== '/studio'" class="studio-entry" to="/studio">
-    <span>✦</span>
-    云狐工坊
-  </NuxtLink>
-</template>
-
+<template><NuxtPage/><NuxtLink v-if="route.path !== '/studio-presets'" class="studio-entry" :to="studioTarget"><span>✦</span>{{studioLabel}}</NuxtLink></template>
 <style scoped>
-.studio-entry {
-  position: fixed;
-  z-index: 90;
-  right: 22px;
-  bottom: 22px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 15px;
-  border: 1px solid rgba(143, 233, 221, .34);
-  border-radius: 999px;
-  color: #f4f7ff;
-  background: rgba(9, 14, 28, .82);
-  box-shadow: 0 14px 44px rgba(0, 0, 0, .34);
-  text-decoration: none;
-  backdrop-filter: blur(18px);
-}
-
-.studio-entry span {
-  color: #8fe9dd;
-}
-
-.studio-entry:hover {
-  border-color: rgba(112, 102, 255, .72);
-  background: rgba(48, 43, 105, .86);
-}
+.studio-entry{position:fixed;z-index:90;right:22px;bottom:22px;display:inline-flex;align-items:center;gap:8px;padding:11px 15px;border:1px solid #8fe9dd57;border-radius:999px;color:#f4f7ff;background:#090e1cd1;box-shadow:0 14px 44px #00000057;text-decoration:none;backdrop-filter:blur(18px)}.studio-entry span{color:#8fe9dd}.studio-entry:hover{border-color:#7066ffb8;background:#302b69db}
 </style>
