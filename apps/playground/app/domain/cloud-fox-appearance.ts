@@ -126,35 +126,40 @@ export interface CloudFoxAppearanceRecipe {
   symbols: CloudFoxSymbolRecipe
 }
 
+type CloudFoxSafeRangeKey = keyof CloudFoxProportionRecipe | 'glowIntensity' | 'pulseSpeed' | 'symbolScale'
+type CloudFoxSafeRanges = Readonly<Record<CloudFoxSafeRangeKey, readonly [number, number]>>
+
 export interface CloudFoxSpeciesDefinition {
   id: 'cloud-fox'
   label: '云狐'
   labelEn: 'Cloud Fox'
   supportedSlots: readonly string[]
-  safeRanges: Readonly<Record<keyof CloudFoxProportionRecipe | 'glowIntensity' | 'pulseSpeed' | 'symbolScale', readonly [number, number]>>
+  safeRanges: CloudFoxSafeRanges
 }
+
+const safeRanges: CloudFoxSafeRanges = Object.freeze({
+  bodyScale: [0.82, 1.18] as const,
+  headScale: [0.84, 1.2] as const,
+  limbLength: [0.78, 1.22] as const,
+  limbSpacing: [0.82, 1.2] as const,
+  pawScale: [0.76, 1.32] as const,
+  earScale: [0.76, 1.28] as const,
+  eyeScale: [0.76, 1.32] as const,
+  eyeSpacing: [0.82, 1.18] as const,
+  tailLength: [0.78, 1.34] as const,
+  tailWidth: [0.76, 1.32] as const,
+  antennaScale: [0.72, 1.36] as const,
+  glowIntensity: [0.35, 2.4] as const,
+  pulseSpeed: [0.4, 2.5] as const,
+  symbolScale: [0.65, 1.4] as const,
+})
 
 export const CLOUD_FOX_SPECIES_DEFINITION: CloudFoxSpeciesDefinition = Object.freeze({
   id: 'cloud-fox',
   label: '云狐',
   labelEn: 'Cloud Fox',
   supportedSlots: Object.freeze(['ears', 'eyes', 'nose', 'mouth', 'tail', 'antenna', 'front-limbs', 'chest-symbol', 'back-symbol']),
-  safeRanges: Object.freeze({
-    bodyScale: [0.82, 1.18],
-    headScale: [0.84, 1.2],
-    limbLength: [0.78, 1.22],
-    limbSpacing: [0.82, 1.2],
-    pawScale: [0.76, 1.32],
-    earScale: [0.76, 1.28],
-    eyeScale: [0.76, 1.32],
-    eyeSpacing: [0.82, 1.18],
-    tailLength: [0.78, 1.34],
-    tailWidth: [0.76, 1.32],
-    antennaScale: [0.72, 1.36],
-    glowIntensity: [0.35, 2.4],
-    pulseSpeed: [0.4, 2.5],
-    symbolScale: [0.65, 1.4],
-  }),
+  safeRanges,
 })
 
 export function derivePetMonogram(nameEn: string) {
@@ -230,9 +235,9 @@ const optionIds = {
   antennas: new Set(CLOUD_FOX_PART_OPTIONS.antennas.map(option => option.id)),
 }
 
-function clamp(value: unknown, minimum: number, maximum: number, fallback: number) {
+function clamp(value: unknown, range: readonly [number, number], fallback: number) {
   return typeof value === 'number' && Number.isFinite(value)
-    ? Math.min(maximum, Math.max(minimum, value))
+    ? Math.min(range[1], Math.max(range[0], value))
     : fallback
 }
 
@@ -279,17 +284,17 @@ export function normalizeCloudFoxAppearance(input: unknown): CloudFoxAppearanceR
       antenna: normalizePart(parts.antenna, optionIds.antennas, fallback.parts.antenna),
     },
     proportions: {
-      bodyScale: clamp(proportions.bodyScale, ...ranges.bodyScale, fallback.proportions.bodyScale),
-      headScale: clamp(proportions.headScale, ...ranges.headScale, fallback.proportions.headScale),
-      limbLength: clamp(proportions.limbLength, ...ranges.limbLength, fallback.proportions.limbLength),
-      limbSpacing: clamp(proportions.limbSpacing, ...ranges.limbSpacing, fallback.proportions.limbSpacing),
-      pawScale: clamp(proportions.pawScale, ...ranges.pawScale, fallback.proportions.pawScale),
-      earScale: clamp(proportions.earScale, ...ranges.earScale, fallback.proportions.earScale),
-      eyeScale: clamp(proportions.eyeScale, ...ranges.eyeScale, fallback.proportions.eyeScale),
-      eyeSpacing: clamp(proportions.eyeSpacing, ...ranges.eyeSpacing, fallback.proportions.eyeSpacing),
-      tailLength: clamp(proportions.tailLength, ...ranges.tailLength, fallback.proportions.tailLength),
-      tailWidth: clamp(proportions.tailWidth, ...ranges.tailWidth, fallback.proportions.tailWidth),
-      antennaScale: clamp(proportions.antennaScale, ...ranges.antennaScale, fallback.proportions.antennaScale),
+      bodyScale: clamp(proportions.bodyScale, ranges.bodyScale, fallback.proportions.bodyScale),
+      headScale: clamp(proportions.headScale, ranges.headScale, fallback.proportions.headScale),
+      limbLength: clamp(proportions.limbLength, ranges.limbLength, fallback.proportions.limbLength),
+      limbSpacing: clamp(proportions.limbSpacing, ranges.limbSpacing, fallback.proportions.limbSpacing),
+      pawScale: clamp(proportions.pawScale, ranges.pawScale, fallback.proportions.pawScale),
+      earScale: clamp(proportions.earScale, ranges.earScale, fallback.proportions.earScale),
+      eyeScale: clamp(proportions.eyeScale, ranges.eyeScale, fallback.proportions.eyeScale),
+      eyeSpacing: clamp(proportions.eyeSpacing, ranges.eyeSpacing, fallback.proportions.eyeSpacing),
+      tailLength: clamp(proportions.tailLength, ranges.tailLength, fallback.proportions.tailLength),
+      tailWidth: clamp(proportions.tailWidth, ranges.tailWidth, fallback.proportions.tailWidth),
+      antennaScale: clamp(proportions.antennaScale, ranges.antennaScale, fallback.proportions.antennaScale),
     },
     palette: {
       coat: normalizeHex(palette.coat, fallback.palette.coat),
@@ -307,15 +312,15 @@ export function normalizeCloudFoxAppearance(input: unknown): CloudFoxAppearanceR
       mode: glow.mode === 'fixed' || glow.mode === 'rainbow' ? glow.mode : 'emotion',
       tailEnabled: glow.tailEnabled !== false,
       antennaEnabled: glow.antennaEnabled !== false,
-      intensity: clamp(glow.intensity, ...ranges.glowIntensity, fallback.glow.intensity),
-      pulseSpeed: clamp(glow.pulseSpeed, ...ranges.pulseSpeed, fallback.glow.pulseSpeed),
+      intensity: clamp(glow.intensity, ranges.glowIntensity, fallback.glow.intensity),
+      pulseSpeed: clamp(glow.pulseSpeed, ranges.pulseSpeed, fallback.glow.pulseSpeed),
     },
     symbols: {
       chestEnabled: symbols.chestEnabled !== false,
       chestText: normalizeText(symbols.chestText, derivePetMonogram(nameEn), 3).toUpperCase(),
       backEnabled: symbols.backEnabled !== false,
       backText: normalizeText(symbols.backText, 'YK', 3).toUpperCase(),
-      symbolScale: clamp(symbols.symbolScale, ...ranges.symbolScale, fallback.symbols.symbolScale),
+      symbolScale: clamp(symbols.symbolScale, ranges.symbolScale, fallback.symbols.symbolScale),
     },
   }
 }
