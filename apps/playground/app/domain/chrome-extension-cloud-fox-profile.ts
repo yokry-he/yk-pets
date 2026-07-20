@@ -1,158 +1,11 @@
 /**
  * 文件职责 / File responsibility
  * 将 Chrome 扩展正式云狐中的精确模型、材质、相机、灯光和背景参数提取为可复用视觉方案。
- * Extracts exact model, material, camera, lighting, and background values from the production Chrome extension Cloud Fox into reusable visual schemes.
+ * Extracts exact production Chrome extension Cloud Fox values into reusable visual schemes.
  */
-
 export type VisualVector3 = readonly [number, number, number]
 export type VisualEuler3 = readonly [number, number, number]
 export type VisualCurve = readonly VisualVector3[]
-
-export interface CloudFoxVisualScheme {
-  id: string
-  label: string
-  labelEn: string
-  source: 'chrome-extension-production'
-  palette: {
-    coat: string
-    coatShadow: string
-    coatWarm: string
-    muzzle: string
-    eye: string
-    nose: string
-    mouth: string
-    tongue: string
-    cheek: string
-    primaryGlow: string
-    secondaryGlow: string
-    tailTip: string
-  }
-  model: {
-    rootPosition: VisualVector3
-    body: {
-      position: VisualVector3
-      scale: VisualVector3
-      radius: number
-      warmPatchPosition: VisualVector3
-      warmPatchScale: VisualVector3
-      warmPatchRadius: number
-    }
-    head: {
-      position: VisualVector3
-      scale: VisualVector3
-      radius: number
-      muzzlePosition: VisualVector3
-      muzzleScale: VisualVector3
-      muzzleRadius: number
-      earOffset: VisualVector3
-      earRotationZ: number
-      earOuter: readonly [number, number, number]
-      earInnerPosition: VisualVector3
-      earInnerScale: VisualVector3
-      earInner: readonly [number, number, number]
-      eyeOffset: VisualVector3
-      eyeScale: VisualVector3
-      eyeHighlightPosition: VisualVector3
-      eyeHighlightScale: VisualVector3
-      cheekOffset: VisualVector3
-      cheekScale: VisualVector3
-      nosePosition: VisualVector3
-      noseScale: VisualVector3
-      mouthPosition: VisualVector3
-      mouthScale: VisualVector3
-      tonguePosition: VisualVector3
-      tongueScale: VisualVector3
-    }
-    antenna: {
-      offset: VisualVector3
-      rotation: VisualEuler3
-      rodPosition: VisualVector3
-      rod: readonly [number, number, number, number]
-      tipPosition: VisualVector3
-      tipRadius: number
-      auraScale: number
-    }
-    frontPaw: {
-      offset: VisualVector3
-      forearmPosition: VisualVector3
-      forearm: readonly [number, number, number, number]
-      tipPosition: VisualVector3
-      tipRadius: number
-      tipScale: VisualVector3
-    }
-    hindPaw: {
-      offset: VisualVector3
-      legRotation: VisualEuler3
-      leg: readonly [number, number, number, number]
-      tipPosition: VisualVector3
-      tipRadius: number
-      tipScale: VisualVector3
-    }
-    chestCore: {
-      position: VisualVector3
-      radius: number
-      emissiveIntensity: number
-    }
-    tail: {
-      position: VisualVector3
-      rotation: VisualEuler3
-      baseCurve: VisualCurve
-      baseRadius: number
-      midPosition: VisualVector3
-      midRotation: VisualEuler3
-      midCurve: VisualCurve
-      midRadius: number
-      tipPosition: VisualVector3
-      tipRotation: VisualEuler3
-      tipCurve: VisualCurve
-      tipRadius: number
-      energyPosition: VisualVector3
-      energyRadius: number
-      auraPosition: VisualVector3
-      auraRadius: number
-      auraScale: number
-    }
-    shadow: {
-      softPosition: VisualVector3
-      softRadius: numer
-      softColor: string
-      softOpacity: number
-      corePosition: VisualVector3
-      coreRadius: number
-      coreColor: string
-      coreOpacity: number
-    }
-  }
-  scene: {
-    baseColor: string
-    containerBackground: string
-    nebulaBackground: string
-    glowBackground: string
-    camera: {
-      normalPosition: VisualVector3
-      compactPosition: VisualVector3
-      widePosition: VisualVector3
-      compactWidePosition: VisualVector3
-      normalFov: number
-      compactFov: number
-      wideFov: number
-      normalDpr: readonly [number, number]
-      compactDpr: readonly [number, number]
-      compactScale: number
-    }
-    lights: {
-      ambientIntensity: number
-      directionalPosition: VisualVector3
-      directionalIntensity: number
-      primaryPosition: VisualVector3
-      primaryIntensity: number
-      primarySecretIntensity: number
-      secondaryPosition: VisualVector3
-      secondaryIntensity: number
-      secondarySecretIntensity: number
-    }
-  }
-}
 
 export const EXTENSION_CLASSIC_CLOUD_FOX_SCHEME = {
   id: 'extension-classic',
@@ -298,7 +151,7 @@ export const EXTENSION_CLASSIC_CLOUD_FOX_SCHEME = {
       secondarySecretIntensity: 6,
     },
   },
-} as const satisfies CloudFoxVisualScheme
+} as const
 
 export const CLOUD_FOX_VISUAL_SCHEMES = Object.freeze({
   [EXTENSION_CLASSIC_CLOUD_FOX_SCHEME.id]: EXTENSION_CLASSIC_CLOUD_FOX_SCHEME,

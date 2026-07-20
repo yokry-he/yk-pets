@@ -35,6 +35,7 @@ onMounted(() => { prefersDark.value = window.matchMedia('(prefers-color-scheme: 
 const contrast = computed(() => resolveSceneContrast(activeScene.value, prefersDark.value))
 const clearColor = computed(() => activeScene.value.transparent ? '#000000' : activeScene.value.background)
 const extensionScene = computed(() => isExtensionClassicScene(activeScene.value))
+const canvasDpr = computed<[number, number]>(() => [scheme.scene.camera.normalDpr[0], scheme.scene.camera.normalDpr[1]])
 
 // 相机只使用宠物包围盒；默认配方精确落在扩展 normalPosition 与 normalFov。 / Camera uses pet bounds only; the default recipe lands exactly on the extension normalPosition and normalFov.
 const petBounds = computed(() => calculatePetVisualBounds(props.appearance as never))
@@ -69,7 +70,7 @@ const sceneStyle = computed(() => ({
     <TresCanvas
       :clear-color="clearColor"
       :clear-alpha="activeScene.transparent ? 0 : 1"
-      :dpr="scheme.scene.camera.normalDpr"
+      :dpr="canvasDpr"
       alpha
       antialias
       shadows
