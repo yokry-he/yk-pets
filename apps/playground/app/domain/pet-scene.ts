@@ -1,3 +1,8 @@
+/**
+ * 文件职责 / File responsibility
+ * 定义宠物场景配方、内置场景、网页对比和动作联动规则。
+ * Defines pet scene recipes, built-in scenes, web contrast, and action-linked rules.
+ */
 /** Phase 5: scene recipes and presets, independent from pet appearance bounds. */
 import type { CloudFoxStudioBehavior } from './pet-studio-phase4'
 
@@ -25,8 +30,9 @@ export const PET_SCENE_PRESETS: readonly PetScenePreset[] = [
   { id: 'transparent', label: '完全透明', labelEn: 'Fully Transparent', recipe: recipe('transparent', { transparent: true, background: '#000000', backgroundSecondary: '#000000', halo: { enabled: false, color: '#ffffff', intensity: 0, scale: 1 }, particles: { enabled: false, color: '#ffffff', count: 0, size: .02, speed: 0 }, groundShadow: { enabled: false, opacity: 0, softness: 1, scale: 1 }, contrastMode: 'auto', actionLinked: false }) },
 ] as const
 
-export function createDefaultPetScene(): PetSceneRecipe { return structuredClone(PET_SCENE_PRESETS[0].recipe) }
-export function getPetScenePreset(id: PetScenePresetId): PetSceneRecipe { return structuredClone(PET_SCENE_PRESETS.find(item => item.id === id)?.recipe || PET_SCENE_PRESETS[0].recipe) }
+const DEFAULT_PET_SCENE = PET_SCENE_PRESETS[0]!.recipe
+export function createDefaultPetScene(): PetSceneRecipe { return structuredClone(DEFAULT_PET_SCENE) }
+export function getPetScenePreset(id: PetScenePresetId): PetSceneRecipe { return structuredClone(PET_SCENE_PRESETS.find(item => item.id === id)?.recipe ?? DEFAULT_PET_SCENE) }
 export function normalizePetScene(input: unknown): PetSceneRecipe {
   const fallback = createDefaultPetScene()
   if (!input || typeof input !== 'object') return fallback

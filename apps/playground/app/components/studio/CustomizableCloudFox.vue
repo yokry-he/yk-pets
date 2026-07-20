@@ -1,9 +1,15 @@
+<!--
+  文件职责 / File responsibility
+  根据外观配方渲染云狐专属身体、部件、尾巴、触角和标志。
+  Renders Cloud Fox-specific body, parts, tail, antennae, and symbols from an appearance recipe.
+-->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
 import { CanvasTexture, Color, DoubleSide, Euler, Vector3 } from 'three'
 import type { Group, MeshStandardMaterial } from 'three'
 import { CLOUD_FOX_SPECIES_DEFINITION } from '~/domain/pet-studio-phase2'
-import type { CloudFoxStudioBehavior, CloudFoxStudioView, PetStudioAppearanceRecipe, SymbolChannelRecipe } from '~/domain/pet-studio-phase3'
+import type { CloudFoxStudioBehavior, CloudFoxStudioView, SymbolChannelRecipe } from '~/domain/pet-studio-phase4'
+import type { MultiSpeciesAppearanceRecipe as PetStudioAppearanceRecipe } from '~/domain/pet-species-registry'
 import { resolveRelativeMountPoint } from '~/domain/cloud-fox-appearance'
 
 const props = defineProps<{ appearance: PetStudioAppearanceRecipe; behavior: CloudFoxStudioBehavior; view: CloudFoxStudioView }>()
@@ -31,8 +37,8 @@ const eyeX = computed(() => .31 * props.appearance.proportions.eyeSpacing)
 const earX = computed(() => .56 * Math.max(.9, props.appearance.proportions.headScale))
 const antennaX = computed(() => props.appearance.antennaDesign.spacing / 2)
 const tailBaseRotation = computed(() => {
-  const base = { left: [0, .42, -.18], right: [0, -2.72, .18], up: [0, 0, 1.18], down: [0, 0, -1.08], back: [0, -1.1, 0], forward: [0, 1.1, 0] }[props.appearance.tailDesign.direction]
-  return rot(base[0] + tailMount.value.rotationX, base[1] + tailMount.value.rotationY, base[2] + tailMount.value.rotationZ)
+  const [baseX = 0, baseY = 0, baseZ = 0] = { left: [0, .42, -.18], right: [0, -2.72, .18], up: [0, 0, 1.18], down: [0, 0, -1.08], back: [0, -1.1, 0], forward: [0, 1.1, 0] }[props.appearance.tailDesign.direction] ?? [0, 0, 0]
+  return rot(baseX + tailMount.value.rotationX, baseY + tailMount.value.rotationY, baseZ + tailMount.value.rotationZ)
 })
 const tailSegmentTransforms = computed(() => {
   const cursor = v3(0, 0, 0)
@@ -67,7 +73,7 @@ function makeTexture(symbol: SymbolChannelRecipe) {
 watch(() => props.appearance.symbols.chest, symbol => { chestTexture.value?.dispose(); chestTexture.value = makeTexture(symbol) }, { immediate: true, deep: true })
 watch(() => props.appearance.symbols.back, symbol => { backTexture.value?.dispose(); backTexture.value = makeTexture(symbol) }, { immediate: true, deep: true })
 onBeforeUnmount(() => { chestTexture.value?.dispose(); backTexture.value?.dispose() })
-function glowRef(material: MeshStandardMaterial | null) { if (material && !glowMaterials.value.includes(material)) glowMaterials.value.push(material) }
+function glowRef(reference: unknown) { const material = reference as MeshStandardMaterial | null; if (material && !glowMaterials.value.includes(material)) glowMaterials.value.push(material) }
 
 const rainbow = new Color(); let previous = props.behavior; let started = 0
 useLoop().onBeforeRender(({ elapsed, delta }) => {

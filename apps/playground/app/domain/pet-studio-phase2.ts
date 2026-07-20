@@ -118,7 +118,7 @@ export function normalizePetStudioAppearance(input: unknown): PetStudioAppearanc
 }
 
 export function randomizePetStudioAppearance(current = createPetStudioAppearance(), random: () => number = Math.random) {
-  const base = randomizeCloudFoxAppearance(current, random)
+  const base = randomizeCloudFoxAppearance(current as unknown as BaseAppearanceRecipe, random)
   return normalizePetStudioAppearance({
     ...base,
     parts: {
