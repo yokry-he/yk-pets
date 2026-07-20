@@ -3,12 +3,13 @@
 ## Current baseline
 
 - Stable reference: `v0.6.10`;
-- Development branch: `agent/yk-pets-rebrand-v0610`;
+- Brand-migration branch: `agent/yk-pets-rebrand-v0610`;
+- Cloud Fox Studio branch: `agent/cloud-fox-studio-v0610`;
 - Product brand: `YK-PETS`;
 - Current default pet: Zeph（云灵）;
 - Current species: Cloud Fox（云狐）;
-- Primary deliverables: Chrome/Edge Manifest V3 extension and local WebSocket Agent;
-- Current phase: brand migration, explicit pet identity modeling, and preparation for a multi-pet platform.
+- Primary deliverables: Chrome/Edge Manifest V3 extension, local WebSocket Agent, and Playground Cloud Fox Studio;
+- Current phase: Cloud Fox appearance recipes, constrained part editing, and live motion-validation MVP.
 
 ## Completed brand migration
 
@@ -20,6 +21,25 @@
 - The default identity is `ZEPH_CLOUD_FOX_IDENTITY`.
 - New domain types use `YkPet*` and `YkPets*` names.
 - A brand-and-identity regression gate is part of the root typecheck workflow.
+
+## Completed Cloud Fox Studio MVP
+
+The Playground now provides `/studio` with:
+
+- a versioned `CloudFoxAppearanceRecipe` using `schemaVersion: 1`;
+- a Cloud Fox species definition, part slots, and proportion safe ranges;
+- selectable ears, eyes, nose, mouth, tail, and antennae;
+- constrained proportions for the body, head, front limbs, paws, eyes, ears, tail, and antennae;
+- primary coat, shadow coat, belly, eye, and five glow-channel colors;
+- fixed, behavior-linked, and rainbow glow modes;
+- dynamic Canvas-texture chest monograms and back `YK` marks;
+- front, left, back, and right views;
+- dark, light, and simulated web-page backgrounds;
+- idle, greeting, jumping, stretching, spinning, and resting motion tests;
+- browser-local save, reset, random generation, JSON import, and JSON export;
+- 21 Cloud Fox Studio contract checks and paired bilingual documentation gates.
+
+The Studio renderer currently lives in the Playground and does not yet replace Zeph's production renderer in the extension.
 
 ## v0.6.10 compatibility policy
 
@@ -36,16 +56,18 @@ They exist only for compatibility. User-facing UI and new features must not use 
 
 ## Current engineering principles
 
-- Product brand, pet species, and pet name are separate domain concepts.
+- Product brand, pet species, pet name, and appearance recipe are separate domain concepts.
+- Appearance recipes must not copy or overwrite affection, memory, or other individual state.
+- Limbs and skeletons expose only constrained adjustments declared by the species.
 - The domain layer must not depend on Vue, Chrome APIs, the DOM, or a concrete Agent provider.
 - Fixes must cover the real runtime path rather than only changing presentation.
 - Existing rules, messages, and local data must remain backward compatible.
-- Reloading a page, extension, or Side Panel must produce predictable state.
 - New pets must register capabilities instead of adding species-specific assumptions to the generic core.
 
 ## Stable capabilities
 
 - a procedural 3D Cloud Fox named Zeph with motions, dragging, menus, and voice presets;
+- Cloud Fox Studio appearance editing, live 3D previews, and motion validation;
 - page audits, independently selectable rules, finding navigation, and reversible previews;
 - Fetch/XHR capture, mocking, delay, and whole-JSON response replacement;
 - token-authenticated local WebSocket Agent;
@@ -54,8 +76,9 @@ They exist only for compatibility. User-facing UI and new features must not use 
 
 ## Next phase
 
-1. Extract framework-independent pet state, events, motion scheduling, and idle behavior into `pet-core`.
-2. Convert Zeph into the first `PetDefinition` rather than a hard-coded singleton.
-3. Add a second real pet to validate registration and fallback behavior.
-4. Provide a plain JavaScript API and a `<yk-pet>` Web Component.
-5. Add thin React, Vue, and Svelte adapters after the core API is stable.
+1. Connect Cloud Fox Studio recipes to Zeph's production renderer in the extension.
+2. Extract species definitions, appearance validation, and renderer interfaces into framework-independent packages.
+3. Extract pet state, events, motion scheduling, and idle behavior into `pet-core`.
+4. Add a second real species to validate part slots and capability fallbacks.
+5. Provide a plain JavaScript API and a `<yk-pet>` Web Component.
+6. Add thin React, Vue, and Svelte adapters after the core API is stable.
