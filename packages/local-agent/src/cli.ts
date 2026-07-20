@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * 文件职责 / File responsibility
- * 解析 CLI 参数并启动本地 Agent 服务。
- * Parses CLI arguments and starts the Local Agent service.
+ * 解析 CLI 参数并启动 YK-PETS 本地 Agent 服务。
+ * Parses CLI arguments and starts the YK-PETS Local Agent service.
  */
 import { Command } from 'commander'
 import { startAgentServer } from './server'
@@ -11,8 +11,8 @@ import { loadOrCreateAgentConfig, readProjectInfo, resolveProjectRoot } from './
 const program = new Command()
 
 program
-  .name('nova-agent')
-  .description('NOVA 浏览器扩展的本地项目 Agent')
+  .name('yk-pets-agent')
+  .description('YK-PETS 浏览器扩展的本地项目 Agent')
   .version('0.1.0')
 
 program
@@ -35,17 +35,18 @@ program
 
     server.on('listening', () => {
       console.log('')
-      console.log('NOVA Local Agent 已启动')
+      console.log('YK-PETS Local Agent 已启动')
+      console.log('当前宠物：云灵 Zeph（物种：云狐 / Cloud Fox）')
       console.log(`项目：${project.name} (${project.framework})`)
       console.log(`根目录：${root}`)
       console.log(`地址：ws://127.0.0.1:${config.port}`)
       console.log(`连接口令：${config.token}`)
       console.log('')
-      console.log('请把地址和口令填入浏览器扩展侧边栏。')
+      console.log('请把地址和口令填入 YK-PETS 浏览器扩展侧边栏。')
     })
   })
 
 program.parseAsync().catch((error) => {
-  console.error('[NOVA]', error instanceof Error ? error.message : error)
+  console.error('[YK-PETS]', error instanceof Error ? error.message : error)
   process.exitCode = 1
 })
