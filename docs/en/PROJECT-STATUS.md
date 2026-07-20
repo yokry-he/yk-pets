@@ -32,7 +32,7 @@
 | BUG-011 | v0.6.9 | Silent MP3 assets were regenerated and protected by decode, duration, and loudness checks. |
 | BUG-012 | v0.6.10 | Nebula Alien, Cute Girl, Cute Companion, and Mute presets were added with persistence and preview. |
 
-New findings continue from `BUG-013`. Detailed implementation and validation records remain in the [version history](../README.md#version-history--版本历史) and root validation reports.
+New findings continue from `BUG-013`. Detailed implementation and validation records remain in the [version history](../README.md) and root validation reports.
 
 ## Exit criteria
 

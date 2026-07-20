@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 校验 v0.5.2 双语文档集合和所有手写源码文件的双语职责头。
- * Validates the v0.5.2 bilingual document set and responsibility header in every handwritten source file.
+ * 校验核心双语文档集合和所有手写源码文件的双语职责头。
+ * Validates the core bilingual document set and responsibility header in every handwritten source file.
  */
 import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -9,12 +9,12 @@ import process from 'node:process'
 
 const root = process.cwd()
 const pairedDocuments = [
+  'PROJECT-STATUS',
   'USER-GUIDE',
   'NETWORK-LAB-OPERATIONS',
   'BUILD-AND-RELEASE',
   'TROUBLESHOOTING',
   'DEVELOPER-MAINTENANCE',
-  'CODE-COMMENT-STANDARD',
   'NETWORK-LAB-v0.5.0',
   'MOCK-WORKBENCH-HIGH-ENERGY-v0.5.1',
   'DOCUMENTATION-AND-COMMENTS-v0.5.2',
@@ -51,7 +51,7 @@ if (failures.length) {
   process.exitCode = 1
 }
 else {
-  console.log('v0.5.2 文档与源码职责注释检查通过。 / v0.5.2 documentation and source responsibility headers passed.')
+  console.log('双语文档与源码职责注释检查通过。 / Bilingual documentation and source responsibility headers passed.')
 }
 
 async function validateHeader(file) {
