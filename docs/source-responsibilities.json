@@ -1,0 +1,18 @@
+{
+  "apps/playground/app/app.vue": {"zh":"串联宠物工坊、预设、场景和物种页面的全局导航入口。","en":"Provides global navigation across the pet studio, presets, scenes, and species pages."},
+  "apps/playground/app/components/studio/CloudFoxStudioCanvas.vue": {"zh":"装配通用宠物预览、自动相机、灯光和独立场景特效。","en":"Assembles the generic pet preview, automatic camera, lighting, and independent scene effects."},
+  "apps/playground/app/components/studio/CustomizableCloudFox.vue": {"zh":"根据外观配方渲染云狐专属身体、部件、尾巴、触角和标志。","en":"Renders Cloud Fox-specific body, parts, tail, antennae, and symbols from an appearance recipe."},
+  "apps/playground/app/components/studio/MoonCat.vue": {"zh":"渲染月猫专属外形、胡须、额头标志、卷曲尾巴和动作降级结果。","en":"Renders Moon Cat-specific form, whiskers, forehead mark, curled tail, and resolved motions."},
+  "apps/playground/app/components/studio/PetSceneEffects.vue": {"zh":"渲染不参与宠物包围盒计算的光晕、粒子和地面阴影。","en":"Renders halo, particles, and ground shadow without contributing to pet bounds."},
+  "apps/playground/app/components/studio/ProceduralPet.vue": {"zh":"根据物种注册信息将通用预览分发到对应宠物渲染器。","en":"Dispatches the generic preview to the appropriate pet renderer using species registration."},
+  "apps/playground/app/domain/pet-scene.ts": {"zh":"定义宠物场景配方、内置场景、网页对比和动作联动规则。","en":"Defines pet scene recipes, built-in scenes, web contrast, and action-linked rules."},
+  "apps/playground/app/domain/pet-species-registry.ts": {"zh":"定义物种注册表、月猫特有槽位、跨物种风格映射和动作降级。","en":"Defines the species registry, Moon Cat-specific slots, cross-species style mapping, and motion fallback."},
+  "apps/playground/app/domain/pet-studio-phase2.ts": {"zh":"扩展宠物工坊头部部件、组合触角和最多八段的参数化尾巴。","en":"Extends Pet Studio with head parts, composable antennae, and a parameterized tail of up to eight segments."},
+  "apps/playground/app/domain/pet-studio-phase3.ts": {"zh":"定义 schema v2、独立标志通道、派生颜色、旧配方迁移和外观检查。","en":"Defines schema v2, independent symbol channels, derived colors, legacy migration, and appearance audits."},
+  "apps/playground/app/domain/pet-studio-phase4.ts": {"zh":"定义内置预设、风格规则、局部应用和锁定随机生成。","en":"Defines built-in presets, style rules, scoped application, and locked randomization."},
+  "apps/playground/app/pages/studio-presets.vue": {"zh":"提供预设、风格、应用范围、参数锁定和用户方案管理界面。","en":"Provides the presets, styles, application scope, parameter locks, and user scheme interface."},
+  "apps/playground/app/pages/studio-scenes.vue": {"zh":"提供场景预设、网页对比、光晕、粒子、阴影和动作联动编辑界面。","en":"Provides editing for scene presets, web contrast, halo, particles, shadows, and action linking."},
+  "apps/playground/app/pages/studio-species.vue": {"zh":"提供物种选择、月猫特有部件和动作降级验证界面。","en":"Provides species selection, Moon Cat-specific parts, and motion fallback validation."},
+  "apps/playground/app/pages/studio.vue": {"zh":"提供宠物外观、尾巴触角、标志、发光、撤销重做和穿模检查主编辑器。","en":"Provides the main editor for pet appearance, tail and antennae, symbols, glow, undo/redo, and collision checks."},
+  "apps/playground/app/stores/pet-appearance.ts": {"zh":"管理多物种外观、场景、历史记录、预设、随机锁定和本地持久化。","en":"Manages multi-species appearance, scenes, history, presets, randomization locks, and local persistence."}
+}

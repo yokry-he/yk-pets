@@ -32,7 +32,7 @@ const expectations = [
   ['halo particles ground shadow', ['halo','particles','groundShadow'].every(name => sceneComponent.includes(name))],
   ['automatic web contrast', scene.includes('resolveSceneContrast') && scenePage.includes('跟随网页')],
   ['action linked scene', scene.includes('sceneActionMultiplier') && sceneComponent.includes('behavior')],
-  ['scene excluded from camera bounds', canvas.includes('Only petBounds is used for camera fitting')],
+  ['scene excluded from camera bounds', canvas.includes('Only pet bounds are used for camera fitting')],
   ['species registry', registry.includes('PET_SPECIES_REGISTRY')],
   ['Moon Cat active', registry.includes("'moon-cat':") && registry.includes("status: 'active'") && moonCat.includes('foreheadMark') && moonCat.includes('whiskers')],
   ['planned slime and rabbit', registry.includes("'nebula-slime'") && registry.includes("'star-rabbit'") && registry.match(/status: 'planned'/g)?.length === 2],

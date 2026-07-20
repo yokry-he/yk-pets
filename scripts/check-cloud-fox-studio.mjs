@@ -46,7 +46,7 @@ const checks = [
   [5, 'scene recipe and presets', files.scene.includes('PetSceneRecipe') && files.scene.includes('PET_SCENE_PRESETS')],
   [5, 'scene effects', files.sceneEffects.includes('scene.halo') && files.sceneEffects.includes('scene.particles') && files.sceneEffects.includes('scene.groundShadow')],
   [5, 'automatic contrast', files.scene.includes('resolveSceneContrast') && files.scenePage.includes('跟随网页')],
-  [5, 'scene excluded from bounds', files.canvas.includes('Only petBounds is used for camera fitting')],
+  [5, 'scene excluded from bounds', files.canvas.includes('Only pet bounds are used for camera fitting')],
   [6, 'species registry', files.registry.includes('PET_SPECIES_REGISTRY')],
   [6, 'moon cat implementation', files.registry.includes("'moon-cat'") && files.moonCat.includes('foreheadMark') && files.moonCat.includes('whiskers')],
   [6, 'reserved slime and rabbit', files.registry.includes("'nebula-slime'") && files.registry.includes("'star-rabbit'")],

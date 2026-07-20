@@ -1,3 +1,8 @@
+<!--
+  文件职责 / File responsibility
+  装配通用宠物预览、自动相机、灯光和独立场景特效。
+  Assembles the generic pet preview, automatic camera, lighting, and independent scene effects.
+-->
 <script setup lang="ts">
 import { TresCanvas } from '@tresjs/core'
 import { Vector3 } from 'three'
@@ -15,7 +20,7 @@ const prefersDark=ref(true)
 onMounted(()=>{prefersDark.value=window.matchMedia('(prefers-color-scheme: dark)').matches})
 const contrast=computed(()=>resolveSceneContrast(activeScene.value,prefersDark.value))
 const clearColor=computed(()=>activeScene.value.transparent?'#000000':activeScene.value.background)
-// Only petBounds is used for camera fitting. Scene effects are deliberately excluded.
+// 相机仅使用宠物包围盒进行适配，场景特效明确排除。 / Only pet bounds are used for camera fitting; scene effects are explicitly excluded.
 const petBounds=computed(()=>calculatePetVisualBounds(props.appearance as never))
 const cameraDistance=computed(()=>Math.max(4.6,petBounds.value.radius/Math.sin(38*Math.PI/360)*1.08))
 const cameraPosition=computed(()=>vec3(0,petBounds.value.centerY+.18,cameraDistance.value))
@@ -27,7 +32,7 @@ const cameraPosition=computed(()=>vec3(0,petBounds.value.centerY+.18,cameraDista
     <TresPerspectiveCamera :position="cameraPosition" :fov="38"/><TresAmbientLight :intensity="contrast==='light'?1.7:1.08"/><TresDirectionalLight :position="vec3(4,6,4)" :intensity="contrast==='light'?2.7:3.9" cast-shadow/><TresPointLight :position="vec3(-4,1,2)" :intensity="4.2" :color="appearance.palette.primaryGlow"/>
     <PetSceneEffects :scene="activeScene" :behavior="behavior"/><ProceduralPet :appearance="appearance" :behavior="behavior" :view="view"/>
   </TresCanvas>
-  <div class="label"><strong>{{appearance.identity.nameZh}} · {{appearance.identity.nameEn}}</strong><span>{{appearance.speciesId}} / {{activeScene.presetId}} · 宠物包围盒 {{petBounds.width.toFixed(1)}} × {{petBounds.height.toFixed(1)}}</span></div>
+  <div class="label"><strong>{{appearance.identity.nameZh}} · {{appearance.identity.nameEn}}</strong><span>{{activeScene.presetId}} · 宠物包围盒 {{petBounds.width.toFixed(1)}} × {{petBounds.height.toFixed(1)}}</span></div>
 </div>
 </template>
 <style scoped>

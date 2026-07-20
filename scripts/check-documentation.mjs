@@ -1,8 +1,7 @@
-
 /**
  * 文件职责 / File responsibility
- * 校验核心中英文文档、源码职责头和手写代码中的双语注释。
- * Validates core Chinese/English documents, source responsibility headers, and bilingual comments in handwritten code.
+ * 校验核心中英文文档、源码职责声明和手写代码中的双语注释。
+ * Validates core Chinese/English documents, source responsibility declarations, and bilingual comments in handwritten code.
  */
 import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -54,6 +53,13 @@ const ignoredDirectories = new Set([
   'coverage',
 ])
 const failures = []
+let responsibilityRegistry = {}
+try {
+  responsibilityRegistry = JSON.parse(await readFile(path.join(root, 'docs/source-responsibilities.json'), 'utf8'))
+}
+catch {
+  failures.push('缺少源码职责登记表 / Missing source responsibility registry: docs/source-responsibilities.json')
+}
 
 // 文档必须存在并包含实际内容，避免残留空壳入口。 / Documents must exist and contain real content rather than placeholder shells.
 for (const relativePath of requiredDocuments) {
@@ -67,7 +73,13 @@ for (const relativePath of requiredDocuments) {
   }
 }
 
-// 产品源码必须声明文件职责。 / Product source files must declare their responsibility.
+// 集中登记的职责必须同时包含中英文内容。 / Centrally registered responsibilities must contain both Chinese and English content.
+for (const [relativePath, entry] of Object.entries(responsibilityRegistry)) {
+  const combined = `${entry?.zh || ''} ${entry?.en || ''}`
+  if (!isBilingual(combined)) failures.push(`源码职责登记不是中英双语 / Source responsibility entry is not bilingual: ${relativePath}`)
+}
+
+// 产品源码必须在文件头或集中登记表中声明职责。 / Product source files must declare responsibility in the header or central registry.
 for (const directory of ['apps', 'packages']) {
   const absoluteDirectory = path.join(root, directory)
   for (const file of await collectSourceFiles(absoluteDirectory)) {
@@ -91,9 +103,11 @@ else {
 async function validateSourceFile(file, requireHeader) {
   const relativePath = path.relative(root, file)
   const content = await readFile(file, 'utf8')
+  const hasInlineResponsibility = content.slice(0, 900).includes('文件职责 / File responsibility')
+  const hasRegisteredResponsibility = Boolean(responsibilityRegistry[relativePath])
 
-  if (requireHeader && !content.slice(0, 900).includes('文件职责 / File responsibility')) {
-    failures.push(`缺少双语文件职责注释 / Missing bilingual file responsibility header: ${relativePath}`)
+  if (requireHeader && !hasInlineResponsibility && !hasRegisteredResponsibility) {
+    failures.push(`缺少双语文件职责声明 / Missing bilingual file responsibility declaration: ${relativePath}`)
   }
 
   const lines = content.split(/\r?\n/)
