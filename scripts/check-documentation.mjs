@@ -9,6 +9,7 @@ import process from 'node:process'
 
 const root = process.cwd()
 const pairedDocuments = [
+  'BRAND-AND-PET-IDENTITY',
   'PROJECT-STATUS',
   'RELEASE-HISTORY',
   'USER-GUIDE',

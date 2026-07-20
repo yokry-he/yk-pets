@@ -9,5 +9,6 @@ coverage
 .env
 .env.*
 !.env.example
+.yk-pets
 .nova
 .DS_Store

@@ -1,48 +1,61 @@
-# NOVA Current Project Status
+# YK-PETS Current Project Status
 
 ## Current baseline
 
-- Current version: `v0.6.10`;
-- Primary deliverable: Chrome/Edge Manifest V3 browser extension;
-- Current phase: product stabilization, browser regression, and defect correction;
-- npm SDK extraction, Web Components, and multi-framework adapters remain outside the current implementation scope.
+- Stable reference: `v0.6.10`;
+- Development branch: `agent/yk-pets-rebrand-v0610`;
+- Product brand: `YK-PETS`;
+- Current default pet: Zeph（云灵）;
+- Current species: Cloud Fox（云狐）;
+- Primary deliverables: Chrome/Edge Manifest V3 extension and local WebSocket Agent;
+- Current phase: brand migration, explicit pet identity modeling, and preparation for a multi-pet platform.
 
-## Working principles
+## Completed brand migration
 
-- Fixes must cover the real runtime path rather than only changing presentation;
-- Existing rules and local data remain backward compatible;
-- Domain code must not depend on Vue, Chrome APIs, the DOM, or a concrete Agent provider;
-- Formal releases update version metadata, regression gates, consolidated release history, and build artifacts together;
-- State must remain predictable after page refresh, extension reload, and Side Panel reopening.
+- The extension manifest, browser action, Side Panel title, primary CLI, and main documentation use YK-PETS.
+- The root package is named `yk-pets`.
+- The primary Local Agent command is `yk-pets-agent`.
+- The new configuration directory is `.yk-pets/`.
+- `PetIdentity` stores pet ID, species ID, localized species names, and localized pet names separately.
+- The default identity is `ZEPH_CLOUD_FOX_IDENTITY`.
+- New domain types use `YkPet*` and `YkPets*` names.
+- A brand-and-identity regression gate is part of the root typecheck workflow.
 
-## Resolved issues
+## v0.6.10 compatibility policy
 
-| ID | Included in | Result |
-|---|---|---|
-| BUG-001 | v0.6.7 | Ordinary Side Panel navigation no longer leaves a loading orbit or stale busy state. |
-| BUG-002 | v0.6.7 | The tail tip keeps a readable bright core and aura on dark pages. |
-| BUG-003 | v0.6.7 | Motion feedback is separated from large task notifications and no longer blocks page interaction. |
-| BUG-004 | v0.6.7 | Motions use speech that matches their copy, with no notification-beep fallback. |
-| BUG-005 | v0.6.7 | Request capture has stable resource categories and composable filters. |
-| BUG-006 | v0.6.7 | Page Audit supports scope selection, result filtering, and executed-scope records. |
-| BUG-007 | v0.6.8 | The tail tip uses an opaque bright core, persistent additive aura, and multicolor high-energy flashes. |
-| BUG-008 | v0.6.8 | Motion speech uses prefetching, Web Audio decode caching, and user-gesture audio-context recovery. |
-| BUG-009 | v0.6.8 | Motion thought bubbles were removed, leaving animation and matching speech. |
-| BUG-010 | v0.6.8 | All 16 audit child rules support independent selection, persistence, and pre-execution gating. |
-| BUG-011 | v0.6.9 | Silent MP3 assets were regenerated and protected by decode, duration, and loudness checks. |
-| BUG-012 | v0.6.10 | Nebula Alien, Cute Girl, Cute Companion, and Mute presets were added with persistence and preview. |
+The following legacy technical identifiers remain temporarily to avoid breaking upgrades:
 
-New findings continue from `BUG-013`. Implementation and validation conclusions are consolidated in the [release and validation history](./RELEASE-HISTORY.md); deleted process records remain recoverable from the `v0.6.10` tag and Git history.
+- deprecated `Nova*` type aliases;
+- existing `NOVA_*` wire-message values;
+- the private `@nova/*` workspace scope;
+- bidirectional mirroring between `nova:*` and `yk-pets:*` storage keys;
+- migration from `.nova/agent.json` to `.yk-pets/agent.json`;
+- the `nova-agent` command alias.
 
-## Exit criteria
+They exist only for compatibility. User-facing UI and new features must not use NOVA as the product brand or pet name.
 
-- Critical interaction, animation, and Network Lab fixes pass unpacked-extension browser regression;
-- Manual creation, request-derived creation, editing, duplication, toggling, and deletion are stable;
-- Fetch and XHR behave consistently for Mocking, delay, and whole-JSON response replacement;
-- Critical paths have automated regressions;
-- Every Workspace passes type checking, tests, and production builds;
-- `v0.6.10` is a stable reference implementation for later platform extraction.
+## Current engineering principles
 
-## Next-stage direction
+- Product brand, pet species, and pet name are separate domain concepts.
+- The domain layer must not depend on Vue, Chrome APIs, the DOM, or a concrete Agent provider.
+- Fixes must cover the real runtime path rather than only changing presentation.
+- Existing rules, messages, and local data must remain backward compatible.
+- Reloading a page, extension, or Side Panel must produce predictable state.
+- New pets must register capabilities instead of adding species-specific assumptions to the generic core.
 
-After stabilization, the project can begin the SDK foundation phase: extract framework-independent pet state and motion runtime, define stable lifecycle and capability interfaces, and gradually separate rendering, Agent, themes, localization, and extension features.
+## Stable capabilities
+
+- a procedural 3D Cloud Fox named Zeph with motions, dragging, menus, and voice presets;
+- page audits, independently selectable rules, finding navigation, and reversible previews;
+- Fetch/XHR capture, mocking, delay, and whole-JSON response replacement;
+- token-authenticated local WebSocket Agent;
+- SHA-256 concurrent-edit protection, explicit confirmation, verification, and rollback;
+- workspace typechecks, focused regression scripts, and production builds.
+
+## Next phase
+
+1. Extract framework-independent pet state, events, motion scheduling, and idle behavior into `pet-core`.
+2. Convert Zeph into the first `PetDefinition` rather than a hard-coded singleton.
+3. Add a second real pet to validate registration and fallback behavior.
+4. Provide a plain JavaScript API and a `<yk-pet>` Web Component.
+5. Add thin React, Vue, and Svelte adapters after the core API is stable.

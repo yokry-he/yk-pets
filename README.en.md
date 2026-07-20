@@ -1,13 +1,23 @@
-# NOVA Browser Agent
+# YK-PETS Browser Agent
 
-A 3D AI frontend engineer that lives in the bottom-right corner of the page. NOVA audits HTTP/HTTPS pages, navigates findings, previews improvements, and uses a local WebSocket Agent to generate safety-constrained source diffs. Changes are written, verified, or rolled back only after explicit user confirmation.
+YK-PETS is an in-page 3D AI frontend engineering companion platform. The current default pet is a **Cloud Fox** named **Zeph**（云灵）. Zeph can audit HTTP/HTTPS pages, navigate findings, preview improvements, and use a local WebSocket Agent to generate safety-constrained source diffs. Changes are written, verified, or rolled back only after explicit user confirmation.
+
+## Brand and pet identity
+
+```text
+Product brand: YK-PETS
+Pet species: Cloud Fox / 云狐
+Pet name: Zeph / 云灵
+```
+
+The product brand, pet species, and pet name are separate concepts. New species and named pets can be added later without renaming YK-PETS.
 
 ## Repository layout
 
 ```text
 apps/extension       Chrome/Edge Manifest V3 extension
-apps/playground      Nuxt 3D cloud-fox demo and audit lab
-packages/shared      Audit models and communication protocol
+apps/playground      Nuxt 3D pet demo and audit lab
+packages/shared      Brand, pet identity, audit models, and communication protocol
 packages/local-agent Local-project WebSocket Agent
 docs/                Usage, architecture, security, and development documentation
 ```
@@ -45,20 +55,29 @@ Load this directory in Chrome developer mode:
 apps/extension/.output/chrome-mv3
 ```
 
-Upload this ZIP to the Chrome Web Store:
+## Local Agent
 
-```text
-apps/extension/.output/novaextension-0.6.10-chrome.zip
+The primary command is now:
+
+```bash
+yk-pets-agent dev --root .
 ```
+
+For `v0.6.10` compatibility, `nova-agent` remains available as a temporary alias. Configuration is written to `.yk-pets/agent.json`. When only `.nova/agent.json` exists, YK-PETS migrates its token and port automatically.
 
 ## Core capabilities
 
 - Vue 3 + WXT Manifest V3 extension with a Side Panel;
-- procedural TresJS cloud-fox pet with motions, dragging, menus, and switchable voices;
-- page audit, finding navigation, performance metrics, and reversible DOM preview;
-- Fetch/XHR capture, Mocking, delay, whole-JSON response modification, and rule workbench;
+- a procedural TresJS Cloud Fox named Zeph, with motions, dragging, menus, and switchable voices;
+- page audits, finding navigation, performance metrics, and reversible DOM previews;
+- Fetch/XHR capture, mocking, delays, whole-JSON response modification, and a rule workbench;
 - token-authenticated local WebSocket Agent;
-- SHA-256 concurrent-edit protection, explicit write confirmation, validation, and rollback.
+- SHA-256 concurrent-edit protection, explicit write confirmation, validation, and rollback;
+- compatibility migration from `nova:*` storage keys to `yk-pets:*`.
+
+## Compatibility policy
+
+During the `v0.6.10` migration, selected `Nova*`, `NOVA_*`, `@nova/*`, and `nova:*` technical identifiers remain as compatibility boundaries for existing extension messages, workspace dependencies, and user data. User-facing branding, the new domain model, the primary CLI, and the new configuration directory use YK-PETS.
 
 ## Documentation
 

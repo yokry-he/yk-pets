@@ -1,9 +1,11 @@
 {
   "name": "@nova/local-agent",
   "version": "0.1.2",
+  "description": "YK-PETS Local Agent. The legacy @nova workspace scope is retained for v0.6.10 compatibility.",
   "private": true,
   "type": "module",
   "bin": {
+    "yk-pets-agent": "./dist/cli.js",
     "nova-agent": "./dist/cli.js"
   },
   "exports": {
