@@ -92,11 +92,11 @@ const abilityCards = [
 ]
 
 useHead({
-  title: 'NOVA — 住在浏览器里的 AI 宠物',
+  title: 'YK-PETS — 云灵 Zeph，住在浏览器里的 AI 云狐',
   meta: [
     {
       name: 'description',
-      content: '使用 Nuxt、Vue、TresJS 与 XState 打造的 3D AI 数字宠物体验。',
+      content: '使用 Nuxt、Vue、TresJS 与 XState 打造的 YK-PETS 3D 云狐云灵（Zeph）体验。',
     },
   ],
 })
@@ -147,7 +147,7 @@ function cryptoId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function petNOVA() {
+function petZeph() {
   pet.interact(3)
   const cycle = pet.interactions % 7
 
@@ -239,7 +239,6 @@ async function submitMessage(content: string) {
   }
 }
 
-
 function startSpeaking(message: string) {
   speaking.value = true
   if (speakingTimer) window.clearTimeout(speakingTimer)
@@ -295,7 +294,7 @@ function scrollToAbilities() {
 
 useEventListener('keydown', (event: KeyboardEvent) => {
   if (event.key.toLowerCase() === 'p' && !(event.target instanceof HTMLInputElement)) {
-    petNOVA()
+    petZeph()
   }
 })
 </script>
@@ -307,9 +306,9 @@ useEventListener('keydown', (event: KeyboardEvent) => {
     <div class="noise" />
 
     <header class="topbar">
-      <a class="brand" href="#top" aria-label="NOVA 首页">
-        <span class="brand-mark">N</span>
-        <span>NOVA<span class="brand-dot">.</span></span>
+      <a class="brand" href="#top" aria-label="YK-PETS 首页">
+        <span class="brand-mark">YK</span>
+        <span>YK-PETS<span class="brand-dot">.</span></span>
       </a>
 
       <nav aria-label="主导航">
@@ -332,7 +331,7 @@ useEventListener('keydown', (event: KeyboardEvent) => {
           <span>它住在你的网页里。</span>
         </h1>
         <p class="hero-description">
-          NOVA 是一个拥有身体、情绪和行为状态的 3D AI 宠物。它会观察你、记住你，并用动作改变整个网站。现在它还会打招呼、转圈、靠近倾听，并用更灵动的耳朵、尾巴和前爪回应你。
+          云灵（Zeph）是一只拥有身体、情绪和行为状态的 3D AI 云狐。它会观察你、记住你，并用动作改变整个网站。现在它还会打招呼、转圈、靠近倾听，并用更灵动的耳朵、尾巴和前爪回应你。
         </p>
 
         <div class="hero-actions">
@@ -363,7 +362,7 @@ useEventListener('keydown', (event: KeyboardEvent) => {
       <div id="experience" class="experience-panel">
         <div class="experience-toolbar">
           <div class="window-dots"><i /><i /><i /></div>
-          <span>NOVA_CORE / LIVE</span>
+          <span>ZEPH_CORE / LIVE</span>
           <span class="fps-badge">WEBGL</span>
         </div>
 
@@ -375,14 +374,14 @@ useEventListener('keydown', (event: KeyboardEvent) => {
             :pointer="pointer"
             :secret-mode="secretMode"
             :theme="pet.theme"
-            @pet="petNOVA"
+            @pet="petZeph"
           />
           <template #fallback>
-            <div class="canvas-fallback">正在唤醒 NOVA…</div>
+            <div class="canvas-fallback">正在唤醒云灵…</div>
           </template>
         </ClientOnly>
 
-        <div class="motion-console" aria-label="NOVA 动作控制">
+        <div class="motion-console" aria-label="云灵动作控制">
           <span>MOTION</span>
           <button type="button" @click="triggerMotion('GREET', '嗨，我在这里。很高兴见到你。', 'happy')">招手</button>
           <button type="button" @click="triggerMotion('JUMP', '准备好了吗？我跳给你看。', 'happy')">跳跃</button>
@@ -443,7 +442,7 @@ useEventListener('keydown', (event: KeyboardEvent) => {
     <ChatDock :messages="messages" :thinking="thinking" @submit="submitMessage" />
 
     <footer>
-      <span>NOVA / DIGITAL FAMILIAR EXPERIMENT</span>
+      <span>YK-PETS / ZEPH CLOUD FOX EXPERIMENT</span>
       <span>NUXT · VUE · TRESJS · XSTATE</span>
     </footer>
   </main>
