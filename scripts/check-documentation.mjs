@@ -1,3 +1,4 @@
+
 /**
  * 文件职责 / File responsibility
  * 校验核心中英文文档、源码职责头和手写代码中的双语注释。
@@ -10,6 +11,7 @@ import process from 'node:process'
 const root = process.cwd()
 const pairedDocuments = [
   'BRAND-AND-PET-IDENTITY',
+  'CLOUD-FOX-STUDIO',
   'PROJECT-STATUS',
   'RELEASE-HISTORY',
   'USER-GUIDE',
