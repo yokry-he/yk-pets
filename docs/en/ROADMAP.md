@@ -1,53 +1,68 @@
-# Roadmap
+# YK-PETS Roadmap
 
-## 0.1 Foundation MVP (completed)
+## Current identity
 
-- Chrome/Edge Side Panel
-- DOM, accessibility, SEO, and basic performance audits
-- Element location and reversible previews
-- Local WebSocket Agent
-- Deterministic source patches
-- Typecheck, test, build, and safe rollback
+```text
+Product brand: YK-PETS
+Default pet: Zeph / 云灵
+Default species: Cloud Fox / 云狐
+```
 
-## 0.2 Animal-first interaction (current release)
+## 0.6.10 Brand and identity migration
 
-- Inject the 3D cloud fox into the bottom-right of pages where the extension may run
-- Click, double-click, context-menu, hover, and drag interactions
-- Trigger audits, issue navigation, location, preview, and undo through the animal
-- Open detailed reports and Local Agent tools through the animal
-- Trigger patch generation, confirmed apply, project verification, and rollback through the animal
-- Synchronize health score, issue count, current issue, and execution state on the fox
-- Automated completeness check for the animal action contract
+- Rebrand the extension, Side Panel, CLI, and primary documentation as YK-PETS.
+- Model product brand, pet name, and pet species separately.
+- Add `PetIdentity` and `ZEPH_CLOUD_FOX_IDENTITY`.
+- Introduce canonical `YkPet*` and `YkPets*` domain types.
+- Migrate `nova:*` settings to `yk-pets:*` with bidirectional mirroring.
+- Migrate `.nova/agent.json` to `.yk-pets/agent.json`.
+- Make `yk-pets-agent` the primary CLI while keeping a compatibility alias.
+- Add a brand-and-identity regression gate.
 
-## 0.3 Performance and site controls
+## 0.7 Pet core runtime
 
-- Split audit collection and the 3D pet into independently loaded bundles
-- Enable, pause, or hide 3D NOVA per site
-- Remember pet position and expanded state per site
-- Pause WebGL rendering while the tab is hidden
-- Provide a 2D fallback for low-end devices, unavailable WebGL, and power-saving mode
-- Further reduce the procedural avatar and Three.js footprint
+- Extract framework-independent pet state, events, and lifecycle.
+- Extract motion priority, interruption, queueing, and idle scheduling.
+- Separate generic intents from concrete animation IDs.
+- Define `PetDefinition`, capability declarations, and motion fallbacks.
+- Convert Zeph into the first registered pet definition.
+- Stop extending generic core protocols with Cloud-Fox-specific assumptions.
 
-## 0.4 Source mapping and deep analysis
+## 0.8 Multi-pet registry
 
-- Vite/Nuxt development plugin that injects component file and line information
-- Source Map and Vue DevTools Hook-assisted mapping
-- Multi-file patches and grouped Git diffs
-- DevTools Panel and Chrome DevTools Protocol performance sampling
-- Network waterfall, console errors, and the full axe-core ruleset
-- Lighthouse/Playwright before-and-after verification
+- Implement a pet registry and lazy asset loading.
+- Add a second real pet as an architecture acceptance test.
+- Support multiple named pets of the same species and personality profiles.
+- Support pet selection, switching, and persistence.
+- Allow independent themes, motions, voices, and 2D fallbacks.
+- Preserve audit, network, and Agent state while switching pets.
 
-## 0.5 Agent capabilities
+## 0.9 Cross-stack Web SDK
 
-- Git Worktree-isolated changes
-- AI explanations and complex patch generation
-- Project-level `nova.config.ts`
-- Pull-request descriptions, change reports, and before/after metrics
-- Voice, gesture, and configurable pet-action mappings
+- Provide a plain JavaScript `createYkPet()` API.
+- Provide a `<yk-pet>` Web Component.
+- Support ESM, lazy loading, and framework-free usage.
+- Add React, Vue, Nuxt, Next.js, Svelte, and Astro examples.
+- Keep framework adapters thin; they must not duplicate core logic.
+- Provide 2D fallback for unavailable WebGL and low-performance devices.
 
-## 1.0
+## 1.0 Product release
 
-- Chrome Web Store release
-- Native Messaging desktop Agent
-- Team policies and audit logs
-- Official Firefox/Edge support
+- Publish to the Chrome Web Store.
+- Add formal Edge support and evaluate Firefox.
+- Provide a Native Messaging desktop Agent.
+- Stabilize SDK lifecycle and semantic versioning.
+- Define a pet asset-package format and third-party pet documentation.
+- Add team policy, audit logs, and permission governance.
+- Remove NOVA compatibility aliases after the migration window closes.
+
+## Platform acceptance criteria
+
+YK-PETS is considered a multi-pet platform only when:
+
+1. Zeph is no longer hard-coded into the generic core.
+2. At least two pets run through the same registration protocol.
+3. A Web Component works without a Vue or React host.
+4. Switching pets does not reset audit, network, or Agent state.
+5. A new pet can be added without editing a generic motion union.
+6. Existing `v0.6.10` user data upgrades safely.
