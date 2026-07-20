@@ -85,12 +85,17 @@ export function installStorageCompatibilityMirror(): () => void {
   return () => chrome.storage.onChanged.removeListener(listener)
 }
 
-function updateAttributes(element: Element) {
+function updateElementBrand(element: Element) {
   for (const attribute of ['title', 'aria-label', 'placeholder', 'alt']) {
     const current = element.getAttribute(attribute)
     if (!current) continue
     const next = replaceLegacyBrandText(current)
     if (next !== current) element.setAttribute(attribute, next)
+  }
+
+  if (element.classList.contains('nova-pet-loader') && element.textContent?.trim() === 'N') {
+    element.textContent = 'Z'
+    element.setAttribute('aria-label', `${YK_PETS_PET_NAME} ${YK_PETS_PET_NAME_EN}`)
   }
 }
 
@@ -116,7 +121,7 @@ export function installYkPetsBranding(root: ObservableRoot = document): () => vo
   })
 
   function brandTree(currentRoot: ObservableRoot) {
-    if (currentRoot instanceof Element) updateAttributes(currentRoot)
+    if (currentRoot instanceof Element) updateElementBrand(currentRoot)
 
     const walker = document.createTreeWalker(currentRoot, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
     let node: Node | null = walker.currentNode
@@ -126,7 +131,7 @@ export function installYkPetsBranding(root: ObservableRoot = document): () => vo
         if (next !== node.nodeValue) node.nodeValue = next
       }
       else if (node instanceof Element) {
-        updateAttributes(node)
+        updateElementBrand(node)
         if (node.shadowRoot) observeRoot(node.shadowRoot)
       }
       node = walker.nextNode()
