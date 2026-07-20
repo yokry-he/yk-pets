@@ -4,7 +4,6 @@
  * Playground pet identity, state, and command store.
  */
 import { defineStore } from 'pinia'
-import { ZEPH_CLOUD_FOX_IDENTITY } from '@nova/shared/brand'
 import type { PetEmotion, PetTheme } from '~/types/pet'
 
 interface PersistedPetState {
@@ -16,17 +15,23 @@ interface PersistedPetState {
   lastVisit: string
 }
 
+const CURRENT_PET_IDENTITY = Object.freeze({
+  id: 'zeph',
+  speciesId: 'cloud-fox',
+  name: Object.freeze({ 'zh-CN': '云灵', en: 'Zeph' }),
+  species: Object.freeze({ 'zh-CN': '云狐', en: 'Cloud Fox' }),
+})
 const STORAGE_KEY = 'yk-pets:playground:pet-state:v2'
 const LEGACY_STORAGE_KEY = 'nuxt-ai-pet-state-v1'
 
 export const usePetStore = defineStore('pet', {
   state: () => ({
-    petId: ZEPH_CLOUD_FOX_IDENTITY.id,
-    speciesId: ZEPH_CLOUD_FOX_IDENTITY.speciesId,
-    name: ZEPH_CLOUD_FOX_IDENTITY.name['zh-CN'],
-    nameEn: ZEPH_CLOUD_FOX_IDENTITY.name.en,
-    species: ZEPH_CLOUD_FOX_IDENTITY.species['zh-CN'],
-    speciesEn: ZEPH_CLOUD_FOX_IDENTITY.species.en,
+    petId: CURRENT_PET_IDENTITY.id,
+    speciesId: CURRENT_PET_IDENTITY.speciesId,
+    name: CURRENT_PET_IDENTITY.name['zh-CN'],
+    nameEn: CURRENT_PET_IDENTITY.name.en,
+    species: CURRENT_PET_IDENTITY.species['zh-CN'],
+    speciesEn: CURRENT_PET_IDENTITY.species.en,
     theme: 'dark' as PetTheme,
     emotion: 'neutral' as PetEmotion,
     affection: 18,
@@ -44,7 +49,7 @@ export const usePetStore = defineStore('pet', {
       if (raw) {
         try {
           const saved = JSON.parse(raw) as Partial<PersistedPetState>
-          if (saved.petId === ZEPH_CLOUD_FOX_IDENTITY.id) this.petId = saved.petId
+          if (saved.petId === CURRENT_PET_IDENTITY.id) this.petId = saved.petId
           if (saved.theme === 'dark' || saved.theme === 'light') this.theme = saved.theme
           if (typeof saved.affection === 'number') this.affection = Math.min(100, Math.max(0, saved.affection))
           if (typeof saved.interactions === 'number') this.interactions = Math.max(0, saved.interactions)
