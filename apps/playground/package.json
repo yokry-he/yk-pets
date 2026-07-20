@@ -1,5 +1,6 @@
 {
   "name": "@nova/playground",
+  "description": "YK-PETS playground for Zeph, the Cloud Fox, audit experiments, and future multi-pet SDK validation.",
   "private": true,
   "type": "module",
   "scripts": {
