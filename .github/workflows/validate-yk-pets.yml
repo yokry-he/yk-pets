@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/yk-pets-rebrand-v0610
+      - agent/cloud-fox-studio-v0610
   pull_request:
 
 permissions:
@@ -34,8 +35,29 @@ jobs:
       - name: Check YK-PETS brand and identity
         run: pnpm check:brand
 
+      - name: Check Cloud Fox Studio contract
+        run: pnpm check:cloud-fox-studio
+
       - name: Typecheck workspaces
-        run: pnpm typecheck
+        id: typecheck
+        shell: bash
+        run: |
+          set +e
+          pnpm typecheck > /tmp/yk-pets-typecheck.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 180 /tmp/yk-pets-typecheck.log
+          fi
+          exit "$status"
+
+      - name: Upload typecheck failure log
+        if: failure() && steps.typecheck.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: yk-pets-typecheck-errors
+          path: /tmp/yk-pets-typecheck.log
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Run tests
         run: pnpm test
