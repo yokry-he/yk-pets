@@ -26,8 +26,6 @@ const exactPairs = [
   ['head position', '0, 0.92, 0.06'],
   ['head scale', '1.02, 0.88, 0.9'],
   ['ear offset', '0.56, 0.65, -0.04'],
-  ['eye offset', '0.31, 0.08, 0.77'],
-  ['front paw offset', '0.5, -0.04, 0.82'],
   ['hind paw offset', '0.48, -1.08, 0.22'],
   ['tail position', '-0.58, -0.48, -0.34'],
   ['tail base radius', '0.27'],
@@ -39,6 +37,8 @@ const exactPairs = [
 
 const checks = exactPairs.map(([name, token]) => [name, extensionModel.includes(token) && profile.includes(token)])
 checks.push(
+  ['eye offset', extensionModel.includes('const LEFT_EYE_BASE_X = -0.31') && extensionModel.includes('const RIGHT_EYE_BASE_X = 0.31') && extensionModel.includes('const EYE_BASE_Y = 0.08') && extensionModel.includes('vec3(LEFT_EYE_BASE_X, EYE_BASE_Y, 0.77)') && profile.includes('eyeOffset: [0.31, 0.08, 0.77]')],
+  ['front paw offset', extensionModel.includes('const FRONT_PAW_LEFT_X = -0.5') && extensionModel.includes('const FRONT_PAW_RIGHT_X = 0.5') && extensionModel.includes('const FRONT_PAW_BASE_Y = -0.04') && extensionModel.includes('const FRONT_PAW_BASE_Z = 0.82') && extensionModel.includes('vec3(FRONT_PAW_LEFT_X, FRONT_PAW_BASE_Y, FRONT_PAW_BASE_Z)') && profile.includes('frontPaw: {') && profile.includes('offset: [0.5, -0.04, 0.82]')],
   ['normal camera', extensionCanvas.includes('vec3(0, 0.42, 8.8)') && profile.includes('normalPosition: [0, 0.42, 8.8]')],
   ['compact camera', extensionCanvas.includes('vec3(0, 0.08, 9.7)') && profile.includes('compactPosition: [0, 0.08, 9.7]')],
   ['wide camera', extensionCanvas.includes('vec3(0, 0.72, 10.8)') && profile.includes('widePosition: [0, 0.72, 10.8]')],
