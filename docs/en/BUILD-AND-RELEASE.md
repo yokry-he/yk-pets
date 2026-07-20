@@ -1,208 +1,181 @@
-# Build, Package, and Release Guide
+# YK-PETS Build, Package, and Release Guide
 
-> Applies to `v0.6.10` and later compatible releases.  
-> Covers clean builds, Chrome extension packaging, local acceptance, store submission, and rollback.
+> Baseline: the `v0.6.10` platform branch and later compatible releases
 
 ## 1. Requirements
 
 - Node.js 22 or later;
-- pnpm 11.13.1 through Corepack;
-- Git;
-- stable Chrome;
-- access to the dependency registry.
+- Corepack;
+- pnpm 11.13.1;
+- Chrome or Edge;
+- a clean working tree for release builds.
 
 ```bash
 node --version
-corepack pnpm --version
-git --version
-```
-
-## 2. Version synchronization
-
-Before a formal release, update:
-
-1. root `package.json`;
-2. `apps/extension/package.json`;
-3. the Manifest version in `apps/extension/wxt.config.ts`;
-4. `README.zh-CN.md`, `README.en.md`, and store metadata;
-5. `docs/zh-CN/RELEASE-HISTORY.md` and `docs/en/RELEASE-HISTORY.md`;
-6. regression automation affected by the release.
-
-The Manifest version uploaded to the Chrome Web Store must be greater than the published version.
-
-The repository no longer adds per-version root files named `RELEASE-NOTES-vX.Y.Z.md` or `VALIDATION-vX.Y.Z.*.md`. User-facing notes belong in GitHub Releases or the release system; maintenance conclusions belong in the consolidated release history.
-
-## 3. Clean build
-
-### 3.1 Remove generated directories
-
-macOS/Linux:
-
-```bash
-rm -rf node_modules
-rm -rf apps/extension/.output apps/extension/.wxt
-rm -rf apps/playground/.output apps/playground/.nuxt
-rm -rf packages/local-agent/dist
-```
-
-Windows PowerShell:
-
-```powershell
-Remove-Item node_modules -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item apps/extension/.output, apps/extension/.wxt -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item apps/playground/.output, apps/playground/.nuxt -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item packages/local-agent/dist -Recurse -Force -ErrorAction SilentlyContinue
-```
-
-### 3.2 Install locked dependencies
-
-```bash
 corepack enable
+corepack prepare pnpm@11.13.1 --activate
+pnpm --version
+```
+
+## 2. Install dependencies
+
+```bash
 pnpm install --frozen-lockfile
 ```
 
-Do not rebuild the lockfile unless the release intentionally changes dependencies.
+When frozen installation fails, check whether `package.json` and `pnpm-lock.yaml` are synchronized. Do not delete the lockfile and create an unrelated large dependency update.
 
-### 3.3 Quality gates
+## 3. Release validation
+
+Run these commands in order:
 
 ```bash
-pnpm check:documentation
+pnpm check:brand
 pnpm typecheck
 pnpm test
-pnpm test:network-domain
-pnpm test:network-workbench
+pnpm build
+pnpm build:playground
+```
+
+- `check:brand` validates YK-PETS, Zeph, Cloud Fox, compatibility migration, and release naming.
+- `typecheck` runs documentation and focused regression gates before all workspace typechecks.
+- `test` runs workspace tests.
+- `build` builds the Local Agent and extension.
+- `build:playground` builds the Nuxt demo.
+
+Do not publish when any step fails.
+
+## 4. Extension development build
+
+```bash
+pnpm dev:extension
+```
+
+The development output is normally:
+
+```text
+apps/extension/.output/chrome-mv3
+```
+
+Load this directory in the browser extension manager and verify at least:
+
+1. the manifest name is `YK-PETS Browser Agent`;
+2. the toolbar title uses YK-PETS;
+3. Zeph appears in-page instead of NOVA;
+4. the Side Panel uses YK-PETS branding;
+5. voices, motions, audits, Network Lab, and Agent connection work.
+
+## 5. Production builds
+
+```bash
+pnpm build:extension
 pnpm build:agent
 pnpm build:playground
-pnpm build:extension
+```
+
+Outputs:
+
+```text
+apps/extension/.output/chrome-mv3
+packages/local-agent/dist
+apps/playground/.output
+```
+
+## 6. Create the extension ZIP
+
+```bash
 pnpm zip:extension
 ```
 
-Do not continue the release after any command fails.
-
-## 4. Build outputs
-
-| Artifact | Path |
-|---|---|
-| Unpacked Chrome extension | `apps/extension/.output/chrome-mv3` |
-| Chrome ZIP | `apps/extension/.output/novaextension-X.Y.Z-chrome.zip` |
-| Local Agent | `packages/local-agent/dist` |
-| Playground | `apps/playground/.output` |
-
-Upload the WXT-generated Chrome ZIP to the Chrome Web Store, not the source ZIP.
-
-## 5. Artifact inspection
-
-### Manifest
-
-```bash
-cat apps/extension/.output/chrome-mv3/manifest.json
-```
-
-Confirm that:
-
-- `manifest_version` is 3;
-- version, name, and description are correct;
-- permissions match the release;
-- Side Panel paths and icons exist;
-- no high-risk permission was added accidentally.
-
-### ZIP structure
-
-```bash
-unzip -l apps/extension/.output/*-chrome.zip
-```
-
-`manifest.json` must be at the ZIP root, without an extra enclosing directory.
-
-### JavaScript syntax
-
-```bash
-find apps/extension/.output/chrome-mv3 -name '*.js' -print0 \
-  | xargs -0 -n1 node --check
-```
-
-### Prohibited content
-
-The release package must not contain:
-
-- `node_modules`, `.git`, `.env`, private keys, or test credentials;
-- source maps that disclose local paths;
-- remotely downloaded executable JavaScript;
-- source archives or test output unrelated to extension runtime.
-
-## 6. Local acceptance
-
-1. Open `chrome://extensions`;
-2. enable Developer mode;
-3. load `apps/extension/.output/chrome-mv3`;
-4. check the extension page, Service Worker, and Side Panel for errors;
-5. refresh a normal HTTP/HTTPS test page;
-6. complete these smoke checks:
-   - pet rendering, dragging, menus, motions, and voices;
-   - audit scope, finding navigation, and preview rollback;
-   - Network Lab master switch, request categories, and charts;
-   - manual rule creation, request-derived creation, editing, duplication, testing, and deletion;
-   - Fetch/XHR Mocking, delay, and whole-JSON modification;
-   - Local Agent connection, confirmation, validation, and rollback;
-7. restart the browser and verify persistence for site settings, rules, and voice selection.
-
-## 7. Release archive
-
-Keep these items in GitHub Releases or the release system:
+The WXT configuration uses this artifact template:
 
 ```text
-nova-browser-agent-vX.Y.Z-chrome.zip
-nova-browser-agent-vX.Y.Z-source.zip
-SHA256SUMS.txt
-user-facing release notes
+yk-pets-{{version}}-{{browser}}.zip
 ```
 
-macOS:
+The current version should produce:
+
+```text
+apps/extension/.output/yk-pets-0.6.10-chrome.zip
+```
+
+Extract the archive before submission and ensure `manifest.json` is at the ZIP root.
+
+## 7. Local Agent command
+
+Primary command:
 
 ```bash
-shasum -a 256 nova-browser-agent-vX.Y.Z-chrome.zip > SHA256SUMS.txt
+yk-pets-agent dev --root .
 ```
 
-Linux:
+Compatibility alias:
 
 ```bash
-sha256sum nova-browser-agent-vX.Y.Z-chrome.zip > SHA256SUMS.txt
+nova-agent dev --root .
 ```
 
-Exclude `node_modules`, `.output`, `.wxt`, `.nuxt`, `dist`, `.git`, `.env`, and operating-system temporary files from the source ZIP.
+Release notes should recommend only `yk-pets-agent`; the old command exists for migration.
 
-## 8. Chrome Web Store release
+## 8. Configuration and privacy checks
 
-1. Open the Chrome Developer Dashboard;
-2. create an item or open the existing item;
-3. upload the WXT-generated Chrome ZIP;
-4. update name, descriptions, icons, screenshots, and release notes;
-5. verify single purpose, permission justifications, and data handling;
-6. provide test instructions when needed;
-7. inspect warnings and submit for review;
-8. prefer delayed or limited release for high-risk changes.
+Do not commit or package:
 
-Suggested single-purpose statement:
+```text
+.env
+.env.*
+.yk-pets/
+.nova/
+node_modules/
+coverage/
+```
 
-> NOVA is a page-audit, network-performance, and locally controlled Mock-debugging tool for frontend developers, with a visual 3D pet as its shortcut and status-feedback surface.
+`.yk-pets/agent.json` and `.nova/agent.json` can contain a local connection token.
 
-Mocking is disabled by default, and rules and settings remain local.
+## 9. Browser acceptance
 
-## 9. Rollback
+On a normal HTTPS page and the Playground audit page, verify:
 
-The Chrome Web Store cannot roll back by lowering the version number. For a serious issue:
+- Zeph loading, dragging, menus, motions, and voices;
+- identity displayed as Zeph（云灵）, species Cloud Fox（云狐）;
+- page audit and rule scope;
+- finding highlight, preview, and undo;
+- Network Lab capture, filters, and mocking;
+- Local Agent connection;
+- patch generation, explicit apply, checks, and rollback;
+- existing `nova:*` settings continue to work after upgrade;
+- `.nova/agent.json` migrates to `.yk-pets/agent.json`.
 
-1. branch from the latest stable tag;
-2. fix with a higher version number;
-3. rerun every quality gate;
-4. upload the corrective ZIP;
-5. cancel the pending submission first when applicable;
-6. retain the stable tag, Chrome ZIP, SHA-256 file, Manifest, and release notes.
+## 10. Version updates
 
-## 10. Common problems
+A formal release updates at least:
 
-- **Version was not increased**: update the Manifest version in `wxt.config.ts` and rebuild.
-- **Manifest is missing when loading unpacked**: select `.output/chrome-mv3`, not `.output`.
-- **ZIP structure is invalid**: make sure `manifest.json` is directly at the ZIP root.
-- **New code is absent**: delete `.output/.wxt`, rebuild, and reload both the extension and target page.
-- **Permission warnings increased**: compare old and new Manifests, remove accidental permissions, or provide an accurate justification.
+- root `package.json`;
+- `apps/extension/package.json`;
+- manifest version in `apps/extension/wxt.config.ts`;
+- current project status;
+- release history;
+- release notes and generated artifacts.
+
+The private `@nova/*` workspace scope can remain during the compatibility period, but it must not appear as the user-facing product or ZIP name.
+
+## 11. GitHub Actions
+
+The branch includes:
+
+```text
+.github/workflows/validate-yk-pets.yml
+```
+
+It runs frozen installation, brand validation, typechecks, tests, and all three main builds. Confirm the workflow is green before merging.
+
+## 12. Rollback
+
+When a release fails:
+
+1. stop submission or withdraw the pending release;
+2. retain logs and failed artifacts;
+3. return to the latest commit with all gates passing;
+4. do not delete user compatibility data under `.nova`;
+5. fix the issue and rerun the full validation set;
+6. regenerate the ZIP using the YK-PETS artifact name.
