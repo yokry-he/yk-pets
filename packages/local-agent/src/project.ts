@@ -23,16 +23,23 @@ export async function resolveProjectRoot(input: string): Promise<string> {
 }
 
 export async function loadOrCreateAgentConfig(root: string, requestedPort: number, tokenOverride?: string): Promise<AgentConfig> {
-  const novaDir = path.join(root, '.nova')
-  const configPath = path.join(novaDir, 'agent.json')
-  await mkdir(novaDir, { recursive: true })
+  const ykPetsDir = path.join(root, '.yk-pets')
+  const configPath = path.join(ykPetsDir, 'agent.json')
+  const legacyConfigPath = path.join(root, '.nova', 'agent.json')
+  await mkdir(ykPetsDir, { recursive: true })
 
   let existing: Partial<AgentConfig> = {}
   try {
     existing = JSON.parse(await readFile(configPath, 'utf8')) as Partial<AgentConfig>
   }
   catch {
-    existing = {}
+    try {
+      // v0.6.10 compatibility: migrate the existing token and port instead of disconnecting users.
+      existing = JSON.parse(await readFile(legacyConfigPath, 'utf8')) as Partial<AgentConfig>
+    }
+    catch {
+      existing = {}
+    }
   }
 
   const config: AgentConfig = {
