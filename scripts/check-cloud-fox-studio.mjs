@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 const phaseArg = process.argv.find(argument => argument.startsWith('--phase='))
-const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 6
+const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 7
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const files = {
   package: read('package.json'),
@@ -10,8 +10,14 @@ const files = {
   phase4: read('apps/playground/app/domain/pet-studio-phase4.ts'),
   scene: read('apps/playground/app/domain/pet-scene.ts'),
   registry: read('apps/playground/app/domain/pet-species-registry.ts'),
+  visualProfile: read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts'),
+  extensionDefaults: read('apps/playground/app/domain/extension-cloud-fox-default.ts'),
   store: read('apps/playground/app/stores/pet-appearance.ts'),
   cloudRenderer: read('apps/playground/app/components/studio/CustomizableCloudFox.vue'),
+  extensionAlignedRenderer: read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue'),
+  extensionAlignedBody: read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue'),
+  extensionAlignedHead: read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue'),
+  extensionAlignedTail: read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue'),
   moonCat: read('apps/playground/app/components/studio/MoonCat.vue'),
   proceduralPet: read('apps/playground/app/components/studio/ProceduralPet.vue'),
   canvas: read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue'),
@@ -21,15 +27,16 @@ const files = {
   scenePage: read('apps/playground/app/pages/studio-scenes.vue'),
   speciesPage: read('apps/playground/app/pages/studio-species.vue'),
   app: read('apps/playground/app/app.vue'),
+  exactCheck: read('scripts/check-cloud-fox-visual-alignment.mjs'),
 }
 const domain12 = files.base + files.phase2
 const checks = [
-  [1, 'automatic camera fitting', files.base.includes('calculatePetVisualBounds') && files.canvas.includes('cameraDistance')],
+  [1, 'automatic camera fitting', files.base.includes('calculatePetVisualBounds') && files.canvas.includes('cameraFactor')],
   [1, 'independent body dimensions', ['bodyWidth', 'bodyHeight', 'bodyDepth'].every(key => files.base.includes(`${key}: number`))],
   [1, 'six body shapes', ['sphere', 'ellipsoid', 'capsule', 'pear', 'bean', 'rounded-cube'].every(shape => files.base.includes(`'${shape}'`))],
   [1, 'relative mount points', files.base.includes('RelativeMountPoint') && files.cloudRenderer.includes('resolveRelativeMountPoint')],
-  [1, 'short rounded limbs', files.base.includes('limbLength: [0.56, 1.08]') && files.cloudRenderer.includes('v-for="side in [-1,1]"')],
-  [1, 'head attached antennae', files.cloudRenderer.includes('appearance.parts.antenna')],
+  [1, 'short rounded limbs', files.base.includes('limbLength: [0.56, 1.08]') && files.extensionAlignedBody.includes('frontPaw')],
+  [1, 'head attached antennae', files.extensionAlignedHead.includes('appearance.parts.antenna')],
   [2, 'extended head part library', domain12.includes("'floppy'") && domain12.includes("'sleepy'")],
   [2, 'composable antenna', files.phase2.includes('antennaRod') && files.phase2.includes('antennaTip')],
   [2, 'eight segment tail', files.phase2.includes('MAX_TAIL_SEGMENTS = 8') && files.cloudRenderer.includes('tailSegmentTransforms')],
@@ -46,15 +53,21 @@ const checks = [
   [5, 'scene recipe and presets', files.scene.includes('PetSceneRecipe') && files.scene.includes('PET_SCENE_PRESETS')],
   [5, 'scene effects', files.sceneEffects.includes('scene.halo') && files.sceneEffects.includes('scene.particles') && files.sceneEffects.includes('scene.groundShadow')],
   [5, 'automatic contrast', files.scene.includes('resolveSceneContrast') && files.scenePage.includes('跟随网页')],
-  [5, 'scene excluded from bounds', files.canvas.includes('Only pet bounds are used for camera fitting')],
+  [5, 'scene excluded from bounds', files.canvas.includes('Camera uses pet bounds only')],
   [6, 'species registry', files.registry.includes('PET_SPECIES_REGISTRY')],
   [6, 'moon cat implementation', files.registry.includes("'moon-cat'") && files.moonCat.includes('foreheadMark') && files.moonCat.includes('whiskers')],
   [6, 'reserved slime and rabbit', files.registry.includes("'nebula-slime'") && files.registry.includes("'star-rabbit'")],
   [6, 'cross species style mapping', files.registry.includes('applyStyleAcrossSpecies')],
   [6, 'motion fallback', files.registry.includes('resolveSpeciesBehavior') && files.speciesPage.includes('实际动作')],
-  [6, 'generic renderer', files.proceduralPet.includes('MoonCat') && files.proceduralPet.includes('CustomizableCloudFox') && !files.cloudRenderer.includes('moon-cat')],
+  [6, 'generic renderer', files.proceduralPet.includes('MoonCat') && files.proceduralPet.includes('ExtensionAlignedCloudFox') && !files.extensionAlignedRenderer.includes('moon-cat')],
   [6, 'global studio navigation', files.app.includes('/studio-species')],
   [6, 'package scripts', files.package.includes('check:cloud-fox-studio') && files.package.includes('check:pet-studio-evolution')],
+  [7, 'extension exact visual profile', files.visualProfile.includes('chrome-extension-production') && files.visualProfile.includes('0.94, 1.12, 0.82') && files.visualProfile.includes('normalPosition: [0, 0.42, 8.8]')],
+  [7, 'extension aligned defaults', files.extensionDefaults.includes('createExtensionClassicAppearance') && files.extensionDefaults.includes('createExtensionClassicScene')],
+  [7, 'extension aligned renderer', files.extensionAlignedRenderer.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME') && files.extensionAlignedTail.includes('TresTubeGeometry') && files.extensionAlignedBody.includes('chestCore') && files.extensionAlignedHead.includes('muzzlePosition')],
+  [7, 'extension aligned background', files.canvas.includes('scheme.scene.containerBackground') && files.canvas.includes('scheme.scene.nebulaBackground')],
+  [7, 'exact-data drift check', files.exactCheck.includes('exactPairs') && files.package.includes('check:cloud-fox-visual-alignment')],
+  [7, 'configurable baseline preset', files.presetsPage.includes('正式扩展基准方案') && files.store.includes('applyExtensionClassic')],
 ]
 const activeChecks = checks.filter(([phase]) => phase <= requestedPhase)
 const failures = activeChecks.filter(([, , passed]) => !passed).map(([, name]) => name)

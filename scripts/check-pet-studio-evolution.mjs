@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const domain = read('apps/playground/app/domain/pet-studio-phase3.ts')
 const store = read('apps/playground/app/stores/pet-appearance.ts')
-const renderer = read('apps/playground/app/components/studio/CustomizableCloudFox.vue')
+const renderer = [
+  read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue'),
+  read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue'),
+  read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue'),
+  read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue'),
+].join('\n')
 const page = read('apps/playground/app/pages/studio.vue')
 const phase4 = read('apps/playground/app/domain/pet-studio-phase4.ts')
 const presetsPage = read('apps/playground/app/pages/studio-presets.vue')
@@ -14,6 +19,7 @@ const registry = read('apps/playground/app/domain/pet-species-registry.ts')
 const moonCat = read('apps/playground/app/components/studio/MoonCat.vue')
 const proceduralPet = read('apps/playground/app/components/studio/ProceduralPet.vue')
 const speciesPage = read('apps/playground/app/pages/studio-species.vue')
+const visualProfile = read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts')
 const expectations = [
   ['schema v2', domain.includes('PET_STUDIO_SCHEMA_VERSION = 2')],
   ['legacy migration', domain.includes('legacySymbols') && domain.includes('normalizePetStudioAppearanceV2')],
@@ -32,15 +38,16 @@ const expectations = [
   ['halo particles ground shadow', ['halo','particles','groundShadow'].every(name => sceneComponent.includes(name))],
   ['automatic web contrast', scene.includes('resolveSceneContrast') && scenePage.includes('跟随网页')],
   ['action linked scene', scene.includes('sceneActionMultiplier') && sceneComponent.includes('behavior')],
-  ['scene excluded from camera bounds', canvas.includes('Only pet bounds are used for camera fitting')],
+  ['scene excluded from camera bounds', canvas.includes('Camera uses pet bounds only')],
   ['species registry', registry.includes('PET_SPECIES_REGISTRY')],
   ['Moon Cat active', registry.includes("'moon-cat':") && registry.includes("status: 'active'") && moonCat.includes('foreheadMark') && moonCat.includes('whiskers')],
   ['planned slime and rabbit', registry.includes("'nebula-slime'") && registry.includes("'star-rabbit'") && registry.match(/status: 'planned'/g)?.length === 2],
   ['species slot differences', registry.includes("'whiskers','forehead-mark'") && registry.includes("'antenna','tail'")],
   ['cross species style mapping', registry.includes('applyStyleAcrossSpecies') && ['cute','mechanical','nebula','crystal'].every(style => registry.includes(`style === '${style}'`))],
   ['motion fallback', registry.includes('resolveSpeciesBehavior') && speciesPage.includes('实际动作')],
-  ['generic renderer dispatch', proceduralPet.includes('MoonCat') && proceduralPet.includes('CustomizableCloudFox')],
+  ['generic renderer dispatch', proceduralPet.includes('MoonCat') && proceduralPet.includes('ExtensionAlignedCloudFox')],
   ['no Moon Cat logic in Cloud Fox renderer', !renderer.includes('moon-cat') && !renderer.includes('whiskers')],
+  ['exact extension visual scheme', visualProfile.includes('chrome-extension-production') && renderer.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME')],
 ]
 const failures = expectations.filter(([, ok]) => !ok).map(([name]) => name)
 if (failures.length) { console.error('Pet Studio evolution check failed:', failures.join(', ')); process.exit(1) }
