@@ -1,13 +1,14 @@
-# NOVA Browser Agent Documentation / 文档索引
+# YK-PETS Browser Agent Documentation / 文档索引
 
-正式文档集中在 `docs/zh-CN` 和 `docs/en`。本文是唯一的双语总入口，不再为每个主题保留额外的四行跳转文件。
+YK-PETS 是产品品牌；当前默认宠物的物种是云狐（Cloud Fox），名字是云灵（Zeph）。正式文档集中在 `docs/zh-CN` 和 `docs/en`。
 
-Canonical documents live in `docs/zh-CN` and `docs/en`. This file is the single bilingual index; separate four-line redirect files are no longer maintained.
+YK-PETS is the product brand. The current default pet is a Cloud Fox named Zeph（云灵）. Canonical documents live in `docs/zh-CN` and `docs/en`.
 
 ## Start here / 新用户入口
 
 | Topic | 简体中文 | English |
 |---|---|---|
+| Brand and pet identity | [品牌与宠物身份](./zh-CN/BRAND-AND-PET-IDENTITY.md) | [Brand and pet identity](./en/BRAND-AND-PET-IDENTITY.md) |
 | Project status | [当前项目状态](./zh-CN/PROJECT-STATUS.md) | [Current project status](./en/PROJECT-STATUS.md) |
 | User guide | [使用操作手册](./zh-CN/USER-GUIDE.md) | [User Guide](./en/USER-GUIDE.md) |
 | Network Lab | [网络实验室与 Mock 工作台](./zh-CN/NETWORK-LAB-OPERATIONS.md) | [Network Lab and Mock Workbench](./en/NETWORK-LAB-OPERATIONS.md) |
@@ -31,17 +32,17 @@ Canonical documents live in `docs/zh-CN` and `docs/en`. This file is the single 
 
 | Topic | 简体中文 | English |
 |---|---|---|
-| In-page interaction | [网页内 3D NOVA 交互](./zh-CN/PET-INTERACTION.md) | [In-page 3D NOVA interaction](./en/PET-INTERACTION.md) |
+| In-page interaction | [网页内 3D 云灵交互](./zh-CN/PET-INTERACTION.md) | [In-page 3D Zeph interaction](./en/PET-INTERACTION.md) |
 | Radial menu | [星云透明层与环形菜单](./zh-CN/NEBULA-RADIAL-MENU.md) | [Nebula transparency and radial menu](./en/NEBULA-RADIAL-MENU.md) |
-| Tail design | [云狐尾巴设计](./zh-CN/TAIL-DESIGN.md) | [Cloud fox tail design](./en/TAIL-DESIGN.md) |
+| Tail design | [云狐尾巴设计](./zh-CN/TAIL-DESIGN.md) | [Cloud Fox tail design](./en/TAIL-DESIGN.md) |
 | Motion controls | [动作控制与闲时轮播](./zh-CN/MOTION-CONTROLS.md) | [Motion controls and idle carousel](./en/MOTION-CONTROLS.md) |
 | Notices and runtime | [按需提示与动作运行时](./zh-CN/NOTICES-AND-MOTION-RUNTIME.md) | [On-demand notices and motion runtime](./en/NOTICES-AND-MOTION-RUNTIME.md) |
 
 ## Documentation policy / 文档维护规则
 
-- Current behavior belongs in the topic guides above; completed version work belongs in the consolidated release history.
-- 当前行为写入主题文档，已完成的版本工作写入统一版本历史。
-- Build artifacts and user-facing release notes belong in GitHub Releases, not as repeated repository-root files.
-- 构建产物和面向用户的发布说明保存在 GitHub Release，不再重复堆放在仓库根目录。
-- Detailed deleted records remain recoverable from the `v0.6.10` tag and Git history.
-- 已删除的详细过程记录仍可从 `v0.6.10` 标签和 Git 历史恢复。
+- Current product wording uses YK-PETS; the pet is Zeph（云灵）and the species is Cloud Fox（云狐）.
+- 当前产品文案使用 YK-PETS；宠物名字是云灵（Zeph），物种是云狐（Cloud Fox）。
+- Historic NOVA references may remain only in release history or explicit compatibility notes.
+- 历史 NOVA 名称只允许保留在版本历史或明确的兼容说明中。
+- Build artifacts and user-facing release notes belong in GitHub Releases.
+- 构建产物和面向用户的发布说明保存在 GitHub Releases。
