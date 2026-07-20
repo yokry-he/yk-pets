@@ -4,7 +4,7 @@
  * Re-exports public modules from the shared package.
  */
 export * from './audit'
+export * from './brand'
 export * from './messages'
 export * from './protocol'
-
 export * from './network'
