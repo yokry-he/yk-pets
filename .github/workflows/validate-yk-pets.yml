@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/yk-pets-rebrand-v0610
+      - agent/cloud-fox-studio-v0610
   pull_request:
 
 permissions:
@@ -33,6 +34,9 @@ jobs:
 
       - name: Check YK-PETS brand and identity
         run: pnpm check:brand
+
+      - name: Check Cloud Fox Studio contract
+        run: pnpm check:cloud-fox-studio
 
       - name: Typecheck workspaces
         run: pnpm typecheck
