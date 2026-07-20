@@ -34,7 +34,7 @@ export async function loadOrCreateAgentConfig(root: string, requestedPort: numbe
   }
   catch {
     try {
-      // v0.6.10 compatibility: migrate the existing token and port instead of disconnecting users.
+      // 兼容 v0.6.10：迁移原有口令和端口，避免升级后断开。 / v0.6.10 compatibility: migrate the existing token and port instead of disconnecting users.
       existing = JSON.parse(await readFile(legacyConfigPath, 'utf8')) as Partial<AgentConfig>
     }
     catch {
