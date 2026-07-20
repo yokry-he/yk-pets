@@ -12,7 +12,7 @@
 - Fixes must cover the real runtime path rather than only changing presentation;
 - Existing rules and local data remain backward compatible;
 - Domain code must not depend on Vue, Chrome APIs, the DOM, or a concrete Agent provider;
-- Formal releases update version metadata, regressions, validation reports, and build artifacts together;
+- Formal releases update version metadata, regression gates, consolidated release history, and build artifacts together;
 - State must remain predictable after page refresh, extension reload, and Side Panel reopening.
 
 ## Resolved issues
@@ -32,7 +32,7 @@
 | BUG-011 | v0.6.9 | Silent MP3 assets were regenerated and protected by decode, duration, and loudness checks. |
 | BUG-012 | v0.6.10 | Nebula Alien, Cute Girl, Cute Companion, and Mute presets were added with persistence and preview. |
 
-New findings continue from `BUG-013`. Detailed implementation and validation records remain in the [version history](../README.md) and root validation reports.
+New findings continue from `BUG-013`. Implementation and validation conclusions are consolidated in the [release and validation history](./RELEASE-HISTORY.md); deleted process records remain recoverable from the `v0.6.10` tag and Git history.
 
 ## Exit criteria
 

@@ -64,6 +64,7 @@ apps/extension/.output/novaextension-0.6.10-chrome.zip
 
 - [完整文档索引](docs/README.md)
 - [当前项目状态](docs/zh-CN/PROJECT-STATUS.md)
+- [版本与验证历史](docs/zh-CN/RELEASE-HISTORY.md)
 - [使用操作手册](docs/zh-CN/USER-GUIDE.md)
 - [网络实验室与 Mock 工作台](docs/zh-CN/NETWORK-LAB-OPERATIONS.md)
 - [构建、打包与发布](docs/zh-CN/BUILD-AND-RELEASE.md)

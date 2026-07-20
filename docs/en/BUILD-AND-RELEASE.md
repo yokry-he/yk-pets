@@ -1,159 +1,208 @@
 # Build, Package, and Release Guide
 
-> Applies to: v0.5.2 and later  
-> Last verified: 2026-07-18  
-> Covers clean builds, local packages, Chrome Web Store submission, staged releases, rollback, and API automation.
+> Applies to `v0.6.10` and later compatible releases.  
+> Covers clean builds, Chrome extension packaging, local acceptance, store submission, and rollback.
 
-## 1. Release artifacts
+## 1. Requirements
 
-A formal release should include:
-
-```text
-nova-browser-agent-vX.Y.Z-chrome.zip
-nova-browser-agent-vX.Y.Z-source.zip
-nova-browser-agent-vX.Y.Z.patch
-SHA256SUMS.txt
-RELEASE-NOTES-vX.Y.Z.md
-```
-
-Upload the WXT Chrome ZIP to the Chrome Web Store, not the source ZIP.
-
-## 2. Prerequisites
-
-- Node.js 22+;
+- Node.js 22 or later;
 - pnpm 11.13.1 through Corepack;
 - Git;
-- Stable Chrome;
-- macOS, Linux, or Windows;
-- Access to the dependency registry.
-
-## 3. Synchronize the version
-
-Update the root `package.json`, extension `package.json`, Manifest version in `wxt.config.ts`, README/release notes, and validation report. An update package must have a higher Manifest version than the published item.
-
-Use semantic versioning: patch for fixes/docs, minor for backward-compatible features, and major for incompatible or major permission changes.
-
-## 4. Clean build
-
-Remove dependencies and generated output, then install exactly from the lockfile:
+- stable Chrome;
+- access to the dependency registry.
 
 ```bash
-rm -rf node_modules apps/extension/.output apps/extension/.wxt packages/local-agent/dist
+node --version
+corepack pnpm --version
+git --version
+```
+
+## 2. Version synchronization
+
+Before a formal release, update:
+
+1. root `package.json`;
+2. `apps/extension/package.json`;
+3. the Manifest version in `apps/extension/wxt.config.ts`;
+4. `README.zh-CN.md`, `README.en.md`, and store metadata;
+5. `docs/zh-CN/RELEASE-HISTORY.md` and `docs/en/RELEASE-HISTORY.md`;
+6. regression automation affected by the release.
+
+The Manifest version uploaded to the Chrome Web Store must be greater than the published version.
+
+The repository no longer adds per-version root files named `RELEASE-NOTES-vX.Y.Z.md` or `VALIDATION-vX.Y.Z.*.md`. User-facing notes belong in GitHub Releases or the release system; maintenance conclusions belong in the consolidated release history.
+
+## 3. Clean build
+
+### 3.1 Remove generated directories
+
+macOS/Linux:
+
+```bash
+rm -rf node_modules
+rm -rf apps/extension/.output apps/extension/.wxt
+rm -rf apps/playground/.output apps/playground/.nuxt
+rm -rf packages/local-agent/dist
+```
+
+Windows PowerShell:
+
+```powershell
+Remove-Item node_modules -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item apps/extension/.output, apps/extension/.wxt -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item apps/playground/.output, apps/playground/.nuxt -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item packages/local-agent/dist -Recurse -Force -ErrorAction SilentlyContinue
+```
+
+### 3.2 Install locked dependencies
+
+```bash
 corepack enable
 pnpm install --frozen-lockfile
 ```
 
-Run all gates:
+Do not rebuild the lockfile unless the release intentionally changes dependencies.
+
+### 3.3 Quality gates
 
 ```bash
+pnpm check:documentation
 pnpm typecheck
 pnpm test
 pnpm test:network-domain
 pnpm test:network-workbench
 pnpm build:agent
+pnpm build:playground
 pnpm build:extension
 pnpm zip:extension
 ```
 
-Do not release after any failed command.
+Do not continue the release after any command fails.
 
-## 5. Outputs
+## 4. Build outputs
 
-```text
-apps/extension/.output/chrome-mv3
-apps/extension/.output/novaextension-X.Y.Z-chrome.zip
-packages/local-agent/dist
+| Artifact | Path |
+|---|---|
+| Unpacked Chrome extension | `apps/extension/.output/chrome-mv3` |
+| Chrome ZIP | `apps/extension/.output/novaextension-X.Y.Z-chrome.zip` |
+| Local Agent | `packages/local-agent/dist` |
+| Playground | `apps/playground/.output` |
+
+Upload the WXT-generated Chrome ZIP to the Chrome Web Store, not the source ZIP.
+
+## 5. Artifact inspection
+
+### Manifest
+
+```bash
+cat apps/extension/.output/chrome-mv3/manifest.json
 ```
 
-## 6. Artifact inspection
+Confirm that:
 
-Check the generated Manifest, confirm Manifest V3, version, permissions, host permissions, Side Panel path, and absence of unintended high-risk permissions.
+- `manifest_version` is 3;
+- version, name, and description are correct;
+- permissions match the release;
+- Side Panel paths and icons exist;
+- no high-risk permission was added accidentally.
 
-List ZIP contents and ensure `manifest.json` is at the ZIP root:
+### ZIP structure
 
 ```bash
 unzip -l apps/extension/.output/*-chrome.zip
 ```
 
-Validate production JavaScript:
+`manifest.json` must be at the ZIP root, without an extra enclosing directory.
+
+### JavaScript syntax
 
 ```bash
 find apps/extension/.output/chrome-mv3 -name '*.js' -print0 \
   | xargs -0 -n1 node --check
 ```
 
-Do not ship `node_modules`, `.git`, environment files, credentials, private keys, local path leakage, or remotely downloaded executable JavaScript. Chrome Web Store policy expects extension logic to be included in the package.
+### Prohibited content
 
-## 7. Local acceptance
+The release package must not contain:
 
-Load `apps/extension/.output/chrome-mv3` from `chrome://extensions`, inspect extension errors, refresh a normal test page, and verify pet interactions, all three menu modes, audit flow, Side Panel, site master switch, nonexistent-endpoint Mocking, request-generated Mocking, disabled-by-default duplicates, real-response modification, charts, Local Agent, and all high-energy motions.
+- `node_modules`, `.git`, `.env`, private keys, or test credentials;
+- source maps that disclose local paths;
+- remotely downloaded executable JavaScript;
+- source archives or test output unrelated to extension runtime.
 
-Restart Chrome and verify persistence and the default-off network state.
+## 6. Local acceptance
 
-## 8. Final files and checksums
+1. Open `chrome://extensions`;
+2. enable Developer mode;
+3. load `apps/extension/.output/chrome-mv3`;
+4. check the extension page, Service Worker, and Side Panel for errors;
+5. refresh a normal HTTP/HTTPS test page;
+6. complete these smoke checks:
+   - pet rendering, dragging, menus, motions, and voices;
+   - audit scope, finding navigation, and preview rollback;
+   - Network Lab master switch, request categories, and charts;
+   - manual rule creation, request-derived creation, editing, duplication, testing, and deletion;
+   - Fetch/XHR Mocking, delay, and whole-JSON modification;
+   - Local Agent connection, confirmation, validation, and rollback;
+7. restart the browser and verify persistence for site settings, rules, and voice selection.
 
-Rename the WXT ZIP to the release naming convention and generate SHA-256 with `sha256sum` or `shasum -a 256`. Exclude `node_modules`, `.output`, `.wxt`, `dist`, `.git`, `.env`, and OS metadata from the source ZIP.
+## 7. Release archive
 
-## 9. First Chrome Web Store release
+Keep these items in GitHub Releases or the release system:
 
-1. Register and configure a Chrome Web Store developer account.
-2. Open the Chrome Developer Dashboard.
-3. Select **Add new item**.
-4. Upload the WXT Chrome ZIP.
-5. Complete Store Listing, Privacy, Distribution, and optional Test instructions.
-6. Resolve all warnings.
-7. Submit for review.
+```text
+nova-browser-agent-vX.Y.Z-chrome.zip
+nova-browser-agent-vX.Y.Z-source.zip
+SHA256SUMS.txt
+user-facing release notes
+```
 
-Official references:
+macOS:
 
-- https://developer.chrome.com/docs/webstore/publish/
-- https://developer.chrome.com/docs/extensions/how-to/distribute
+```bash
+shasum -a 256 nova-browser-agent-vX.Y.Z-chrome.zip > SHA256SUMS.txt
+```
 
-The current official upload limit is 2 GB, but NOVA packages should remain far smaller.
+Linux:
 
-## 10. Listing and permissions
+```bash
+sha256sum nova-browser-agent-vX.Y.Z-chrome.zip > SHA256SUMS.txt
+```
 
-Describe a narrow single purpose: frontend page auditing, network performance analysis, local controllable Mocking, and a visual 3D pet entry point.
+Exclude `node_modules`, `.output`, `.wxt`, `.nuxt`, `dist`, `.git`, `.env`, and operating-system temporary files from the source ZIP.
 
-Document why NOVA needs `activeTab`, `scripting`, `storage`, `sidePanel`, and HTTP/HTTPS host access. State that Mocking is off by default and data remains local.
+## 8. Chrome Web Store release
 
-## 11. Updating an existing item
+1. Open the Chrome Developer Dashboard;
+2. create an item or open the existing item;
+3. upload the WXT-generated Chrome ZIP;
+4. update name, descriptions, icons, screenshots, and release notes;
+5. verify single purpose, permission justifications, and data handling;
+6. provide test instructions when needed;
+7. inspect warnings and submit for review;
+8. prefer delayed or limited release for high-risk changes.
 
-Increase the Manifest version, run the full clean build, upload the new ZIP to the existing item, update release notes and privacy details, and submit again. Deferred publishing can stage an approved release until the planned launch time.
+Suggested single-purpose statement:
 
-Official staged MV3 release guidance:
+> NOVA is a page-audit, network-performance, and locally controlled Mock-debugging tool for frontend developers, with a visual 3D pet as its shortcut and status-feedback surface.
 
-- https://developer.chrome.com/docs/extensions/develop/migrate/publish-mv3
+Mocking is disabled by default, and rules and settings remain local.
 
-## 12. Chrome Web Store API v2
+## 9. Rollback
 
-The API can upload and publish an existing item. Store Publisher ID, Extension ID, and authorization credentials in encrypted CI secrets.
+The Chrome Web Store cannot roll back by lowering the version number. For a serious issue:
 
-Official references:
+1. branch from the latest stable tag;
+2. fix with a higher version number;
+3. rerun every quality gate;
+4. upload the corrective ZIP;
+5. cancel the pending submission first when applicable;
+6. retain the stable tag, Chrome ZIP, SHA-256 file, Manifest, and release notes.
 
-- https://developer.chrome.com/docs/webstore/using-api
-- https://developer.chrome.com/docs/webstore/api/reference/rest/v2/publishers.items/publish
+## 10. Common problems
 
-## 13. Rollback
-
-Do not attempt a rollback by lowering the version. Keep stable source, package, checksum, Manifest, release notes, and validation report. Create a new higher-version hotfix from the last stable revision and submit it. Cancel an in-review submission when appropriate and replace it with the corrected package.
-
-## 14. Release checklist
-
-- [ ] All version locations match.
-- [ ] Lockfile changes are intentional.
-- [ ] Typecheck, tests, builds, and ZIP pass.
-- [ ] Default site Mock switch is off.
-- [ ] New permissions are documented.
-- [ ] ZIP has `manifest.json` at its root.
-- [ ] Production JS syntax passes.
-- [ ] No credentials or generated dependency folders are included.
-- [ ] SHA-256 is recorded.
-- [ ] Local unpacked smoke test passes.
-- [ ] Nonexistent-endpoint Mock does not call the real network.
-- [ ] Turning the master switch off restores real traffic.
-- [ ] Store listing, privacy, screenshots, and test instructions are current.
-
-## 15. Common packaging failures
-
-A version error means the Manifest version was not increased. A missing Manifest usually means the wrong directory was selected. An invalid ZIP often has an extra parent folder. Stale behavior requires deleting `.output/.wxt`, rebuilding, reloading the extension, and refreshing the target tab. Unexpected permission warnings require a new-old Manifest comparison.
+- **Version was not increased**: update the Manifest version in `wxt.config.ts` and rebuild.
+- **Manifest is missing when loading unpacked**: select `.output/chrome-mv3`, not `.output`.
+- **ZIP structure is invalid**: make sure `manifest.json` is directly at the ZIP root.
+- **New code is absent**: delete `.output/.wxt`, rebuild, and reload both the extension and target page.
+- **Permission warnings increased**: compare old and new Manifests, remove accidental permissions, or provide an accurate justification.
