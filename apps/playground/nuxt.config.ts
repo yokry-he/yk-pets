@@ -52,10 +52,13 @@ export default defineNuxtConfig({
 
   app: {
     head: {
+      title: 'YK-PETS Playground · 云灵 Zeph',
       htmlAttrs: {
         lang: 'zh-CN',
       },
       meta: [
+        { name: 'application-name', content: 'YK-PETS Playground' },
+        { name: 'description', content: 'YK-PETS 3D Cloud Fox Zeph playground and audit laboratory.' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { name: 'theme-color', content: '#090b13' },
       ],
