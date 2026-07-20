@@ -1,5 +1,7 @@
 /**
- * YK-PETS 品牌兼容层。
+ * 文件职责 / File responsibility
+ * 提供 YK-PETS 用户可见品牌替换、Shadow DOM 观察和旧存储键迁移兼容。
+ * Provides YK-PETS user-facing branding, Shadow DOM observation, and legacy storage-key migration.
  *
  * v0.6.10 的组件、消息与存储中仍存在 NOVA 技术标识。该模块负责：
  * 1. 将用户可见文案统一为 YK-PETS，并将当前宠物显示为云灵（Zeph）；
