@@ -1,6 +1,7 @@
 {
   "name": "@nova/extension",
   "version": "0.6.10",
+  "description": "YK-PETS Browser Agent extension featuring Zeph, the Cloud Fox. The @nova scope is retained for workspace compatibility.",
   "private": true,
   "type": "module",
   "scripts": {
