@@ -16,6 +16,8 @@ export const YK_PETS_PET_SPECIES_EN = 'Cloud Fox'
 const LEGACY_PREFIX = 'nova:'
 const CURRENT_PREFIX = 'yk-pets:'
 
+type ObservableRoot = ParentNode & Node
+
 const BRAND_REPLACEMENTS: ReadonlyArray<readonly [string, string]> = [
   ['NOVA Browser Agent', YK_PETS_PRODUCT_NAME],
   ['NOVA Local Agent', 'YK-PETS Local Agent'],
@@ -54,19 +56,25 @@ export function installStorageCompatibilityMirror(): () => void {
   const listener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
     if (areaName !== 'local' || synchronizing) return
     const mirrored: Record<string, unknown> = {}
+    const removed: string[] = []
 
     for (const [key, change] of Object.entries(changes)) {
-      if (key.startsWith(LEGACY_PREFIX)) {
-        mirrored[`${CURRENT_PREFIX}${key.slice(LEGACY_PREFIX.length)}`] = change.newValue
-      }
-      else if (key.startsWith(CURRENT_PREFIX)) {
-        mirrored[`${LEGACY_PREFIX}${key.slice(CURRENT_PREFIX.length)}`] = change.newValue
-      }
+      const mirrorKey = key.startsWith(LEGACY_PREFIX)
+        ? `${CURRENT_PREFIX}${key.slice(LEGACY_PREFIX.length)}`
+        : key.startsWith(CURRENT_PREFIX)
+          ? `${LEGACY_PREFIX}${key.slice(CURRENT_PREFIX.length)}`
+          : null
+      if (!mirrorKey) continue
+      if (change.newValue === undefined) removed.push(mirrorKey)
+      else mirrored[mirrorKey] = change.newValue
     }
 
-    if (!Object.keys(mirrored).length) return
+    if (!Object.keys(mirrored).length && !removed.length) return
     synchronizing = true
-    chrome.storage.local.set(mirrored).finally(() => {
+    Promise.all([
+      Object.keys(mirrored).length ? chrome.storage.local.set(mirrored) : Promise.resolve(),
+      removed.length ? chrome.storage.local.remove(removed) : Promise.resolve(),
+    ]).finally(() => {
       synchronizing = false
     })
   }
@@ -84,26 +92,9 @@ function updateAttributes(element: Element) {
   }
 }
 
-function updateTree(root: ParentNode) {
-  if (root instanceof Element) updateAttributes(root)
-
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
-  let node: Node | null = walker.currentNode
-  while (node) {
-    if (node.nodeType === Node.TEXT_NODE && node.nodeValue) {
-      const next = replaceLegacyBrandText(node.nodeValue)
-      if (next !== node.nodeValue) node.nodeValue = next
-    }
-    else if (node instanceof Element) {
-      updateAttributes(node)
-      if (node.shadowRoot) updateTree(node.shadowRoot)
-    }
-    node = walker.nextNode()
-  }
-}
-
-export function installYkPetsBranding(root: ParentNode = document): () => void {
-  updateTree(root)
+export function installYkPetsBranding(root: ObservableRoot = document): () => void {
+  const observedRoots = new Set<Node>()
+  let observeRoot: (candidate: ObservableRoot) => void
 
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
@@ -112,19 +103,49 @@ export function installYkPetsBranding(root: ParentNode = document): () => void {
         if (next !== mutation.target.nodeValue) mutation.target.nodeValue = next
       }
       for (const node of mutation.addedNodes) {
-        if (node instanceof Element || node instanceof DocumentFragment) updateTree(node)
-        else if (node.nodeType === Node.TEXT_NODE && node.nodeValue) {
+        if (node.nodeType === Node.TEXT_NODE && node.nodeValue) {
           node.nodeValue = replaceLegacyBrandText(node.nodeValue)
+        }
+        else if (node instanceof Element || node instanceof DocumentFragment) {
+          brandTree(node)
         }
       }
     }
   })
 
-  observer.observe(root, { childList: true, subtree: true, characterData: true })
-  return () => observer.disconnect()
+  function brandTree(currentRoot: ObservableRoot) {
+    if (currentRoot instanceof Element) updateAttributes(currentRoot)
+
+    const walker = document.createTreeWalker(currentRoot, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+    let node: Node | null = walker.currentNode
+    while (node) {
+      if (node.nodeType === Node.TEXT_NODE && node.nodeValue) {
+        const next = replaceLegacyBrandText(node.nodeValue)
+        if (next !== node.nodeValue) node.nodeValue = next
+      }
+      else if (node instanceof Element) {
+        updateAttributes(node)
+        if (node.shadowRoot) observeRoot(node.shadowRoot)
+      }
+      node = walker.nextNode()
+    }
+  }
+
+  observeRoot = (candidate) => {
+    if (observedRoots.has(candidate)) return
+    observedRoots.add(candidate)
+    brandTree(candidate)
+    observer.observe(candidate, { childList: true, subtree: true, characterData: true })
+  }
+
+  observeRoot(root)
+  return () => {
+    observer.disconnect()
+    observedRoots.clear()
+  }
 }
 
-export function installYkPetsCompatibility(root: ParentNode = document): () => void {
+export function installYkPetsCompatibility(root: ObservableRoot = document): () => void {
   migrateLegacyStorage().catch(error => console.warn('[YK-PETS storage migration]', error))
   const removeStorageMirror = installStorageCompatibilityMirror()
   const removeBranding = installYkPetsBranding(root)
