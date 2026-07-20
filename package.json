@@ -1,27 +1,53 @@
 {
-  "name": "yk-pets",
-  "version": "0.7.8",
+  "name": "nova-browser-agent",
+  "version": "0.6.10",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.13.1",
-  "workspaces": [
-    "packages/*"
-  ],
-  "scripts": {
-    "clean": "node scripts/clean.mjs",
-    "build": "node scripts/build.mjs",
-    "test": "node --experimental-strip-types --test --test-concurrency=4 packages/*/test/*.test.ts",
-    "check": "node --experimental-strip-types scripts/check-release.ts",
-    "validate": "npm run clean && npm run build && npm test && npm run check",
-    "pack:sdk": "node scripts/pack.mjs",
-    "smoke:packages": "node scripts/smoke-packages.mjs",
-    "release:verify": "npm run validate && npm run pack:sdk && npm run smoke:packages"
-  },
   "engines": {
     "node": ">=22.0.0"
   },
-  "devDependencies": {
-    "@types/node": "^22.20.1",
-    "typescript": "5.8.3"
+  "scripts": {
+    "dev:extension": "corepack pnpm --filter @nova/extension dev",
+    "build:extension": "corepack pnpm --filter @nova/extension build",
+    "zip:extension": "corepack pnpm --filter @nova/extension zip",
+    "dev:agent": "corepack pnpm --filter @nova/local-agent dev --root ../../apps/playground",
+    "build:agent": "corepack pnpm --filter @nova/local-agent build",
+    "dev:playground": "corepack pnpm --filter @nova/playground dev",
+    "build:playground": "corepack pnpm --filter @nova/playground build",
+    "typecheck": "node scripts/check-documentation.mjs && node scripts/check-pet-vitality-fireworks-v060.mjs && node scripts/check-animation-glow-sleep-v061.mjs && node scripts/check-interaction-mock-v062.mjs && node scripts/check-motion-feedback-v063.mjs && node scripts/check-rule-proxy-v064.mjs && node scripts/check-fetch-mock-v065.mjs && node scripts/check-whole-json-response-v066.mjs && node scripts/check-audit-network-feedback-v067.mjs && node scripts/check-audit-pet-audio-v068.mjs && corepack pnpm run test:network-rule-create && node scripts/check-pet-actions.mjs && node scripts/check-nebula-overlay.mjs && node scripts/check-tail-design.mjs && node scripts/check-motion-controls.mjs && node scripts/check-notice-motion.mjs && node scripts/check-thought-bubble.mjs && node scripts/check-menu-interaction.mjs && node scripts/check-menu-registry.mjs && node scripts/check-minimal-menu.mjs && node scripts/check-life-motions-v040.mjs && node scripts/check-tail-paw-menu-v042.mjs && node scripts/check-motion-gaze-meal-v043.mjs && node scripts/check-network-lab-v050.mjs && node scripts/check-mock-workbench-high-energy-v051.mjs && corepack pnpm -r --if-present typecheck",
+    "test": "corepack pnpm -r --if-present test",
+    "build": "corepack pnpm build:agent && corepack pnpm build:extension",
+    "check:bilingual": "node scripts/check-documentation.mjs",
+    "check:documentation": "node scripts/check-documentation.mjs",
+    "check:pet-actions": "node scripts/check-pet-actions.mjs",
+    "check:nebula": "node scripts/check-nebula-overlay.mjs",
+    "check:tail": "node scripts/check-tail-design.mjs",
+    "check:motions": "node scripts/check-motion-controls.mjs",
+    "check:notice-motion": "node scripts/check-notice-motion.mjs",
+    "check:thought": "node scripts/check-thought-bubble.mjs",
+    "check:menu": "node scripts/check-menu-interaction.mjs",
+    "check:menu-registry": "node scripts/check-menu-registry.mjs",
+    "check:minimal-menu": "node scripts/check-minimal-menu.mjs",
+    "check:life-motions": "node scripts/check-life-motions-v040.mjs",
+    "check:paw-prop-alignment": "node scripts/check-paw-prop-alignment-v041.mjs",
+    "check:tail-paw-menu": "node scripts/check-tail-paw-menu-v042.mjs",
+    "check:motion-gaze-meal": "node scripts/check-motion-gaze-meal-v043.mjs",
+    "check:network-lab": "node scripts/check-network-lab-v050.mjs",
+    "test:network-domain": "node --import ./packages/local-agent/node_modules/tsx/dist/loader.mjs scripts/test-network-domain-v050.ts",
+    "check:mock-workbench-high-energy": "node scripts/check-mock-workbench-high-energy-v051.mjs",
+    "test:network-workbench": "node --import ./packages/local-agent/node_modules/tsx/dist/loader.mjs scripts/test-network-workbench-v051.ts",
+    "check:pet-vitality": "node scripts/check-pet-vitality-fireworks-v060.mjs",
+    "check:animation-glow-sleep": "node scripts/check-animation-glow-sleep-v061.mjs",
+    "check:interaction-mock": "node scripts/check-interaction-mock-v062.mjs",
+    "check:motion-feedback": "node scripts/check-motion-feedback-v063.mjs",
+    "test:network-rule-create": "node --import ./packages/local-agent/node_modules/tsx/dist/loader.mjs scripts/test-network-rule-create-v064.ts",
+    "check:rule-proxy": "node scripts/check-rule-proxy-v064.mjs",
+    "check:fetch-mock": "node scripts/check-fetch-mock-v065.mjs",
+    "check:whole-json-response": "node scripts/check-whole-json-response-v066.mjs",
+    "check:audit-network-feedback": "node scripts/check-audit-network-feedback-v067.mjs",
+    "check:audit-pet-audio": "node scripts/check-audit-pet-audio-v068.mjs",
+    "check:motion-voice-audio": "node scripts/check-motion-voice-audio.mjs",
+    "check:pet-voice-presets": "node scripts/check-pet-voice-presets-v0610.mjs"
   }
 }
