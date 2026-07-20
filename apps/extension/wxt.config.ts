@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * WXT 构建配置与 Chrome Manifest V3 权限、Side Panel 和 CSP 声明。
- * WXT build configuration and Chrome Manifest V3 permissions, Side Panel, and CSP declarations.
+ * WXT 构建配置与 Chrome Manifest V3 权限、Side Panel、压缩包名称和 CSP 声明。
+ * WXT build configuration and Chrome Manifest V3 permissions, Side Panel, ZIP naming, and CSP declarations.
  */
 import { defineConfig } from 'wxt'
 
@@ -11,6 +11,9 @@ import { defineConfig } from 'wxt'
  */
 export default defineConfig({
   modules: ['@wxt-dev/module-vue'],
+  zip: {
+    artifactTemplate: 'yk-pets-{{version}}-{{browser}}.zip',
+  },
   manifest: {
     name: 'YK-PETS Browser Agent',
     description: '由云狐云灵（Zeph）陪伴的 3D AI 前端工程助手：页面审计、网络性能分析、Fetch/XHR 拦截、Mock、响应修改、站点控制、动作系统与本地项目 Agent。',
