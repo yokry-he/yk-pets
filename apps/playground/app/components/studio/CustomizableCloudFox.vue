@@ -1,303 +1,58 @@
-<!--
-  文件职责 / File responsibility
-  使用云狐外观配方渲染身体形状、相对挂载点、短圆润四肢、头部触角、可替换部件、发光与胸背标志。
-  Renders body shapes, relative mount points, short rounded limbs, head-attached antennae, replaceable parts, glow, and symbols.
--->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
-import { CanvasTexture, CatmullRomCurve3, Color, DoubleSide, Euler, Vector3 } from 'three'
+import { CanvasTexture, Color, DoubleSide, Euler, Vector3 } from 'three'
 import type { Group, MeshStandardMaterial } from 'three'
-import {
-  CLOUD_FOX_SPECIES_DEFINITION,
-  resolveRelativeMountPoint,
-  type CloudFoxAppearanceRecipe,
-  type CloudFoxStudioBehavior,
-  type CloudFoxStudioView,
-} from '~/domain/cloud-fox-appearance'
+import { CLOUD_FOX_SPECIES_DEFINITION, type CloudFoxStudioBehavior, type CloudFoxStudioView, type PetStudioAppearanceRecipe } from '~/domain/pet-studio-phase2'
+import { resolveRelativeMountPoint } from '~/domain/cloud-fox-appearance'
 
-const props = defineProps<{
-  appearance: CloudFoxAppearanceRecipe
-  behavior: CloudFoxStudioBehavior
-  view: CloudFoxStudioView
-}>()
-
-function vec3(x: number, y: number, z: number) { return new Vector3(x, y, z) }
-function euler(x: number, y: number, z: number) { return new Euler(x, y, z) }
-
-const presentationGroup = shallowRef<Group>()
-const motionGroup = shallowRef<Group>()
-const headGroup = shallowRef<Group>()
-const leftEar = shallowRef<Group>()
-const rightEar = shallowRef<Group>()
-const leftPaw = shallowRef<Group>()
-const rightPaw = shallowRef<Group>()
-const tailGroup = shallowRef<Group>()
-const leftAntenna = shallowRef<Group>()
-const rightAntenna = shallowRef<Group>()
-const tailGlowMaterial = shallowRef<MeshStandardMaterial>()
-const leftAntennaMaterial = shallowRef<MeshStandardMaterial>()
-const rightAntennaMaterial = shallowRef<MeshStandardMaterial>()
-const chestTexture = shallowRef<CanvasTexture>()
-const backTexture = shallowRef<CanvasTexture>()
-
-const viewRotation = computed(() => ({ front: 0, left: Math.PI / 2, back: Math.PI, right: -Math.PI / 2 }[props.view]))
-const bodyScale = computed(() => vec3(
-  0.94 * props.appearance.proportions.bodyWidth,
-  1.12 * props.appearance.proportions.bodyHeight,
-  0.82 * props.appearance.proportions.bodyDepth,
-))
-const headMount = computed(() => resolveRelativeMountPoint(CLOUD_FOX_SPECIES_DEFINITION.mountPoints.head, props.appearance))
-const leftLimbMount = computed(() => resolveRelativeMountPoint(CLOUD_FOX_SPECIES_DEFINITION.mountPoints.leftFrontLimb, props.appearance))
-const rightLimbMount = computed(() => resolveRelativeMountPoint(CLOUD_FOX_SPECIES_DEFINITION.mountPoints.rightFrontLimb, props.appearance))
-const tailMount = computed(() => resolveRelativeMountPoint(CLOUD_FOX_SPECIES_DEFINITION.mountPoints.tail, props.appearance))
-const leftAntennaMount = computed(() => CLOUD_FOX_SPECIES_DEFINITION.mountPoints.leftAntenna)
-const rightAntennaMount = computed(() => CLOUD_FOX_SPECIES_DEFINITION.mountPoints.rightAntenna)
-const chestMount = computed(() => resolveRelativeMountPoint(CLOUD_FOX_SPECIES_DEFINITION.mountPoints.chestSymbol, props.appearance))
-const backMount = computed(() => resolveRelativeMountPoint(CLOUD_FOX_SPECIES_DEFINITION.mountPoints.backSymbol, props.appearance))
-
-const tailPreset = computed(() => ({
-  cloud: { length: 1, width: 1, tip: 1, energy: false },
-  plume: { length: 0.94, width: 1.34, tip: 1.48, energy: false },
-  long: { length: 1.3, width: 0.88, tip: 0.94, energy: false },
-  energy: { length: 1.12, width: 0.82, tip: 1.18, energy: true },
-}[props.appearance.parts.tail]))
-const tailLength = computed(() => props.appearance.proportions.tailLength * tailPreset.value.length)
-const tailWidth = computed(() => props.appearance.proportions.tailWidth * tailPreset.value.width)
-const eyeBaseX = computed(() => 0.31 * props.appearance.proportions.eyeSpacing)
-const earBaseX = computed(() => 0.56 * Math.max(0.9, props.appearance.proportions.headScale))
-const glowIntensity = computed(() => props.appearance.glow.intensity)
-
-const emotionGlow = computed(() => {
-  if (props.appearance.glow.mode !== 'emotion') return props.appearance.palette.primaryGlow
-  return {
-    idle: props.appearance.palette.primaryGlow,
-    greeting: props.appearance.palette.secondaryGlow,
-    jumping: '#ffd36a',
-    stretching: props.appearance.palette.antennaGlow,
-    spinning: '#ff78c8',
-    resting: '#8190c9',
-  }[props.behavior]
-})
-const tailGlow = computed(() => props.appearance.glow.mode === 'emotion' ? emotionGlow.value : props.appearance.palette.tailGlow)
-const antennaGlow = computed(() => props.appearance.glow.mode === 'emotion' ? emotionGlow.value : props.appearance.palette.antennaGlow)
-
-const tailBaseCurve = computed(() => new CatmullRomCurve3([
-  vec3(0, 0, 0), vec3(-0.28 * tailLength.value, 0.04, 0), vec3(-0.54 * tailLength.value, 0.22, 0), vec3(-0.74 * tailLength.value, 0.48, 0),
-]))
-const tailTipCurve = computed(() => new CatmullRomCurve3([
-  vec3(0, 0, 0), vec3(0.18 * tailLength.value, 0.18, 0), vec3(0.42 * tailLength.value, 0.16, 0), vec3(0.62 * tailLength.value, 0.04, 0),
-]))
-
-function createSymbolTexture(text: string, color: string) {
-  if (!import.meta.client) return undefined
-  const canvas = document.createElement('canvas')
-  canvas.width = 256
-  canvas.height = 256
-  const context = canvas.getContext('2d')
-  if (!context) return undefined
-  context.clearRect(0, 0, 256, 256)
-  context.textAlign = 'center'
-  context.textBaseline = 'middle'
-  context.font = '900 142px ui-sans-serif, system-ui, sans-serif'
-  context.shadowColor = color
-  context.shadowBlur = 34
-  context.fillStyle = color
-  context.fillText(text.slice(0, 3).toUpperCase(), 128, 134)
-  context.shadowBlur = 8
-  context.fillStyle = '#ffffff'
-  context.globalAlpha = 0.58
-  context.fillText(text.slice(0, 3).toUpperCase(), 128, 130)
-  const texture = new CanvasTexture(canvas)
-  texture.needsUpdate = true
-  return texture
-}
-
-watch(() => [props.appearance.symbols.chestText, props.appearance.palette.symbolGlow] as const, ([text, color]) => {
-  chestTexture.value?.dispose()
-  chestTexture.value = createSymbolTexture(text, color)
-}, { immediate: true })
-watch(() => [props.appearance.symbols.backText, props.appearance.palette.symbolGlow] as const, ([text, color]) => {
-  backTexture.value?.dispose()
-  backTexture.value = createSymbolTexture(text, color)
-}, { immediate: true })
-onBeforeUnmount(() => { chestTexture.value?.dispose(); backTexture.value?.dispose() })
-
-const { onBeforeRender } = useLoop()
-const rainbow = new Color()
-let previousBehavior = props.behavior
-let behaviorStartedAt = 0
-
-onBeforeRender(({ elapsed, delta }) => {
-  const presentation = presentationGroup.value
-  const motion = motionGroup.value
-  const head = headGroup.value
-  if (!presentation || !motion || !head) return
-  presentation.rotation.y += (viewRotation.value - presentation.rotation.y) * Math.min(1, delta * 7)
-  if (props.behavior !== previousBehavior) { previousBehavior = props.behavior; behaviorStartedAt = elapsed }
-  const stateElapsed = Math.max(0, elapsed - behaviorStartedAt)
-  const jumping = props.behavior === 'jumping'
-  const greeting = props.behavior === 'greeting'
-  const stretching = props.behavior === 'stretching'
-  const spinning = props.behavior === 'spinning'
-  const resting = props.behavior === 'resting'
-  const jump = jumping ? Math.sin(Math.min(1, stateElapsed / 1.5) * Math.PI) * 0.92 : 0
-  const restY = resting ? -0.3 : 0.12
-  const bob = Math.sin(elapsed * (resting ? 1.2 : 2.1)) * (resting ? 0.018 : 0.055)
-  motion.position.y += (restY + jump + bob - motion.position.y) * Math.min(1, delta * 6.5)
-  motion.rotation.x += ((resting ? 0.16 : stretching ? -0.08 : 0) - motion.rotation.x) * Math.min(1, delta * 5)
-  if (spinning) motion.rotation.y += delta * 5.6
-  else motion.rotation.y *= Math.max(0, 1 - delta * 6)
-  const stretchScaleY = stretching ? 1.08 : resting ? 0.82 : 1
-  const stretchScaleX = stretching ? 0.95 : resting ? 1.08 : 1
-  motion.scale.x += (stretchScaleX - motion.scale.x) * Math.min(1, delta * 5)
-  motion.scale.y += (stretchScaleY - motion.scale.y) * Math.min(1, delta * 5)
-  motion.scale.z += ((resting ? 1.06 : 1) - motion.scale.z) * Math.min(1, delta * 5)
-  head.rotation.z += ((greeting ? Math.sin(elapsed * 5.8) * 0.13 : resting ? 0.08 : 0) - head.rotation.z) * Math.min(1, delta * 7)
-  head.rotation.x += ((resting ? 0.24 : stretching ? -0.18 : 0) - head.rotation.x) * Math.min(1, delta * 6)
-  const earWave = Math.sin(elapsed * (greeting ? 7 : 2.5)) * (greeting ? 0.075 : 0.025)
-  if (leftEar.value && rightEar.value) { leftEar.value.rotation.z = -0.16 + earWave; rightEar.value.rotation.z = 0.16 - earWave }
-  const wagSpeed = spinning ? 8.4 : greeting || jumping ? 6.8 : resting ? 1.2 : 2.5
-  const wagAmount = spinning ? 0.24 : greeting || jumping ? 0.18 : resting ? 0.025 : 0.075
-  if (tailGroup.value) {
-    tailGroup.value.rotation.z = tailMount.value.rotationZ + Math.sin(elapsed * wagSpeed) * wagAmount
-    tailGroup.value.rotation.x = tailMount.value.rotationX + Math.cos(elapsed * wagSpeed * 0.5) * wagAmount * 0.18
-  }
-  const antennaWave = Math.sin(elapsed * props.appearance.glow.pulseSpeed * 3.2) * 0.05
-  if (leftAntenna.value && rightAntenna.value) {
-    leftAntenna.value.rotation.z = (leftAntennaMount.value.rotationZ || 0) + antennaWave
-    rightAntenna.value.rotation.z = (rightAntennaMount.value.rotationZ || 0) - antennaWave
-  }
-  if (leftPaw.value && rightPaw.value) {
-    const raised = stretching ? 0.5 : 0
-    const wave = greeting ? Math.max(0, Math.sin(stateElapsed * 9)) * 0.14 : 0
-    leftPaw.value.position.y += (leftLimbMount.value.y + raised - leftPaw.value.position.y) * Math.min(1, delta * 8)
-    rightPaw.value.position.y += (rightLimbMount.value.y + raised + wave - rightPaw.value.position.y) * Math.min(1, delta * 8)
-    rightPaw.value.rotation.z += ((greeting ? 0.72 + Math.sin(stateElapsed * 9) * 0.16 : stretching ? 0.62 : 0) - rightPaw.value.rotation.z) * Math.min(1, delta * 8)
-  }
-  const pulse = 1 + Math.sin(elapsed * props.appearance.glow.pulseSpeed * 3.5) * 0.12
-  for (const material of [tailGlowMaterial.value, leftAntennaMaterial.value, rightAntennaMaterial.value]) {
-    if (material) material.emissiveIntensity = glowIntensity.value * pulse
-  }
-  if (props.appearance.glow.mode === 'rainbow') {
-    rainbow.setHSL((elapsed * 0.11 * props.appearance.glow.pulseSpeed) % 1, 0.86, 0.64)
-    for (const material of [tailGlowMaterial.value, leftAntennaMaterial.value, rightAntennaMaterial.value]) {
-      if (material) { material.color.copy(rainbow); material.emissive.copy(rainbow) }
-    }
-  }
-})
+const props = defineProps<{ appearance: PetStudioAppearanceRecipe; behavior: CloudFoxStudioBehavior; view: CloudFoxStudioView }>()
+const v3 = (x:number,y:number,z:number)=>new Vector3(x,y,z)
+const rot = (x:number,y:number,z:number)=>new Euler(x,y,z)
+const presentation=shallowRef<Group>(), motion=shallowRef<Group>(), head=shallowRef<Group>(), tail=shallowRef<Group>(), leftPaw=shallowRef<Group>(), rightPaw=shallowRef<Group>(), leftAntenna=shallowRef<Group>(), rightAntenna=shallowRef<Group>()
+const glowMaterials=shallowRef<MeshStandardMaterial[]>([]), chestTexture=shallowRef<CanvasTexture>(), backTexture=shallowRef<CanvasTexture>()
+const mount=(key:keyof typeof CLOUD_FOX_SPECIES_DEFINITION.mountPoints)=>computed(()=>resolveRelativeMountPoint(CLOUD_FOX_SPECIES_DEFINITION.mountPoints[key],props.appearance))
+const headMount=mount('head'), leftMount=mount('leftFrontLimb'), rightMount=mount('rightFrontLimb'), tailMount=mount('tail')
+const bodyScale=computed(()=>v3(.94*props.appearance.proportions.bodyWidth,1.12*props.appearance.proportions.bodyHeight,.82*props.appearance.proportions.bodyDepth))
+const viewY=computed(()=>({front:0,left:Math.PI/2,back:Math.PI,right:-Math.PI/2}[props.view]))
+const eyeX=computed(()=>.31*props.appearance.proportions.eyeSpacing), earX=computed(()=>.56*Math.max(.9,props.appearance.proportions.headScale)), antennaX=computed(()=>props.appearance.antennaDesign.spacing/2)
+const tailBaseRotation=computed(()=>{const b={left:[0,.42,-.18],right:[0,-2.72,.18],up:[0,0,1.18],down:[0,0,-1.08],back:[0,-1.1,0],forward:[0,1.1,0]}[props.appearance.tailDesign.direction];return rot(b[0]+tailMount.value.rotationX,b[1]+tailMount.value.rotationY,b[2]+tailMount.value.rotationZ)})
+const tailSegmentTransforms=computed(()=>{const cursor=v3(0,0,0);let rx=0,ry=0,rz=0;return props.appearance.tailDesign.segments.map((segment,index)=>{rx+=segment.rotationX;ry+=segment.rotationY;rz+=segment.rotationZ;const direction=v3(0,segment.length,0).applyEuler(rot(rx,ry,rz));const center=cursor.clone().addScaledVector(direction,.5);cursor.add(direction);return {...segment,index,rx,ry,rz,cx:center.x,cy:center.y,cz:center.z,jx:cursor.x,jy:cursor.y,jz:cursor.z}})})
+const emotionGlow=computed(()=>props.appearance.glow.mode==='emotion'?({idle:props.appearance.palette.primaryGlow,greeting:props.appearance.palette.secondaryGlow,jumping:'#ffd36a',stretching:props.appearance.palette.antennaGlow,spinning:'#ff78c8',resting:'#8190c9'}[props.behavior]):props.appearance.palette.tailGlow)
+const motionOffset=reactive({tailX:0,tailZ:0,antenna:0})
+function makeTexture(text:string,color:string){if(!import.meta.client)return;const c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');if(!x)return;x.textAlign='center';x.textBaseline='middle';x.font='900 142px system-ui';x.shadowColor=color;x.shadowBlur=34;x.fillStyle=color;x.fillText(text.slice(0,3).toUpperCase(),128,132);const t=new CanvasTexture(c);t.needsUpdate=true;return t}
+watch(()=>[props.appearance.symbols.chestText,props.appearance.palette.symbolGlow] as const,([t,c])=>{chestTexture.value?.dispose();chestTexture.value=makeTexture(t,c)},{immediate:true})
+watch(()=>[props.appearance.symbols.backText,props.appearance.palette.symbolGlow] as const,([t,c])=>{backTexture.value?.dispose();backTexture.value=makeTexture(t,c)},{immediate:true})
+onBeforeUnmount(()=>{chestTexture.value?.dispose();backTexture.value?.dispose()})
+function glowRef(material:MeshStandardMaterial|null){if(material&&!glowMaterials.value.includes(material))glowMaterials.value.push(material)}
+const rainbow=new Color();let previous=props.behavior,started=0
+useLoop().onBeforeRender(({elapsed,delta})=>{if(!presentation.value||!motion.value||!head.value)return;presentation.value.rotation.y+=(viewY.value-presentation.value.rotation.y)*Math.min(1,delta*7);if(previous!==props.behavior){previous=props.behavior;started=elapsed}const t=elapsed-started,g=props.behavior==='greeting',j=props.behavior==='jumping',s=props.behavior==='stretching',spin=props.behavior==='spinning',rest=props.behavior==='resting';const jump=j?Math.sin(Math.min(1,t/1.5)*Math.PI)*.92:0;motion.value.position.y+=((rest?-.3:.12)+jump+Math.sin(elapsed*2.1)*.04-motion.value.position.y)*Math.min(1,delta*6);motion.value.rotation.x+=((rest?.16:s?-.08:0)-motion.value.rotation.x)*Math.min(1,delta*5);if(spin)motion.value.rotation.y+=delta*5.6;else motion.value.rotation.y*=Math.max(0,1-delta*6);head.value.rotation.z+=((g?Math.sin(elapsed*5.8)*.13:rest?.08:0)-head.value.rotation.z)*Math.min(1,delta*7);const wag=spin?.24:g||j?.18:rest?.025:.075,speed=spin?8.4:g||j?6.8:rest?1.2:2.5;motionOffset.tailZ=Math.sin(elapsed*speed)*wag;motionOffset.tailX=Math.cos(elapsed*speed*.5)*wag*.18;if(tail.value)tail.value.rotation.set(tailBaseRotation.value.x+motionOffset.tailX,tailBaseRotation.value.y,tailBaseRotation.value.z+motionOffset.tailZ);motionOffset.antenna=Math.sin(elapsed*props.appearance.glow.pulseSpeed*3.2)*.05;if(leftAntenna.value)leftAntenna.value.rotation.z=-props.appearance.antennaDesign.tilt+motionOffset.antenna;if(rightAntenna.value)rightAntenna.value.rotation.z=props.appearance.antennaDesign.tilt-motionOffset.antenna;if(leftPaw.value&&rightPaw.value){const raised=s?.5:0,wave=g?Math.max(0,Math.sin(t*9))*.14:0;leftPaw.value.position.y+=(leftMount.value.y+raised-leftPaw.value.position.y)*Math.min(1,delta*8);rightPaw.value.position.y+=(rightMount.value.y+raised+wave-rightPaw.value.position.y)*Math.min(1,delta*8)}const pulse=1+Math.sin(elapsed*props.appearance.glow.pulseSpeed*3.5)*.12;if(props.appearance.glow.mode==='rainbow')rainbow.setHSL((elapsed*.11)%1,.86,.64);for(const m of glowMaterials.value){m.emissiveIntensity=props.appearance.glow.intensity*pulse;if(props.appearance.glow.mode==='rainbow'){m.color.copy(rainbow);m.emissive.copy(rainbow)}}})
 </script>
 
 <template>
-  <TresGroup ref="presentationGroup">
-    <TresGroup ref="motionGroup" :position="vec3(0, 0.12, 0)">
-      <!-- Tail uses a relative body mount and keeps its user-defined base rotation. -->
-      <TresGroup ref="tailGroup" :position="vec3(tailMount.x, tailMount.y, tailMount.z)" :rotation="euler(tailMount.rotationX, tailMount.rotationY, tailMount.rotationZ)">
-        <TresMesh cast-shadow>
-          <TresTubeGeometry :args="[tailBaseCurve, 28, 0.25 * tailWidth, 14, false]" />
-          <TresMeshStandardMaterial :color="tailPreset.energy ? tailGlow : appearance.palette.coatShadow" :emissive="tailPreset.energy ? tailGlow : '#000000'" :emissive-intensity="tailPreset.energy ? glowIntensity : 0" :roughness="0.28" />
-        </TresMesh>
-        <TresGroup :position="vec3(-0.74 * tailLength, 0.48, 0)">
-          <TresMesh :scale="vec3(tailPreset.tip, tailPreset.tip, tailPreset.tip)">
-            <TresTubeGeometry :args="[tailTipCurve, 22, 0.16 * tailWidth, 14, false]" />
-            <TresMeshStandardMaterial ref="tailGlowMaterial" :color="appearance.glow.tailEnabled ? tailGlow : appearance.palette.coatWarm" :emissive="appearance.glow.tailEnabled ? tailGlow : '#000000'" :emissive-intensity="appearance.glow.tailEnabled ? glowIntensity : 0" :roughness="0.18" />
-          </TresMesh>
-        </TresGroup>
-      </TresGroup>
-
-      <!-- Independent body width, height and depth with six procedural body silhouettes. -->
-      <TresGroup :position="vec3(0, -0.32, 0)">
-        <template v-if="appearance.parts.bodyShape === 'capsule'">
-          <TresMesh :scale="vec3(bodyScale.x, bodyScale.y * 0.62, bodyScale.z)" cast-shadow>
-            <TresSphereGeometry :args="[1, 56, 56]" />
-            <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness="0.34" />
-          </TresMesh>
-          <TresMesh :scale="vec3(bodyScale.x * 0.78, bodyScale.y * 0.76, bodyScale.z * 0.86)" cast-shadow>
-            <TresCylinderGeometry :args="[0.78, 0.78, 1.1, 48]" />
-            <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness="0.34" />
-          </TresMesh>
-        </template>
-        <template v-else-if="appearance.parts.bodyShape === 'pear'">
-          <TresMesh :position="vec3(0, -0.26, 0)" :scale="vec3(bodyScale.x, bodyScale.y * 0.78, bodyScale.z)" cast-shadow>
-            <TresSphereGeometry :args="[1, 56, 56]" /><TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness="0.34" />
-          </TresMesh>
-          <TresMesh :position="vec3(0, 0.42 * appearance.proportions.bodyHeight, 0)" :scale="vec3(bodyScale.x * 0.68, bodyScale.y * 0.58, bodyScale.z * 0.76)" cast-shadow>
-            <TresSphereGeometry :args="[1, 48, 48]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness="0.32" />
-          </TresMesh>
-        </template>
-        <template v-else-if="appearance.parts.bodyShape === 'bean'">
-          <TresMesh :position="vec3(-0.2 * appearance.proportions.bodyWidth, -0.08, 0)" :rotation="euler(0, 0, -0.22)" :scale="vec3(bodyScale.x * 0.82, bodyScale.y * 0.9, bodyScale.z)" cast-shadow>
-            <TresSphereGeometry :args="[1, 56, 56]" /><TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness="0.34" />
-          </TresMesh>
-          <TresMesh :position="vec3(0.24 * appearance.proportions.bodyWidth, 0.1, 0)" :rotation="euler(0, 0, 0.18)" :scale="vec3(bodyScale.x * 0.66, bodyScale.y * 0.7, bodyScale.z * 0.9)" cast-shadow>
-            <TresSphereGeometry :args="[1, 48, 48]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness="0.32" />
-          </TresMesh>
-        </template>
-        <TresMesh v-else-if="appearance.parts.bodyShape === 'rounded-cube'" :scale="vec3(bodyScale.x * 0.9, bodyScale.y * 0.9, bodyScale.z * 0.9)" cast-shadow>
-          <TresBoxGeometry :args="[1.72, 1.72, 1.72, 8, 8, 8]" />
-          <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness="0.4" />
-        </TresMesh>
-        <TresMesh v-else :scale="appearance.parts.bodyShape === 'sphere' ? vec3(1.02, 1.02, 1.02) : bodyScale" cast-shadow>
-          <TresSphereGeometry :args="[1, 64, 64]" />
-          <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness="0.34" :metalness="0.04" />
-        </TresMesh>
-        <TresMesh :position="vec3(0, 0.06, 0.78 * appearance.proportions.bodyDepth)" :scale="vec3(0.5 * appearance.proportions.bodyWidth, 0.58 * appearance.proportions.bodyHeight, 0.16)">
-          <TresSphereGeometry :args="[1, 48, 48]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" :roughness="0.4" />
-        </TresMesh>
-      </TresGroup>
-
-      <!-- Short rounded front limbs. -->
-      <TresGroup ref="leftPaw" :position="vec3(leftLimbMount.x, leftLimbMount.y, leftLimbMount.z)" :scale="vec3(appearance.proportions.limbThickness, appearance.proportions.limbLength, appearance.proportions.limbThickness)">
-        <TresMesh :scale="vec3(0.13, 0.26, 0.13)"><TresSphereGeometry :args="[1, 28, 28]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness="0.27" /></TresMesh>
-        <TresMesh :position="vec3(0, -0.2, 0.035)" :scale="vec3(0.18 * appearance.proportions.pawScale, 0.13 * appearance.proportions.pawScale, 0.2 * appearance.proportions.pawScale)"><TresSphereGeometry :args="[1, 28, 28]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" :roughness="0.27" /></TresMesh>
-      </TresGroup>
-      <TresGroup ref="rightPaw" :position="vec3(rightLimbMount.x, rightLimbMount.y, rightLimbMount.z)" :scale="vec3(appearance.proportions.limbThickness, appearance.proportions.limbLength, appearance.proportions.limbThickness)">
-        <TresMesh :scale="vec3(0.13, 0.26, 0.13)"><TresSphereGeometry :args="[1, 28, 28]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness="0.27" /></TresMesh>
-        <TresMesh :position="vec3(0, -0.2, 0.035)" :scale="vec3(0.18 * appearance.proportions.pawScale, 0.13 * appearance.proportions.pawScale, 0.2 * appearance.proportions.pawScale)"><TresSphereGeometry :args="[1, 28, 28]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" :roughness="0.27" /></TresMesh>
-      </TresGroup>
-
-      <TresMesh v-if="appearance.symbols.chestEnabled && chestTexture" :position="vec3(chestMount.x, chestMount.y, chestMount.z)" :scale="vec3(0.42 * appearance.symbols.symbolScale, 0.42 * appearance.symbols.symbolScale, 0.42)">
-        <TresPlaneGeometry :args="[1, 1]" /><TresMeshBasicMaterial :map="chestTexture" transparent :opacity="0.96" :side="DoubleSide" />
-      </TresMesh>
-      <TresMesh v-if="appearance.symbols.backEnabled && backTexture" :position="vec3(backMount.x, backMount.y, backMount.z)" :rotation="euler(backMount.rotationX, backMount.rotationY, backMount.rotationZ)" :scale="vec3(0.48 * appearance.symbols.symbolScale, 0.48 * appearance.symbols.symbolScale, 0.48)">
-        <TresPlaneGeometry :args="[1, 1]" /><TresMeshBasicMaterial :map="backTexture" transparent :opacity="0.96" :side="DoubleSide" />
-      </TresMesh>
-
-      <TresGroup ref="headGroup" :position="vec3(headMount.x, headMount.y, headMount.z)" :scale="vec3(appearance.proportions.headScale, appearance.proportions.headScale, appearance.proportions.headScale)">
-        <TresGroup ref="leftEar" :position="vec3(-earBaseX, 0.65, -0.04)" :rotation="euler(0, 0, -0.16)" :scale="vec3(appearance.proportions.earScale, appearance.proportions.earScale, appearance.proportions.earScale)">
-          <TresMesh v-if="appearance.parts.ears === 'rounded'" :scale="vec3(1, 1.18, 0.66)"><TresSphereGeometry :args="[0.34, 32, 32]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness="0.3" /></TresMesh>
-          <TresMesh v-else-if="appearance.parts.ears === 'mechanical'" :scale="vec3(0.72, 1.14, 0.52)"><TresBoxGeometry :args="[0.54, 0.86, 0.42]" /><TresMeshStandardMaterial :color="appearance.palette.coatShadow" :metalness="0.72" :roughness="0.2" /></TresMesh>
-          <TresMesh v-else :scale="appearance.parts.ears === 'wing' ? vec3(1.3, 0.9, 0.62) : vec3(1, 1, 1)"><TresConeGeometry :args="[0.35, 0.9, 4]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness="0.3" /></TresMesh>
-        </TresGroup>
-        <TresGroup ref="rightEar" :position="vec3(earBaseX, 0.65, -0.04)" :rotation="euler(0, 0, 0.16)" :scale="vec3(appearance.proportions.earScale, appearance.proportions.earScale, appearance.proportions.earScale)">
-          <TresMesh v-if="appearance.parts.ears === 'rounded'" :scale="vec3(1, 1.18, 0.66)"><TresSphereGeometry :args="[0.34, 32, 32]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness="0.3" /></TresMesh>
-          <TresMesh v-else-if="appearance.parts.ears === 'mechanical'" :scale="vec3(0.72, 1.14, 0.52)"><TresBoxGeometry :args="[0.54, 0.86, 0.42]" /><TresMeshStandardMaterial :color="appearance.palette.coatShadow" :metalness="0.72" :roughness="0.2" /></TresMesh>
-          <TresMesh v-else :scale="appearance.parts.ears === 'wing' ? vec3(1.3, 0.9, 0.62) : vec3(1, 1, 1)"><TresConeGeometry :args="[0.35, 0.9, 4]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness="0.3" /></TresMesh>
-        </TresGroup>
-
-        <!-- Antennae are children of the head group, so they always follow and stay attached to the head. -->
-        <template v-if="appearance.parts.antenna !== 'none'">
-          <TresGroup ref="leftAntenna" :position="vec3(leftAntennaMount.x, leftAntennaMount.y, leftAntennaMount.z)" :rotation="euler(0, 0, leftAntennaMount.rotationZ || 0)" :scale="vec3(appearance.proportions.antennaScale, appearance.proportions.antennaScale, appearance.proportions.antennaScale)">
-            <TresMesh :position="vec3(0, 0.28, 0)"><TresCylinderGeometry :args="[0.025, 0.04, 0.58, 16]" /><TresMeshStandardMaterial :color="appearance.palette.coatShadow" :metalness="0.3" /></TresMesh>
-            <TresMesh :position="vec3(0, 0.61, 0)"><TresDodecahedronGeometry :args="[appearance.parts.antenna === 'crystal' ? 0.14 : 0.11, 0]" /><TresMeshStandardMaterial ref="leftAntennaMaterial" :color="appearance.glow.antennaEnabled ? antennaGlow : appearance.palette.coatWarm" :emissive="appearance.glow.antennaEnabled ? antennaGlow : '#000000'" :emissive-intensity="appearance.glow.antennaEnabled ? glowIntensity : 0" /></TresMesh>
-          </TresGroup>
-          <TresGroup ref="rightAntenna" :position="vec3(rightAntennaMount.x, rightAntennaMount.y, rightAntennaMount.z)" :rotation="euler(0, 0, rightAntennaMount.rotationZ || 0)" :scale="vec3(appearance.proportions.antennaScale, appearance.proportions.antennaScale, appearance.proportions.antennaScale)">
-            <TresMesh :position="vec3(0, 0.28, 0)"><TresCylinderGeometry :args="[0.025, 0.04, 0.58, 16]" /><TresMeshStandardMaterial :color="appearance.palette.coatShadow" :metalness="0.3" /></TresMesh>
-            <TresMesh :position="vec3(0, 0.61, 0)"><TresDodecahedronGeometry :args="[appearance.parts.antenna === 'crystal' ? 0.14 : 0.11, 0]" /><TresMeshStandardMaterial ref="rightAntennaMaterial" :color="appearance.glow.antennaEnabled ? antennaGlow : appearance.palette.coatWarm" :emissive="appearance.glow.antennaEnabled ? antennaGlow : '#000000'" :emissive-intensity="appearance.glow.antennaEnabled ? glowIntensity : 0" /></TresMesh>
-          </TresGroup>
-        </template>
-
-        <TresMesh :scale="vec3(1.02, 0.88, 0.9)" cast-shadow><TresSphereGeometry :args="[0.9, 64, 64]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness="0.28" /></TresMesh>
-        <TresMesh :position="vec3(0, -0.22, 0.79)" :scale="vec3(0.48, 0.34, 0.36)"><TresSphereGeometry :args="[0.65, 48, 48]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" :roughness="0.34" /></TresMesh>
-        <TresGroup v-if="appearance.parts.eyes === 'visor'" :position="vec3(0, 0.08, 0.78)" :scale="vec3(appearance.proportions.eyeScale, appearance.proportions.eyeScale, 1)"><TresMesh :scale="vec3(0.72, 0.16, 0.08)"><TresBoxGeometry :args="[1, 1, 1]" /><TresMeshStandardMaterial :color="appearance.palette.eye" :emissive="appearance.palette.secondaryGlow" :emissive-intensity="0.42" /></TresMesh></TresGroup>
-        <template v-else>
-          <TresMesh v-for="side in [-1, 1]" :key="side" :position="vec3(side * eyeBaseX, 0.08, 0.77)" :scale="appearance.parts.eyes === 'oval' ? vec3(0.13, 0.25, 0.1) : appearance.parts.eyes === 'spark' ? vec3(0.17, 0.17, 0.08) : vec3(0.16, 0.22, 0.1)">
-            <TresDodecahedronGeometry v-if="appearance.parts.eyes === 'spark'" :args="[1, 0]" /><TresSphereGeometry v-else :args="[1, 32, 32]" />
-            <TresMeshStandardMaterial :color="appearance.palette.eye" :emissive="appearance.parts.eyes === 'spark' ? appearance.palette.secondaryGlow : '#000000'" :emissive-intensity="0.5" />
-          </TresMesh>
-        </template>
-        <TresMesh :position="vec3(0, -0.24, 1.015)" :scale="vec3(0.11, 0.085, 0.07)"><TresSphereGeometry :args="[1, 24, 24]" /><TresMeshStandardMaterial color="#25263b" :roughness="0.22" /></TresMesh>
-        <TresMesh :position="vec3(0, -0.39, 0.985)" :scale="vec3(0.15, 0.075, 0.04)"><TresSphereGeometry :args="[1, 28, 28]" /><TresMeshStandardMaterial color="#24263c" /></TresMesh>
-      </TresGroup>
-    </TresGroup>
+<TresGroup ref="presentation"><TresGroup ref="motion" :position="v3(0,.12,0)">
+  <TresGroup ref="tail" :position="v3(tailMount.x,tailMount.y,tailMount.z)" :rotation="tailBaseRotation">
+    <TresGroup v-for="segment in tailSegmentTransforms" :key="segment.index"><TresMesh :position="v3(segment.cx,segment.cy,segment.cz)" :rotation="rot(segment.rx,segment.ry,segment.rz)" cast-shadow><TresCylinderGeometry :args="[segment.width*.78,segment.width,segment.length,20]"/><TresMeshStandardMaterial :ref="glowRef" :color="appearance.parts.tail==='energy'?emotionGlow:appearance.palette.coatShadow" :emissive="appearance.glow.tailEnabled?emotionGlow:'#000000'" :emissive-intensity="appearance.glow.tailEnabled?appearance.glow.intensity:0"/></TresMesh><TresMesh :position="v3(segment.jx,segment.jy,segment.jz)" :scale="v3(segment.width,segment.width,segment.width)"><TresSphereGeometry :args="[1,20,20]"/><TresMeshStandardMaterial :color="appearance.palette.coat"/></TresMesh></TresGroup>
   </TresGroup>
+  <TresGroup :position="v3(0,-.32,0)">
+    <TresMesh v-if="appearance.parts.bodyShape==='rounded-cube'" :scale="v3(bodyScale.x*.9,bodyScale.y*.9,bodyScale.z*.9)" cast-shadow><TresBoxGeometry :args="[1.72,1.72,1.72,8,8,8]"/><TresMeshStandardMaterial :color="appearance.palette.coatShadow"/></TresMesh>
+    <template v-else-if="['pear','bean','capsule'].includes(appearance.parts.bodyShape)"><TresMesh :position="appearance.parts.bodyShape==='bean'?v3(-.2,-.08,0):v3(0,-.18,0)" :rotation="appearance.parts.bodyShape==='bean'?rot(0,0,-.2):rot(0,0,0)" :scale="v3(bodyScale.x,bodyScale.y*.78,bodyScale.z)" cast-shadow><TresSphereGeometry :args="[1,48,48]"/><TresMeshStandardMaterial :color="appearance.palette.coatShadow"/></TresMesh><TresMesh :position="appearance.parts.bodyShape==='bean'?v3(.28,.15,0):v3(0,.42,0)" :scale="v3(bodyScale.x*.66,bodyScale.y*.58,bodyScale.z*.78)"><TresSphereGeometry :args="[1,44,44]"/><TresMeshStandardMaterial :color="appearance.palette.coat"/></TresMesh></template>
+    <TresMesh v-else :scale="appearance.parts.bodyShape==='sphere'?v3(1.02,1.02,1.02):bodyScale" cast-shadow><TresSphereGeometry :args="[1,56,56]"/><TresMeshStandardMaterial :color="appearance.palette.coatShadow"/></TresMesh>
+    <TresMesh :position="v3(0,.06,.78*appearance.proportions.bodyDepth)" :scale="v3(.5*appearance.proportions.bodyWidth,.58*appearance.proportions.bodyHeight,.16)"><TresSphereGeometry :args="[1,40,40]"/><TresMeshStandardMaterial :color="appearance.palette.coatWarm"/></TresMesh>
+  </TresGroup>
+  <!-- Short rounded front limbs -->
+  <TresGroup v-for="side in [-1,1]" :key="`paw-${side}`" :ref="side<0?(n:any)=>leftPaw=n:(n:any)=>rightPaw=n" :position="side<0?v3(leftMount.x,leftMount.y,leftMount.z):v3(rightMount.x,rightMount.y,rightMount.z)" :scale="v3(appearance.proportions.limbThickness,appearance.proportions.limbLength,appearance.proportions.limbThickness)"><TresMesh :scale="v3(.13,.26,.13)"><TresSphereGeometry :args="[1,24,24]"/><TresMeshStandardMaterial :color="appearance.palette.coat"/></TresMesh><TresMesh :position="v3(0,-.2,.035)" :scale="v3(.18*appearance.proportions.pawScale,.13*appearance.proportions.pawScale,.2*appearance.proportions.pawScale)"><TresSphereGeometry :args="[1,24,24]"/><TresMeshStandardMaterial :color="appearance.palette.coatWarm"/></TresMesh></TresGroup>
+  <TresMesh v-if="appearance.symbols.chestEnabled&&chestTexture" :position="v3(0,-.18,.93*appearance.proportions.bodyDepth)" :scale="v3(.42*appearance.symbols.symbolScale,.42*appearance.symbols.symbolScale,.42)"><TresPlaneGeometry :args="[1,1]"/><TresMeshBasicMaterial :map="chestTexture" transparent :side="DoubleSide"/></TresMesh>
+  <TresMesh v-if="appearance.symbols.backEnabled&&backTexture" :position="v3(0,-.2,-.84*appearance.proportions.bodyDepth)" :rotation="rot(0,Math.PI,0)" :scale="v3(.48*appearance.symbols.symbolScale,.48*appearance.symbols.symbolScale,.48)"><TresPlaneGeometry :args="[1,1]"/><TresMeshBasicMaterial :map="backTexture" transparent :side="DoubleSide"/></TresMesh>
+  <TresGroup ref="head" :position="v3(headMount.x,headMount.y,headMount.z)" :scale="v3(appearance.proportions.headScale,appearance.proportions.headScale,appearance.proportions.headScale)">
+    <TresMesh :scale="v3(1.02,.88,.9)" cast-shadow><TresSphereGeometry :args="[.9,56,56]"/><TresMeshStandardMaterial :color="appearance.palette.coat"/></TresMesh>
+    <TresGroup v-for="side in [-1,1]" :key="`ear-${side}`" :position="v3(side*earX,.65,-.04)" :rotation="rot(0,0,side*.16)" :scale="v3(appearance.proportions.earScale,appearance.proportions.earScale,appearance.proportions.earScale)"><TresMesh :scale="appearance.parts.ears==='floppy'?v3(.82,1.2,.62):appearance.parts.ears==='rounded'?v3(1,1.12,.7):appearance.parts.ears==='wing'?v3(1.3,.9,.62):v3(1,1,1)"><TresSphereGeometry v-if="['rounded','floppy'].includes(appearance.parts.ears)" :args="[.34,28,28]"/><TresBoxGeometry v-else-if="appearance.parts.ears==='mechanical'" :args="[.54,.86,.42]"/><TresConeGeometry v-else :args="[.35,.9,appearance.parts.ears==='petal'?6:4]"/><TresMeshStandardMaterial :color="appearance.parts.ears==='mechanical'?appearance.palette.coatShadow:appearance.palette.coat" :metalness="appearance.parts.ears==='mechanical'?.7:0"/></TresMesh></TresGroup>
+    <!-- Antennae are children of the head group and always stay attached. -->
+    <template v-if="appearance.parts.antenna!=='none'"><TresGroup v-for="side in [-1,1]" :key="`antenna-${side}`" :ref="side<0?(n:any)=>leftAntenna=n:(n:any)=>rightAntenna=n" :position="v3(side*antennaX,.72,-.04)" :rotation="rot(0,0,side*appearance.antennaDesign.tilt)"><TresMesh :position="v3(0,appearance.antennaDesign.length/2,0)" :rotation="rot(0,0,appearance.parts.antennaRod==='arc'?side*.18:0)"><TresCylinderGeometry :args="[appearance.parts.antennaRod==='tapered'?appearance.antennaDesign.thickness*.5:appearance.antennaDesign.thickness,appearance.antennaDesign.thickness,appearance.antennaDesign.length,16]"/><TresMeshStandardMaterial :color="appearance.palette.coatShadow" :metalness="appearance.parts.antennaRod==='segmented'?.75:.25"/></TresMesh><TresMesh :position="v3(appearance.parts.antennaRod==='arc'?side*.08:0,appearance.antennaDesign.length,0)"><TresTorusGeometry v-if="appearance.parts.antennaTip==='ring'" :args="[.12,.035,12,28]"/><TresDodecahedronGeometry v-else :args="[appearance.parts.antennaTip==='crystal'?.14:.11,appearance.parts.antennaTip==='star'?1:0]"/><TresMeshStandardMaterial :ref="glowRef" :color="appearance.palette.antennaGlow" :emissive="appearance.glow.antennaEnabled?appearance.palette.antennaGlow:'#000000'" :emissive-intensity="appearance.glow.antennaEnabled?appearance.glow.intensity:0"/></TresMesh></TresGroup></template>
+    <TresMesh :position="v3(0,-.22,.79)" :scale="v3(.48,.34,.36)"><TresSphereGeometry :args="[.65,40,40]"/><TresMeshStandardMaterial :color="appearance.palette.coatWarm"/></TresMesh>
+    <TresGroup v-if="appearance.parts.eyes==='visor'" :position="v3(0,.08,.78)"><TresMesh :scale="v3(.72,.16,.08)"><TresBoxGeometry :args="[1,1,1]"/><TresMeshStandardMaterial :color="appearance.palette.eye" :emissive="appearance.palette.secondaryGlow" :emissive-intensity=".42"/></TresMesh></TresGroup>
+    <template v-else><TresMesh v-for="side in [-1,1]" :key="`eye-${side}`" :position="v3(side*eyeX,.08,.77)" :scale="appearance.parts.eyes==='sleepy'?v3(.19,.07,.08):appearance.parts.eyes==='oval'?v3(.13,.25,.1):v3(.16,.2,.1)"><TresDodecahedronGeometry v-if="['spark','diamond'].includes(appearance.parts.eyes)" :args="[1,0]"/><TresSphereGeometry v-else :args="[1,28,28]"/><TresMeshStandardMaterial :color="appearance.palette.eye" :emissive="['spark','diamond'].includes(appearance.parts.eyes)?appearance.palette.secondaryGlow:'#000000'" :emissive-intensity=".5"/></TresMesh></template>
+    <TresMesh :position="v3(0,-.24,1.015)" :scale="appearance.parts.nose==='heart'?v3(.13,.11,.07):v3(.11,.085,.07)"><TresDodecahedronGeometry v-if="['sensor','heart'].includes(appearance.parts.nose)" :args="[1,0]"/><TresSphereGeometry v-else :args="[1,22,22]"/><TresMeshStandardMaterial :color="appearance.parts.nose==='sensor'?appearance.palette.primaryGlow:'#25263b'" :emissive="appearance.parts.nose==='sensor'?appearance.palette.primaryGlow:'#000000'"/></TresMesh>
+    <TresMesh :position="v3(0,-.39,.985)" :scale="appearance.parts.mouth==='open'?v3(.15,.12,.05):appearance.parts.mouth==='pout'?v3(.09,.05,.04):v3(.15,.075,.04)"><TresSphereGeometry :args="[1,24,24]"/><TresMeshStandardMaterial color="#24263c"/></TresMesh>
+  </TresGroup>
+</TresGroup></TresGroup>
 </template>

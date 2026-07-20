@@ -3,7 +3,7 @@ const phaseArg = process.argv.find(argument => argument.startsWith('--phase='))
 const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 6
 const files = {
   package: readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-  domain: readFileSync(new URL('../apps/playground/app/domain/cloud-fox-appearance.ts', import.meta.url), 'utf8'),
+  domain: readFileSync(new URL('../apps/playground/app/domain/cloud-fox-appearance.ts', import.meta.url), 'utf8') + readFileSync(new URL('../apps/playground/app/domain/pet-studio-phase2.ts', import.meta.url), 'utf8'),
   store: readFileSync(new URL('../apps/playground/app/stores/pet-appearance.ts', import.meta.url), 'utf8'),
   renderer: readFileSync(new URL('../apps/playground/app/components/studio/CustomizableCloudFox.vue', import.meta.url), 'utf8'),
   canvas: readFileSync(new URL('../apps/playground/app/components/studio/CloudFoxStudioCanvas.vue', import.meta.url), 'utf8'),
