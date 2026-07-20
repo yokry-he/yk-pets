@@ -10,6 +10,10 @@ const scene = read('apps/playground/app/domain/pet-scene.ts')
 const sceneComponent = read('apps/playground/app/components/studio/PetSceneEffects.vue')
 const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const scenePage = read('apps/playground/app/pages/studio-scenes.vue')
+const registry = read('apps/playground/app/domain/pet-species-registry.ts')
+const moonCat = read('apps/playground/app/components/studio/MoonCat.vue')
+const proceduralPet = read('apps/playground/app/components/studio/ProceduralPet.vue')
+const speciesPage = read('apps/playground/app/pages/studio-species.vue')
 const expectations = [
   ['schema v2', domain.includes('PET_STUDIO_SCHEMA_VERSION = 2')],
   ['legacy migration', domain.includes('legacySymbols') && domain.includes('normalizePetStudioAppearanceV2')],
@@ -29,6 +33,14 @@ const expectations = [
   ['automatic web contrast', scene.includes('resolveSceneContrast') && scenePage.includes('跟随网页')],
   ['action linked scene', scene.includes('sceneActionMultiplier') && sceneComponent.includes('behavior')],
   ['scene excluded from camera bounds', canvas.includes('Only petBounds is used for camera fitting')],
+  ['species registry', registry.includes('PET_SPECIES_REGISTRY')],
+  ['Moon Cat active', registry.includes("'moon-cat':") && registry.includes("status: 'active'") && moonCat.includes('foreheadMark') && moonCat.includes('whiskers')],
+  ['planned slime and rabbit', registry.includes("'nebula-slime'") && registry.includes("'star-rabbit'") && registry.match(/status: 'planned'/g)?.length === 2],
+  ['species slot differences', registry.includes("'whiskers','forehead-mark'") && registry.includes("'antenna','tail'")],
+  ['cross species style mapping', registry.includes('applyStyleAcrossSpecies') && ['cute','mechanical','nebula','crystal'].every(style => registry.includes(`style === '${style}'`))],
+  ['motion fallback', registry.includes('resolveSpeciesBehavior') && speciesPage.includes('实际动作')],
+  ['generic renderer dispatch', proceduralPet.includes('MoonCat') && proceduralPet.includes('CustomizableCloudFox')],
+  ['no Moon Cat logic in Cloud Fox renderer', !renderer.includes('moon-cat') && !renderer.includes('whiskers')],
 ]
 const failures = expectations.filter(([, ok]) => !ok).map(([name]) => name)
 if (failures.length) { console.error('Pet Studio evolution check failed:', failures.join(', ')); process.exit(1) }

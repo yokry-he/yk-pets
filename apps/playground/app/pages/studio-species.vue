@@ -1,0 +1,23 @@
+<script setup lang="ts">
+import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
+import { PET_SPECIES_REGISTRY, resolveSpeciesBehavior, type PetSpeciesId } from '~/domain/pet-species-registry'
+import type { CloudFoxStudioBehavior } from '~/domain/pet-studio-phase4'
+import { usePetAppearanceStore } from '~/stores/pet-appearance'
+const store=usePetAppearanceStore(), requested=ref<CloudFoxStudioBehavior>('spinning')
+const species=Object.values(PET_SPECIES_REGISTRY)
+const activeDefinition=computed(()=>PET_SPECIES_REGISTRY[store.recipe.speciesId])
+const resolved=computed(()=>resolveSpeciesBehavior(store.recipe.speciesId,requested.value))
+const motions:CloudFoxStudioBehavior[]=['idle','greeting','jumping','stretching','spinning','resting']
+onMounted(()=>store.hydrate())
+function select(id:PetSpeciesId,status:string){if(status==='active')store.switchSpecies(id)}
+</script>
+<template>
+<main class="page"><header><div><NuxtLink to="/studio">← 返回宠物工坊</NuxtLink><small>SPECIES REGISTRY</small><h1>物种与动作降级</h1><p>月猫已实现；星云史莱姆和星兔已登记为后续物种。</p></div><button @click="store.save">保存物种选择</button></header>
+<div class="layout"><section><CloudFoxStudioCanvas :appearance="store.recipe" :behavior="requested" view="front" background="dark" :scene="store.scene"/><div class="motions"><button v-for="motion in motions" :key="motion" :class="{active:requested===motion}" @click="requested=motion">{{motion}}</button></div><p class="fallback">请求动作：{{requested}} → 实际动作：{{resolved}}</p></section>
+<aside><h2>物种注册表</h2><button v-for="item in species" :key="item.id" :disabled="item.status==='planned'" :class="{active:store.recipe.speciesId===item.id}" @click="select(item.id,item.status)"><span><strong>{{item.label}}</strong><small>{{item.labelEn}}</small></span><b>{{item.status==='active'?'可用':'预留'}}</b></button><article><h3>{{activeDefinition.label}} 部件槽位</h3><code v-for="slot in activeDefinition.slots" :key="slot">{{slot}}</code></article>
+<template v-if="store.recipe.speciesId==='moon-cat'"><h2>月猫专属部件</h2><label class="check"><input v-model="store.recipe.speciesParts.whiskers.enabled" type="checkbox" @change="store.markDirty">胡须</label><label>胡须长度 {{store.recipe.speciesParts.whiskers.length.toFixed(2)}}<input v-model.number="store.recipe.speciesParts.whiskers.length" type="range" min=".2" max="1.1" step=".02" @input="store.markDirty"></label><label>额头标志<select v-model="store.recipe.speciesParts.foreheadMark.style" @change="store.markDirty"><option value="crescent">月牙</option><option value="star">星芒</option><option value="crystal">晶体</option></select></label><label>尾巴卷曲 {{store.recipe.speciesParts.moonTailCurl.toFixed(2)}}<input v-model.number="store.recipe.speciesParts.moonTailCurl" type="range" min=".2" max="1.4" step=".02" @input="store.markDirty"></label></template>
+</aside></div></main>
+</template>
+<style scoped>
+:global(body){margin:0;background:#070912}:global(*){box-sizing:border-box}.page{min-height:100vh;padding:28px;color:#f4f6ff;background:radial-gradient(circle at 75% 0,#8d6bff2f,transparent 30%),#070912;font-family:Inter,system-ui}.page>header{display:flex;justify-content:space-between;align-items:end;max-width:1500px;margin:auto auto 20px}.page a{color:#8fe9dd}.page small{display:block;margin-top:12px;color:#8d86ff}.page h1{margin:5px 0;font-size:50px}.page p{margin:0;color:#aeb7d8}.page button{border:1px solid #ffffff22;border-radius:10px;padding:9px 12px;color:#fff;background:#ffffff0d;cursor:pointer}.layout{display:grid;grid-template-columns:minmax(520px,1fr) 360px;gap:15px;max-width:1500px;margin:auto}.motions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.active{border-color:#7066ff!important;background:#7066ff44!important}.fallback{margin-top:10px!important;padding:10px;border:1px solid #ffffff18;border-radius:10px}aside{display:flex;flex-direction:column;gap:10px;align-self:start;padding:16px;border:1px solid #ffffff18;border-radius:18px;background:#0e111ecc}aside>button{display:flex;justify-content:space-between;text-align:left}aside>button span{display:flex;flex-direction:column}aside>button small{margin:3px 0 0;color:#8f99bd}aside>button:disabled{opacity:.48;cursor:not-allowed}aside article{padding:12px;border:1px solid #ffffff18;border-radius:12px;background:#ffffff08}article code{display:inline-flex;margin:3px;padding:4px 7px;border-radius:999px;color:#8fe9dd;background:#52e0d018}aside label{display:flex;flex-direction:column;gap:5px;color:#bbc2dc}.check{flex-direction:row!important}aside select{min-height:38px;border:1px solid #ffffff22;border-radius:8px;color:#fff;background:#111526}@media(max-width:900px){.layout{grid-template-columns:1fr}.page>header{align-items:start;flex-direction:column}}
+</style>

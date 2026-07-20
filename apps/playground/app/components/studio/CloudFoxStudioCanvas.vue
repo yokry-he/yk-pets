@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { TresCanvas } from '@tresjs/core'
 import { Vector3 } from 'three'
-import CustomizableCloudFox from './CustomizableCloudFox.vue'
+import ProceduralPet from './ProceduralPet.vue'
 import PetSceneEffects from './PetSceneEffects.vue'
 import { calculatePetVisualBounds } from '~/domain/cloud-fox-appearance'
 import { createDefaultPetScene, getPetScenePreset, resolveSceneContrast, type PetSceneRecipe } from '~/domain/pet-scene'
-import type { PetStudioAppearanceRecipe, CloudFoxStudioBackground, CloudFoxStudioBehavior, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
-const props = defineProps<{ appearance: PetStudioAppearanceRecipe; behavior: CloudFoxStudioBehavior; view: CloudFoxStudioView; background: CloudFoxStudioBackground; scene?: PetSceneRecipe }>()
+import type { CloudFoxStudioBackground, CloudFoxStudioBehavior, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
+import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
+const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe; behavior: CloudFoxStudioBehavior; view: CloudFoxStudioView; background: CloudFoxStudioBackground; scene?: PetSceneRecipe }>()
 const vec3=(x:number,y:number,z:number)=>new Vector3(x,y,z)
 const legacyScene=computed(()=>props.background==='light'?{...createDefaultPetScene(),background:'#eef1ff',backgroundSecondary:'#ffffff',contrastMode:'light' as const}:props.background==='web'?getPetScenePreset('neon-hangar'):getPetScenePreset('deep-nebula'))
 const activeScene=computed(()=>props.scene||legacyScene.value)
@@ -24,9 +25,9 @@ const cameraPosition=computed(()=>vec3(0,petBounds.value.centerY+.18,cameraDista
   <div v-if="!activeScene.transparent" class="scene-gradient"/>
   <TresCanvas :clear-color="clearColor" :clear-alpha="activeScene.transparent?0:1" :dpr="[1,1.55]" alpha antialias shadows>
     <TresPerspectiveCamera :position="cameraPosition" :fov="38"/><TresAmbientLight :intensity="contrast==='light'?1.7:1.08"/><TresDirectionalLight :position="vec3(4,6,4)" :intensity="contrast==='light'?2.7:3.9" cast-shadow/><TresPointLight :position="vec3(-4,1,2)" :intensity="4.2" :color="appearance.palette.primaryGlow"/>
-    <PetSceneEffects :scene="activeScene" :behavior="behavior"/><CustomizableCloudFox :appearance="appearance" :behavior="behavior" :view="view"/>
+    <PetSceneEffects :scene="activeScene" :behavior="behavior"/><ProceduralPet :appearance="appearance" :behavior="behavior" :view="view"/>
   </TresCanvas>
-  <div class="label"><strong>{{appearance.identity.nameZh}} · {{appearance.identity.nameEn}}</strong><span>{{activeScene.presetId}} · 宠物包围盒 {{petBounds.width.toFixed(1)}} × {{petBounds.height.toFixed(1)}}</span></div>
+  <div class="label"><strong>{{appearance.identity.nameZh}} · {{appearance.identity.nameEn}}</strong><span>{{appearance.speciesId}} / {{activeScene.presetId}} · 宠物包围盒 {{petBounds.width.toFixed(1)}} × {{petBounds.height.toFixed(1)}}</span></div>
 </div>
 </template>
 <style scoped>
