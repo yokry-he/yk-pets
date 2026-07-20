@@ -1,11 +1,13 @@
 {
   "name": "@nova/shared",
   "version": "0.1.2",
+  "description": "Shared YK-PETS brand, pet identity, audit, network, and runtime contracts. The @nova scope is retained for workspace compatibility.",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./audit": "./src/audit.ts",
+    "./brand": "./src/brand.ts",
     "./messages": "./src/messages.ts",
     "./protocol": "./src/protocol.ts",
     "./network": "./src/network.ts"
