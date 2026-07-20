@@ -1,4 +1,5 @@
 /**
+ * 文件职责 / File responsibility
  * 在普通网页中安装 YK-PETS 品牌与存储兼容层。
  * Installs the YK-PETS brand and storage compatibility bridge in host pages.
  */
