@@ -1,33 +1,24 @@
-# NOVA Browser Agent User Guide
+# YK-PETS Browser Agent User Guide
 
-> Applies to: v0.5.2 and later  
-> Purpose: enable a first-time user to install NOVA and operate the pet, audits, Network Lab, Mock rules, performance analysis, and Local Agent without reading the source code.
+> Baseline: the `v0.6.10` platform branch and later compatible versions  
+> Current pet: Zeph（云灵）  
+> Current species: Cloud Fox（云狐）
 
 ## 1. Product components
 
+YK-PETS consists of three cooperating parts:
+
 | Component | Purpose | Required |
 |---|---|---|
-| Chrome extension | In-page pet, audits, Network Lab, Side Panel | Yes |
-| Local Agent | Read local source, generate patches, validate, and roll back | Only for source changes |
-| Playground | Official demonstration and regression test pages | Only for development |
+| Chrome/Edge extension | In-page Zeph, page audits, Network Lab, and Side Panel | Yes |
+| YK-PETS Local Agent | Read local source, generate patches, run checks, and roll back | Only for source changes |
+| Playground | Zeph demo, chat, and regression laboratory | Development only |
 
-The Chrome extension alone is enough for network inspection, Mocking, and performance analysis.
+YK-PETS is the product brand. Zeph is the pet's name. Cloud Fox is the species.
 
 ## 2. Install the extension
 
-### 2.1 Install a prebuilt package
-
-1. Extract `nova-browser-agent-<version>-chrome.zip`.
-2. Open `chrome://extensions` in Chrome.
-3. Enable **Developer mode**.
-4. Click **Load unpacked**.
-5. Select the extracted directory whose top level directly contains `manifest.json`.
-6. Pin the NOVA icon for quick Side Panel access.
-7. Refresh the normal HTTP/HTTPS page where NOVA will run.
-
-Do not select the ZIP file itself or the parent directory that merely contains the extension folder.
-
-### 2.2 Build from source and install
+### 2.1 Build from source
 
 ```bash
 corepack enable
@@ -35,275 +26,189 @@ pnpm install --frozen-lockfile
 pnpm build:extension
 ```
 
-Load this directory:
+Enable developer mode in Chrome or Edge and load:
 
 ```text
 apps/extension/.output/chrome-mv3
 ```
 
-## 3. The in-page 3D pet
+### 2.2 Create a release ZIP
 
-### 3.1 Basic interactions
+```bash
+pnpm zip:extension
+```
+
+The archive is written to:
+
+```text
+apps/extension/.output/yk-pets-0.6.10-chrome.zip
+```
+
+The actual version follows the extension manifest.
+
+## 3. First use
+
+1. Install or reload the extension.
+2. Refresh a normal `http://` or `https://` page.
+3. Wait for Zeph to appear in the bottom-right corner.
+4. Click Zeph to open the feature menu.
+5. Double-click Zeph to run a quick page audit.
+6. Click the YK-PETS toolbar action to open the Side Panel.
+
+Extensions cannot inject into browser-internal pages, extension stores, or other protected pages.
+
+## 4. Interacting with Zeph
 
 | Interaction | Result |
 |---|---|
-| Single-click | Open or collapse the mode and radial action menu |
-| Double-click | Start an audit of the current page |
-| Hover | Play a lightweight greeting and follow the pointer |
-| Drag | Reposition the pet within the viewport |
-| Press Esc | Close the current menu |
-| Click outside | Close the menu |
+| Click | Toggle the feature menu |
+| Double-click | Run a page audit immediately |
+| Right-click | Open engineering tools |
+| Hover | Greet and follow the pointer |
+| Drag | Change the in-page position |
+| Select a motion | Play the motion and associated voice |
 
-The menu has Feature, Motion, and Engineering modes. All mode actions use the same purple visual system.
-
-### 3.2 Feature mode
-
-Feature mode provides page auditing and issue navigation:
-
-1. Start an audit.
-2. Move to the previous or next issue.
-3. Locate and highlight the affected element.
-4. Preview a temporary repair.
-5. Open the full report.
-
-A preview only changes the current DOM. It does not write local source and disappears after a page refresh.
-
-### 3.3 Motion mode
-
-More than six motions are paginated. Pagination dots are anchored below the pet shadow.
-
-Standard motions include waving, jumping, spinning, flapping, playing, resting, stretching, ball play, and eating. High-energy motions include:
-
-- Backflip landing;
-- Tail tornado;
-- Diving ball catch;
-- Energy burst.
-
-Automatic motions pause or degrade when the page is hidden, the menu is open, the Agent is busy, or reduced motion is enabled.
-
-### 3.4 Engineering mode
-
-Engineering mode provides:
-
-- Network Lab;
-- Local Agent connection;
-- Source patch generation;
-- Confirmed file write;
-- Typecheck/Test/Build;
-- Latest patch rollback.
-
-Complex content is handled in the Side Panel.
-
-## 4. Open the Side Panel
-
-Open it by:
-
-- Clicking the NOVA toolbar icon;
-- Selecting Network Lab from Engineering mode;
-- Following an audit or patch detail action.
-
-The Side Panel follows the active tab. Confirm that the origin shown at the top matches the intended site after switching tabs.
-
-## 5. Network Lab quick start
-
-### 5.1 Site-level master switch
-
-The master switch is stored per website origin, for example:
+Zeph's identity is represented separately from the product:
 
 ```text
-https://app.example.com
+petId: zeph
+speciesId: cloud-fox
+Name: Zeph / 云灵
+Species: Cloud Fox / 云狐
 ```
 
-When enabled, NOVA may apply:
+## 5. Page audits
 
-- Fetch/XHR Mock responses;
-- Real JSON response transforms;
-- Artificial delay.
+1. Open the feature menu or Side Panel.
+2. Select audit categories and individual rules.
+3. Run the page audit.
+4. Review health score, metrics, and findings.
+5. Navigate or highlight a finding.
+6. Use Preview when a reversible DOM change is supported.
+7. A preview changes only the current page DOM; it does not write source code.
+8. Use Undo Preview to restore the page.
 
-Turning it off immediately stops those effects. Performance capture may remain active so real traffic can still be analyzed.
+The audit will not start when no rule is selected.
 
-### 5.2 Request list
+## 6. Network Lab
 
-1. Open **Requests**.
-2. Refresh the page or repeat the business action.
-3. Filter by URL, method, or status.
-4. Enable **Slow only** to show requests above the configured threshold.
-5. Select a request to inspect its details.
+Network Lab supports:
 
-Details include URL, method, status, total duration, transfer size, DNS/connect/TLS/TTFB/download timing, Mock/modified/delayed state, and a sanitized response preview.
+- Fetch/XHR capture;
+- type and status filters;
+- request delays;
+- mocked status, headers, and response bodies;
+- whole-JSON response replacement;
+- rule creation from captured requests;
+- rule editing, duplication, enable/disable, and deletion;
+- site-level controls.
 
-## 6. Create Mock rules
+Mocking affects only the current browser page and does not change server data.
 
-### 6.1 Generate a Mock from an existing request
+## 7. Connect the Local Agent
 
-1. Open a request detail.
-2. Click **Generate Mock**.
-3. NOVA opens the full-page rule editor inside the Side Panel.
-4. URL, method, status, and response preview are prefilled.
-5. Edit the name and response.
-6. Run the rule test and confirm that the test URL matches.
-7. Save and enable the rule.
-8. Repeat the page action and verify the Mock badge.
-
-A full Mock returns a constructed response without calling the real endpoint.
-
-### 6.2 Mock an endpoint that does not exist
-
-1. Open **Rules**.
-2. Click **New rule**.
-3. Enter the future path, such as `/api/future-feature`.
-4. Select the HTTP method.
-5. Choose Glob or regular-expression matching.
-6. Configure status, body type, body, and delay.
-7. Test the rule.
-8. Save and enable it.
-9. When the page later sends a matching Fetch/XHR request, NOVA returns the custom response.
-
-No server endpoint is required.
-
-### 6.3 Duplicate a rule
-
-Duplication is useful for success, empty, 401, 403, 500, and high-latency variants. The duplicate has a new ID and is disabled by default to avoid immediate conflicts.
-
-## 7. Rule matching
-
-Rules are selected by:
-
-1. Higher priority;
-2. Greater specificity;
-3. Newer update time.
-
-Glob examples:
-
-```text
-/api/users/*
-https://api.example.com/v1/*
-/api/orders?status=*
-```
-
-Regular-expression example:
-
-```text
-^https://api\.example\.com/v2/users/\d+$
-```
-
-Query conditions support equals, contains, and exists.
-
-## 8. Edit Mock responses
-
-Mock bodies may be JSON or text. The focused JSON editor supports formatting and syntax validation. Invalid JSON cannot be saved as a JSON body.
-
-You can configure successful and error statuses, including 200, 201, 400, 401, 403, 404, 429, 500, 502, and 503, plus a fixed delay.
-
-## 9. Modify a real response
-
-A response-modification rule calls the real endpoint first, then transforms the JSON body.
-
-Supported operations:
-
-- `set`: create or replace a field;
-- `remove`: delete a field.
-
-Example:
-
-```text
-set data.user.vip = true
-remove data.internalToken
-```
-
-Non-JSON responses are passed through unchanged.
-
-## 10. Performance charts
-
-The Overview page summarizes request count, slow count, errors, Mock count, transfer size, average duration, P95, and a score.
-
-Charts include:
-
-1. Slowest requests;
-2. Transfer size by resource type;
-3. Recent request waterfall.
-
-Use TTFB, download time, body size, repetition, and the difference between real and Mocked loads to determine whether the main bottleneck is server/network behavior or frontend parsing/rendering.
-
-## 11. Local Agent
-
-Start it with:
+From a project root, run:
 
 ```bash
 pnpm dev:agent
 ```
 
-Enter the printed WebSocket address and token in the Side Panel. The protected workflow is:
+Or use the built CLI:
 
-```text
-Find issue
-→ Generate candidate patch
-→ Review diff
-→ Explicitly confirm write
-→ Run validation
-→ Roll back when required
+```bash
+yk-pets-agent dev --root /path/to/project
 ```
 
-NOVA does not overwrite source without explicit confirmation.
+The command prints the WebSocket address, connection token, project name, framework, and package manager. Enter the address and token in the Side Panel. The Agent listens on the local loopback interface by default.
 
-## 12. Data and privacy
+## 8. Source patch lifecycle
 
-- Rules are stored locally in Chrome Storage.
-- Previews are depth-, count-, and length-limited.
-- Tokens, cookies, passwords, and secrets are sanitized.
-- Network records are not uploaded by the current version.
-- Rules default to the origin where they were created.
-- Turn off the site master switch after a Mock session.
+```text
+Page finding
+  → Locate source candidates
+  → Generate minimal diff
+  → User confirmation
+  → Verify file hash
+  → Create backup
+  → Write source
+  → Run checks
+  → Keep or roll back
+```
 
-## 13. Recommended workflows
+No source is written without explicit confirmation. Allowed project checks are limited to:
 
-For an unfinished backend endpoint: create a manual Mock, duplicate scenario variants, develop the UI, and turn Mocking off after the real service is ready.
+```text
+typecheck
+test
+build
+```
 
-For a slow page: capture a fresh load, inspect the slowest requests and waterfall, Mock the slow endpoint, reload, and compare whether the remaining delay is frontend-side.
+## 9. Data migration
 
-See [Troubleshooting](./TROUBLESHOOTING.md) for detailed recovery steps.
+### Extension settings
 
-## v0.6.0 pet shows, lifestyle states, and easter eggs
+YK-PETS migrates legacy keys from:
 
-The motion menu now includes Shy Peek, Star Juggling, Cloud Nap, Sparkle Sneeze, and High-altitude Fireworks. When motions exceed six items, use the page dots below the pet shadow or scroll the mouse wheel over the motion menu.
+```text
+nova:*
+```
 
-### High-altitude fireworks show
+to:
 
-1. Open the pet menu.
-2. Switch to **Motions**.
-3. Navigate to **High-altitude Fireworks**.
-4. Keep the current tab visible during playback.
+```text
+yk-pets:*
+```
 
-The show launches three fireworks. Every launch selects a curated shape and palette. NOVA looks upward while the antennae, tail tip, and chest core brighten together.
+During the compatibility period, both prefixes are mirrored so existing components retain their settings.
 
-### Automatic easter eggs
+### Local Agent
 
-Sparkle Sneeze and High-altitude Fireworks can appear after a long idle period with a low probability. Automatic easter eggs are suspended while:
+The new configuration path is:
 
-- The pet menu is open.
-- The Agent or page audit is busy.
-- The tab is hidden.
-- Reduced motion is enabled.
+```text
+.yk-pets/agent.json
+```
 
-Every easter-egg motion can still be triggered directly from the motion menu.
+When only `.nova/agent.json` exists, the Local Agent migrates the existing token and port. Both directories should remain ignored by Git.
 
-## v0.6.1 Motion continuity and active glow controls
+### Playground
 
-### Triggering motions consecutively
+The old `nuxt-ai-pet-state-v1` key migrates to:
 
-Starting another motion while one is active no longer interrupts the current motion. NOVA stores one pending action and starts it after the current animation completes and passes through a short settling pose. Rapid input keeps the highest-priority or newest same-priority request.
+```text
+yk-pets:playground:pet-state:v2
+```
 
-### Pointer hover
+Theme, affection, interaction count, and secret-mode state are retained.
 
-Hover produces one greeting only when NOVA is fully idle. Entering or leaving the avatar during fireworks, ball play, cloud nap, backflip, or another primary motion does not replace the active animation. Pointer leave still lets gaze return smoothly to center.
+## 10. Voice presets
 
-### Explicit glow motions
+Current presets include:
 
-Use later pages of Motion mode to trigger:
+- Nebula Alien;
+- Cute Girl;
+- Cute Animal;
+- Mute.
 
-- **Antenna Charge**: both antennae converge while antenna tips, chest core, and data rings brighten together;
-- **Tail Glow Flow**: tail middle, tip, trails, and stardust form a visible energy flow.
+Browsers may require a user click before audio playback is permitted. The selected preset is persisted.
 
-### Cloud Nap
+## 11. Validation commands
 
-Cloud Nap places NOVA on its side on the cloud. Eyes close, limbs tuck in, the tail moves slowly, and sleep marks rise beside the head.
+```bash
+pnpm check:brand
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm build:playground
+```
+
+`pnpm typecheck` also runs documentation, brand, pet-motion, audit, Network Lab, and audio regression gates.
+
+## 12. Uninstall and reset
+
+- Remove YK-PETS from the browser extension manager.
+- Delete `.yk-pets/` to reset the Local Agent token.
+- Clear extension storage to reset YK-PETS preferences.
+- Clear Playground Local Storage to reset affection and interaction state.
+
+Deleting `.yk-pets/agent.json` causes a new connection token to be generated at the next startup.
