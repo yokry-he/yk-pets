@@ -5,8 +5,9 @@
  */
 import type { AuditCategory, AuditIssue, AuditIssueCode, AuditReport } from './audit'
 import type { NetworkEntry, NetworkRule, NetworkSiteSettings, NetworkSnapshot } from './network'
+import type { PetIdentity } from './brand'
 
-export type NovaPetAction =
+export type YkPetAction =
   | 'audit'
   | 'previous-issue'
   | 'next-issue'
@@ -20,7 +21,7 @@ export type NovaPetAction =
   | 'run-checks'
   | 'rollback-patch'
 
-export type NovaPetBehavior =
+export type YkPetBehavior =
   | 'idle'
   | 'thinking'
   | 'happy'
@@ -50,11 +51,13 @@ export type NovaPetBehavior =
   | 'antenna-charge'
   | 'tail-glow'
 
-export const NOVA_PET_VOICE_PRESETS = ['alien', 'cute-girl', 'cute-animal', 'mute'] as const
-export type NovaPetVoicePreset = typeof NOVA_PET_VOICE_PRESETS[number]
+export const YK_PETS_VOICE_PRESETS = ['alien', 'cute-girl', 'cute-animal', 'mute'] as const
+export type YkPetVoicePreset = typeof YK_PETS_VOICE_PRESETS[number]
 
-export interface NovaPetVisualState {
-  behavior: NovaPetBehavior
+export interface YkPetVisualState {
+  /** Optional during the v0.6.10 migration; consumers should fall back to ZEPH_CLOUD_FOX_IDENTITY. */
+  identity?: PetIdentity
+  behavior: YkPetBehavior
   speech: string
   score: number
   issueCount: number
@@ -65,11 +68,15 @@ export interface NovaPetVisualState {
   agentConnected: boolean
 }
 
-export type NovaRuntimeMessage =
-  | { type: 'NOVA_OPEN_SIDE_PANEL'; action?: NovaPetAction; issueId?: string }
-  | { type: 'NOVA_SIDE_PANEL_ACTION'; action: NovaPetAction; issueId?: string; tabId: number }
-  | { type: 'NOVA_UPDATE_PET_STATE'; state: Partial<NovaPetVisualState> }
-  | { type: 'NOVA_TTS_SPEAK'; text: string; preset: Exclude<NovaPetVoicePreset, 'alien' | 'mute'> }
+/**
+ * Wire message strings keep the v0.6.10 NOVA prefix for one compatibility cycle.
+ * New application code should use the YkPetsRuntimeMessage type; a later protocol version can migrate wire identifiers separately.
+ */
+export type YkPetsRuntimeMessage =
+  | { type: 'NOVA_OPEN_SIDE_PANEL'; action?: YkPetAction; issueId?: string }
+  | { type: 'NOVA_SIDE_PANEL_ACTION'; action: YkPetAction; issueId?: string; tabId: number }
+  | { type: 'NOVA_UPDATE_PET_STATE'; state: Partial<YkPetVisualState> }
+  | { type: 'NOVA_TTS_SPEAK'; text: string; preset: Exclude<YkPetVoicePreset, 'alien' | 'mute'> }
   | { type: 'NOVA_TTS_STOP' }
   | { type: 'NOVA_RUN_AUDIT'; enabledCategories?: AuditCategory[]; enabledRuleCodes?: AuditIssueCode[] }
   | { type: 'NOVA_AUDIT_RESULT'; report: AuditReport }
@@ -87,3 +94,16 @@ export type NovaRuntimeMessage =
   | { type: 'NOVA_NETWORK_UPDATED'; pageUrl: string; entryCount: number }
   | { type: 'NOVA_NETWORK_ENTRY'; entry: NetworkEntry }
   | { type: 'NOVA_NETWORK_SNAPSHOT'; snapshot: NetworkSnapshot }
+
+/** @deprecated Use YkPetAction. */
+export type NovaPetAction = YkPetAction
+/** @deprecated Use YkPetBehavior. */
+export type NovaPetBehavior = YkPetBehavior
+/** @deprecated Use YkPetVoicePreset. */
+export type NovaPetVoicePreset = YkPetVoicePreset
+/** @deprecated Use YkPetVisualState. */
+export type NovaPetVisualState = YkPetVisualState
+/** @deprecated Use YkPetsRuntimeMessage. */
+export type NovaRuntimeMessage = YkPetsRuntimeMessage
+/** @deprecated Use YK_PETS_VOICE_PRESETS. */
+export const NOVA_PET_VOICE_PRESETS = YK_PETS_VOICE_PRESETS
