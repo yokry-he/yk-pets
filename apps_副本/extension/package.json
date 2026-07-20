@@ -1,0 +1,27 @@
+{
+  "name": "@nova/extension",
+  "version": "0.6.10",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt -b chrome",
+    "build": "wxt build -b chrome",
+    "zip": "wxt zip -b chrome",
+    "prepare": "wxt prepare",
+    "typecheck": "wxt prepare && vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@nova/shared": "workspace:*",
+    "@tresjs/core": "5.8.3",
+    "three": "0.185.1",
+    "vue": "3.5.40"
+  },
+  "devDependencies": {
+    "@types/three": "0.185.0",
+    "@wxt-dev/module-vue": "1.0.3",
+    "typescript": "5.9.3",
+    "vue-tsc": "3.3.7",
+    "wxt": "0.20.27",
+    "@types/chrome": "0.2.2"
+  }
+}
