@@ -10,9 +10,9 @@ export interface LocalizedLabel {
 }
 
 export interface PetIdentity {
-  /** Stable identity used by storage, events, and future multi-pet registries. */
+  /** 稳定身份用于存储、事件与未来的多宠物注册表。 / Stable identity used by storage, events, and future multi-pet registries. */
   id: string
-  /** Stable species key; it must not be derived from the pet's display name. */
+  /** 物种键不能从宠物显示名推导。 / The species key must not be derived from the pet's display name. */
   speciesId: string
   species: LocalizedLabel
   name: LocalizedLabel
@@ -43,14 +43,14 @@ export const ZEPH_CLOUD_FOX_IDENTITY: Readonly<PetIdentity> = Object.freeze({
   }),
 })
 
-export function resolvePetIdentity(identity?: PetIdentity): Readonly<PetIdentity> {
+export function resolvePetIdentity(identity?: Readonly<PetIdentity>): Readonly<PetIdentity> {
   return identity || ZEPH_CLOUD_FOX_IDENTITY
 }
 
-export function formatPetName(identity: PetIdentity = ZEPH_CLOUD_FOX_IDENTITY, locale: 'zh-CN' | 'en' = 'zh-CN') {
+export function formatPetName(identity: Readonly<PetIdentity> = ZEPH_CLOUD_FOX_IDENTITY, locale: 'zh-CN' | 'en' = 'zh-CN') {
   return identity.name[locale]
 }
 
-export function formatPetIdentity(identity: PetIdentity = ZEPH_CLOUD_FOX_IDENTITY, locale: 'zh-CN' | 'en' = 'zh-CN') {
+export function formatPetIdentity(identity: Readonly<PetIdentity> = ZEPH_CLOUD_FOX_IDENTITY, locale: 'zh-CN' | 'en' = 'zh-CN') {
   return `${identity.name[locale]} · ${identity.species[locale]}`
 }
