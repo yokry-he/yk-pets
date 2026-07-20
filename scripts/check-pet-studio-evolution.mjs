@@ -6,6 +6,10 @@ const renderer = read('apps/playground/app/components/studio/CustomizableCloudFo
 const page = read('apps/playground/app/pages/studio.vue')
 const phase4 = read('apps/playground/app/domain/pet-studio-phase4.ts')
 const presetsPage = read('apps/playground/app/pages/studio-presets.vue')
+const scene = read('apps/playground/app/domain/pet-scene.ts')
+const sceneComponent = read('apps/playground/app/components/studio/PetSceneEffects.vue')
+const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
+const scenePage = read('apps/playground/app/pages/studio-scenes.vue')
 const expectations = [
   ['schema v2', domain.includes('PET_STUDIO_SCHEMA_VERSION = 2')],
   ['legacy migration', domain.includes('legacySymbols') && domain.includes('normalizePetStudioAppearanceV2')],
@@ -19,6 +23,12 @@ const expectations = [
   ['scoped application', phase4.includes("AppearanceApplyScope = 'all' | 'shape' | 'proportions' | 'colors' | 'glow'")],
   ['locked random generation', phase4.includes('randomizeWithLocks') && presetsPage.includes('随机生成锁定')],
   ['user schemes', presetsPage.includes('我的方案') && store.includes('saveCustomScheme')],
+  ['scene recipe', scene.includes('interface PetSceneRecipe')],
+  ['four scene presets', ['极光云境','深空星云','霓虹机库','完全透明'].every(name => scene.includes(name))],
+  ['halo particles ground shadow', ['halo','particles','groundShadow'].every(name => sceneComponent.includes(name))],
+  ['automatic web contrast', scene.includes('resolveSceneContrast') && scenePage.includes('跟随网页')],
+  ['action linked scene', scene.includes('sceneActionMultiplier') && sceneComponent.includes('behavior')],
+  ['scene excluded from camera bounds', canvas.includes('Only petBounds is used for camera fitting')],
 ]
 const failures = expectations.filter(([, ok]) => !ok).map(([name]) => name)
 if (failures.length) { console.error('Pet Studio evolution check failed:', failures.join(', ')); process.exit(1) }
