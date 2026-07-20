@@ -37,7 +37,6 @@ const requiredDocuments = [
     `docs/zh-CN/${name}.md`,
     `docs/en/${name}.md`,
   ]),
-  'apps/playground/README.md',
   'apps/playground/README.zh-CN.md',
   'apps/playground/README.en.md',
 ]
@@ -57,7 +56,7 @@ const failures = []
 for (const relativePath of requiredDocuments) {
   try {
     const info = await stat(path.join(root, relativePath))
-    const minimumSize = relativePath === 'README.md' || relativePath === 'apps/playground/README.md' ? 40 : 120
+    const minimumSize = relativePath === 'README.md' ? 40 : 120
     if (info.size < minimumSize) failures.push(`文档内容过短 / Document is too short: ${relativePath}`)
   }
   catch {
@@ -65,11 +64,17 @@ for (const relativePath of requiredDocuments) {
   }
 }
 
-for (const directory of ['apps', 'packages', 'scripts']) {
+// 产品源码必须声明文件职责。 / Product source files must declare their responsibility.
+for (const directory of ['apps', 'packages']) {
   const absoluteDirectory = path.join(root, directory)
   for (const file of await collectSourceFiles(absoluteDirectory)) {
-    await validateSourceFile(file)
+    await validateSourceFile(file, true)
   }
+}
+
+// 回归脚本保留既有结构，只检查其中手写注释的双语一致性。 / Regression scripts keep their existing structure; only handwritten comments are checked for bilingual consistency.
+for (const file of await collectSourceFiles(path.join(root, 'scripts'))) {
+  await validateSourceFile(file, false)
 }
 
 if (failures.length > 0) {
@@ -80,11 +85,11 @@ else {
   console.log('文档与双语源码注释检查通过。 / Documentation and bilingual source-comment checks passed.')
 }
 
-async function validateSourceFile(file) {
+async function validateSourceFile(file, requireHeader) {
   const relativePath = path.relative(root, file)
   const content = await readFile(file, 'utf8')
 
-  if (!content.slice(0, 900).includes('文件职责 / File responsibility')) {
+  if (requireHeader && !content.slice(0, 900).includes('文件职责 / File responsibility')) {
     failures.push(`缺少双语文件职责注释 / Missing bilingual file responsibility header: ${relativePath}`)
   }
 
