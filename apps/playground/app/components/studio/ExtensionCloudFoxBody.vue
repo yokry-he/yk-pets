@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  渲染云狐身体、内嵌前爪、后肢、收窄肚皮和身份标志，并驱动完整四肢动作。
-  Renders the Cloud Fox torso, embedded front paws, hind limbs, inset belly patch, and symbols with full limb animation.
+  渲染云狐身体、内嵌前爪、后肢和身份标志，并通过共享球/飞扑姿态驱动完整四肢动作。
+  Renders the Cloud Fox torso, embedded front paws, hind limbs, and symbols while driving all limbs from shared ball and catch poses.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
@@ -9,6 +9,7 @@ import { CanvasTexture, DoubleSide, Euler, Vector3 } from 'three'
 import type { Group } from 'three'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import { clamp01, createExtensionCloudFoxMotionFrame, mix, pulse, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
+import { createBallMotionPose, createCatchMotionPose } from '~/domain/cloud-fox-prop-motion'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { SymbolChannelRecipe } from '~/domain/pet-studio-phase4'
 import type { FrontPawStyle, MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
@@ -42,17 +43,6 @@ const bodyScale = computed(() => scale(
   props.appearance.proportions.bodyHeight,
   props.appearance.proportions.bodyDepth,
 ))
-const bellyPosition = computed(() => vector([
-  0,
-  scheme.model.body.position[1] - .08 * props.appearance.proportions.bodyHeight,
-  .765 * props.appearance.proportions.bodyDepth,
-]))
-const bellyScale = computed(() => vector([
-  .51 * props.appearance.proportions.bodyWidth,
-  .68 * props.appearance.proportions.bodyHeight,
-  .11 * props.appearance.proportions.bodyDepth,
-]))
-
 const pawProfile = computed(() => PAW_STYLE_PROFILE[props.appearance.frontPawDesign.style])
 const pawRootX = computed(() => scheme.model.frontPaw.offset[0] * props.appearance.proportions.bodyWidth * props.appearance.proportions.limbSpacing)
 const pawRootY = computed(() => scheme.model.frontPaw.offset[1] + props.appearance.frontPawDesign.rootHeight)
@@ -158,6 +148,8 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   }
   const stateElapsed = Math.max(0, elapsed - startedAt)
   const frame = createExtensionCloudFoxMotionFrame(props.behavior, stateElapsed)
+  const ballPose = createBallMotionPose(frame.ballProgress)
+  const catchPose = createCatchMotionPose(frame.catchProgress)
   const state = props.behavior
   const design = props.appearance.frontPawDesign
 
@@ -234,17 +226,17 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       targetX = -.18 * wake
     }
     else if (state === 'playing-ball') {
-      const ballX = Math.sin(frame.ballProgress * Math.PI * 4) * .72
-      const hop = Math.abs(Math.sin(frame.ballProgress * Math.PI * 4))
-      const reach = clamp01(1 - Math.abs(ballX - side * .5) / 1.05) * (.42 + hop * .58)
+      const activeBoost = side === ballPose.activeSide ? 1 : .7
+      const reach = clamp01(1 - Math.abs(ballPose.position.x - side * .5) / 1.05) * (.42 + ballPose.height * .58) * activeBoost
       const tap = side < 0
         ? pulse(frame.ballProgress, .12, .31) + pulse(frame.ballProgress, .62, .81)
         : pulse(frame.ballProgress, .37, .56) + pulse(frame.ballProgress, .78, .95)
-      targetX = -.2 - Math.max(reach, tap) * .62
-      targetY = -ballX * .12
-      targetZ = side * (.1 + reach * .24) - ballX * .14
-      tipX = Math.max(reach, tap) * .4
-      tipZ = -ballX * .12
+      const intent = Math.max(reach, tap)
+      targetX = -.2 - intent * .62 - ballPose.height * .06
+      targetY = -ballPose.position.x * .12
+      targetZ = side * (.1 + reach * .24) - ballPose.position.x * .14
+      tipX = intent * .4
+      tipZ = -ballPose.position.x * .12
     }
     else if (state === 'eating') {
       const eatPose = smoothStep(.04, .22, frame.eatProgress) * (1 - smoothStep(.88, .99, frame.eatProgress))
@@ -264,11 +256,13 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       tipZ = side * -.18 * frame.tornadoStrength
     }
     else if (state === 'diving-catch') {
-      targetX = -.22 - frame.catchReach * .92 + frame.catchLand * .26
-      targetZ = side * (.08 - frame.catchReach * .12)
-      scaleY = 1 + frame.catchReach * .18
-      tipX = -frame.catchReach * .56
-      tipZ = side * -.22 * frame.catchReach
+      const activeReach = side === catchPose.activeSide ? 1 : .74
+      targetX = -.22 - frame.catchReach * (.72 + activeReach * .28) + frame.catchLand * .26
+      targetY = -catchPose.pawTarget.x * .1 * frame.catchReach
+      targetZ = side * (.08 - frame.catchReach * .12) - catchPose.pawTarget.x * .1 * frame.catchReach
+      scaleY = 1 + frame.catchReach * (.12 + activeReach * .06)
+      tipX = -frame.catchReach * (.42 + activeReach * .14)
+      tipZ = side * -.18 * frame.catchReach - catchPose.pawTarget.x * .06 * frame.catchReach
     }
     else if (state === 'energy-burst') {
       targetX = -frame.energyCharge * .48 + frame.energyRelease * .18
@@ -332,6 +326,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     if (!group) return
     const dance = state === 'playing' ? Math.sin(elapsed * 7.2 + (side < 0 ? 0 : Math.PI)) : 0
     const flap = state === 'flapping' ? Math.sin(stateElapsed * 11.5 + (side < 0 ? 0 : Math.PI)) : 0
+    const ballKick = state === 'playing-ball' ? Math.sin(frame.ballProgress * Math.PI * 8 + (side < 0 ? 0 : Math.PI)) : 0
     const jumpKick = state === 'jumping' ? frame.jumpLanding : 0
     let targetX = -.04 - jumpKick * .28 - Math.abs(dance) * .08
     let targetZ = side * dance * .18
@@ -339,6 +334,10 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     if (state === 'flapping') {
       targetX = -.22 - Math.abs(flap) * .48
       targetZ = side * flap * .5
+    }
+    else if (state === 'playing-ball') {
+      targetX = -.1 - Math.abs(ballKick) * .18
+      targetZ = side * ballKick * .22
     }
     else if (state === 'resting') {
       targetX = mix(-.04, .88, frame.restingPose)
@@ -382,11 +381,6 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     <TresBoxGeometry v-if="appearance.parts.bodyShape === 'rounded-cube'" :args="[1.72, 1.72, 1.72, 8, 8, 8]" />
     <TresSphereGeometry v-else :args="[scheme.model.body.radius, 64, 64]" />
     <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness=".34" :metalness=".04" />
-  </TresMesh>
-
-  <TresMesh :position="bellyPosition" :scale="bellyScale" cast-shadow>
-    <TresSphereGeometry :args="[1, 48, 48]" />
-    <TresMeshStandardMaterial :color="appearance.palette.coatWarm" :roughness=".42" />
   </TresMesh>
 
   <TresGroup v-for="side in [-1, 1]" :key="`fp${side}`" :position="pawPosition(side)">
