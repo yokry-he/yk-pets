@@ -49,10 +49,20 @@ const antennaRod = computed(() => [
   scheme.model.antenna.rod[3],
 ] as const)
 
-function setSideRef(node: unknown, side: number, left: typeof leftEye, right: typeof rightEye) {
+function setEyeRef(node: unknown, side: number) {
   const group = node as Group | undefined
-  if (side < 0) left.value = group
-  else right.value = group
+  if (side < 0) leftEye.value = group
+  else rightEye.value = group
+}
+function setEarRef(node: unknown, side: number) {
+  const group = node as Group | undefined
+  if (side < 0) leftEar.value = group
+  else rightEar.value = group
+}
+function setAntennaRef(node: unknown, side: number) {
+  const group = node as Group | undefined
+  if (side < 0) leftAntenna.value = group
+  else rightAntenna.value = group
 }
 function registerGlow(reference: unknown) {
   const material = reference as MeshStandardMaterial | null
@@ -196,7 +206,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     <TresGroup
       v-for="side in [-1, 1]"
       :key="`ear-${side}`"
-      :ref="node => setSideRef(node, side, leftEar, rightEar)"
+      :ref="node => setEarRef(node, side)"
       :position="vector([side * earX, scheme.model.head.earOffset[1], scheme.model.head.earOffset[2]])"
       :rotation="rotation([0, 0, side * scheme.model.head.earRotationZ])"
       :scale="vector([appearance.proportions.earScale, appearance.proportions.earScale, appearance.proportions.earScale])"
@@ -223,7 +233,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       <TresGroup
         v-for="side in [-1, 1]"
         :key="`antenna-${side}`"
-        :ref="node => setSideRef(node, side, leftAntenna, rightAntenna)"
+        :ref="node => setAntennaRef(node, side)"
         :position="vector([side * antennaX, scheme.model.antenna.offset[1], scheme.model.antenna.offset[2]])"
         :rotation="rotation([scheme.model.antenna.rotation[0], side < 0 ? scheme.model.antenna.rotation[1] : -scheme.model.antenna.rotation[1], side * appearance.antennaDesign.tilt])"
         :scale="vector([appearance.proportions.antennaScale, antennaY, appearance.proportions.antennaScale])"
@@ -249,7 +259,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     <TresMesh :position="vector(scheme.model.head.muzzlePosition)" :scale="vector(scheme.model.head.muzzleScale)"><TresSphereGeometry :args="[scheme.model.head.muzzleRadius, 48, 48]" /><TresMeshStandardMaterial :color="scheme.palette.muzzle" :roughness=".34" /></TresMesh>
 
     <template v-if="appearance.parts.eyes !== 'visor'">
-      <TresGroup v-for="side in [-1, 1]" :key="`eye-${side}`" :ref="node => setSideRef(node, side, leftEye, rightEye)" :position="vector([side * eyeX, scheme.model.head.eyeOffset[1], scheme.model.head.eyeOffset[2]])">
+      <TresGroup v-for="side in [-1, 1]" :key="`eye-${side}`" :ref="node => setEyeRef(node, side)" :position="vector([side * eyeX, scheme.model.head.eyeOffset[1], scheme.model.head.eyeOffset[2]])">
         <TresMesh :scale="appearance.parts.eyes === 'sleepy' ? vector([.19, .07, .08]) : appearance.parts.eyes === 'oval' ? vector([.13, .25, .1]) : scaled(scheme.model.head.eyeScale, appearance.proportions.eyeScale)">
           <TresDodecahedronGeometry v-if="['spark', 'diamond'].includes(appearance.parts.eyes)" />
           <TresSphereGeometry v-else :args="[1, 32, 32]" />
