@@ -8,7 +8,7 @@ import { useLoop } from '@tresjs/core'
 import { AdditiveBlending, CatmullRomCurve3, Color, Euler, Quaternion, Vector3 } from 'three'
 import type { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from 'three'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME, type VisualCurve } from '~/domain/chrome-extension-cloud-fox-profile'
-import { createExtensionCloudFoxMotionFrame } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
+import { createExtensionCloudFoxMotionFrame, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 
@@ -25,6 +25,8 @@ const scaledCurve = (points: VisualCurve, factor: number) => new CatmullRomCurve
 )
 const damp = (current: number, target: number, speed: number, delta: number) => current + (target - current) * Math.min(1, 1 - Math.exp(-speed * delta))
 const UP = new Vector3(0, 1, 0)
+const TAU = Math.PI * 2
+const TAIL_TORNADO_TURNS = 7
 const alignY = (direction: Vector3) => direction.lengthSq() < .000001
   ? new Quaternion()
   : new Quaternion().setFromUnitVectors(UP, direction.clone().normalize())
@@ -178,6 +180,9 @@ const flashColor = new Color()
 
 useLoop().onBeforeRender(({ elapsed, delta }) => {
   if (previousBehavior !== props.behavior || previousMotionKey !== props.motionKey) {
+    if (previousBehavior === 'tail-tornado' && tail.value) {
+      tail.value.rotation.z -= Math.round((tail.value.rotation.z - directionRotation.value.z) / TAU) * TAU
+    }
     previousBehavior = props.behavior
     previousMotionKey = props.motionKey
     startedAt = elapsed
@@ -189,10 +194,11 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const happy = state === 'happy' || state === 'talking'
   const energetic = ['greeting', 'jumping', 'playing', 'flapping', 'playing-ball', 'star-juggle', 'excited'].includes(state)
   const resting = state === 'resting' || state === 'sleeping' || state === 'cloud-nap'
+  const tornado = state === 'tail-tornado'
   const amplitude = happy
     ? .18
-    : state === 'tail-tornado'
-      ? .52
+    : tornado
+      ? .06
       : state === 'tail-glow'
         ? .2 + frame.tailGlowWave * .14
         : frame.highEnergy
@@ -208,8 +214,8 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
                   : .075
   const speed = happy
     ? 6.8
-    : state === 'tail-tornado'
-      ? 14.5
+    : tornado
+      ? 12
       : state === 'tail-glow'
         ? 5.4
         : frame.highEnergy
@@ -228,22 +234,28 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const tipWave = Math.sin(elapsed * speed - 1.18)
   const restFold = resting ? -.1 : 0
   const stretchTailLift = state === 'stretching' ? frame.stretchStrength : 0
+  const tailWindmillAngle = tornado
+    ? smoothStep(.04, .96, frame.tornadoProgress) * TAU * TAIL_TORNADO_TURNS
+    : 0
 
   if (tail.value) {
     const target = directionRotation.value
     tail.value.rotation.x = damp(tail.value.rotation.x, target.x + Math.cos(elapsed * speed * .45) * .018 - stretchTailLift * .06, 6, delta)
     tail.value.rotation.y = damp(tail.value.rotation.y, target.y + Math.sin(elapsed * speed * .32) * amplitude * .08, 6, delta)
-    tail.value.rotation.z = damp(tail.value.rotation.z, target.z + rootWave * amplitude * .24 + restFold * .45 - stretchTailLift * .05, 7, delta)
+    if (tornado) tail.value.rotation.z = target.z + tailWindmillAngle
+    else tail.value.rotation.z = damp(tail.value.rotation.z, target.z + rootWave * amplitude * .24 + restFold * .45 - stretchTailLift * .05, 7, delta)
   }
   if (midTail.value) {
-    midTail.value.rotation.x = damp(midTail.value.rotation.x, midRotation.value.x, 7, delta)
-    midTail.value.rotation.y = damp(midTail.value.rotation.y, midRotation.value.y + Math.cos(elapsed * speed - .45) * amplitude * .1, 7, delta)
-    midTail.value.rotation.z = damp(midTail.value.rotation.z, midRotation.value.z + midWave * amplitude * .62 + restFold * .42 + stretchTailLift * .14, 8, delta)
+    const tornadoLag = tornado ? Math.sin(tailWindmillAngle - .62) * .16 * frame.tornadoStrength : 0
+    midTail.value.rotation.x = damp(midTail.value.rotation.x, midRotation.value.x + tornadoLag * .32, 7, delta)
+    midTail.value.rotation.y = damp(midTail.value.rotation.y, midRotation.value.y + Math.cos(elapsed * speed - .45) * amplitude * .1 + tornadoLag * .24, 7, delta)
+    midTail.value.rotation.z = damp(midTail.value.rotation.z, midRotation.value.z + midWave * amplitude * .62 + restFold * .42 + stretchTailLift * .14 + tornadoLag, 8, delta)
   }
   if (tipTail.value) {
-    tipTail.value.rotation.x = damp(tipTail.value.rotation.x, tipRotation.value.x, 8, delta)
-    tipTail.value.rotation.y = damp(tipTail.value.rotation.y, tipRotation.value.y + Math.cos(elapsed * speed - .8) * amplitude * .18 + stretchTailLift * .04, 8, delta)
-    tipTail.value.rotation.z = damp(tipTail.value.rotation.z, tipRotation.value.z + tipWave * amplitude * 1.02 + restFold * .28 + stretchTailLift * .22, 9, delta)
+    const tornadoLag = tornado ? Math.sin(tailWindmillAngle - 1.18) * .28 * frame.tornadoStrength : 0
+    tipTail.value.rotation.x = damp(tipTail.value.rotation.x, tipRotation.value.x + tornadoLag * .3, 8, delta)
+    tipTail.value.rotation.y = damp(tipTail.value.rotation.y, tipRotation.value.y + Math.cos(elapsed * speed - .8) * amplitude * .18 + stretchTailLift * .04 + tornadoLag * .22, 8, delta)
+    tipTail.value.rotation.z = damp(tipTail.value.rotation.z, tipRotation.value.z + tipWave * amplitude * 1.02 + restFold * .28 + stretchTailLift * .22 + tornadoLag, 9, delta)
   }
 
   const glowBoost = state === 'tail-glow'
