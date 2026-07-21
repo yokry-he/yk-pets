@@ -17,8 +17,10 @@ const bodyScale = computed(() => vector([
   scheme.model.body.scale[2] * props.appearance.proportions.bodyDepth,
 ]))
 
-// 和身体使用同一椭球中心与曲率，只放大不到 1%，因此侧面最多露出一层非常薄的外壳。
-// Share the torso center and curvature and enlarge by less than 1%, leaving only a hairline reveal in profile.
+/*
+ * 和身体使用同一椭球中心与曲率，只放大不到 1%，因此侧面最多露出一层非常薄的外壳。
+ * Share the torso center and curvature and enlarge by less than 1%, leaving only a hairline reveal in profile.
+ */
 const shellScale = computed(() => vector([
   bodyScale.value.x * 1.004,
   bodyScale.value.y * 1.004,
