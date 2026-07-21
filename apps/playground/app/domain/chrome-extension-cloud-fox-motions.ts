@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 将正式 Chrome 扩展 CloudFox.vue 中的行为标识、中文名称、分组和预览时长同步到 Studio。
- * Mirrors production Chrome extension Cloud Fox motion ids, labels, groups, and preview durations into Studio.
+ * 将正式 Chrome 扩展 CloudFox.vue 中的行为标识、中文名称、分组、原始时长和 Studio 演示时长同步到 Studio。
+ * Mirrors production Chrome extension Cloud Fox motion ids, labels, groups, source durations, and Studio preview durations.
  */
 
 export const EXTENSION_CLOUD_FOX_MOTION_GROUPS = [
@@ -27,7 +27,7 @@ export const EXTENSION_CLOUD_FOX_MOTIONS = [
   { id: 'greeting', label: '招手', labelEn: 'Greeting', group: 'basic', sourceDurationSeconds: 2.4, previewDurationMs: 2750 },
   { id: 'playing', label: '开心舞步', labelEn: 'Playing', group: 'basic', sourceDurationSeconds: 0, previewDurationMs: 5600 },
   { id: 'spinning', label: '转圈', labelEn: 'Spinning', group: 'basic', sourceDurationSeconds: 1.9, previewDurationMs: 2250 },
-  { id: 'jumping', label: '跳跃', labelEn: 'Jumping', group: 'basic', sourceDurationSeconds: 1.25, previewDurationMs: 1650 },
+  { id: 'jumping', label: '跳跃', labelEn: 'Jumping', group: 'basic', sourceDurationSeconds: 1.25, previewDurationMs: 3200 },
   { id: 'flapping', label: '挥爪扑腾', labelEn: 'Flapping', group: 'basic', sourceDurationSeconds: 0, previewDurationMs: 5200 },
   { id: 'resting', label: '趴下休息', labelEn: 'Resting', group: 'basic', sourceDurationSeconds: 0, previewDurationMs: 7600 },
   { id: 'stretching', label: '伸懒腰', labelEn: 'Stretching', group: 'basic', sourceDurationSeconds: 7, previewDurationMs: 7350 },
