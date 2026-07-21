@@ -39,6 +39,15 @@ const cubePatchScale = computed(() => vector([
 
 const patchMask = shallowRef<CanvasTexture>()
 
+function drawShieldMask(context: CanvasRenderingContext2D) {
+  context.moveTo(68, 66)
+  context.bezierCurveTo(68, 48, 84, 40, 104, 40)
+  context.lineTo(152, 40)
+  context.bezierCurveTo(172, 40, 188, 48, 188, 66)
+  context.bezierCurveTo(188, 126, 168, 190, 128, 222)
+  context.bezierCurveTo(88, 190, 68, 126, 68, 66)
+}
+
 function createPatchMask(style: BellyPatchStyle) {
   if (!import.meta.client) return
   const canvas = document.createElement('canvas')
@@ -51,13 +60,11 @@ function createPatchMask(style: BellyPatchStyle) {
   if (style === 'oval') {
     context.ellipse(128, 132, 76, 103, 0, 0, Math.PI * 2)
   }
+  else if (style === 'shield') {
+    drawShieldMask(context)
+  }
   else {
-    context.moveTo(68, 66)
-    context.bezierCurveTo(68, 48, 84, 40, 104, 40)
-    context.lineTo(152, 40)
-    context.bezierCurveTo(172, 40, 188, 48, 188, 66)
-    context.bezierCurveTo(188, 126, 168, 190, 128, 222)
-    context.bezierCurveTo(88, 190, 68, 126, 68, 66)
+    drawShieldMask(context)
   }
   context.closePath()
   context.fill()
