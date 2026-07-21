@@ -6,11 +6,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
 import { useLoop } from '@tresjs/core'
-import { CanvasTexture, DoubleSide, Vector3 } from 'three'
+import { CanvasTexture, DoubleSide, Euler, Vector3 } from 'three'
 import type { Group, Material, Mesh, MeshStandardMaterial } from 'three'
 import type { PetRecipeEnvelope } from '@yk-pets/pet-core'
 import CloudFox from './CloudFox.vue'
-import { resolveExtensionCloudFoxAppearance, type ExtensionBellyPatchStyle } from './appearance'
+import {
+  resolveExtensionCloudFoxAppearance,
+  type ExtensionBellyPatchStyle,
+  type ExtensionCloudFoxAppearance,
+} from './appearance'
 import type { PetEmotion } from './types'
 
 const props = defineProps<{
@@ -24,15 +28,17 @@ const props = defineProps<{
   recipe?: PetRecipeEnvelope | null
 }>()
 
+type PaletteRole = keyof ExtensionCloudFoxAppearance['palette']
 const root = shallowRef<Group>()
 const legacyCore = shallowRef<Mesh>()
 const legacyBelly = shallowRef<Mesh>()
 const chestTexture = shallowRef<CanvasTexture>()
 const backTexture = shallowRef<CanvasTexture>()
 const bellyTexture = shallowRef<CanvasTexture>()
-const materialRoles = new WeakMap<Material, keyof ReturnType<typeof resolveExtensionCloudFoxAppearance>['palette']>()
+const materialRoles = new WeakMap<Material, PaletteRole>()
 const visual = computed(() => resolveExtensionCloudFoxAppearance(props.recipe))
 const vector = (x: number, y: number, z: number) => new Vector3(x, y, z)
+const rotation = (x: number, y: number, z: number) => new Euler(x, y, z)
 let appearanceDirty = true
 
 const rootScale = computed(() => vector(
@@ -133,9 +139,9 @@ watch(() => visual.value.symbols.chest, symbol => replaceTexture(chestTexture, c
 watch(() => visual.value.symbols.back, symbol => replaceTexture(backTexture, createSymbolTexture(symbol.text, symbol.color, symbol.glowIntensity)), { immediate: true, deep: true })
 watch(visual, () => { appearanceDirty = true }, { deep: true, immediate: true })
 
-function roleFor(material: MeshStandardMaterial) {
+function roleFor(material: MeshStandardMaterial): PaletteRole | undefined {
   const hex = `#${material.color.getHexString()}`
-  const roles: Record<string, keyof ReturnType<typeof resolveExtensionCloudFoxAppearance>['palette']> = {
+  const roles: Record<string, PaletteRole> = {
     '#e9ecff': 'coat', '#ffffff': 'coat', '#aeb6e8': 'coatShadow', '#c5cced': 'coatShadow',
     '#f9fbff': 'coatWarm', '#7066ff': 'primaryGlow', '#52e0d0': 'secondaryGlow', '#caffff': 'tailGlow',
     '#141629': 'eye', '#69708f': 'eye',
@@ -184,27 +190,19 @@ onBeforeUnmount(() => {
 
 <template>
   <TresGroup ref="root" :scale="rootScale">
-    <CloudFox
-      :behavior="behavior"
-      :emotion="emotion"
-      :speaking="speaking"
-      :pointer="pointer"
-      :secret-mode="secretMode"
-      :motion-key="motionKey"
-      :theme="theme"
-    />
+    <CloudFox :behavior="behavior" :emotion="emotion" :speaking="speaking" :pointer="pointer" :secret-mode="secretMode" :motion-key="motionKey" :theme="theme" />
 
     <TresMesh v-if="visual.bellyPatchDesign.visible" :position="bellyPosition" :scale="bellyScale" :render-order="3">
       <TresPlaneGeometry :args="[2, 2, 16, 20]" />
       <TresMeshStandardMaterial :color="visual.palette.coatWarm" :alpha-map="bellyTexture" transparent :alpha-test=".04" :depth-write="true" />
     </TresMesh>
 
-    <TresGroup v-if="showChestSymbol && chestTexture" :position="chestPosition" :rotation="vector(0, 0, visual.symbols.chest.rotation)" :scale="chestScale" :render-order="4">
+    <TresGroup v-if="showChestSymbol && chestTexture" :position="chestPosition" :rotation="rotation(0, 0, visual.symbols.chest.rotation)" :scale="chestScale" :render-order="4">
       <TresPointLight :color="visual.symbols.chest.color" :intensity="visual.symbols.chest.glowIntensity * .55" />
       <TresMesh><TresPlaneGeometry /><TresMeshBasicMaterial :map="chestTexture" transparent :side="DoubleSide" :depth-write="false" /></TresMesh>
     </TresGroup>
 
-    <TresGroup v-if="visual.symbols.back.enabled && backTexture" :position="backPosition" :rotation="vector(0, Math.PI, visual.symbols.back.rotation)" :scale="backScale" :render-order="4">
+    <TresGroup v-if="visual.symbols.back.enabled && backTexture" :position="backPosition" :rotation="rotation(0, Math.PI, visual.symbols.back.rotation)" :scale="backScale" :render-order="4">
       <TresMesh><TresPlaneGeometry /><TresMeshBasicMaterial :map="backTexture" transparent :side="DoubleSide" :depth-write="false" /></TresMesh>
     </TresGroup>
   </TresGroup>
