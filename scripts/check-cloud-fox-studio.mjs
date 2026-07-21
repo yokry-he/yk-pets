@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 const phaseArg = process.argv.find(argument => argument.startsWith('--phase='))
-const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 10
+const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 11
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const files = {
   package: read('package.json'),
@@ -22,6 +22,7 @@ const files = {
   extensionAlignedHead: read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue'),
   extensionAlignedTail: read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue'),
   motionEffects: read('apps/playground/app/components/studio/ExtensionCloudFoxMotionEffects.vue'),
+  orbit: read('apps/playground/app/components/studio/ExtensionCloudFoxOrbit.vue'),
   motionToolbar: read('apps/playground/app/components/studio/StudioMotionToolbar.vue'),
   earEditor: read('apps/playground/app/components/studio/StudioEarEditor.vue'),
   tailEditor: read('apps/playground/app/components/studio/StudioTailEditor.vue'),
@@ -90,12 +91,21 @@ const checks = [
   [9, 'front-paw style and geometry controls', files.registry.includes('FRONT_PAW_STYLES') && files.registry.includes('FrontPawDesignRecipe') && files.tailEditor.includes('连续前爪连接') && files.tailEditor.includes('根部埋入身体')],
   [9, 'front-paw safe normalization and audit', files.registry.includes('FRONT_PAW_DESIGN_RANGES') && files.registry.includes('auditFrontPawDesign') && files.store.includes('auditFrontPawDesign')],
   [9, 'front-paw local patch isolation', files.patchDomain.includes('frontPawDesign?:') && files.store.includes('patchFrontPawDesign') && files.patchTest.includes('nonPawSnapshot')],
-  [10, 'all Chrome extension motions catalogued', files.motionCatalog.includes('EXTENSION_CLOUD_FOX_MOTIONS') && files.motionCatalog.includes("id: 'fireworks-show'") && files.motionCatalog.includes("id: 'tail-glow'")],
+  [10, 'Chrome extension motion catalog', files.motionCatalog.includes('EXTENSION_CLOUD_FOX_MOTIONS') && files.motionCatalog.includes("id: 'fireworks-show'") && files.motionCatalog.includes("id: 'tail-glow'")],
   [10, 'extension timing curves shared', files.motionRuntime.includes('createExtensionCloudFoxMotionFrame') && files.extensionAlignedRenderer.includes('createExtensionCloudFoxMotionFrame') && files.extensionAlignedBody.includes('createExtensionCloudFoxMotionFrame')],
   [10, 'single dropdown and replay', files.motionToolbar.includes('<select') && files.motionToolbar.includes('<optgroup') && files.page.includes('motionKey.value += 1') && !files.page.includes('v-for="[id,label] in motions"')],
   [10, 'motion props and effects', files.motionEffects.includes('fireworkBursts') && files.motionEffects.includes('starGroup') && files.motionEffects.includes('cloud-nap') && files.motionEffects.includes('playing-ball')],
   [10, 'continuous rounded tail joints', files.extensionAlignedTail.includes('socketRadius') && files.extensionAlignedTail.includes('connectorQuaternion') && files.extensionAlignedTail.includes('rootExtensionEnd') && files.extensionAlignedTail.includes('tipEnd')],
-  [10, 'motion parity CI', files.package.includes('check:cloud-fox-motion-parity') && files.motionParityCheck.includes('Chrome extension motion parity')],
+  [10, 'motion parity CI', files.package.includes('check:cloud-fox-motion-parity') && files.motionParityCheck.includes('Phase 11')],
+  [11, 'belly inset patch and soft shadow base', files.extensionAlignedBody.includes('bellyScale') && files.extensionAlignedBody.includes('.11 * props.appearance.proportions.bodyDepth') && files.motionEffects.includes('TresCircleGeometry')],
+  [11, 'mirrored eye highlights', files.extensionAlignedHead.includes('side * highlightX')],
+  [11, 'rotation actions finish without reverse unwind', files.extensionAlignedRenderer.includes('normalizeFinishedRotation') && files.extensionAlignedRenderer.includes('TAU * 3')],
+  [11, 'persistent configurable orbit', files.registry.includes('BodyOrbitDesignRecipe') && files.orbit.includes('appearance.orbitDesign.enabled') && files.page.includes('显示轨道') && files.extensionAlignedRenderer.includes('ExtensionCloudFoxOrbit')],
+  [11, 'thought bubbles and ballistic sneeze', files.motionEffects.includes('thoughtBubbles') && files.motionEffects.includes('localTime * localTime')],
+  [11, 'enhanced prone stretch ball and juggle limbs', files.motionRuntime.includes('restingPose') && files.extensionAlignedBody.includes('ballX = Math.sin(frame.ballProgress') && files.extensionAlignedBody.includes('frame.juggleWave') && files.extensionAlignedHead.includes('-.5 * frame.stretchStrength')],
+  [11, 'staged backflip and expressive diving catch', files.motionRuntime.includes('backflipCrouch') && files.motionRuntime.includes('backflipTuck') && files.motionRuntime.includes('backflipLand') && files.motionRuntime.includes('catchLaunch') && files.extensionAlignedRenderer.includes('catchYaw')],
+  [11, 'energy starfield and randomized fireworks', files.motionRuntime.includes('energyStarfield') && files.motionEffects.includes('energyStars') && files.motionEffects.includes('fireworkSeed = Math.floor(Math.random()')],
+  [11, 'paw tap removed', !files.motionCatalog.includes("id: 'paw-tap'") && !files.motionRuntime.includes("is('paw-tap')")],
 ]
 const activeChecks = checks.filter(([phase]) => phase <= requestedPhase)
 const failures = activeChecks.filter(([, , passed]) => !passed).map(([, name]) => name)
