@@ -6,6 +6,7 @@ import StudioTailEditor from '~/components/studio/StudioTailEditor.vue'
 import { derivePetMonogram } from '~/domain/cloud-fox-appearance'
 import { CLOUD_FOX_BODY_SHAPES, PET_STUDIO_PART_OPTIONS as PARTS, CLOUD_FOX_SPECIES_DEFINITION } from '~/domain/pet-studio-phase2'
 import { getExtensionCloudFoxMotionDurationMs, type ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
+import { BODY_ORBIT_DESIGN_RANGES } from '~/domain/pet-species-registry'
 import type { PetStudioAppearanceRecipe, SymbolChannelRecipe, CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase3'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 
@@ -24,7 +25,7 @@ const notice = ref('')
 let timer: number | undefined
 let lastCheckpoint = 0
 
-const tabs: Array<[Tab,string]> = [['identity','身份'],['face','头部'],['body','身体'],['tail','尾巴触角'],['glow','发光'],['symbols','标志'],['audit','检查']]
+const tabs: Array<[Tab,string]> = [['identity','身份'],['face','头部'],['body','身体'],['tail','尾巴触角'],['glow','发光轨道'],['symbols','标志'],['audit','检查']]
 const views: Array<[CloudFoxStudioView,string]> = [['front','正面'],['left','左侧'],['back','背面'],['right','右侧']]
 const backgrounds: Array<[CloudFoxStudioBackground,string]> = [['dark','深色'],['light','浅色'],['web','网页']]
 const bodyControls: Array<[ProportionKey,string]> = [['bodyWidth','身体宽度'],['bodyHeight','身体高度'],['bodyDepth','身体厚度'],['limbLength','四肢长度'],['limbThickness','四肢粗细'],['limbSpacing','四肢间距'],['pawScale','爪子大小']]
@@ -49,10 +50,10 @@ function play(next: ExtensionCloudFoxMotionId) {
 }
 function syncName() { checkpoint(); const monogram = derivePetMonogram(recipe.value.identity.nameEn); recipe.value.identity.monogram = monogram; recipe.value.symbols.chest.text = monogram; store.markDirty() }
 function save() { store.save(); show('外观配方已保存') }
-function reset() { if (confirm('恢复扩展经典默认外观？')) { store.reset(); show('已恢复图 2 对应的扩展经典外观') } }
+function reset() { if (confirm('恢复扩展经典默认外观？')) { store.reset(); show('已恢复扩展经典外观') } }
 function exportRecipe() { const url=URL.createObjectURL(new Blob([store.exportJson()],{type:'application/json'}));const anchor=document.createElement('a');anchor.href=url;anchor.download=`${recipe.value.identity.petId}-appearance-v2.json`;anchor.click();URL.revokeObjectURL(url) }
-async function importRecipe(event: Event) { const input=event.target as HTMLInputElement;const file=input.files?.[0];input.value='';if(!file)return;try{store.replace(JSON.parse(await file.text()));show('配方已迁移并补齐局部外观字段')}catch{show('JSON 配方无效')} }
-function refreshColors() { checkpoint(); store.refreshDerivedColors(); show('已重新生成高亮、暗部和光晕色') }
+async function importRecipe(event: Event) { const input=event.target as HTMLInputElement;const file=input.files?.[0];input.value='';if(!file)return;try{store.replace(JSON.parse(await file.text()));show('JSON 配方已导入并自动补齐新字段')}catch{show('JSON 配方无效')} }
+function refreshColors() { checkpoint(); store.refreshDerivedColors(); recipe.value.orbitDesign.primaryColor = recipe.value.palette.primaryGlow; recipe.value.orbitDesign.secondaryColor = recipe.value.palette.secondaryGlow; show('已重新生成光影色与轨道色') }
 onMounted(() => store.hydrate())
 onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 </script>
@@ -80,7 +81,7 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
         <header><strong>{{recipe.identity.nameZh}} / {{recipe.identity.nameEn}}</strong><b :class="{warn:store.dirty}">{{store.dirty?'未保存':'已保存'}}</b></header>
         <div class="controls">
           <template v-if="tab==='identity'">
-            <h2>身份信息</h2><p>旧配方会自动迁移，默认图 2 样式不会因为局部编辑而丢失。</p>
+            <h2>身份信息</h2><p>旧配方会自动迁移，并补齐前爪和身体轨道配置。</p>
             <label>中文名字<input v-model="recipe.identity.nameZh" @focus="checkpoint" @input="store.markDirty"></label>
             <label>英文名字<input v-model="recipe.identity.nameEn" @focus="checkpoint" @input="store.markDirty" @blur="syncName"></label>
             <label>宠物 ID<input v-model="recipe.identity.petId" @focus="checkpoint" @input="store.markDirty"></label>
@@ -105,8 +106,21 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
           <StudioTailEditor v-else-if="tab==='tail'"/>
 
           <template v-else-if="tab==='glow'">
-            <h2>全局发光</h2><label>模式<select v-model="recipe.glow.mode" @focus="checkpoint" @change="store.markDirty"><option value="fixed">固定</option><option value="emotion">动作联动</option><option value="rainbow">彩虹</option></select></label>
-            <label>强度 {{recipe.glow.intensity.toFixed(2)}}<input v-model.number="recipe.glow.intensity" type="range" :min="ranges.glowIntensity[0]" :max="ranges.glowIntensity[1]" step=".05" @pointerdown="checkpoint" @input="store.markDirty"></label>
+            <h2>全局发光与身体轨道</h2>
+            <label>发光模式<select v-model="recipe.glow.mode" @focus="checkpoint" @change="store.markDirty"><option value="fixed">固定</option><option value="emotion">动作联动</option><option value="rainbow">彩虹</option></select></label>
+            <label>发光强度 {{recipe.glow.intensity.toFixed(2)}}<input v-model.number="recipe.glow.intensity" type="range" :min="ranges.glowIntensity[0]" :max="ranges.glowIntensity[1]" step=".05" @pointerdown="checkpoint" @input="store.markDirty"></label>
+            <section class="card">
+              <h3>身体周围轨道</h3>
+              <label class="check"><input v-model="recipe.orbitDesign.enabled" type="checkbox" @focus="checkpoint" @change="store.markDirty">显示轨道</label>
+              <label>轨道数量<select v-model.number="recipe.orbitDesign.ringCount" @focus="checkpoint" @change="store.markDirty"><option :value="1">1 条</option><option :value="2">2 条</option><option :value="3">3 条</option></select></label>
+              <label>半径 {{recipe.orbitDesign.radius.toFixed(2)}}<input v-model.number="recipe.orbitDesign.radius" type="range" :min="BODY_ORBIT_DESIGN_RANGES.radius[0]" :max="BODY_ORBIT_DESIGN_RANGES.radius[1]" step=".01" @pointerdown="checkpoint" @input="store.markDirty"></label>
+              <label>纵向比例 {{recipe.orbitDesign.verticalScale.toFixed(2)}}<input v-model.number="recipe.orbitDesign.verticalScale" type="range" :min="BODY_ORBIT_DESIGN_RANGES.verticalScale[0]" :max="BODY_ORBIT_DESIGN_RANGES.verticalScale[1]" step=".01" @pointerdown="checkpoint" @input="store.markDirty"></label>
+              <label>倾斜 {{recipe.orbitDesign.tilt.toFixed(2)}}<input v-model.number="recipe.orbitDesign.tilt" type="range" :min="BODY_ORBIT_DESIGN_RANGES.tilt[0]" :max="BODY_ORBIT_DESIGN_RANGES.tilt[1]" step=".02" @pointerdown="checkpoint" @input="store.markDirty"></label>
+              <label>速度 {{recipe.orbitDesign.speed.toFixed(2)}}<input v-model.number="recipe.orbitDesign.speed" type="range" :min="BODY_ORBIT_DESIGN_RANGES.speed[0]" :max="BODY_ORBIT_DESIGN_RANGES.speed[1]" step=".01" @pointerdown="checkpoint" @input="store.markDirty"></label>
+              <label>亮度 {{recipe.orbitDesign.intensity.toFixed(2)}}<input v-model.number="recipe.orbitDesign.intensity" type="range" :min="BODY_ORBIT_DESIGN_RANGES.intensity[0]" :max="BODY_ORBIT_DESIGN_RANGES.intensity[1]" step=".05" @pointerdown="checkpoint" @input="store.markDirty"></label>
+              <label>粒子数 {{recipe.orbitDesign.particleCount}}<input v-model.number="recipe.orbitDesign.particleCount" type="range" :min="BODY_ORBIT_DESIGN_RANGES.particleCount[0]" :max="BODY_ORBIT_DESIGN_RANGES.particleCount[1]" step="1" @pointerdown="checkpoint" @input="store.markDirty"></label>
+              <div class="swatches"><label>主轨道<input v-model="recipe.orbitDesign.primaryColor" type="color" @focus="checkpoint" @input="store.markDirty"></label><label>副轨道<input v-model="recipe.orbitDesign.secondaryColor" type="color" @focus="checkpoint" @input="store.markDirty"></label></div>
+            </section>
           </template>
 
           <template v-else-if="tab==='symbols'">
@@ -122,5 +136,5 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 </template>
 
 <style scoped>
-:global(body){margin:0;background:#070912}:global(*){box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer}.page{min-height:100vh;padding:24px;color:#f3f5ff;background:radial-gradient(circle at 75% 4%,#7066ff33,transparent 28%),#070912;font-family:Inter,system-ui}.top{display:flex;justify-content:space-between;align-items:end;gap:20px;max-width:1680px;margin:auto auto 18px}.top a{color:#8fe9dd}.top small{display:block;margin-top:14px;color:#8d86ff}.top h1{margin:6px 0;font-size:clamp(34px,4vw,56px)}.top p{margin:0;color:#aeb7d8}.actions,.toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.actions{justify-content:flex-end}.actions button,.toolbar button,.controls>button{border:1px solid #ffffff24;border-radius:9px;padding:7px 10px;color:#fff;background:#ffffff0d}.actions button:disabled{opacity:.4}.primary,button.active{border-color:#7066ff!important;background:#7066ff3d!important}.layout{display:grid;grid-template-columns:112px minmax(520px,1fr) 370px;gap:14px;max-width:1680px;margin:auto}nav,aside,.toolbar{border:1px solid #ffffff18;border-radius:16px;background:#0e111ecc;backdrop-filter:blur(16px)}nav{display:flex;flex-direction:column;align-self:start;padding:7px}nav button{position:relative;border:0;border-radius:10px;padding:12px;color:#aeb7d8;background:transparent}nav i{position:absolute;right:8px;color:#ffd36a}.toolbar{margin-bottom:9px;padding:9px}.loading{display:grid;place-items:center;min-height:620px}aside{align-self:start;overflow:hidden}aside>header{display:flex;justify-content:space-between;padding:15px;border-bottom:1px solid #ffffff18}aside b{color:#6fe9d7}.warn{color:#ffd36a!important}.controls{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 95px);overflow:auto;padding:16px}.controls h2,.controls h3{margin:0}.controls>p{margin:0;color:#9da6c8;font-size:13px}.controls label{display:flex;flex-direction:column;gap:5px;color:#bbc2dc;font-size:13px}.controls input:not([type=range]):not([type=checkbox]):not([type=color]),.controls select{min-height:38px;border:1px solid #ffffff22;border-radius:9px;padding:7px;color:#fff;background:#111526}.controls input[type=range]{width:100%;accent-color:#7066ff}.controls input[type=color]{width:100%;height:36px;border:0;background:transparent}.check{flex-direction:row!important}.card,.finding{display:flex;flex-direction:column;gap:9px;padding:10px;border:1px solid #ffffff18;border-radius:10px;background:#ffffff08}.swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.finding p{margin:5px 0;color:#bbc2dc}.finding code{font-size:11px;color:#8fe9dd}.finding.warning{border-color:#ffd36a66;background:#ffd36a0d}.notice{position:fixed;right:22px;bottom:20px;padding:10px 13px;border:1px solid #52e0d055;border-radius:10px;background:#0c2327;color:#dffdfa}@media(max-width:1000px){.top{align-items:start;flex-direction:column}.layout{grid-template-columns:1fr}nav{flex-direction:row;overflow:auto}.controls{max-height:none}}
+:global(body){margin:0;background:#070912}:global(*){box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer}.page{min-height:100vh;padding:24px;color:#f3f5ff;background:radial-gradient(circle at 75% 4%,#7066ff33,transparent 28%),#070912;font-family:Inter,system-ui}.top{display:flex;justify-content:space-between;align-items:end;gap:20px;max-width:1680px;margin:auto auto 18px}.top a{color:#8fe9dd}.top small{display:block;margin-top:14px;color:#8d86ff}.top h1{margin:6px 0;font-size:clamp(34px,4vw,56px)}.top p{margin:0;color:#aeb7d8}.actions,.toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.actions{justify-content:flex-end}.actions button,.toolbar button,.controls>button{border:1px solid #ffffff24;border-radius:9px;padding:7px 10px;color:#fff;background:#ffffff0d}.actions button:disabled{opacity:.4}.primary,button.active{border-color:#7066ff!important;background:#7066ff3d!important}.layout{display:grid;grid-template-columns:112px minmax(520px,1fr) 390px;gap:14px;max-width:1680px;margin:auto}nav,aside,.toolbar{border:1px solid #ffffff18;border-radius:16px;background:#0e111ecc;backdrop-filter:blur(16px)}nav{display:flex;flex-direction:column;align-self:start;padding:7px}nav button{position:relative;border:0;border-radius:10px;padding:12px;color:#aeb7d8;background:transparent}nav i{position:absolute;right:8px;color:#ffd36a}.toolbar{margin-bottom:9px;padding:9px}.loading{display:grid;place-items:center;min-height:620px}aside{align-self:start;overflow:hidden}aside>header{display:flex;justify-content:space-between;padding:15px;border-bottom:1px solid #ffffff18}aside b{color:#6fe9d7}.warn{color:#ffd36a!important}.controls{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 95px);overflow:auto;padding:16px}.controls h2,.controls h3{margin:0}.controls>p{margin:0;color:#9da6c8;font-size:13px}.controls label{display:flex;flex-direction:column;gap:5px;color:#bbc2dc;font-size:13px}.controls input:not([type=range]):not([type=checkbox]):not([type=color]),.controls select{min-height:38px;border:1px solid #ffffff22;border-radius:9px;padding:7px;color:#fff;background:#111526}.controls input[type=range]{width:100%;accent-color:#7066ff}.controls input[type=color]{width:100%;height:36px;border:0;background:transparent}.check{flex-direction:row!important;align-items:center}.card,.finding{display:flex;flex-direction:column;gap:9px;padding:10px;border:1px solid #ffffff18;border-radius:10px;background:#ffffff08}.swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.finding p{margin:5px 0;color:#bbc2dc}.finding code{font-size:11px;color:#8fe9dd}.finding.warning{border-color:#ffd36a66;background:#ffd36a0d}.notice{position:fixed;right:22px;bottom:20px;padding:10px 13px;border:1px solid #52e0d055;border-radius:10px;background:#0c2327;color:#dffdfa}@media(max-width:1000px){.top{align-items:start;flex-direction:column}.layout{grid-template-columns:1fr}nav{flex-direction:row;overflow:auto}.controls{max-height:none}}
 </style>
