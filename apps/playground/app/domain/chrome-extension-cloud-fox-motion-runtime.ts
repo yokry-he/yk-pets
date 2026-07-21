@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 复用 Chrome 扩展 CloudFox.vue 的动作阶段、缓入缓出和关键脉冲曲线，供 Studio 的身体、头部、尾巴和特效共同读取。
- * Reuses the production Chrome extension CloudFox.vue motion phases, easing, and key pulses across Studio body, head, tail, and effects.
+ * 复用并扩展 Chrome 扩展 CloudFox.vue 的动作阶段、缓入缓出和关键脉冲曲线，供 Studio 全身共享。
+ * Reuses and extends production Cloud Fox motion phases, easing, and pulses across the Studio renderer.
  */
 import type { ExtensionCloudFoxMotionId } from './chrome-extension-cloud-fox-motions'
 
@@ -33,7 +33,6 @@ const SOURCE_DURATION: Partial<Record<ExtensionCloudFoxMotionId, number>> = {
   'sparkle-sneeze': 3.9,
   'fireworks-show': 12,
   'curious-scan': 4,
-  'paw-tap': 2.5,
   'antenna-charge': 5.2,
   'tail-glow': 5.2,
 }
@@ -49,18 +48,28 @@ export interface ExtensionCloudFoxMotionFrame {
   stretchStrength: number
   stretchBreath: number
   spinProgress: number
+  restingPose: number
+  flapBeat: number
   ballProgress: number
   eatProgress: number
   backflipProgress: number
-  backflipFlight: number
+  backflipCrouch: number
+  backflipTuck: number
+  backflipRotation: number
   backflipLift: number
+  backflipLand: number
   tornadoProgress: number
   tornadoStrength: number
   catchProgress: number
+  catchLaunch: number
+  catchAir: number
+  catchReach: number
+  catchLand: number
   catchDive: number
   energyProgress: number
   energyCharge: number
   energyRelease: number
+  energyStarfield: number
   shyProgress: number
   shyPose: number
   juggleProgress: number
@@ -75,9 +84,6 @@ export interface ExtensionCloudFoxMotionFrame {
   fireworksSalute: number
   curiousProgress: number
   curiousPose: number
-  pawTapProgress: number
-  pawTapPose: number
-  pawTapBeat: number
   antennaProgress: number
   antennaChargePose: number
   antennaRelease: number
@@ -109,39 +115,53 @@ export function createExtensionCloudFoxMotionFrame(
 
   const stretchProgress = is('stretching') ? progress : 0
   const stretchStrength = is('stretching')
-    ? smoothStep(.04, .27, stretchProgress) * (1 - smoothStep(.76, .98, stretchProgress))
+    ? smoothStep(.04, .24, stretchProgress) * (1 - smoothStep(.8, .98, stretchProgress))
     : 0
-  const stretchBreath = is('stretching') && stretchProgress > .27 && stretchProgress < .76
-    ? Math.sin(((stretchProgress - .27) / .49) * Math.PI * 2) * .018
+  const stretchBreath = is('stretching') && stretchProgress > .25 && stretchProgress < .8
+    ? Math.sin(((stretchProgress - .25) / .55) * Math.PI * 2) * .022
     : 0
 
   const spinProgress = is('spinning') ? progress : 0
+  const restingPose = is('resting') ? smoothStep(.02, .28, Math.min(1, elapsed / 2.2)) : 0
+  const flapBeat = is('flapping') ? Math.sin(elapsed * 11.5) : 0
   const ballProgress = is('playing-ball') ? progress : 0
   const eatProgress = is('eating') ? progress : 0
 
   const backflipProgress = is('backflip') ? progress : 0
-  const backflipFlight = is('backflip')
-    ? smoothStep(.14, .3, backflipProgress) * (1 - smoothStep(.72, .9, backflipProgress))
+  const backflipCrouch = is('backflip')
+    ? smoothStep(.02, .15, backflipProgress) * (1 - smoothStep(.18, .3, backflipProgress))
     : 0
+  const backflipTuck = is('backflip')
+    ? smoothStep(.18, .35, backflipProgress) * (1 - smoothStep(.68, .83, backflipProgress))
+    : 0
+  const backflipRotation = is('backflip') ? smoothStep(.22, .79, backflipProgress) : 0
   const backflipLift = is('backflip')
-    ? Math.sin(clamp01((backflipProgress - .12) / .76) * Math.PI) * 1.18
+    ? Math.sin(clamp01((backflipProgress - .12) / .72) * Math.PI) * 1.28
+    : 0
+  const backflipLand = is('backflip')
+    ? smoothStep(.78, .9, backflipProgress) * (1 - smoothStep(.92, 1, backflipProgress))
     : 0
 
   const tornadoProgress = is('tail-tornado') ? progress : 0
   const tornadoStrength = is('tail-tornado')
-    ? smoothStep(.08, .25, tornadoProgress) * (1 - smoothStep(.76, .97, tornadoProgress))
+    ? smoothStep(.08, .23, tornadoProgress) * (1 - smoothStep(.8, .97, tornadoProgress))
     : 0
 
   const catchProgress = is('diving-catch') ? progress : 0
-  const catchDive = is('diving-catch')
-    ? smoothStep(.16, .44, catchProgress) * (1 - smoothStep(.78, .96, catchProgress))
-    : 0
+  const catchLaunch = is('diving-catch') ? smoothStep(.04, .18, catchProgress) * (1 - smoothStep(.28, .4, catchProgress)) : 0
+  const catchAir = is('diving-catch') ? smoothStep(.12, .26, catchProgress) * (1 - smoothStep(.72, .9, catchProgress)) : 0
+  const catchReach = is('diving-catch') ? smoothStep(.12, .34, catchProgress) * (1 - smoothStep(.72, .9, catchProgress)) : 0
+  const catchLand = is('diving-catch') ? smoothStep(.72, .88, catchProgress) * (1 - smoothStep(.92, 1, catchProgress)) : 0
+  const catchDive = catchAir
 
   const energyProgress = is('energy-burst') ? progress : 0
   const energyCharge = is('energy-burst')
-    ? smoothStep(.06, .46, energyProgress) * (1 - smoothStep(.86, .99, energyProgress))
+    ? smoothStep(.04, .48, energyProgress) * (1 - smoothStep(.72, .88, energyProgress))
     : 0
-  const energyRelease = is('energy-burst') ? pulse(energyProgress, .42, .94) : 0
+  const energyRelease = is('energy-burst') ? pulse(energyProgress, .48, .78) : 0
+  const energyStarfield = is('energy-burst')
+    ? smoothStep(.58, .76, energyProgress) * (1 - smoothStep(.92, 1, energyProgress))
+    : 0
 
   const shyProgress = is('shy-peek') ? progress : 0
   const shyPose = is('shy-peek')
@@ -156,30 +176,24 @@ export function createExtensionCloudFoxMotionFrame(
 
   const cloudNapProgress = is('cloud-nap') ? progress : 0
   const cloudNapPose = is('cloud-nap')
-    ? smoothStep(.04, .22, cloudNapProgress) * (1 - smoothStep(.82, .98, cloudNapProgress))
+    ? smoothStep(.04, .2, cloudNapProgress) * (1 - smoothStep(.86, .98, cloudNapProgress))
     : 0
 
   const sneezeProgress = is('sparkle-sneeze') ? progress : 0
   const sneezeCharge = is('sparkle-sneeze')
-    ? smoothStep(.05, .46, sneezeProgress) * (1 - smoothStep(.72, .96, sneezeProgress))
+    ? smoothStep(.05, .42, sneezeProgress) * (1 - smoothStep(.56, .72, sneezeProgress))
     : 0
-  const sneezeRelease = is('sparkle-sneeze') ? pulse(sneezeProgress, .44, .74) : 0
+  const sneezeRelease = is('sparkle-sneeze') ? pulse(sneezeProgress, .38, .64) : 0
 
   const fireworksProgress = is('fireworks-show') ? progress : 0
   const fireworksSalute = is('fireworks-show')
-    ? smoothStep(.02, .18, fireworksProgress) * (1 - smoothStep(.92, .99, fireworksProgress))
+    ? smoothStep(.02, .16, fireworksProgress) * (1 - smoothStep(.94, .99, fireworksProgress))
     : 0
 
   const curiousProgress = is('curious-scan') ? progress : 0
   const curiousPose = is('curious-scan')
     ? smoothStep(.03, .2, curiousProgress) * (1 - smoothStep(.78, .98, curiousProgress))
     : 0
-
-  const pawTapProgress = is('paw-tap') ? progress : 0
-  const pawTapPose = is('paw-tap')
-    ? smoothStep(.04, .18, pawTapProgress) * (1 - smoothStep(.82, .98, pawTapProgress))
-    : 0
-  const pawTapBeat = is('paw-tap') ? Math.max(0, Math.sin(pawTapProgress * Math.PI * 8)) * pawTapPose : 0
 
   const antennaProgress = is('antenna-charge') ? progress : 0
   const antennaChargePose = is('antenna-charge')
@@ -192,7 +206,7 @@ export function createExtensionCloudFoxMotionFrame(
     ? smoothStep(.04, .22, tailGlowProgress) * (1 - smoothStep(.84, .99, tailGlowProgress))
     : 0
   const tailGlowWave = is('tail-glow')
-    ? (.5 + Math.sin(tailGlowProgress * Math.PI * 8) * .5) * tailGlowPose
+    ? (.5 + Math.sin(tailGlowProgress * Math.PI * 10) * .5) * tailGlowPose
     : 0
 
   return {
@@ -206,18 +220,28 @@ export function createExtensionCloudFoxMotionFrame(
     stretchStrength,
     stretchBreath,
     spinProgress,
+    restingPose,
+    flapBeat,
     ballProgress,
     eatProgress,
     backflipProgress,
-    backflipFlight,
+    backflipCrouch,
+    backflipTuck,
+    backflipRotation,
     backflipLift,
+    backflipLand,
     tornadoProgress,
     tornadoStrength,
     catchProgress,
+    catchLaunch,
+    catchAir,
+    catchReach,
+    catchLand,
     catchDive,
     energyProgress,
     energyCharge,
     energyRelease,
+    energyStarfield,
     shyProgress,
     shyPose,
     juggleProgress,
@@ -232,9 +256,6 @@ export function createExtensionCloudFoxMotionFrame(
     fireworksSalute,
     curiousProgress,
     curiousPose,
-    pawTapProgress,
-    pawTapPose,
-    pawTapBeat,
     antennaProgress,
     antennaChargePose,
     antennaRelease,
