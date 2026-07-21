@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  渲染地面软影、思考泡泡、球、饭盆、睡云、喷嚏粒子、能量星空和随机烟花等动作道具与特效。
-  Renders the soft ground shadow, thought bubbles, ball, meal, nap cloud, sneeze particles, energy starfield, and randomized fireworks.
+  渲染地面软影、思考泡泡、球、扩展风格餐桌、睡云、扫描环、喷嚏粒子、能量星空和随机烟花等动作道具与特效。
+  Renders the soft shadow, thought bubbles, ball, extension-style meal table, nap cloud, scan ring, sneeze particles, energy starfield, and randomized fireworks.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
@@ -21,7 +21,7 @@ const rotation = (x: number, y: number, z: number) => new Euler(x, y, z)
 
 const ball = shallowRef<Group>()
 const meal = shallowRef<Group>()
-const energyRings = shallowRef<Group>()
+const food = shallowRef<Group>()
 const starGroup = shallowRef<Group>()
 const starA = shallowRef<Group>()
 const starB = shallowRef<Group>()
@@ -40,6 +40,8 @@ const SNEEZE_PARTICLE_COUNT = 20
 const ENERGY_STAR_COUNT = 46
 const FIREWORK_BURST_COUNT = 3
 const FIREWORK_PARTICLE_COUNT = 40
+const MEAL_TABLE_HEIGHT = .84
+const MEAL_BOWL_LOCAL_Y = MEAL_TABLE_HEIGHT + .13
 const thoughtIndexes = Array.from({ length: THINK_BUBBLE_COUNT }, (_, index) => index)
 const sneezeIndexes = Array.from({ length: SNEEZE_PARTICLE_COUNT }, (_, index) => index)
 const energyStarIndexes = Array.from({ length: ENERGY_STAR_COUNT }, (_, index) => index)
@@ -151,18 +153,12 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       ? smoothStep(.02, .14, frame.eatProgress) * (1 - smoothStep(.9, .99, frame.eatProgress))
       : 0
     meal.value.scale.setScalar(Math.max(.001, enter))
-    meal.value.position.set(0, -.92 + Math.sin(elapsed * 1.4) * .008, 1.08)
-  }
-
-  if (energyRings.value) {
-    const active = props.behavior === 'energy-burst' || props.behavior === 'antenna-charge'
-    energyRings.value.visible = active
-    const strength = props.behavior === 'energy-burst'
-      ? frame.energyRelease + frame.energyCharge * .22
-      : frame.antennaRelease + frame.antennaChargePose * .18
-    energyRings.value.scale.setScalar(Math.max(.001, .18 + strength * 2.35))
-    energyRings.value.rotation.z += delta * (2.4 + strength * 4.8)
-    energyRings.value.position.y = props.behavior === 'antenna-charge' ? 1.5 : -.12
+    meal.value.position.set(0, -1.42 + Math.sin(elapsed * 1.4) * .006, 1.08)
+    if (food.value) {
+      const foodRemaining = Math.max(.1, 1 - Math.max(0, (frame.eatProgress - .18) / .62) * .86)
+      food.value.scale.y = foodRemaining
+      food.value.rotation.y += delta * .35
+    }
   }
 
   if (starGroup.value) {
@@ -182,12 +178,12 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   if (cloud.value) {
     cloud.value.visible = props.behavior === 'cloud-nap'
     cloud.value.scale.setScalar(Math.max(.001, frame.cloudNapPose * (1 + Math.sin(elapsed * 1.4) * .025)))
-    cloud.value.position.set(-.02, -1.16 + Math.sin(elapsed * 1.15) * .024, .02)
+    cloud.value.position.set(-.02, -.88 + Math.sin(elapsed * 1.15) * .024, .08)
     cloud.value.rotation.z = Math.sin(elapsed * .7) * .018
   }
   if (zzz.value) {
     zzz.value.visible = props.behavior === 'cloud-nap' && frame.cloudNapPose > .2
-    zzz.value.position.set(.92 + Math.sin(elapsed * .9) * .05, .48 + ((stateElapsed * .16) % .72), .48)
+    zzz.value.position.set(.92 + Math.sin(elapsed * .9) * .05, .78 + ((stateElapsed * .16) % .72), .48)
     zzz.value.scale.setScalar(Math.max(.001, frame.cloudNapPose * (.72 + Math.sin(elapsed * 1.7) * .08)))
   }
 
@@ -213,28 +209,30 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   if (scanRing.value) {
     scanRing.value.visible = props.behavior === 'curious-scan'
     scanRing.value.position.x = Math.sin(frame.curiousProgress * Math.PI * 3) * .62
-    scanRing.value.position.y = .78 + Math.cos(frame.curiousProgress * Math.PI * 2) * .16
+    scanRing.value.position.y = 1.1 + Math.cos(frame.curiousProgress * Math.PI * 2) * .16
+    scanRing.value.position.z = 1.34
     scanRing.value.scale.setScalar(Math.max(.001, frame.curiousPose * (1 + Math.sin(elapsed * 5) * .08)))
     scanRing.value.rotation.z += delta * 1.8
   }
 
   energyStars.value.forEach((star, index) => {
-    const active = props.behavior === 'energy-burst' && frame.energyStarfield > .01
+    const travel = smoothStep(.56, .94, frame.energyProgress)
+    const fade = 1 - smoothStep(.66, 1, travel)
+    const active = props.behavior === 'energy-burst' && travel > .01 && fade > .01
     star.visible = active
     if (!active) return
     const angle = index * 2.399963
     const layer = .35 + (index % 7) * .1
-    const spread = frame.energyStarfield * (1.2 + (index % 5) * .12)
+    const spread = travel * (1.2 + (index % 5) * .12)
     star.position.set(
       Math.cos(angle) * layer * spread,
-      1.55 + (index % 9) * .16 * spread + Math.sin(elapsed * 1.6 + index) * .05,
-      .25 + Math.sin(angle) * .42 * spread,
+      .2 + (index % 9) * .16 * spread + Math.sin(elapsed * 1.6 + index) * .05,
+      .45 + Math.sin(angle) * .42 * spread,
     )
     star.rotation.z += delta * (1.4 + index % 5 * .3)
-    const twinkle = .6 + Math.sin(elapsed * 5 + index * 1.7) * .3
-    star.scale.setScalar(Math.max(.001, (.035 + index % 4 * .01) * frame.energyStarfield * twinkle))
+    star.scale.setScalar(.035 + index % 4 * .01)
     const material = materialOf(star)
-    if (material) material.opacity = Math.max(0, frame.energyStarfield * (.55 + twinkle * .4))
+    if (material) material.opacity = Math.max(0, fade * (.55 + Math.sin(elapsed * 5 + index * 1.7) * .18))
   })
 
   fireworkBurstIndexes.forEach((burstIndex) => {
@@ -303,14 +301,18 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     </TresGroup>
 
     <TresGroup ref="meal">
-      <TresMesh :position="vector(0, 0, 0)" :rotation="rotation(Math.PI / 2, 0, 0)"><TresCylinderGeometry :args="[.38, .48, .18, 42]" /><TresMeshStandardMaterial color="#817078" :roughness=".58" /></TresMesh>
-      <TresMesh :position="vector(0, .08, .04)" :rotation="rotation(Math.PI / 2, 0, 0)"><TresTorusGeometry :args="[.31, .07, 18, 42]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" :roughness=".34" /></TresMesh>
-      <TresMesh :position="vector(0, .13, .04)" :scale="vector(.82, .34, .82)"><TresSphereGeometry :args="[.27, 24, 24]" /><TresMeshStandardMaterial color="#ffd27a" :roughness=".48" /></TresMesh>
-    </TresGroup>
-
-    <TresGroup ref="energyRings">
-      <TresMesh :rotation="rotation(Math.PI / 2, 0, 0)"><TresTorusGeometry :args="[.44, .035, 16, 64]" /><TresMeshBasicMaterial :color="appearance.palette.primaryGlow" transparent :opacity=".78" :blending="AdditiveBlending" :depth-write="false" /></TresMesh>
-      <TresMesh :rotation="rotation(Math.PI / 2, 0, Math.PI / 3)" :scale="vector(1.35, 1.35, 1.35)"><TresTorusGeometry :args="[.44, .025, 14, 64]" /><TresMeshBasicMaterial :color="appearance.palette.secondaryGlow" transparent :opacity=".58" :blending="AdditiveBlending" :depth-write="false" /></TresMesh>
+      <TresMesh :position="vector(0, .1, 0)" :scale="vector(1, .42, 1)"><TresCylinderGeometry :args="[.48, .62, .16, 40]" /><TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness=".34" :metalness=".06" /></TresMesh>
+      <TresMesh :position="vector(0, MEAL_TABLE_HEIGHT * .48, 0)"><TresCylinderGeometry :args="[.16, .2, MEAL_TABLE_HEIGHT * .72, 32]" /><TresMeshStandardMaterial :color="appearance.palette.primaryGlow" :emissive="appearance.palette.primaryGlow" :emissive-intensity=".16" :roughness=".3" :metalness=".1" /></TresMesh>
+      <TresMesh :position="vector(0, MEAL_TABLE_HEIGHT, 0)" :scale="vector(1.16, .42, 1)"><TresCylinderGeometry :args="[.62, .67, .16, 40]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness=".28" :metalness=".06" /></TresMesh>
+      <TresGroup :position="vector(0, MEAL_BOWL_LOCAL_Y, 0)">
+        <TresMesh :scale="vector(1.18, .48, 1)"><TresCylinderGeometry :args="[.38, .48, .22, 40]" /><TresMeshStandardMaterial :color="appearance.palette.primaryGlow" :emissive="appearance.palette.primaryGlow" :emissive-intensity=".24" :roughness=".28" :metalness=".12" /></TresMesh>
+        <TresMesh :position="vector(0, .13, 0)" :scale="vector(1, .28, 1)"><TresCylinderGeometry :args="[.31, .31, .1, 40]" /><TresMeshStandardMaterial color="#151b35" :roughness=".3" /></TresMesh>
+        <TresGroup ref="food" :position="vector(0, .19, 0)">
+          <TresMesh :position="vector(-.12, .02, .03)"><TresSphereGeometry :args="[.075, 18, 18]" /><TresMeshStandardMaterial :color="appearance.palette.secondaryGlow" :emissive="appearance.palette.secondaryGlow" :emissive-intensity=".75" /></TresMesh>
+          <TresMesh :position="vector(.08, .035, -.07)"><TresSphereGeometry :args="[.068, 18, 18]" /><TresMeshStandardMaterial color="#ffd977" emissive="#ffd977" :emissive-intensity=".55" /></TresMesh>
+          <TresMesh :position="vector(.13, .02, .08)"><TresSphereGeometry :args="[.058, 18, 18]" /><TresMeshStandardMaterial :color="appearance.palette.primaryGlow" :emissive="appearance.palette.primaryGlow" :emissive-intensity=".5" /></TresMesh>
+        </TresGroup>
+      </TresGroup>
     </TresGroup>
 
     <TresGroup ref="starGroup">
@@ -320,7 +322,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     </TresGroup>
 
     <TresGroup ref="cloud">
-      <TresMesh v-for="(point, index) in [vector(-.56,0,0),vector(-.2,.12,.02),vector(.2,.08,0),vector(.58,-.02,.02)]" :key="index" :position="point" :scale="vector(index === 1 ? .72 : .56, index === 1 ? .5 : .42, .52)"><TresSphereGeometry :args="[1, 28, 28]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" :emissive="appearance.palette.secondaryGlow" :emissive-intensity=".2" :roughness=".52" /></TresMesh>
+      <TresMesh v-for="(point, index) in [vector(-.7,0,0),vector(-.28,.12,.02),vector(.2,.1,0),vector(.68,-.02,.02)]" :key="index" :position="point" :scale="vector(index === 1 ? .82 : .64, index === 1 ? .56 : .46, .58)"><TresSphereGeometry :args="[1, 28, 28]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" :emissive="appearance.palette.secondaryGlow" :emissive-intensity=".2" :roughness=".52" /></TresMesh>
     </TresGroup>
     <TresGroup ref="zzz">
       <TresMesh v-for="index in 3" :key="index" :position="vector((index - 2) * .16, (index - 1) * .15, 0)" :scale="vector(.12 + index * .025, .06, .04)"><TresBoxGeometry /><TresMeshBasicMaterial :color="appearance.palette.secondaryGlow" transparent :opacity=".65" /></TresMesh>
