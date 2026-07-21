@@ -25,6 +25,7 @@ const clamp = (value: number, minimum: number, maximum: number) => Math.max(mini
 const root = shallowRef<Group>()
 const leftHighlight = shallowRef<Group>()
 const rightHighlight = shallowRef<Group>()
+const sides = [-1, 1]
 const headScale = computed(() => vector(
   scheme.model.head.scale[0] * props.appearance.proportions.headScale,
   scheme.model.head.scale[1] * props.appearance.proportions.headScale,
@@ -34,8 +35,13 @@ const eyeX = computed(() => scheme.model.head.eyeOffset[0] * props.appearance.pr
 const baseHighlightX = Math.abs(scheme.model.head.eyeHighlightPosition[0])
 const baseHighlightY = scheme.model.head.eyeOffset[1] + scheme.model.head.eyeHighlightPosition[1]
 const highlightZ = scheme.model.head.eyeOffset[2] + scheme.model.head.eyeHighlightPosition[2] + .012
+const headPosition = vector(
+  scheme.model.head.position[0],
+  scheme.model.head.position[1],
+  scheme.model.head.position[2],
+)
 
-function setHighlight(node: unknown, side: -1 | 1) {
+function setHighlight(node: unknown, side: number) {
   if (side < 0) leftHighlight.value = node as Group | undefined
   else rightHighlight.value = node as Group | undefined
 }
@@ -78,8 +84,8 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 </script>
 
 <template>
-  <TresGroup ref="root" :visible="false" :position="vector(...scheme.model.head.position)" :scale="headScale">
-    <template v-for="side in [-1, 1] as const" :key="`gaze-${side}`">
+  <TresGroup ref="root" :visible="false" :position="headPosition" :scale="headScale">
+    <template v-for="side in sides" :key="`gaze-${side}`">
       <TresMesh :position="vector(side * eyeX + side * baseHighlightX, baseHighlightY, highlightZ - .006)" :scale="vector(.058, .078, .031)">
         <TresSphereGeometry :args="[1, 18, 18]" />
         <TresMeshBasicMaterial :color="appearance.palette.eye" />
