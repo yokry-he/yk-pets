@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 接收 Studio 页面发送的配方信封，写入扩展本地存储并返回同步确认。
- * Receives recipe envelopes from Studio pages, persists them in extension storage, and acknowledges synchronization.
+ * 仅在可信 Studio 页面接收配方信封，写入扩展本地存储并返回同步确认。
+ * Receives recipe envelopes only from trusted Studio pages, persists them in extension storage, and acknowledges synchronization.
  */
 import {
   createPetRecipeSyncResult,
@@ -10,10 +10,21 @@ import {
   YK_PET_RECIPE_STORAGE_KEY,
 } from '@yk-pets/pet-core'
 
+function isTrustedStudioPage(location: Location) {
+  const hostname = location.hostname.toLowerCase()
+  const pathname = location.pathname.replace(/\/+$/, '')
+  const localHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+  const projectHost = hostname.includes('yk-pets')
+    || (hostname === 'yokry-he.github.io' && pathname.startsWith('/yk-pets'))
+  const studioPath = pathname === '/studio' || pathname === '/yk-pets/studio'
+  return (localHost || projectHost) && studioPath
+}
+
 export default defineContentScript({
   matches: ['http://*/*', 'https://*/*'],
   runAt: 'document_start',
   main() {
+    if (!isTrustedStudioPage(window.location)) return
     const onMessage = (event: MessageEvent) => {
       if (event.source !== window || event.origin !== window.location.origin) return
       if (!isPetRecipeSyncRequest(event.data)) return
