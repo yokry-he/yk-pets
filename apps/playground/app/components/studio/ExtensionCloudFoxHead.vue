@@ -118,20 +118,27 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 
   const asleep = state === 'sleeping' || state === 'cloud-nap'
   const resting = state === 'resting'
-  const blink = Math.max(0, Math.sin(elapsed * .82 - 1.1)) > .985 ? .08 : 1
+  const blinkPhase = (elapsed + .73) % 4.8
+  const blinkDistance = Math.abs(blinkPhase - 4.64)
+  const blink = blinkDistance < .13 ? .08 + blinkDistance / .13 * .92 : 1
   const wakeOpen = state === 'waking' ? smoothStep(.08, .72, frame.progress) : 1
   const sneezeSquint = state === 'sparkle-sneeze' ? 1 - frame.sneezeCharge * .72 : 1
   const shySquint = state === 'shy-peek' ? 1 - frame.shyPose * .45 : 1
   const baseEyeY = asleep ? .08 : resting ? .42 : blink * wakeOpen * sneezeSquint * shySquint
+  const scanOffset = state === 'curious-scan'
+    ? Math.sin(frame.curiousProgress * Math.PI * 3) * .035 * frame.curiousPose
+    : 0
+
   if (leftEye.value) {
     leftEye.value.scale.y = damp(leftEye.value.scale.y, state === 'confused' ? baseEyeY * .72 : baseEyeY, 12, delta)
     leftEye.value.scale.x = damp(leftEye.value.scale.x, state === 'excited' ? 1.14 : 1, 10, delta)
-    leftEye.value.position.x = damp(leftEye.value.position.x, state === 'curious-scan' ? Math.sin(frame.curiousProgress * Math.PI * 3) * .035 : 0, 9, delta)
+    // 动作只叠加局部视线偏移，绝不能把左眼的基础挂点缓动回头部中心。
+    leftEye.value.position.x = damp(leftEye.value.position.x, -eyeX.value + scanOffset, 9, delta)
   }
   if (rightEye.value) {
     rightEye.value.scale.y = damp(rightEye.value.scale.y, state === 'confused' ? Math.min(1.15, baseEyeY * 1.12) : baseEyeY, 12, delta)
     rightEye.value.scale.x = damp(rightEye.value.scale.x, state === 'excited' ? 1.14 : 1, 10, delta)
-    rightEye.value.position.x = damp(rightEye.value.position.x, state === 'curious-scan' ? Math.sin(frame.curiousProgress * Math.PI * 3) * .035 : 0, 9, delta)
+    rightEye.value.position.x = damp(rightEye.value.position.x, eyeX.value + scanOffset, 9, delta)
   }
 
   if (mouth.value) {
