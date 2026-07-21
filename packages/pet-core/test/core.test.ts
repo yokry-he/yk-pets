@@ -1,3 +1,8 @@
+/**
+ * 文件职责 / File responsibility
+ * 验证配方信封、Studio 同步消息和渲染器注册表的框架无关行为。
+ * Verifies framework-neutral recipe envelopes, Studio sync messages, and renderer-registry behavior.
+ */
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
