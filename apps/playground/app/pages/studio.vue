@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
+import StudioBellyPatchEditor from '~/components/studio/StudioBellyPatchEditor.vue'
 import StudioEarEditor from '~/components/studio/StudioEarEditor.vue'
 import StudioMotionToolbar from '~/components/studio/StudioMotionToolbar.vue'
+import StudioSymbolEditor from '~/components/studio/StudioSymbolEditor.vue'
 import StudioTailEditor from '~/components/studio/StudioTailEditor.vue'
 import { derivePetMonogram } from '~/domain/cloud-fox-appearance'
 import { CLOUD_FOX_BODY_SHAPES, PET_STUDIO_PART_OPTIONS as PARTS, CLOUD_FOX_SPECIES_DEFINITION } from '~/domain/pet-studio-phase2'
 import { getExtensionCloudFoxMotionDurationMs, type ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import { BODY_ORBIT_DESIGN_RANGES } from '~/domain/pet-species-registry'
-import type { PetStudioAppearanceRecipe, SymbolChannelRecipe, CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase3'
+import type { PetStudioAppearanceRecipe, CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase3'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 
 type Tab = 'identity' | 'face' | 'body' | 'tail' | 'glow' | 'symbols' | 'audit'
@@ -30,7 +32,6 @@ const views: Array<[CloudFoxStudioView,string]> = [['front','正面'],['left','�
 const backgrounds: Array<[CloudFoxStudioBackground,string]> = [['dark','深色'],['light','浅色'],['web','网页']]
 const bodyControls: Array<[ProportionKey,string]> = [['bodyWidth','身体宽度'],['bodyHeight','身体高度'],['bodyDepth','身体厚度'],['limbLength','四肢长度'],['limbThickness','四肢粗细'],['limbSpacing','四肢间距'],['pawScale','爪子大小']]
 const faceControls: Array<[ProportionKey,string]> = [['headScale','头部大小'],['earScale','耳朵大小'],['eyeScale','眼睛大小'],['eyeSpacing','眼睛间距']]
-const symbolChannels = computed<Array<[string,SymbolChannelRecipe]>>(() => [['胸口',recipe.value.symbols.chest],['后背',recipe.value.symbols.back]])
 const inputValue = (event: Event) => (event.target as HTMLInputElement | HTMLSelectElement).value
 const inputNumber = (event: Event) => Number(inputValue(event))
 
@@ -81,7 +82,7 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
         <header><strong>{{recipe.identity.nameZh}} / {{recipe.identity.nameEn}}</strong><b :class="{warn:store.dirty}">{{store.dirty?'未保存':'已保存'}}</b></header>
         <div class="controls">
           <template v-if="tab==='identity'">
-            <h2>身份信息</h2><p>旧配方会自动迁移，并补齐肚皮、前爪和身体轨道配置。</p>
+            <h2>身份信息</h2><p>旧配方会自动迁移，并补齐肚皮、胸口显示、标志位置、前爪和身体轨道配置。</p>
             <label>中文名字<input v-model="recipe.identity.nameZh" @focus="checkpoint" @input="store.markDirty"></label>
             <label>英文名字<input v-model="recipe.identity.nameEn" @focus="checkpoint" @input="store.markDirty" @blur="syncName"></label>
             <label>宠物 ID<input v-model="recipe.identity.petId" @focus="checkpoint" @input="store.markDirty"></label>
@@ -98,11 +99,7 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
           <template v-else-if="tab==='body'">
             <h2>扩展经典身体基线</h2>
             <label>身体形状<select :value="recipe.parts.bodyShape" @focus="checkpoint" @change="setPart('bodyShape',$event)"><option v-for="item in CLOUD_FOX_BODY_SHAPES" :key="item.id" :value="item.id">{{item.label}}</option></select></label>
-            <section class="card">
-              <h3>白色肚皮样式</h3>
-              <label class="check"><input v-model="recipe.bellyPatchDesign.style" type="radio" value="oval" @focus="checkpoint" @change="store.markDirty">经典椭圆</label>
-              <label class="check"><input v-model="recipe.bellyPatchDesign.style" type="radio" value="shield" @focus="checkpoint" @change="store.markDirty">盾牌造型</label>
-            </section>
+            <StudioBellyPatchEditor/>
             <label v-for="[key,label] in bodyControls" :key="key">{{label}} {{recipe.proportions[key].toFixed(2)}}<input :value="recipe.proportions[key]" type="range" :min="ranges[key][0]" :max="ranges[key][1]" step=".01" @pointerdown="checkpoint" @input="setProportion(key,$event)"></label>
             <button @click="refreshColors">根据主色生成光影色</button>
             <div class="swatches"><label>高亮<input v-model="recipe.palette.highlight" type="color" @focus="checkpoint" @input="store.markDirty"></label><label>暗部<input v-model="recipe.palette.shade" type="color" @focus="checkpoint" @input="store.markDirty"></label><label>光晕<input v-model="recipe.palette.halo" type="color" @focus="checkpoint" @input="store.markDirty"></label></div>
@@ -128,9 +125,7 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
             </section>
           </template>
 
-          <template v-else-if="tab==='symbols'">
-            <h2>独立胸背标志</h2><section v-for="[label,symbol] in symbolChannels" :key="label" class="card"><h3>{{label}}</h3><label class="check"><input v-model="symbol.enabled" type="checkbox" @focus="checkpoint" @change="store.markDirty">显示</label><label>文字<input v-model="symbol.text" maxlength="3" @focus="checkpoint" @input="store.markDirty"></label><label>颜色<input v-model="symbol.color" type="color" @focus="checkpoint" @input="store.markDirty"></label><label>缩放 {{symbol.scale.toFixed(2)}}<input v-model.number="symbol.scale" type="range" min=".45" max="1.8" step=".01" @pointerdown="checkpoint" @input="store.markDirty"></label><label>旋转 {{symbol.rotation.toFixed(2)}}<input v-model.number="symbol.rotation" type="range" min="-3.14" max="3.14" step=".02" @pointerdown="checkpoint" @input="store.markDirty"></label><label>发光 {{symbol.glowIntensity.toFixed(2)}}<input v-model.number="symbol.glowIntensity" type="range" min="0" max="4" step=".05" @pointerdown="checkpoint" @input="store.markDirty"></label></section>
-          </template>
+          <StudioSymbolEditor v-else-if="tab==='symbols'"/>
 
           <template v-else><h2>自动边界和穿模检查</h2><article v-for="finding in store.findings" :key="finding.id" :class="['finding',finding.severity]"><strong>{{finding.severity==='warning'?'需要注意':'检查结果'}}</strong><p>{{finding.message}}</p><code v-if="finding.path">{{finding.path}}</code></article></template>
         </div>
