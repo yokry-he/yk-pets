@@ -9,6 +9,7 @@ import { Color, Euler, Vector3 } from 'three'
 import type { Group, MeshBasicMaterial, MeshStandardMaterial } from 'three'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import { createExtensionCloudFoxMotionFrame, mix, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
+import { createBallMotionPose, createCatchMotionPose } from '~/domain/cloud-fox-prop-motion'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 
@@ -26,6 +27,7 @@ const scaled = (values: readonly number[], multiplier = 1) => new Vector3(
 )
 const rotation = (values: readonly number[]) => new Euler(values[0] || 0, values[1] || 0, values[2] || 0)
 const damp = (current: number, target: number, speed: number, delta: number) => current + (target - current) * Math.min(1, 1 - Math.exp(-speed * delta))
+const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
 
 const head = shallowRef<Group>()
 const leftEye = shallowRef<Group>()
@@ -87,7 +89,14 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   }
   const stateElapsed = Math.max(0, elapsed - startedAt)
   const frame = createExtensionCloudFoxMotionFrame(props.behavior, stateElapsed)
+  const ballPose = createBallMotionPose(frame.ballProgress)
+  const catchPose = createCatchMotionPose(frame.catchProgress)
   const state = props.behavior
+  const trackedPropPosition = state === 'playing-ball'
+    ? ballPose.position
+    : state === 'diving-catch'
+      ? catchPose.ballPosition
+      : undefined
 
   if (head.value) {
     let targetX = 0
@@ -123,15 +132,18 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     }
     else if (state === 'playing' || state === 'flapping') targetZ = Math.sin(elapsed * 4.6) * .08
     else if (state === 'playing-ball') {
-      targetY = -Math.sin(frame.ballProgress * Math.PI * 4) * .2
-      targetX = -.06 - Math.abs(Math.sin(frame.ballProgress * Math.PI * 4)) * .12
+      targetY = clamp(-Math.atan2(ballPose.position.x, Math.max(.2, ballPose.position.z)) * .34, -.26, .26)
+      targetX = -.04 - ballPose.height * .14
     }
     else if (state === 'eating') targetX = .3 * smoothStep(.04, .22, frame.eatProgress)
     else if (state === 'star-juggle') {
       targetY = Math.sin(frame.juggleProgress * Math.PI * 6) * .18 * frame.jugglePose
       targetX = -.12 * frame.jugglePose
     }
-    else if (state === 'diving-catch') targetX = -.18 * frame.catchAir + .16 * frame.catchLand
+    else if (state === 'diving-catch') {
+      targetY = clamp(-Math.atan2(catchPose.pawTarget.x, Math.max(.2, catchPose.pawTarget.z)) * .24, -.2, .2)
+      targetX = -.18 * frame.catchAir + .16 * frame.catchLand
+    }
     else if (state === 'backflip') targetX = -.16 * frame.backflipTuck
     else if (state === 'energy-burst') targetX = -.16 * frame.energyCharge + .12 * frame.energyRelease
     else if (state === 'waking') targetX = mix(.14, 0, smoothStep(.04, .72, frame.progress))
@@ -141,6 +153,20 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     head.value.rotation.z = damp(head.value.rotation.z, targetZ, 7, delta)
     head.value.position.x = damp(head.value.position.x, targetPositionX, 7, delta)
     head.value.position.y = damp(head.value.position.y, targetPositionY + (state === 'happy' ? Math.max(0, Math.sin(elapsed * 8)) * .035 : 0), 7, delta)
+  }
+
+  let gazeOffsetX = 0
+  let gazeOffsetY = 0
+  if (trackedPropPosition && head.value) {
+    const presentationGroup = head.value.parent?.parent as Group | undefined
+    presentationGroup?.updateWorldMatrix(true, false)
+    head.value.updateWorldMatrix(true, false)
+    const ballWorld = presentationGroup
+      ? presentationGroup.localToWorld(trackedPropPosition.clone())
+      : trackedPropPosition.clone()
+    const localBall = head.value.worldToLocal(ballWorld)
+    gazeOffsetX = clamp(localBall.x * .075, -.06, .06)
+    gazeOffsetY = clamp((localBall.y - scheme.model.head.eyeOffset[1]) * .025, -.035, .035)
   }
 
   const asleep = state === 'sleeping' || state === 'cloud-nap'
@@ -155,21 +181,23 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const baseEyeY = asleep ? .08 : resting ? mix(1, .34, frame.restingPose) : blink * wakeOpen * sneezeSquint * shySquint * stretchOpen
   const scanOffset = state === 'curious-scan'
     ? Math.sin(frame.curiousProgress * Math.PI * 3) * .035 * frame.curiousPose
-    : state === 'playing-ball'
-      ? Math.sin(frame.ballProgress * Math.PI * 4) * .035
-      : state === 'star-juggle'
-        ? Math.sin(frame.juggleProgress * Math.PI * 6) * .028
-        : 0
+    : state === 'star-juggle'
+      ? Math.sin(frame.juggleProgress * Math.PI * 6) * .028
+      : 0
+  const eyeOffsetX = scanOffset + gazeOffsetX
+  const eyeOffsetY = scheme.model.head.eyeOffset[1] + gazeOffsetY
 
   if (leftEye.value) {
     leftEye.value.scale.y = damp(leftEye.value.scale.y, state === 'confused' ? baseEyeY * .72 : baseEyeY, 12, delta)
     leftEye.value.scale.x = damp(leftEye.value.scale.x, state === 'excited' ? 1.14 : 1, 10, delta)
-    leftEye.value.position.x = damp(leftEye.value.position.x, -eyeX.value + scanOffset, 9, delta)
+    leftEye.value.position.x = damp(leftEye.value.position.x, -eyeX.value + eyeOffsetX, 9, delta)
+    leftEye.value.position.y = damp(leftEye.value.position.y, eyeOffsetY, 9, delta)
   }
   if (rightEye.value) {
     rightEye.value.scale.y = damp(rightEye.value.scale.y, state === 'confused' ? Math.min(1.15, baseEyeY * 1.12) : baseEyeY, 12, delta)
     rightEye.value.scale.x = damp(rightEye.value.scale.x, state === 'excited' ? 1.14 : 1, 10, delta)
-    rightEye.value.position.x = damp(rightEye.value.position.x, eyeX.value + scanOffset, 9, delta)
+    rightEye.value.position.x = damp(rightEye.value.position.x, eyeX.value + eyeOffsetX, 9, delta)
+    rightEye.value.position.y = damp(rightEye.value.position.y, eyeOffsetY, 9, delta)
   }
 
   if (mouth.value) {
