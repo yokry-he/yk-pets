@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  使用统一扩展基线渲染云狐头部，并复用正式 Chrome 扩展的头部、眼睛、耳朵、嘴部和触角动作。
-  Renders the Cloud Fox head from the unified extension baseline while reusing production Chrome extension head, eye, ear, mouth, and antenna motions.
+  渲染云狐头部，并驱动头、眼、耳、嘴与触角动作；左右眼高光使用镜像局部坐标。
+  Renders the Cloud Fox head and animates head, eyes, ears, mouth, and antennae with mirrored eye highlights.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
@@ -48,6 +48,7 @@ const antennaRod = computed(() => [
   scheme.model.antenna.rod[2],
   scheme.model.antenna.rod[3],
 ] as const)
+const highlightX = Math.abs(scheme.model.head.eyeHighlightPosition[0])
 
 function setEyeRef(node: unknown, side: number) {
   const group = node as Group | undefined
@@ -92,28 +93,54 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     let targetX = 0
     let targetY = 0
     let targetZ = 0
+    let targetPositionX = 0
+    let targetPositionY = scheme.model.head.position[1] + frame.stretchBreath
+
     if (state === 'greeting') targetZ = Math.sin(stateElapsed * 5.8) * .13 * frame.greetingPose
-    else if (state === 'resting') targetX = .08
-    else if (state === 'sleeping' || state === 'cloud-nap') targetX = .12
+    else if (state === 'resting') {
+      targetX = .24 * frame.restingPose
+      targetPositionY -= .12 * frame.restingPose
+    }
+    else if (state === 'sleeping') targetX = .14
+    else if (state === 'cloud-nap') {
+      targetX = .18 * frame.cloudNapPose
+      targetZ = .34 * frame.cloudNapPose
+      targetPositionX = -.1 * frame.cloudNapPose
+      targetPositionY -= .08 * frame.cloudNapPose
+    }
     else if (state === 'thinking') targetZ = -.14 + Math.sin(elapsed * 1.8) * .035
     else if (state === 'confused') targetZ = Math.sin(elapsed * 2.2) * .18
     else if (state === 'listening') targetZ = -.16
-    else if (state === 'stretching') targetX = -.18 * frame.stretchStrength
-    else if (state === 'shy-peek') targetZ = -.12 * frame.shyPose
-    else if (state === 'sparkle-sneeze') targetX = -.1 * frame.sneezeCharge + .28 * frame.sneezeRelease
+    else if (state === 'stretching') {
+      targetX = -.5 * frame.stretchStrength
+      targetPositionY += .08 * frame.stretchStrength
+    }
+    else if (state === 'shy-peek') targetZ = -.16 * frame.shyPose
+    else if (state === 'sparkle-sneeze') targetX = -.12 * frame.sneezeCharge + .34 * frame.sneezeRelease
     else if (state === 'curious-scan') {
       targetY = Math.sin(frame.curiousProgress * Math.PI * 3) * .24 * frame.curiousPose
       targetZ = Math.cos(frame.curiousProgress * Math.PI * 2) * .12 * frame.curiousPose
     }
     else if (state === 'playing' || state === 'flapping') targetZ = Math.sin(elapsed * 4.6) * .08
-    else if (state === 'backflip') targetX = -.12 * Math.sin(frame.backflipProgress * Math.PI)
-    else if (state === 'energy-burst') targetX = -.12 * frame.energyCharge + .08 * frame.energyRelease
+    else if (state === 'playing-ball') {
+      targetY = -Math.sin(frame.ballProgress * Math.PI * 4) * .2
+      targetX = -.06 - Math.abs(Math.sin(frame.ballProgress * Math.PI * 4)) * .12
+    }
+    else if (state === 'eating') targetX = .3 * smoothStep(.04, .22, frame.eatProgress)
+    else if (state === 'star-juggle') {
+      targetY = Math.sin(frame.juggleProgress * Math.PI * 6) * .18 * frame.jugglePose
+      targetX = -.12 * frame.jugglePose
+    }
+    else if (state === 'diving-catch') targetX = -.18 * frame.catchAir + .16 * frame.catchLand
+    else if (state === 'backflip') targetX = -.16 * frame.backflipTuck
+    else if (state === 'energy-burst') targetX = -.16 * frame.energyCharge + .12 * frame.energyRelease
     else if (state === 'waking') targetX = mix(.14, 0, smoothStep(.04, .72, frame.progress))
 
     head.value.rotation.x = damp(head.value.rotation.x, targetX, 7, delta)
     head.value.rotation.y = damp(head.value.rotation.y, targetY, 7, delta)
     head.value.rotation.z = damp(head.value.rotation.z, targetZ, 7, delta)
-    head.value.position.y = damp(head.value.position.y, scheme.model.head.position[1] + frame.stretchBreath + (state === 'happy' ? Math.max(0, Math.sin(elapsed * 8)) * .035 : 0), 7, delta)
+    head.value.position.x = damp(head.value.position.x, targetPositionX, 7, delta)
+    head.value.position.y = damp(head.value.position.y, targetPositionY + (state === 'happy' ? Math.max(0, Math.sin(elapsed * 8)) * .035 : 0), 7, delta)
   }
 
   const asleep = state === 'sleeping' || state === 'cloud-nap'
@@ -124,15 +151,18 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const wakeOpen = state === 'waking' ? smoothStep(.08, .72, frame.progress) : 1
   const sneezeSquint = state === 'sparkle-sneeze' ? 1 - frame.sneezeCharge * .72 : 1
   const shySquint = state === 'shy-peek' ? 1 - frame.shyPose * .45 : 1
-  const baseEyeY = asleep ? .08 : resting ? .42 : blink * wakeOpen * sneezeSquint * shySquint
+  const baseEyeY = asleep ? .08 : resting ? mix(1, .34, frame.restingPose) : blink * wakeOpen * sneezeSquint * shySquint
   const scanOffset = state === 'curious-scan'
     ? Math.sin(frame.curiousProgress * Math.PI * 3) * .035 * frame.curiousPose
-    : 0
+    : state === 'playing-ball'
+      ? Math.sin(frame.ballProgress * Math.PI * 4) * .035
+      : state === 'star-juggle'
+        ? Math.sin(frame.juggleProgress * Math.PI * 6) * .028
+        : 0
 
   if (leftEye.value) {
     leftEye.value.scale.y = damp(leftEye.value.scale.y, state === 'confused' ? baseEyeY * .72 : baseEyeY, 12, delta)
     leftEye.value.scale.x = damp(leftEye.value.scale.x, state === 'excited' ? 1.14 : 1, 10, delta)
-    // 动作只叠加局部视线偏移，绝不能把左眼的基础挂点缓动回头部中心。 / Motion only adds a local gaze offset and must never damp the left-eye base mount toward the head center.
     leftEye.value.position.x = damp(leftEye.value.position.x, -eyeX.value + scanOffset, 9, delta)
   }
   if (rightEye.value) {
@@ -143,7 +173,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 
   if (mouth.value) {
     const talking = state === 'talking' ? .72 + Math.max(0, Math.sin(elapsed * 10)) * .68 : 1
-    const eating = state === 'eating' ? .8 + Math.max(0, Math.sin(frame.eatProgress * Math.PI * 14)) * .7 : 1
+    const eating = state === 'eating' ? .78 + Math.max(0, Math.sin(frame.eatProgress * Math.PI * 14)) * .82 : 1
     const happy = state === 'happy' || state === 'excited' ? 1.18 : 1
     const sneeze = state === 'sparkle-sneeze' ? 1 + frame.sneezeRelease * .8 : 1
     mouth.value.scale.y = damp(mouth.value.scale.y, talking * eating * sneeze, 12, delta)
@@ -196,10 +226,10 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     rightAntenna.value.scale.y = damp(rightAntenna.value.scale.y, 1 + antennaCharge * .16, 7, delta)
   }
 
-  const pulse = 1 + Math.sin(elapsed * props.appearance.glow.pulseSpeed * 3.5) * .12
+  const pulseValue = 1 + Math.sin(elapsed * props.appearance.glow.pulseSpeed * 3.5) * .12
   if (props.appearance.glow.mode === 'rainbow') rainbow.setHSL((elapsed * .11) % 1, .86, .64)
   for (const material of glowMaterials.value) {
-    material.emissiveIntensity = props.appearance.glow.intensity * pulse + antennaCharge * 3.6
+    material.emissiveIntensity = props.appearance.glow.intensity * pulseValue + antennaCharge * 3.6
     if (props.appearance.glow.mode === 'rainbow') {
       material.color.copy(rainbow)
       material.emissive.copy(rainbow)
@@ -272,7 +302,10 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
           <TresSphereGeometry v-else :args="[1, 32, 32]" />
           <TresMeshStandardMaterial :color="appearance.palette.eye" :roughness=".08" />
         </TresMesh>
-        <TresMesh v-if="appearance.parts.eyes === 'round'" :position="vector(scheme.model.head.eyeHighlightPosition)" :scale="vector(scheme.model.head.eyeHighlightScale)"><TresSphereGeometry /><TresMeshBasicMaterial :color="appearance.palette.secondaryGlow" /></TresMesh>
+        <TresMesh v-if="appearance.parts.eyes === 'round'" :position="vector([side * highlightX, scheme.model.head.eyeHighlightPosition[1], scheme.model.head.eyeHighlightPosition[2]])" :scale="vector(scheme.model.head.eyeHighlightScale)">
+          <TresSphereGeometry />
+          <TresMeshBasicMaterial :color="appearance.palette.secondaryGlow" />
+        </TresMesh>
       </TresGroup>
     </template>
     <TresMesh v-else :position="vector([0, scheme.model.head.eyeOffset[1], scheme.model.head.eyeOffset[2]])" :scale="vector([.72, .16, .08])"><TresBoxGeometry /><TresMeshStandardMaterial :color="appearance.palette.eye" :emissive="appearance.palette.secondaryGlow" :emissive-intensity=".42" /></TresMesh>
