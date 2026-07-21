@@ -3,7 +3,7 @@
  * 复用并扩展 Chrome 扩展 CloudFox.vue 的动作阶段、缓入缓出和关键脉冲曲线，供 Studio 全身共享。
  * Reuses and extends production Cloud Fox motion phases, easing, and pulses across the Studio renderer.
  */
-import type { ExtensionCloudFoxMotionId } from './chrome-extension-cloud-fox-motions'
+import { getExtensionCloudFoxMotion, type ExtensionCloudFoxMotionId } from './chrome-extension-cloud-fox-motions'
 
 export const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
 export const mix = (start: number, end: number, progress: number) => start + (end - start) * progress
@@ -14,27 +14,6 @@ export const smoothStep = (start: number, end: number, value: number) => {
 export const pulse = (progress: number, start: number, end: number) => {
   if (progress <= start || progress >= end) return 0
   return Math.sin(((progress - start) / (end - start)) * Math.PI)
-}
-
-const SOURCE_DURATION: Partial<Record<ExtensionCloudFoxMotionId, number>> = {
-  greeting: 2.4,
-  spinning: 1.9,
-  jumping: 1.25,
-  stretching: 7,
-  'playing-ball': 8.4,
-  eating: 8,
-  backflip: 4.3,
-  'tail-tornado': 5,
-  'diving-catch': 7,
-  'energy-burst': 6.2,
-  'shy-peek': 4.5,
-  'star-juggle': 8.2,
-  'cloud-nap': 18,
-  'sparkle-sneeze': 3.9,
-  'fireworks-show': 12,
-  'curious-scan': 4,
-  'antenna-charge': 5.2,
-  'tail-glow': 5.2,
 }
 
 export interface ExtensionCloudFoxMotionFrame {
@@ -97,7 +76,8 @@ export function createExtensionCloudFoxMotionFrame(
   state: ExtensionCloudFoxMotionId,
   elapsed: number,
 ): ExtensionCloudFoxMotionFrame {
-  const duration = SOURCE_DURATION[state] || 4.8
+  const previewDurationSeconds = getExtensionCloudFoxMotion(state).previewDurationMs / 1000
+  const duration = previewDurationSeconds > 0 ? previewDurationSeconds : 4.8
   const progress = clamp01(elapsed / duration)
   const is = (id: ExtensionCloudFoxMotionId) => state === id
 
@@ -110,8 +90,15 @@ export function createExtensionCloudFoxMotionFrame(
     : 0
 
   const jumpProgress = is('jumping') ? progress : 0
-  const jumpOffset = is('jumping') ? Math.sin(jumpProgress * Math.PI) * .9 : 0
-  const jumpLanding = is('jumping') ? Math.pow(Math.sin(jumpProgress * Math.PI), 2) : 0
+  const jumpPrepare = is('jumping') ? pulse(jumpProgress, .01, .18) : 0
+  const jumpAir = is('jumping')
+    ? smoothStep(.15, .4, jumpProgress) * (1 - smoothStep(.58, .86, jumpProgress))
+    : 0
+  const jumpLand = is('jumping') ? pulse(jumpProgress, .78, .98) : 0
+  const jumpOffset = is('jumping')
+    ? jumpAir * .98 - jumpPrepare * .14 - jumpLand * .11
+    : 0
+  const jumpLanding = is('jumping') ? Math.max(jumpPrepare * .55, jumpLand) : 0
 
   const stretchProgress = is('stretching') ? progress : 0
   const stretchStrength = is('stretching')
