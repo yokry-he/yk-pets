@@ -1,4 +1,4 @@
-/** Phase 6+9: species registry, Moon Cat implementation, style mapping, motion fallback, and continuous front-paw design. */
+/** Phase 6+11: species registry, Moon Cat implementation, style mapping, motion fallback, continuous front paws, and body-orbit design. */
 import {
   PET_STYLE_RULES,
   applyAppearanceScope,
@@ -27,7 +27,7 @@ export interface PetSpeciesDefinition {
 }
 
 export const PET_SPECIES_REGISTRY: Readonly<Record<PetSpeciesId, PetSpeciesDefinition>> = {
-  'cloud-fox': { id: 'cloud-fox', label: '云狐', labelEn: 'Cloud Fox', status: 'active', slots: ['ears','eyes','nose','mouth','antenna','front-paws','tail','chest-symbol','back-symbol'], supportedBehaviors: ['idle','greeting','jumping','stretching','spinning','resting'], fallbackBehavior: 'idle', defaultStyle: 'nebula' },
+  'cloud-fox': { id: 'cloud-fox', label: '云狐', labelEn: 'Cloud Fox', status: 'active', slots: ['ears','eyes','nose','mouth','antenna','front-paws','tail','body-orbit','chest-symbol','back-symbol'], supportedBehaviors: ['idle','greeting','jumping','stretching','spinning','resting'], fallbackBehavior: 'idle', defaultStyle: 'nebula' },
   'moon-cat': { id: 'moon-cat', label: '月猫', labelEn: 'Moon Cat', status: 'active', slots: ['ears','eyes','nose','mouth','whiskers','forehead-mark','tail','chest-symbol'], supportedBehaviors: ['idle','greeting','jumping','stretching','resting'], fallbackBehavior: 'greeting', defaultStyle: 'cute' },
   'nebula-slime': { id: 'nebula-slime', label: '星云史莱姆', labelEn: 'Nebula Slime', status: 'planned', slots: ['core','eyes','surface-pattern'], supportedBehaviors: ['idle'], fallbackBehavior: 'idle', defaultStyle: 'nebula' },
   'star-rabbit': { id: 'star-rabbit', label: '星兔', labelEn: 'Star Rabbit', status: 'planned', slots: ['ears','eyes','nose','tail','forehead-mark'], supportedBehaviors: ['idle'], fallbackBehavior: 'idle', defaultStyle: 'crystal' },
@@ -68,10 +68,32 @@ export const FRONT_PAW_DESIGN_RANGES = Object.freeze({
   palmScale: [.72, 1.55] as const,
 })
 
+export interface BodyOrbitDesignRecipe {
+  enabled: boolean
+  ringCount: 1 | 2 | 3
+  radius: number
+  verticalScale: number
+  tilt: number
+  speed: number
+  intensity: number
+  particleCount: number
+  primaryColor: string
+  secondaryColor: string
+}
+export const BODY_ORBIT_DESIGN_RANGES = Object.freeze({
+  radius: [1.02, 1.9] as const,
+  verticalScale: [.58, 1.15] as const,
+  tilt: [-1.2, 1.2] as const,
+  speed: [.05, 1.5] as const,
+  intensity: [.15, 3.2] as const,
+  particleCount: [0, 24] as const,
+})
+
 export interface MultiSpeciesAppearanceRecipe extends Omit<PetStudioAppearanceRecipe, 'speciesId'> {
   speciesId: PetSpeciesId
   speciesParts: SpeciesSpecificParts
   frontPawDesign: FrontPawDesignRecipe
+  orbitDesign: BodyOrbitDesignRecipe
 }
 
 export function defaultSpeciesParts(): SpeciesSpecificParts {
@@ -82,9 +104,24 @@ export function defaultFrontPawDesign(): FrontPawDesignRecipe {
   return { style: 'soft', rootHeight: 0, embedDepth: .1, forwardOffset: .04, outwardAngle: .06, forwardAngle: 0, shoulderScale: 1, wristScale: 1, palmScale: 1 }
 }
 
+export function defaultBodyOrbitDesign(): BodyOrbitDesignRecipe {
+  return {
+    enabled: true,
+    ringCount: 2,
+    radius: 1.36,
+    verticalScale: .82,
+    tilt: .52,
+    speed: .34,
+    intensity: 1.15,
+    particleCount: 10,
+    primaryColor: '#7066ff',
+    secondaryColor: '#52e0d0',
+  }
+}
+
 export function createMultiSpeciesAppearance(speciesId: PetSpeciesId = 'cloud-fox'): MultiSpeciesAppearanceRecipe {
   const base = createPetStudioAppearanceV2()
-  return { ...base, speciesId, speciesParts: defaultSpeciesParts(), frontPawDesign: defaultFrontPawDesign() }
+  return { ...base, speciesId, speciesParts: defaultSpeciesParts(), frontPawDesign: defaultFrontPawDesign(), orbitDesign: defaultBodyOrbitDesign() }
 }
 
 export function normalizeMultiSpeciesAppearance(input: unknown): MultiSpeciesAppearanceRecipe {
@@ -96,10 +133,13 @@ export function normalizeMultiSpeciesAppearance(input: unknown): MultiSpeciesApp
   const parts = candidate.speciesParts || fallback
   const pawFallback = defaultFrontPawDesign()
   const paw = candidate.frontPawDesign || pawFallback
+  const orbitFallback = defaultBodyOrbitDesign()
+  const orbit = candidate.orbitDesign || orbitFallback
   const number = (value: unknown, min: number, max: number, fallbackValue: number) => typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallbackValue
   const color = (value: unknown, fallbackValue: string) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : fallbackValue
   const markStyles: SpeciesSpecificParts['foreheadMark']['style'][] = ['crescent','star','crystal']
   const pawStyles = FRONT_PAW_STYLES.map(item => item.id)
+  const ringCount = [1, 2, 3].includes(orbit.ringCount as number) ? orbit.ringCount as 1 | 2 | 3 : orbitFallback.ringCount
   return {
     ...base,
     speciesId,
@@ -118,6 +158,18 @@ export function normalizeMultiSpeciesAppearance(input: unknown): MultiSpeciesApp
       shoulderScale: number(paw.shoulderScale, ...FRONT_PAW_DESIGN_RANGES.shoulderScale, pawFallback.shoulderScale),
       wristScale: number(paw.wristScale, ...FRONT_PAW_DESIGN_RANGES.wristScale, pawFallback.wristScale),
       palmScale: number(paw.palmScale, ...FRONT_PAW_DESIGN_RANGES.palmScale, pawFallback.palmScale),
+    },
+    orbitDesign: {
+      enabled: orbit.enabled !== false,
+      ringCount,
+      radius: number(orbit.radius, ...BODY_ORBIT_DESIGN_RANGES.radius, orbitFallback.radius),
+      verticalScale: number(orbit.verticalScale, ...BODY_ORBIT_DESIGN_RANGES.verticalScale, orbitFallback.verticalScale),
+      tilt: number(orbit.tilt, ...BODY_ORBIT_DESIGN_RANGES.tilt, orbitFallback.tilt),
+      speed: number(orbit.speed, ...BODY_ORBIT_DESIGN_RANGES.speed, orbitFallback.speed),
+      intensity: number(orbit.intensity, ...BODY_ORBIT_DESIGN_RANGES.intensity, orbitFallback.intensity),
+      particleCount: Math.round(number(orbit.particleCount, ...BODY_ORBIT_DESIGN_RANGES.particleCount, orbitFallback.particleCount)),
+      primaryColor: color(orbit.primaryColor, base.palette.primaryGlow),
+      secondaryColor: color(orbit.secondaryColor, base.palette.secondaryGlow),
     },
   }
 }
@@ -148,13 +200,21 @@ export function resolveSpeciesBehavior(speciesId: PetSpeciesId, requested: Cloud
 export function applyStyleAcrossSpecies(current: MultiSpeciesAppearanceRecipe, style: PetStyleId, scope: AppearanceApplyScope) {
   const cloudRecipe = normalizePetStudioAppearanceV2({ ...current, speciesId: 'cloud-fox' })
   const styled = applyAppearanceScope(cloudRecipe, PET_STYLE_RULES[style](cloudRecipe), scope)
-  const next = normalizeMultiSpeciesAppearance({ ...current, ...styled, speciesId: current.speciesId, speciesParts: current.speciesParts, frontPawDesign: current.frontPawDesign })
+  const next = normalizeMultiSpeciesAppearance({ ...current, ...styled, speciesId: current.speciesId, speciesParts: current.speciesParts, frontPawDesign: current.frontPawDesign, orbitDesign: current.orbitDesign })
   if (scope === 'all' || scope === 'shape') {
     const pawStyle: Record<PetStyleId, FrontPawStyle> = { cute: 'mitten', mechanical: 'mechanical', nebula: 'soft', crystal: 'tapered' }
     next.frontPawDesign.style = pawStyle[style]
     if (style === 'cute') { next.frontPawDesign.palmScale = 1.2; next.frontPawDesign.outwardAngle = .1 }
     if (style === 'mechanical') { next.frontPawDesign.shoulderScale = 1.12; next.frontPawDesign.wristScale = .86 }
     if (style === 'crystal') { next.frontPawDesign.palmScale = .92; next.frontPawDesign.forwardAngle = -.08 }
+  }
+  if (scope === 'all' || scope === 'glow') {
+    next.orbitDesign.primaryColor = next.palette.primaryGlow
+    next.orbitDesign.secondaryColor = next.palette.secondaryGlow
+    if (style === 'cute') { next.orbitDesign.ringCount = 1; next.orbitDesign.speed = .22; next.orbitDesign.intensity = .72 }
+    if (style === 'mechanical') { next.orbitDesign.ringCount = 3; next.orbitDesign.speed = .62; next.orbitDesign.intensity = 1.45 }
+    if (style === 'nebula') { next.orbitDesign.ringCount = 2; next.orbitDesign.speed = .38; next.orbitDesign.intensity = 1.3 }
+    if (style === 'crystal') { next.orbitDesign.ringCount = 2; next.orbitDesign.speed = .28; next.orbitDesign.intensity = 1.15 }
   }
   if (current.speciesId === 'moon-cat') {
     if (style === 'cute') { next.parts.ears = 'rounded'; next.parts.eyes = 'sleepy'; next.speciesParts.whiskers.length = .48; next.speciesParts.foreheadMark.style = 'crescent' }
@@ -181,5 +241,17 @@ export function randomizeMultiSpeciesAppearance(current: MultiSpeciesAppearanceR
     wristScale: Number((.82 + random() * .28).toFixed(2)),
     palmScale: Number((.86 + random() * .36).toFixed(2)),
   }
-  return normalizeMultiSpeciesAppearance({ ...current, ...randomized, speciesId: current.speciesId, speciesParts: locks.shape ? current.speciesParts : { ...current.speciesParts, moonTailCurl: Number((.35 + random() * .85).toFixed(2)) }, frontPawDesign })
+  const orbitDesign = locks.glow ? current.orbitDesign : {
+    ...current.orbitDesign,
+    ringCount: (1 + Math.floor(random() * 3)) as 1 | 2 | 3,
+    radius: Number((1.16 + random() * .42).toFixed(2)),
+    verticalScale: Number((.68 + random() * .34).toFixed(2)),
+    tilt: Number((-.78 + random() * 1.56).toFixed(2)),
+    speed: Number((.16 + random() * .66).toFixed(2)),
+    intensity: Number((.6 + random() * 1.2).toFixed(2)),
+    particleCount: Math.floor(random() * 17),
+    primaryColor: randomized.palette.primaryGlow,
+    secondaryColor: randomized.palette.secondaryGlow,
+  }
+  return normalizeMultiSpeciesAppearance({ ...current, ...randomized, speciesId: current.speciesId, speciesParts: locks.shape ? current.speciesParts : { ...current.speciesParts, moonTailCurl: Number((.35 + random() * .85).toFixed(2)) }, frontPawDesign, orbitDesign })
 }
