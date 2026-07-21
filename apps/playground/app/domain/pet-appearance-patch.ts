@@ -4,7 +4,11 @@
  * Applies deep local patches to multi-species appearance recipes while preserving every unspecified visual section.
  */
 import type { EarDesignRecipe, TailDesignRecipe, TailSegmentRecipe } from './pet-studio-phase2'
-import { normalizeMultiSpeciesAppearance, type MultiSpeciesAppearanceRecipe } from './pet-species-registry'
+import {
+  normalizeMultiSpeciesAppearance,
+  type FrontPawDesignRecipe,
+  type MultiSpeciesAppearanceRecipe,
+} from './pet-species-registry'
 
 export interface PetAppearanceLocalPatch {
   parts?: Partial<MultiSpeciesAppearanceRecipe['parts']>
@@ -12,6 +16,7 @@ export interface PetAppearanceLocalPatch {
   palette?: Partial<MultiSpeciesAppearanceRecipe['palette']>
   glow?: Partial<MultiSpeciesAppearanceRecipe['glow']>
   antennaDesign?: Partial<MultiSpeciesAppearanceRecipe['antennaDesign']>
+  frontPawDesign?: Partial<FrontPawDesignRecipe>
   earDesign?: Partial<EarDesignRecipe>
   tailDesign?: Partial<Omit<TailDesignRecipe, 'segments' | 'tipGlow'>> & {
     segments?: TailSegmentRecipe[]
@@ -34,6 +39,7 @@ export function applyPetAppearanceLocalPatch(
     palette: { ...current.palette, ...patch.palette },
     glow: { ...current.glow, ...patch.glow },
     antennaDesign: { ...current.antennaDesign, ...patch.antennaDesign },
+    frontPawDesign: { ...current.frontPawDesign, ...patch.frontPawDesign },
     earDesign: { ...current.earDesign, ...patch.earDesign },
     tailDesign: {
       ...current.tailDesign,
