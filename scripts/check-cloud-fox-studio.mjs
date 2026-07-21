@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 const phaseArg = process.argv.find(argument => argument.startsWith('--phase='))
-const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 8
+const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 9
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const files = {
   package: read('package.json'),
@@ -12,6 +12,7 @@ const files = {
   registry: read('apps/playground/app/domain/pet-species-registry.ts'),
   visualProfile: read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts'),
   extensionDefaults: read('apps/playground/app/domain/extension-cloud-fox-default.ts'),
+  patchDomain: read('apps/playground/app/domain/pet-appearance-patch.ts'),
   store: read('apps/playground/app/stores/pet-appearance.ts'),
   cloudRenderer: read('apps/playground/app/components/studio/CustomizableCloudFox.vue'),
   extensionAlignedRenderer: read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue'),
@@ -79,6 +80,11 @@ const checks = [
   [8, 'local appearance patches', files.store.includes('patchEarDesign') && files.store.includes('patchTailDesign') && files.store.includes('patchTailSegment') && files.store.includes('patchParts')],
   [8, 'local patch isolation test', files.patchTest.includes('nonTailSnapshot') && files.patchTest.includes('nonEarSnapshot') && files.package.includes('test:pet-studio-local-patches')],
   [8, 'tail aware bounds', files.phase2.includes('calculatePetStudioVisualBounds') && files.canvas.includes('calculatePetStudioVisualBounds')],
+  [9, 'continuous embedded front-paw roots', ['pawSurfaceDepth', 'embedDepth', 'shoulderRadius', 'forearmTopY'].every(token => files.extensionAlignedBody.includes(token))],
+  [9, 'planted shoulder motion', files.extensionAlignedBody.includes('setPawMotionRef') && files.extensionAlignedBody.includes('group.rotation.z') && !files.extensionAlignedBody.includes('left.value.position.y')],
+  [9, 'front-paw style and geometry controls', files.registry.includes('FRONT_PAW_STYLES') && files.registry.includes('FrontPawDesignRecipe') && files.tailEditor.includes('连续前爪连接') && files.tailEditor.includes('根部埋入身体')],
+  [9, 'front-paw safe normalization and audit', files.registry.includes('FRONT_PAW_DESIGN_RANGES') && files.registry.includes('auditFrontPawDesign') && files.store.includes('auditFrontPawDesign')],
+  [9, 'front-paw local patch isolation', files.patchDomain.includes('frontPawDesign?:') && files.store.includes('patchFrontPawDesign') && files.patchTest.includes('nonPawSnapshot')],
 ]
 const activeChecks = checks.filter(([phase]) => phase <= requestedPhase)
 const failures = activeChecks.filter(([, , passed]) => !passed).map(([, name]) => name)
