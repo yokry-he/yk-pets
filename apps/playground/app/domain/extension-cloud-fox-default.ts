@@ -66,6 +66,17 @@ export function createExtensionClassicAppearance(): MultiSpeciesAppearanceRecipe
       innerGlowColor: palette.primaryGlow,
       innerGlowIntensity: .25,
     },
+    frontPawDesign: {
+      style: 'soft',
+      rootHeight: 0,
+      embedDepth: .1,
+      forwardOffset: .04,
+      outwardAngle: .06,
+      forwardAngle: 0,
+      shoulderScale: 1,
+      wristScale: 1,
+      palmScale: 1,
+    },
     glow: {
       mode: 'emotion',
       tailEnabled: true,
