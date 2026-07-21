@@ -12,12 +12,14 @@ import PetSceneEffects from './PetSceneEffects.vue'
 import { calculatePetStudioVisualBounds } from '~/domain/pet-studio-phase2'
 import { createExtensionClassicAppearance, createExtensionClassicScene, isExtensionClassicScene } from '~/domain/extension-cloud-fox-default'
 import { createDefaultPetScene, getPetScenePreset, resolveSceneContrast, type PetSceneRecipe } from '~/domain/pet-scene'
-import type { CloudFoxStudioBackground, CloudFoxStudioBehavior, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
+import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
+import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 
 const props = defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
-  behavior: CloudFoxStudioBehavior
+  behavior: ExtensionCloudFoxMotionId
+  motionKey: number
   view: CloudFoxStudioView
   background: CloudFoxStudioBackground
   scene?: PetSceneRecipe
@@ -81,7 +83,7 @@ const sceneStyle = computed(() => ({
       <TresPointLight :position="vec3(scheme.scene.lights.primaryPosition)" :intensity="scheme.scene.lights.primaryIntensity" :color="appearance.palette.primaryGlow" />
       <TresPointLight :position="vec3(scheme.scene.lights.secondaryPosition)" :intensity="scheme.scene.lights.secondaryIntensity" :color="appearance.palette.secondaryGlow" />
       <PetSceneEffects :scene="activeScene" :behavior="behavior" />
-      <ProceduralPet :appearance="appearance" :behavior="behavior" :view="view" />
+      <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" />
     </TresCanvas>
     <div v-if="extensionScene" class="extension-glow" />
     <div class="label">
