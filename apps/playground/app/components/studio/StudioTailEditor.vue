@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  独立编辑尾巴背部根段、整体侧偏、逐段位置旋转和尾尖发光，不修改其它宠物外观。
-  Edits the tail back root, lateral offset, per-segment transforms, and tip glow without modifying other pet appearance.
+  独立编辑连续内嵌前爪、尾巴背部根段、逐段变换、尾尖发光和组合触角，不修改其它宠物外观。
+  Edits continuously embedded front paws, the tail back root, per-segment transforms, tip glow, and antennae without modifying unrelated appearance.
 -->
 <script setup lang="ts">
 import {
@@ -11,6 +11,11 @@ import {
   type TailDesignRecipe,
   type TailSegmentRecipe,
 } from '~/domain/pet-studio-phase2'
+import {
+  FRONT_PAW_DESIGN_RANGES,
+  FRONT_PAW_STYLES,
+  type FrontPawDesignRecipe,
+} from '~/domain/pet-species-registry'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 
 const store = usePetAppearanceStore()
@@ -19,8 +24,19 @@ const value = (event: Event) => (event.target as HTMLInputElement | HTMLSelectEl
 const checked = (event: Event) => (event.target as HTMLInputElement).checked
 const number = (event: Event) => Number(value(event))
 
+type PawKey = Exclude<keyof FrontPawDesignRecipe, 'style'>
 type RootKey = 'rootOffsetX' | 'rootOffsetY' | 'rootOffsetZ' | 'rootExtensionLength' | 'rootExtensionWidth' | 'lateralOffset'
 type SegmentKey = keyof TailSegmentRecipe
+const pawControls: Array<[PawKey, string, number, number, number]> = [
+  ['embedDepth', '根部埋入身体', ...FRONT_PAW_DESIGN_RANGES.embedDepth, .01],
+  ['rootHeight', '根部上下位置', ...FRONT_PAW_DESIGN_RANGES.rootHeight, .01],
+  ['forwardOffset', '根部前后微调', ...FRONT_PAW_DESIGN_RANGES.forwardOffset, .01],
+  ['outwardAngle', '左右张开角度', ...FRONT_PAW_DESIGN_RANGES.outwardAngle, .01],
+  ['forwardAngle', '前后摆角', ...FRONT_PAW_DESIGN_RANGES.forwardAngle, .01],
+  ['shoulderScale', '肩部圆润度', ...FRONT_PAW_DESIGN_RANGES.shoulderScale, .01],
+  ['wristScale', '手腕粗细', ...FRONT_PAW_DESIGN_RANGES.wristScale, .01],
+  ['palmScale', '爪掌大小', ...FRONT_PAW_DESIGN_RANGES.palmScale, .01],
+]
 const rootControls: Array<[RootKey, string, number, number, number]> = [
   ['rootOffsetX', '根部左右位置', -.8, .8, .01],
   ['rootOffsetY', '根部上下位置', -.8, .8, .01],
@@ -40,6 +56,12 @@ const segmentControls: Array<[SegmentKey, string, number, number, number]> = [
   ['rotationZ', '旋转 Z', -3.14, 3.14, .02],
 ]
 
+function patchPawStyle(event: Event) {
+  store.patchFrontPawDesign({ style: value(event) as FrontPawDesignRecipe['style'] })
+}
+function patchPaw(key: PawKey, event: Event) {
+  store.patchFrontPawDesign({ [key]: number(event) } as Partial<FrontPawDesignRecipe>)
+}
 function patchRoot(key: RootKey, event: Event) {
   store.patchTailDesign({ [key]: number(event) } as Partial<TailDesignRecipe>)
 }
@@ -66,8 +88,24 @@ function removeSegment(index: number) {
 
 <template>
   <section class="tail-editor">
+    <section class="card paw-card">
+      <h2>连续前爪连接</h2>
+      <p>肩部根球根据身体曲面自动定位并埋入内部；动作只绕肩部旋转，圆润肩部和爪掌会覆盖圆柱端面，不再出现平口截断。</p>
+      <label>
+        前爪样式
+        <select :value="recipe.frontPawDesign.style" @focus="store.checkpoint" @change="patchPawStyle">
+          <option v-for="item in FRONT_PAW_STYLES" :key="item.id" :value="item.id">{{ item.label }}</option>
+        </select>
+      </label>
+      <label v-for="[key,label,min,max,step] in pawControls" :key="key">
+        {{ label }} {{ recipe.frontPawDesign[key].toFixed(2) }}
+        <input :value="recipe.frontPawDesign[key]" type="range" :min="min" :max="max" :step="step" @pointerdown="store.checkpoint" @input="patchPaw(key,$event)">
+      </label>
+      <small>推荐优先调整“根部埋入身体”和“肩部圆润度”；检查时切换正面、左右侧面及招手/伸展动作。</small>
+    </section>
+
     <h2>背部根段与分段尾巴</h2>
-    <p>尾巴始终从身体背面中轴伸出。修改任意尾段只更新 <code>tailDesign</code>，不会重置头部、身体和耳朵。</p>
+    <p>尾巴始终从身体背面中轴伸出。修改任意尾段只更新 <code>tailDesign</code>，不会重置头部、身体、耳朵和前爪。</p>
     <label>
       尾巴朝向
       <select :value="recipe.tailDesign.direction" @focus="store.checkpoint" @change="patchDirection">
@@ -106,5 +144,5 @@ function removeSegment(index: number) {
 </template>
 
 <style scoped>
-.tail-editor{display:flex;flex-direction:column;gap:11px}.tail-editor h2,.tail-editor h3,.tail-editor p{margin:0}.tail-editor p,.tail-editor small{color:#9da6c8;font-size:12px}.tail-editor label{display:flex;flex-direction:column;gap:5px;color:#bbc2dc;font-size:13px}.tail-editor select{min-height:38px;border:1px solid #ffffff22;border-radius:9px;padding:7px;color:#fff;background:#111526}.tail-editor input[type=range]{width:100%;accent-color:#7066ff}.tail-editor input[type=color]{width:100%;height:36px;border:0;background:transparent}.card,details{display:flex;flex-direction:column;gap:9px;padding:10px;border:1px solid #ffffff18;border-radius:10px;background:#ffffff08}.check{flex-direction:row!important;align-items:center}.row,summary{display:flex;align-items:center;justify-content:space-between;gap:8px}.row button,summary button{border:1px solid #ffffff24;border-radius:8px;padding:6px 9px;color:#fff;background:#ffffff0d}.row button:disabled,summary button:disabled{opacity:.4}
+.tail-editor{display:flex;flex-direction:column;gap:11px}.tail-editor h2,.tail-editor h3,.tail-editor p{margin:0}.tail-editor p,.tail-editor small{color:#9da6c8;font-size:12px}.tail-editor label{display:flex;flex-direction:column;gap:5px;color:#bbc2dc;font-size:13px}.tail-editor select{min-height:38px;border:1px solid #ffffff22;border-radius:9px;padding:7px;color:#fff;background:#111526}.tail-editor input[type=range]{width:100%;accent-color:#7066ff}.tail-editor input[type=color]{width:100%;height:36px;border:0;background:transparent}.card,details{display:flex;flex-direction:column;gap:9px;padding:10px;border:1px solid #ffffff18;border-radius:10px;background:#ffffff08}.paw-card{border-color:#7066ff55;background:linear-gradient(145deg,#7066ff18,#52e0d00b)}.check{flex-direction:row!important;align-items:center}.row,summary{display:flex;align-items:center;justify-content:space-between;gap:8px}.row button,summary button{border:1px solid #ffffff24;border-radius:8px;padding:6px 9px;color:#fff;background:#ffffff0d}.row button:disabled,summary button:disabled{opacity:.4}
 </style>
