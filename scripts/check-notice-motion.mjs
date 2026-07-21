@@ -16,7 +16,7 @@ const checks = [
   ['notice links to side panel', overlay.includes('nova-pet-status__details') && overlay.includes('openNoticeDetails')],
   ['motion registry activates runMotion', overlay.includes("if (item.kind === 'motion') runMotion(item)")],
   ['motion restart token increments', overlay.includes('motionNonce.value += 1')],
-  ['motion key reaches avatar', overlay.includes(':motion-key="motionNonce"') && avatar.includes(':motion-key="motionKey"')],
+  ['motion key reaches avatar', overlay.includes(':motion-key="motionNonce"') && avatar.includes('motionKey: props.motionKey') && avatar.includes('petElement.value?.setState')],
   ['motion key resets model timeline', fox.includes('props.motionKey !== previousMotionKey')],
   ['idle carousel remains enabled', overlay.includes('scheduleIdleCarousel()') && overlay.includes("runMotion(item, 'idle')")],
   ['thought bubble and menu are independent', overlay.includes('v-if="noticeOpen"') && overlay.includes('class="nova-pet-mode-control"')],
