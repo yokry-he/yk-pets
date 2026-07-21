@@ -1,4 +1,4 @@
-/** Phase 3: schema v2, independent symbols, derived colors and geometry audit. */
+/** Phase 3+13: schema v2, independent symbols, adjustable symbol placement, derived colors and geometry audit. */
 import {
   CLOUD_FOX_STUDIO_STORAGE_KEY,
   createPetStudioAppearance,
@@ -22,7 +22,19 @@ export interface SymbolChannelRecipe {
   scale: number
   rotation: number
   glowIntensity: number
+  offsetX: number
+  offsetY: number
+  offsetZ: number
 }
+
+export const SYMBOL_CHANNEL_RANGES = Object.freeze({
+  scale: [.35, 2.2] as const,
+  rotation: [-Math.PI, Math.PI] as const,
+  offsetX: [-.42, .42] as const,
+  offsetY: [-.42, .42] as const,
+  offsetZ: [-.08, .28] as const,
+  glowIntensity: [0, 4] as const,
+})
 
 export interface PetStudioAppearanceRecipe extends Omit<Phase2Recipe, 'schemaVersion' | 'symbols' | 'palette'> {
   schemaVersion: typeof PET_STUDIO_SCHEMA_VERSION
@@ -77,9 +89,12 @@ function migrateSymbol(input: unknown, fallback: SymbolChannelRecipe): SymbolCha
     enabled: candidate.enabled !== false,
     text: text(candidate.text, fallback.text),
     color: color(candidate.color, fallback.color),
-    scale: clamp(candidate.scale, .45, 1.8, fallback.scale),
-    rotation: clamp(candidate.rotation, -Math.PI, Math.PI, fallback.rotation),
-    glowIntensity: clamp(candidate.glowIntensity, 0, 4, fallback.glowIntensity),
+    scale: clamp(candidate.scale, ...SYMBOL_CHANNEL_RANGES.scale, fallback.scale),
+    rotation: clamp(candidate.rotation, ...SYMBOL_CHANNEL_RANGES.rotation, fallback.rotation),
+    glowIntensity: clamp(candidate.glowIntensity, ...SYMBOL_CHANNEL_RANGES.glowIntensity, fallback.glowIntensity),
+    offsetX: clamp(candidate.offsetX, ...SYMBOL_CHANNEL_RANGES.offsetX, fallback.offsetX),
+    offsetY: clamp(candidate.offsetY, ...SYMBOL_CHANNEL_RANGES.offsetY, fallback.offsetY),
+    offsetZ: clamp(candidate.offsetZ, ...SYMBOL_CHANNEL_RANGES.offsetZ, fallback.offsetZ),
   }
 }
 
@@ -91,8 +106,8 @@ export function createPetStudioAppearanceV2(): PetStudioAppearanceRecipe {
     schemaVersion: PET_STUDIO_SCHEMA_VERSION,
     palette: { ...base.palette, ...derived },
     symbols: {
-      chest: { enabled: base.symbols.chestEnabled, text: base.symbols.chestText, color: base.palette.symbolGlow, scale: base.symbols.symbolScale, rotation: 0, glowIntensity: 1.8 },
-      back: { enabled: base.symbols.backEnabled, text: base.symbols.backText, color: base.palette.symbolGlow, scale: base.symbols.symbolScale, rotation: 0, glowIntensity: 1.6 },
+      chest: { enabled: base.symbols.chestEnabled, text: base.symbols.chestText, color: base.palette.symbolGlow, scale: base.symbols.symbolScale, rotation: 0, glowIntensity: 1.8, offsetX: 0, offsetY: 0, offsetZ: 0 },
+      back: { enabled: base.symbols.backEnabled, text: base.symbols.backText, color: base.palette.symbolGlow, scale: base.symbols.symbolScale, rotation: 0, glowIntensity: 1.6, offsetX: 0, offsetY: .18, offsetZ: .02 },
     },
   }
 }
@@ -105,8 +120,8 @@ export function normalizePetStudioAppearanceV2(input: unknown): PetStudioAppeara
   const symbols = candidate.symbols && typeof candidate.symbols === 'object' ? candidate.symbols as Record<string, unknown> : {}
   const paletteCandidate = candidate.palette && typeof candidate.palette === 'object' ? candidate.palette as Record<string, unknown> : {}
   const derived = deriveAppearanceColors(base.palette.coat, base.palette.primaryGlow)
-  const legacyChest: SymbolChannelRecipe = { enabled: legacySymbols.chestEnabled, text: legacySymbols.chestText, color: base.palette.symbolGlow, scale: legacySymbols.symbolScale, rotation: 0, glowIntensity: 1.8 }
-  const legacyBack: SymbolChannelRecipe = { enabled: legacySymbols.backEnabled, text: legacySymbols.backText, color: base.palette.symbolGlow, scale: legacySymbols.symbolScale, rotation: 0, glowIntensity: 1.6 }
+  const legacyChest: SymbolChannelRecipe = { enabled: legacySymbols.chestEnabled, text: legacySymbols.chestText, color: base.palette.symbolGlow, scale: legacySymbols.symbolScale, rotation: 0, glowIntensity: 1.8, offsetX: 0, offsetY: 0, offsetZ: 0 }
+  const legacyBack: SymbolChannelRecipe = { enabled: legacySymbols.backEnabled, text: legacySymbols.backText, color: base.palette.symbolGlow, scale: legacySymbols.symbolScale, rotation: 0, glowIntensity: 1.6, offsetX: 0, offsetY: .18, offsetZ: .02 }
   return {
     ...base,
     schemaVersion: PET_STUDIO_SCHEMA_VERSION,
@@ -147,6 +162,7 @@ export function auditPetStudioAppearance(recipe: PetStudioAppearanceRecipe): App
   if (recipe.tailDesign.tipGlow.enabled && recipe.tailDesign.tipGlow.intensity > 4) findings.push({ id: 'tail-tip-glow', severity: 'info', message: '尾尖发光强度较高，浅色背景下可能出现过曝。', path: 'tailDesign.tipGlow.intensity' })
   if (recipe.earDesign.innerGlowEnabled && recipe.earDesign.innerGlowIntensity > 3) findings.push({ id: 'ear-inner-glow', severity: 'info', message: '内耳发光强度较高，可能覆盖耳朵的多色层次。', path: 'earDesign.innerGlowIntensity' })
   if (depth < .82 && recipe.symbols.chest.scale > 1.4) findings.push({ id: 'chest-float', severity: 'warning', message: '胸口标志过大，薄身体上可能产生悬浮感。', path: 'symbols.chest.scale' })
+  if (Math.abs(recipe.symbols.back.offsetY) < .08) findings.push({ id: 'back-symbol-tail-overlap', severity: 'info', message: '后背标志位置较低，长尾或尾根可能遮挡字母。', path: 'symbols.back.offsetY' })
   if (!findings.length) findings.push({ id: 'geometry-ok', severity: 'info', message: '当前造型位于安全边界内，未发现明显穿模风险。', path: '' })
   return findings
 }
