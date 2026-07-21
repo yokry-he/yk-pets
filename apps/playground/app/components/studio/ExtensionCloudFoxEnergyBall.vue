@@ -5,7 +5,7 @@
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
-import { AdditiveBlending, Vector3 } from 'three'
+import { AdditiveBlending, Euler, Vector3 } from 'three'
 import type { Group, Mesh, MeshBasicMaterial } from 'three'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import { createExtensionCloudFoxMotionFrame, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
@@ -19,6 +19,7 @@ const props = defineProps<{
 }>()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vector = (x: number, y: number, z: number) => new Vector3(x, y, z)
+const rotation = (x: number, y: number, z: number) => new Euler(x, y, z)
 const damp = (current: number, target: number, speed: number, delta: number) => current + (target - current) * Math.min(1, 1 - Math.exp(-speed * delta))
 
 const energyBall = shallowRef<Group>()
@@ -167,7 +168,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       <TresSphereGeometry :args="[.34, 28, 28]" />
       <TresMeshBasicMaterial :color="appearance.palette.primaryGlow" transparent :opacity=".18" :blending="AdditiveBlending" :depth-write="false" :tone-mapped="false" />
     </TresMesh>
-    <TresMesh ref="shockwave" :visible="false" :rotation="vector(Math.PI / 2, 0, 0)">
+    <TresMesh ref="shockwave" :visible="false" :rotation="rotation(Math.PI / 2, 0, 0)">
       <TresTorusGeometry :args="[.4, .035, 16, 72]" />
       <TresMeshBasicMaterial :color="appearance.palette.secondaryGlow" transparent :opacity="0" :blending="AdditiveBlending" :depth-write="false" />
     </TresMesh>
