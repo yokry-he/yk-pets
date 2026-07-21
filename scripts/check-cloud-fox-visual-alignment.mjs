@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const extensionModel = read('apps/extension/components/avatar/CloudFox.vue')
-const extensionCanvas = read('apps/extension/components/avatar/AvatarCanvas.vue')
+const extensionCanvas = read('apps/extension/components/avatar/ProductionAvatarCanvas.vue')
 const profile = read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts')
 const defaults = read('apps/playground/app/domain/extension-cloud-fox-default.ts')
 const phase2 = read('apps/playground/app/domain/pet-studio-phase2.ts')
@@ -55,7 +55,7 @@ checks.push(
   ['directional light', extensionCanvas.includes(':intensity="3.8"') && profile.includes('directionalIntensity: 3.8')],
   ['point lights', extensionCanvas.includes(':intensity="secretMode ? 7 : 3.6"') && extensionCanvas.includes(':intensity="secretMode ? 6 : 2.8"') && profile.includes('primarySecretIntensity: 7') && profile.includes('secondarySecretIntensity: 6')],
   ['base background', extensionCanvas.includes('#0a0d18') && profile.includes("baseColor: '#0a0d18'")],
-  ['nebula background', extensionCanvas.includes('rgba(111, 103, 255, .22)') && profile.includes('rgba(111, 103, 255, .22)')],
+  ['nebula background', extensionCanvas.includes('rgba(111,102,255,.22)') && profile.includes('rgba(111, 103, 255, .22)')],
   ['default appearance mapping', defaults.includes('createExtensionClassicAppearance') && defaults.includes("bodyShape: 'ellipsoid'") && defaults.includes('symbols:')],
   ['default scene mapping', defaults.includes('createExtensionClassicScene') && defaults.includes("presetId: 'deep-nebula'") && defaults.includes('halo: { enabled: false') && defaults.includes('groundShadow: { enabled: false')],
   ['studio exact renderer', studioRenderer.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME') && studioRenderer.includes('TresTubeGeometry') && studioRenderer.includes('scheme.model.head.muzzlePosition')],
