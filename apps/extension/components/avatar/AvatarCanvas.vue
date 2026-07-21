@@ -8,7 +8,7 @@ import { computed } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { Vector3 } from 'three'
 import type { PetRecipeEnvelope } from '@yk-pets/pet-core'
-import CloudFox from './CloudFox.vue'
+import ConfiguredCloudFox from './ConfiguredCloudFox.vue'
 import { resolveExtensionCloudFoxAppearance } from './appearance'
 import type { PetEmotion } from './types'
 
@@ -67,7 +67,7 @@ const canvasClass = computed(() => ({
       <TresPointLight :position="vec3(-3, 1, 2)" :intensity="secretMode ? 7 : 3.6" :color="visual.palette.primaryGlow" />
       <TresPointLight :position="vec3(3, -1, 2)" :intensity="secretMode ? 6 : 2.8" :color="visual.palette.secondaryGlow" />
       <TresGroup :scale="vec3(foxScale, foxScale, foxScale)">
-        <CloudFox
+        <ConfiguredCloudFox
           :behavior="behavior"
           :emotion="emotion"
           :speaking="speaking"
@@ -95,23 +95,9 @@ const canvasClass = computed(() => ({
     radial-gradient(circle at 50% 8%, rgba(112, 102, 255, .18), transparent 42%),
     #0a0d18;
 }
-
-.avatar-canvas--compact {
-  height: 214px;
-  border-radius: 28px;
-}
-
-.avatar-canvas--transparent {
-  background: transparent;
-}
-
-.avatar-canvas :deep(canvas) {
-  display: block;
-  width: 100%;
-  height: 100%;
-  background: transparent !important;
-}
-
+.avatar-canvas--compact { height: 214px; border-radius: 28px; }
+.avatar-canvas--transparent { background: transparent; }
+.avatar-canvas :deep(canvas) { display: block; width: 100%; height: 100%; background: transparent !important; }
 .avatar-nebula {
   position: absolute;
   inset: 2% 4% 8%;
@@ -124,12 +110,7 @@ const canvasClass = computed(() => ({
   pointer-events: none;
   opacity: .92;
 }
-
-.avatar-canvas--transparent .avatar-nebula {
-  inset: 8% 6% 10%;
-  opacity: .92;
-}
-
+.avatar-canvas--transparent .avatar-nebula { inset: 8% 6% 10%; opacity: .92; }
 .avatar-glow {
   position: absolute;
   inset: auto 14% -32px;
@@ -138,9 +119,5 @@ const canvasClass = computed(() => ({
   filter: blur(16px);
   pointer-events: none;
 }
-
-.avatar-canvas--compact .avatar-glow {
-  inset: auto 16% -22px;
-  height: 58px;
-}
+.avatar-canvas--compact .avatar-glow { inset: auto 16% -22px; height: 58px; }
 </style>
