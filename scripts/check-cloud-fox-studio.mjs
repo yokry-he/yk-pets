@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 const phaseArg = process.argv.find(argument => argument.startsWith('--phase='))
-const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 7
+const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 8
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const files = {
   package: read('package.json'),
@@ -18,6 +18,8 @@ const files = {
   extensionAlignedBody: read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue'),
   extensionAlignedHead: read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue'),
   extensionAlignedTail: read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue'),
+  earEditor: read('apps/playground/app/components/studio/StudioEarEditor.vue'),
+  tailEditor: read('apps/playground/app/components/studio/StudioTailEditor.vue'),
   moonCat: read('apps/playground/app/components/studio/MoonCat.vue'),
   proceduralPet: read('apps/playground/app/components/studio/ProceduralPet.vue'),
   canvas: read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue'),
@@ -28,6 +30,7 @@ const files = {
   speciesPage: read('apps/playground/app/pages/studio-species.vue'),
   app: read('apps/playground/app/app.vue'),
   exactCheck: read('scripts/check-cloud-fox-visual-alignment.mjs'),
+  patchTest: read('scripts/test-pet-studio-local-patches.ts'),
 }
 const domain12 = files.base + files.phase2
 const checks = [
@@ -39,8 +42,8 @@ const checks = [
   [1, 'head attached antennae', files.extensionAlignedHead.includes('appearance.parts.antenna')],
   [2, 'extended head part library', domain12.includes("'floppy'") && domain12.includes("'sleepy'")],
   [2, 'composable antenna', files.phase2.includes('antennaRod') && files.phase2.includes('antennaTip')],
-  [2, 'eight segment tail', files.phase2.includes('MAX_TAIL_SEGMENTS = 8') && files.cloudRenderer.includes('tailSegmentTransforms')],
-  [2, 'additive motion offsets', files.cloudRenderer.includes('tailBaseRotation') && files.cloudRenderer.includes('motionOffset')],
+  [2, 'eight segment tail', files.phase2.includes('MIN_TAIL_SEGMENTS = 3') && files.phase2.includes('MAX_TAIL_SEGMENTS = 8') && files.extensionAlignedTail.includes('extraSegmentTransforms')],
+  [2, 'additive motion offsets', files.extensionAlignedTail.includes('amplitude') && files.extensionAlignedTail.includes('directionRotation')],
   [3, 'appearance schema v2', files.phase3.includes('PET_STUDIO_SCHEMA_VERSION = 2')],
   [3, 'independent symbol controls', files.phase3.includes('chest: SymbolChannelRecipe') && files.phase3.includes('back: SymbolChannelRecipe')],
   [3, 'derived color channels', files.phase3.includes('deriveAppearanceColors') && ['highlight', 'shade', 'halo'].every(key => files.phase3.includes(key))],
@@ -53,7 +56,7 @@ const checks = [
   [5, 'scene recipe and presets', files.scene.includes('PetSceneRecipe') && files.scene.includes('PET_SCENE_PRESETS')],
   [5, 'scene effects', files.sceneEffects.includes('scene.halo') && files.sceneEffects.includes('scene.particles') && files.sceneEffects.includes('scene.groundShadow')],
   [5, 'automatic contrast', files.scene.includes('resolveSceneContrast') && files.scenePage.includes('跟随网页')],
-  [5, 'scene excluded from bounds', files.canvas.includes('Camera uses pet bounds only')],
+  [5, 'scene excluded from bounds', files.canvas.includes('Camera always reads current body and local tail bounds')],
   [6, 'species registry', files.registry.includes('PET_SPECIES_REGISTRY')],
   [6, 'moon cat implementation', files.registry.includes("'moon-cat'") && files.moonCat.includes('foreheadMark') && files.moonCat.includes('whiskers')],
   [6, 'reserved slime and rabbit', files.registry.includes("'nebula-slime'") && files.registry.includes("'star-rabbit'")],
@@ -68,6 +71,14 @@ const checks = [
   [7, 'extension aligned background', files.canvas.includes('scheme.scene.containerBackground') && files.canvas.includes('scheme.scene.nebulaBackground')],
   [7, 'exact-data drift check', files.exactCheck.includes('exactPairs') && files.package.includes('check:cloud-fox-visual-alignment')],
   [7, 'configurable baseline preset', files.presetsPage.includes('正式扩展基准方案') && files.store.includes('applyExtensionClassic')],
+  [8, 'single cloud fox renderer baseline', files.proceduralPet.includes("v-if=\"appearance.speciesId === 'cloud-fox'\"") && !files.proceduralPet.includes('CustomizableCloudFox') && !files.proceduralPet.includes('usesExtensionClassicTopology')],
+  [8, 'tail starts from body back', files.phase2.includes('rootExtensionLength') && files.phase2.includes('lateralOffset') && files.extensionAlignedTail.includes('backAnchor') && files.extensionAlignedTail.includes('rootExtensionCurve')],
+  [8, 'per segment offsets', ['offsetX', 'offsetY', 'offsetZ'].every(key => files.phase2.includes(`${key}: number`)) && files.tailEditor.includes('左右偏移') && files.tailEditor.includes('前后偏移')],
+  [8, 'tail tip glow controls', files.phase2.includes('TailTipGlowRecipe') && files.extensionAlignedTail.includes('tipGlow.enabled') && files.tailEditor.includes('尾巴尖发光')],
+  [8, 'multi color ears', files.phase2.includes('EarDesignRecipe') && files.extensionAlignedHead.includes('earDesign.outerColor') && files.extensionAlignedHead.includes('earDesign.innerColor') && files.earEditor.includes('耳尖颜色')],
+  [8, 'local appearance patches', files.store.includes('patchEarDesign') && files.store.includes('patchTailDesign') && files.store.includes('patchTailSegment') && files.store.includes('patchParts')],
+  [8, 'local patch isolation test', files.patchTest.includes('nonTailSnapshot') && files.patchTest.includes('nonEarSnapshot') && files.package.includes('test:pet-studio-local-patches')],
+  [8, 'tail aware bounds', files.phase2.includes('calculatePetStudioVisualBounds') && files.canvas.includes('calculatePetStudioVisualBounds')],
 ]
 const activeChecks = checks.filter(([phase]) => phase <= requestedPhase)
 const failures = activeChecks.filter(([, , passed]) => !passed).map(([, name]) => name)

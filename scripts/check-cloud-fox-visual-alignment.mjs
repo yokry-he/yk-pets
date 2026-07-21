@@ -5,14 +5,21 @@ const extensionModel = read('apps/extension/components/avatar/CloudFox.vue')
 const extensionCanvas = read('apps/extension/components/avatar/AvatarCanvas.vue')
 const profile = read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts')
 const defaults = read('apps/playground/app/domain/extension-cloud-fox-default.ts')
+const phase2 = read('apps/playground/app/domain/pet-studio-phase2.ts')
 const studioRenderer = [
   read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue'),
   read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue'),
   read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue'),
   read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue'),
 ].join('\n')
+const proceduralPet = read('apps/playground/app/components/studio/ProceduralPet.vue')
 const studioCanvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const store = read('apps/playground/app/stores/pet-appearance.ts')
+const studioUi = [
+  read('apps/playground/app/pages/studio.vue'),
+  read('apps/playground/app/components/studio/StudioTailEditor.vue'),
+  read('apps/playground/app/components/studio/StudioEarEditor.vue'),
+].join('\n')
 
 const exactPairs = [
   ['coat color', "'#e9ecff'"],
@@ -49,9 +56,15 @@ checks.push(
   ['nebula background', extensionCanvas.includes('rgba(111, 103, 255, .22)') && profile.includes('rgba(111, 103, 255, .22)')],
   ['default appearance mapping', defaults.includes('createExtensionClassicAppearance') && defaults.includes("bodyShape: 'ellipsoid'") && defaults.includes('symbols:')],
   ['default scene mapping', defaults.includes('createExtensionClassicScene') && defaults.includes("presetId: 'deep-nebula'") && defaults.includes('halo: { enabled: false') && defaults.includes('groundShadow: { enabled: false')],
-  ['studio exact renderer', studioRenderer.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME') && studioRenderer.includes('TresTubeGeometry') && studioRenderer.includes('s.model.head.muzzlePosition')],
+  ['studio exact renderer', studioRenderer.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME') && studioRenderer.includes('TresTubeGeometry') && studioRenderer.includes('scheme.model.head.muzzlePosition')],
   ['studio exact camera and lights', studioCanvas.includes('scheme.scene.camera.normalPosition') && studioCanvas.includes('scheme.scene.lights.directionalIntensity')],
   ['store uses extension defaults', store.includes('createExtensionClassicAppearance()') && store.includes('createExtensionClassicScene()') && store.includes('applyExtensionClassic')],
+  ['single renderer remains after tail edits', proceduralPet.includes('ExtensionAlignedCloudFox') && !proceduralPet.includes('CustomizableCloudFox') && !proceduralPet.includes('usesExtensionClassicTopology')],
+  ['back-root tail configuration', phase2.includes('rootExtensionLength') && phase2.includes('lateralOffset') && studioRenderer.includes('rootExtensionCurve') && studioRenderer.includes('backAnchor')],
+  ['tail segment xyz offsets', ['offsetX', 'offsetY', 'offsetZ'].every(name => phase2.includes(`${name}: number`)) && studioRenderer.includes('extraSegmentTransforms')],
+  ['independent tail tip glow', phase2.includes('TailTipGlowRecipe') && studioRenderer.includes('tipGlow.enabled') && studioUi.includes('尾巴尖发光')],
+  ['independent ear color channels', phase2.includes('EarDesignRecipe') && studioRenderer.includes('earDesign.outerColor') && studioRenderer.includes('earDesign.innerColor') && studioRenderer.includes('earDesign.tipColor') && studioUi.includes('耳尖颜色')],
+  ['local patch updates', store.includes('patchEarDesign') && store.includes('patchTailDesign') && store.includes('patchTailSegment') && studioUi.includes('patchSegment')],
 )
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)

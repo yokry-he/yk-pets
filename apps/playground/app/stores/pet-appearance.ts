@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 管理多物种外观、场景、撤销重做、预设方案，并以 Chrome 扩展经典方案作为默认 Studio 状态。
- * Manages multi-species appearance, scenes, undo/redo, presets, and uses the Chrome extension classic scheme as the default Studio state.
+ * 管理多物种外观、场景、撤销重做和局部外观补丁；Chrome 扩展经典方案始终作为统一云狐基线。
+ * Manages multi-species appearance, scenes, undo/redo, and local appearance patches with the Chrome extension classic scheme as the unified Cloud Fox baseline.
  */
 import { defineStore } from 'pinia'
 import {
@@ -17,6 +17,7 @@ import {
   type AppearanceLocks,
   type PetStudioAppearanceRecipe,
 } from '~/domain/pet-studio-phase4'
+import type { EarDesignRecipe, TailDesignRecipe, TailSegmentRecipe } from '~/domain/pet-studio-phase2'
 import {
   applyStyleAcrossSpecies,
   normalizeMultiSpeciesAppearance,
@@ -27,6 +28,7 @@ import {
 } from '~/domain/pet-species-registry'
 import { getPetScenePreset, normalizePetScene, type PetScenePresetId, type PetSceneRecipe } from '~/domain/pet-scene'
 import { createExtensionClassicAppearance, createExtensionClassicScene } from '~/domain/extension-cloud-fox-default'
+import { applyPetAppearanceLocalPatch } from '~/domain/pet-appearance-patch'
 import type { PetStyleId } from '~/domain/pet-studio-phase4'
 
 const SCHEMES_KEY = 'yk-pets:studio:user-schemes:v2'
@@ -103,6 +105,31 @@ export const usePetAppearanceStore = defineStore('pet-appearance', {
       this.redoStack = []
     },
     markDirty() { this.dirty = true },
+    patchParts(patch: Partial<MultiSpeciesAppearanceRecipe['parts']>) {
+      this.recipe = applyPetAppearanceLocalPatch(this.recipe, { parts: patch })
+      this.dirty = true
+    },
+    patchEarDesign(patch: Partial<EarDesignRecipe>) {
+      this.recipe = applyPetAppearanceLocalPatch(this.recipe, { earDesign: patch })
+      this.dirty = true
+    },
+    patchTailDesign(patch: Partial<Omit<TailDesignRecipe, 'segments' | 'tipGlow'>> & {
+      tipGlow?: Partial<TailDesignRecipe['tipGlow']>
+    }) {
+      this.recipe = applyPetAppearanceLocalPatch(this.recipe, { tailDesign: patch })
+      this.dirty = true
+    },
+    patchTailSegment(index: number, patch: Partial<TailSegmentRecipe>) {
+      const segments = this.recipe.tailDesign.segments.map((segment, segmentIndex) => (
+        segmentIndex === index ? { ...segment, ...patch } : segment
+      ))
+      this.recipe = applyPetAppearanceLocalPatch(this.recipe, { tailDesign: { segments } })
+      this.dirty = true
+    },
+    replaceTailSegments(segments: TailSegmentRecipe[]) {
+      this.recipe = applyPetAppearanceLocalPatch(this.recipe, { tailDesign: { segments } })
+      this.dirty = true
+    },
     refreshDerivedColors() {
       Object.assign(this.recipe.palette, deriveAppearanceColors(this.recipe.palette.coat, this.recipe.palette.primaryGlow))
       this.dirty = true

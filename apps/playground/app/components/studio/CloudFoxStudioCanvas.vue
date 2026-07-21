@@ -9,7 +9,7 @@ import { Vector3 } from 'three'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import ProceduralPet from './ProceduralPet.vue'
 import PetSceneEffects from './PetSceneEffects.vue'
-import { calculatePetVisualBounds } from '~/domain/cloud-fox-appearance'
+import { calculatePetStudioVisualBounds } from '~/domain/pet-studio-phase2'
 import { createExtensionClassicAppearance, createExtensionClassicScene, isExtensionClassicScene } from '~/domain/extension-cloud-fox-default'
 import { createDefaultPetScene, getPetScenePreset, resolveSceneContrast, type PetSceneRecipe } from '~/domain/pet-scene'
 import type { CloudFoxStudioBackground, CloudFoxStudioBehavior, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
@@ -37,9 +37,9 @@ const clearColor = computed(() => activeScene.value.transparent ? '#000000' : ac
 const extensionScene = computed(() => isExtensionClassicScene(activeScene.value))
 const canvasDpr = computed<[number, number]>(() => [scheme.scene.camera.normalDpr[0], scheme.scene.camera.normalDpr[1]])
 
-// 相机只使用宠物包围盒；默认配方精确落在扩展 normalPosition 与 normalFov。 / Camera uses pet bounds only; the default recipe lands exactly on the extension normalPosition and normalFov.
-const petBounds = computed(() => calculatePetVisualBounds(props.appearance as never))
-const referenceBounds = calculatePetVisualBounds(createExtensionClassicAppearance() as never)
+// 相机始终读取当前局部尾巴和身体边界；默认配方仍精确落在扩展 normalPosition。 / Camera always reads current body and local tail bounds while the default recipe still lands exactly on the extension normalPosition.
+const petBounds = computed(() => calculatePetStudioVisualBounds(props.appearance))
+const referenceBounds = calculatePetStudioVisualBounds(createExtensionClassicAppearance())
 const cameraFactor = computed(() => Math.max(.82, petBounds.value.radius / referenceBounds.radius))
 const cameraPosition = computed(() => {
   const base = scheme.scene.camera.normalPosition

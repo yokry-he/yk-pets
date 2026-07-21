@@ -58,6 +58,14 @@ export function createExtensionClassicAppearance(): MultiSpeciesAppearanceRecipe
       shade: palette.coatShadow,
       halo: palette.primaryGlow,
     },
+    earDesign: {
+      outerColor: palette.coat,
+      innerColor: palette.primaryGlow,
+      tipColor: palette.coatWarm,
+      innerGlowEnabled: true,
+      innerGlowColor: palette.primaryGlow,
+      innerGlowIntensity: .25,
+    },
     glow: {
       mode: 'emotion',
       tailEnabled: true,
@@ -70,11 +78,23 @@ export function createExtensionClassicAppearance(): MultiSpeciesAppearanceRecipe
       back: { enabled: false, text: 'YK', color: palette.primaryGlow, scale: 1, rotation: 0, glowIntensity: 1.6 },
     },
     tailDesign: {
+      rootOffsetX: 0,
+      rootOffsetY: 0,
+      rootOffsetZ: 0,
+      rootExtensionLength: .38,
+      rootExtensionWidth: .24,
+      lateralOffset: -.58,
       direction: 'left',
+      tipGlow: {
+        enabled: true,
+        color: palette.tailTip,
+        intensity: 1.65,
+        auraScale: 1.55,
+      },
       segments: [
-        { length: .58, width: .27, rotationX: .03, rotationY: .08, rotationZ: -.08 },
-        { length: .58, width: .22, rotationX: 0, rotationY: 0, rotationZ: .1 },
-        { length: .52, width: .16, rotationX: 0, rotationY: 0, rotationZ: .16 },
+        { length: .58, width: .27, offsetX: 0, offsetY: 0, offsetZ: 0, rotationX: .03, rotationY: .08, rotationZ: -.08 },
+        { length: .58, width: .22, offsetX: 0, offsetY: 0, offsetZ: 0, rotationX: 0, rotationY: 0, rotationZ: .1 },
+        { length: .52, width: .16, offsetX: 0, offsetY: 0, offsetZ: 0, rotationX: 0, rotationY: 0, rotationZ: .16 },
       ],
     },
     antennaDesign: { spacing: .48, length: .34, thickness: .052, tilt: .24 },
@@ -95,18 +115,6 @@ export function createExtensionClassicScene(): PetSceneRecipe {
     contrastMode: 'dark',
     actionLinked: true,
   }
-}
-
-
-export function usesExtensionClassicTopology(recipe: MultiSpeciesAppearanceRecipe) {
-  if (recipe.speciesId !== 'cloud-fox' || recipe.parts.bodyShape !== 'ellipsoid') return false
-  const classic = createExtensionClassicAppearance()
-  const keys = ['length', 'width', 'rotationX', 'rotationY', 'rotationZ'] as const
-  return recipe.tailDesign.segments.length === classic.tailDesign.segments.length
-    && recipe.tailDesign.segments.every((segment, index) => {
-      const expected = classic.tailDesign.segments[index]
-      return Boolean(expected) && keys.every(key => Math.abs(segment[key] - expected![key]) < 0.0001)
-    })
 }
 
 export function isExtensionClassicScene(scene: PetSceneRecipe) {

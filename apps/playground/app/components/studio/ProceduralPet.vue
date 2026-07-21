@@ -4,11 +4,9 @@
   Dispatches the generic preview to the appropriate pet renderer using species registration.
 -->
 <script setup lang="ts">
-import CustomizableCloudFox from './CustomizableCloudFox.vue'
 import ExtensionAlignedCloudFox from './ExtensionAlignedCloudFox.vue'
 import MoonCat from './MoonCat.vue'
 import { PET_SPECIES_REGISTRY, resolveSpeciesBehavior, type MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
-import { usesExtensionClassicTopology } from '~/domain/extension-cloud-fox-default'
 import type { CloudFoxStudioBehavior, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 
 const props = defineProps<{
@@ -18,18 +16,11 @@ const props = defineProps<{
 }>()
 const definition = computed(() => PET_SPECIES_REGISTRY[props.appearance.speciesId])
 const behavior = computed(() => resolveSpeciesBehavior(props.appearance.speciesId, props.behavior))
-const useExtensionRenderer = computed(() => usesExtensionClassicTopology(props.appearance))
 </script>
 
 <template>
   <ExtensionAlignedCloudFox
-    v-if="appearance.speciesId === 'cloud-fox' && useExtensionRenderer"
-    :appearance="appearance"
-    :behavior="behavior"
-    :view="view"
-  />
-  <CustomizableCloudFox
-    v-else-if="appearance.speciesId === 'cloud-fox'"
+    v-if="appearance.speciesId === 'cloud-fox'"
     :appearance="appearance"
     :behavior="behavior"
     :view="view"

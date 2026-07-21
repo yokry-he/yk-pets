@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+const phase2 = read('apps/playground/app/domain/pet-studio-phase2.ts')
 const domain = read('apps/playground/app/domain/pet-studio-phase3.ts')
 const store = read('apps/playground/app/stores/pet-appearance.ts')
 const renderer = [
@@ -20,6 +21,9 @@ const moonCat = read('apps/playground/app/components/studio/MoonCat.vue')
 const proceduralPet = read('apps/playground/app/components/studio/ProceduralPet.vue')
 const speciesPage = read('apps/playground/app/pages/studio-species.vue')
 const visualProfile = read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts')
+const defaults = read('apps/playground/app/domain/extension-cloud-fox-default.ts')
+const patchDomain = read('apps/playground/app/domain/pet-appearance-patch.ts')
+const patchTest = read('scripts/test-pet-studio-local-patches.ts')
 const expectations = [
   ['schema v2', domain.includes('PET_STUDIO_SCHEMA_VERSION = 2')],
   ['legacy migration', domain.includes('legacySymbols') && domain.includes('normalizePetStudioAppearanceV2')],
@@ -38,7 +42,7 @@ const expectations = [
   ['halo particles ground shadow', ['halo','particles','groundShadow'].every(name => sceneComponent.includes(name))],
   ['automatic web contrast', scene.includes('resolveSceneContrast') && scenePage.includes('跟随网页')],
   ['action linked scene', scene.includes('sceneActionMultiplier') && sceneComponent.includes('behavior')],
-  ['scene excluded from camera bounds', canvas.includes('Camera uses pet bounds only')],
+  ['scene excluded from camera bounds', canvas.includes('current body and local tail bounds')],
   ['species registry', registry.includes('PET_SPECIES_REGISTRY')],
   ['Moon Cat active', registry.includes("'moon-cat':") && registry.includes("status: 'active'") && moonCat.includes('foreheadMark') && moonCat.includes('whiskers')],
   ['planned slime and rabbit', registry.includes("'nebula-slime'") && registry.includes("'star-rabbit'") && registry.match(/status: 'planned'/g)?.length === 2],
@@ -46,9 +50,19 @@ const expectations = [
   ['cross species style mapping', registry.includes('applyStyleAcrossSpecies') && ['cute','mechanical','nebula','crystal'].every(style => registry.includes(`style === '${style}'`))],
   ['motion fallback', registry.includes('resolveSpeciesBehavior') && speciesPage.includes('实际动作')],
   ['generic renderer dispatch', proceduralPet.includes('MoonCat') && proceduralPet.includes('ExtensionAlignedCloudFox')],
+  ['single Cloud Fox baseline', !proceduralPet.includes('CustomizableCloudFox') && !proceduralPet.includes('usesExtensionClassicTopology')],
   ['no Moon Cat logic in Cloud Fox renderer', !renderer.includes('moon-cat') && !renderer.includes('whiskers')],
   ['exact extension visual scheme', visualProfile.includes('chrome-extension-production') && renderer.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME')],
+  ['classic default includes local controls', defaults.includes('earDesign:') && defaults.includes('rootExtensionLength') && defaults.includes('tipGlow:')],
+  ['ear color channels', phase2.includes('interface EarDesignRecipe') && renderer.includes('earDesign.innerColor') && renderer.includes('earDesign.tipColor')],
+  ['tail local controls', phase2.includes('interface TailDesignRecipe') && ['rootOffsetX','lateralOffset','offsetX','tipGlow'].every(name => phase2.includes(name))],
+  ['local patch store actions', ['patchParts','patchEarDesign','patchTailDesign','patchTailSegment'].every(name => store.includes(name))],
+  ['deep local patch helper', patchDomain.includes('applyPetAppearanceLocalPatch') && patchDomain.includes('tipGlow') && patchDomain.includes('segments: patch.tailDesign?.segments')],
+  ['local patch isolation test', patchTest.includes('nonTailSnapshot') && patchTest.includes('nonEarSnapshot')],
 ]
 const failures = expectations.filter(([, ok]) => !ok).map(([name]) => name)
-if (failures.length) { console.error('Pet Studio evolution check failed:', failures.join(', ')); process.exit(1) }
+if (failures.length) {
+  console.error('Pet Studio evolution check failed:', failures.join(', '))
+  process.exit(1)
+}
 console.log(`Pet Studio evolution contract passed: ${expectations.length} checks.`)
