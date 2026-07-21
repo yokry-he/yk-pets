@@ -55,7 +55,7 @@ checks.push(
   ['directional light', extensionCanvas.includes(':intensity="3.8"') && profile.includes('directionalIntensity: 3.8')],
   ['point lights', extensionCanvas.includes(':intensity="secretMode ? 7 : 3.6"') && extensionCanvas.includes(':intensity="secretMode ? 6 : 2.8"') && profile.includes('primarySecretIntensity: 7') && profile.includes('secondarySecretIntensity: 6')],
   ['base background', extensionCanvas.includes('#0a0d18') && profile.includes("baseColor: '#0a0d18'")],
-  ['nebula background', extensionCanvas.includes('rgba(111,102,255,.22)') && profile.includes('rgba(111, 103, 255, .22)')],
+  ['nebula background', extensionCanvas.includes('rgba(111,103,255,.22)') && profile.includes('rgba(111, 103, 255, .22)')],
   ['default appearance mapping', defaults.includes('createExtensionClassicAppearance') && defaults.includes("bodyShape: 'ellipsoid'") && defaults.includes('symbols:')],
   ['default scene mapping', defaults.includes('createExtensionClassicScene') && defaults.includes("presetId: 'deep-nebula'") && defaults.includes('halo: { enabled: false') && defaults.includes('groundShadow: { enabled: false')],
   ['studio exact renderer', studioRenderer.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME') && studioRenderer.includes('TresTubeGeometry') && studioRenderer.includes('scheme.model.head.muzzlePosition')],
