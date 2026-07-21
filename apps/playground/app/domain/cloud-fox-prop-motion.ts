@@ -43,26 +43,30 @@ export function createBallMotionPose(progress: number): BallMotionPose {
   }
 }
 
+/**
+ * 飞扑回退为稳定的正面构图：球从右上方进入画面，在两前爪之间完成接球；身体只做小幅前冲和上抬。
+ * The catch uses the stable original front composition: the ball enters from upper-right and finishes between both paws while the body only lifts and lunges slightly forward.
+ */
 export function createCatchMotionPose(progress: number): CatchMotionPose {
-  const travel = smoothStep(.02, .56, progress)
-  const catchAir = smoothStep(.12, .26, progress) * (1 - smoothStep(.72, .9, progress))
+  const travel = smoothStep(.04, .68, progress)
+  const catchAir = smoothStep(.12, .28, progress) * (1 - smoothStep(.7, .9, progress))
   const catchLand = smoothStep(.72, .88, progress) * (1 - smoothStep(.92, 1, progress))
   const ballPosition = new Vector3(
-    -1.45 + travel * 2.65,
-    1.72 - travel * 1.08 + Math.sin(travel * Math.PI) * .66,
-    .98,
+    .58 * (1 - travel),
+    1.34 - travel * .9 + Math.sin(travel * Math.PI) * .34,
+    1.06,
   )
   const bodyTarget = new Vector3(
-    -1.05 * catchAir + .35 * catchLand,
-    Math.sin(progress * Math.PI) * .42 * catchAir,
-    .72 * catchAir - .12 * catchLand,
+    .1 * catchAir,
+    Math.sin(progress * Math.PI) * .34 * catchAir,
+    .3 * catchAir - .08 * catchLand,
   )
   const pawTarget = ballPosition.clone().sub(bodyTarget)
   return {
     ballPosition,
     bodyTarget,
     pawTarget,
-    facingYaw: -.58 * catchAir,
-    activeSide: pawTarget.x < 0 ? -1 : 1,
+    facingYaw: 0,
+    activeSide: ballPosition.x > .08 ? 1 : -1,
   }
 }
