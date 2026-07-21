@@ -9,6 +9,7 @@ import { Vector3 } from 'three'
 import type { Group, Mesh } from 'three'
 import ExtensionCloudFoxBody from './ExtensionCloudFoxBody.vue'
 import ExtensionCloudFoxBellyPatch from './ExtensionCloudFoxBellyPatch.vue'
+import ExtensionCloudFoxEnergyBall from './ExtensionCloudFoxEnergyBall.vue'
 import ExtensionCloudFoxHead from './ExtensionCloudFoxHead.vue'
 import ExtensionCloudFoxTail from './ExtensionCloudFoxTail.vue'
 import ExtensionCloudFoxMotionEffects from './ExtensionCloudFoxMotionEffects.vue'
@@ -213,6 +214,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     <ExtensionCloudFoxMotionEffects :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
     <TresGroup ref="motion" :position="vector(scheme.model.rootPosition)">
       <ExtensionCloudFoxOrbit :appearance="appearance" :behavior="behavior" />
+      <ExtensionCloudFoxEnergyBall :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
       <ExtensionCloudFoxTail :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
       <TresGroup ref="bodyRig">
         <ExtensionCloudFoxBody :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
