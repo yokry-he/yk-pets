@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 校验核心中英文文档、源码职责声明和手写代码中的双语注释。
- * Validates core Chinese/English documents, source responsibility declarations, and bilingual comments in handwritten code.
+ * 校验核心中英文文档、完整用户指南、源码职责声明和手写代码中的双语注释。
+ * Validates core Chinese/English documents, complete user guides, source responsibility declarations, and bilingual comments in handwritten code.
  */
 import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -42,6 +42,32 @@ const requiredDocuments = [
   'apps/playground/README.zh-CN.md',
   'apps/playground/README.en.md',
 ]
+const completeUserGuideRequirements = [
+  {
+    path: 'docs/zh-CN/USER-GUIDE.md',
+    tokens: [
+      '安装和加载浏览器扩展',
+      '页面审计完整流程',
+      'Network Lab 与 Mock',
+      '连接 YK-PETS Local Agent',
+      '宠物工坊完整使用说明',
+      '将工坊外观同步到浏览器扩展',
+      '完整人工验收清单',
+    ],
+  },
+  {
+    path: 'docs/en/USER-GUIDE.md',
+    tokens: [
+      'Build and load the browser extension',
+      'Complete page-audit workflow',
+      'Network Lab and mocking',
+      'Connect the YK-PETS Local Agent',
+      'Complete Pet Studio guide',
+      'Synchronize a Studio appearance to the extension',
+      'Complete manual acceptance checklist',
+    ],
+  },
+]
 const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.vue', '.css'])
 const ignoredDirectories = new Set([
   'node_modules',
@@ -70,6 +96,19 @@ for (const relativePath of requiredDocuments) {
   }
   catch {
     failures.push(`缺少文档 / Missing document: ${relativePath}`)
+  }
+}
+
+// 完整使用手册必须覆盖安装、核心工作区、宠物工坊、同步和人工验收。 / Complete user guides must cover installation, core workspaces, Pet Studio, synchronization, and manual acceptance.
+for (const requirement of completeUserGuideRequirements) {
+  try {
+    const content = await readFile(path.join(root, requirement.path), 'utf8')
+    for (const token of requirement.tokens) {
+      if (!content.includes(token)) failures.push(`完整使用手册缺少章节 / Complete user guide is missing a section: ${requirement.path} -> ${token}`)
+    }
+  }
+  catch {
+    // 文档缺失已由 requiredDocuments 检查报告。 / Missing documents are already reported by requiredDocuments.
   }
 }
 
