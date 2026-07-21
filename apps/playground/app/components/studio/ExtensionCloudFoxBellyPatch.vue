@@ -1,12 +1,16 @@
 <!--
   文件职责 / File responsibility
-  在同一身体曲率薄壳上渲染可切换的经典椭圆与盾牌肚皮，并为圆角立方体身体提供贴面兼容。
-  Renders switchable oval and shield belly patches on the same hairline torso shell, with a flush rounded-cube fallback.
+  在同一身体曲率薄壳上渲染五种可缩放肚皮轮廓，并为圆角立方体身体提供贴面兼容。
+  Renders five scalable belly silhouettes on one hairline torso shell, with a flush rounded-cube fallback.
 -->
 <script setup lang="ts">
 import { CanvasTexture, Vector3 } from 'three'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
-import type { BellyPatchStyle, MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
+import type {
+  BellyPatchDesignRecipe,
+  BellyPatchStyle,
+  MultiSpeciesAppearanceRecipe,
+} from '~/domain/pet-species-registry'
 
 const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe }>()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
@@ -40,53 +44,82 @@ const cubePatchScale = computed(() => vector([
 const patchMask = shallowRef<CanvasTexture>()
 
 function drawShieldMask(context: CanvasRenderingContext2D) {
-  context.moveTo(68, 66)
-  context.bezierCurveTo(68, 48, 84, 40, 104, 40)
-  context.lineTo(152, 40)
-  context.bezierCurveTo(172, 40, 188, 48, 188, 66)
-  context.bezierCurveTo(188, 126, 168, 190, 128, 222)
-  context.bezierCurveTo(88, 190, 68, 126, 68, 66)
+  context.moveTo(-58, -62)
+  context.bezierCurveTo(-58, -82, -40, -92, -22, -92)
+  context.lineTo(22, -92)
+  context.bezierCurveTo(40, -92, 58, -82, 58, -62)
+  context.bezierCurveTo(58, -8, 40, 60, 0, 91)
+  context.bezierCurveTo(-40, 60, -58, -8, -58, -62)
 }
 
-function createPatchMask(style: BellyPatchStyle) {
+function drawBeanMask(context: CanvasRenderingContext2D) {
+  context.moveTo(-44, -88)
+  context.bezierCurveTo(24, -108, 72, -54, 58, 8)
+  context.bezierCurveTo(50, 58, 16, 94, -24, 88)
+  context.bezierCurveTo(-68, 82, -72, 34, -58, 4)
+  context.bezierCurveTo(-44, -26, -74, -70, -44, -88)
+}
+
+function drawTeardropMask(context: CanvasRenderingContext2D) {
+  context.moveTo(0, -96)
+  context.bezierCurveTo(48, -70, 68, -22, 58, 24)
+  context.bezierCurveTo(50, 62, 24, 84, 0, 98)
+  context.bezierCurveTo(-24, 84, -50, 62, -58, 24)
+  context.bezierCurveTo(-68, -22, -48, -70, 0, -96)
+}
+
+function drawHeartMask(context: CanvasRenderingContext2D) {
+  context.moveTo(0, 88)
+  context.bezierCurveTo(-14, 64, -66, 28, -66, -28)
+  context.bezierCurveTo(-66, -76, -16, -94, 0, -56)
+  context.bezierCurveTo(16, -94, 66, -76, 66, -28)
+  context.bezierCurveTo(66, 28, 14, 64, 0, 88)
+}
+
+function drawPatchShape(context: CanvasRenderingContext2D, style: BellyPatchStyle) {
+  if (style === 'oval') context.ellipse(0, 0, 70, 94, 0, 0, Math.PI * 2)
+  else if (style === 'shield') drawShieldMask(context)
+  else if (style === 'bean') drawBeanMask(context)
+  else if (style === 'teardrop') drawTeardropMask(context)
+  else if (style === 'heart') drawHeartMask(context)
+  else drawShieldMask(context)
+}
+
+function createPatchMask(design: BellyPatchDesignRecipe) {
   if (!import.meta.client) return
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = 256
   const context = canvas.getContext('2d')
   if (!context) return
   context.clearRect(0, 0, 256, 256)
+  context.save()
+  context.translate(128, 132 - design.offsetY * 92)
+  context.scale(design.width, design.height)
   context.fillStyle = '#fff'
   context.beginPath()
-  if (style === 'oval') {
-    context.ellipse(128, 132, 76, 103, 0, 0, Math.PI * 2)
-  }
-  else if (style === 'shield') {
-    drawShieldMask(context)
-  }
-  else {
-    drawShieldMask(context)
-  }
+  drawPatchShape(context, design.style)
   context.closePath()
   context.fill()
+  context.restore()
   const texture = new CanvasTexture(canvas)
   texture.needsUpdate = true
   return texture
 }
 
 watch(
-  () => props.appearance.bellyPatchDesign.style,
-  (style) => {
+  () => props.appearance.bellyPatchDesign,
+  (design) => {
     patchMask.value?.dispose()
-    patchMask.value = createPatchMask(style)
+    patchMask.value = createPatchMask(design)
   },
-  { immediate: true },
+  { immediate: true, deep: true },
 )
 onBeforeUnmount(() => patchMask.value?.dispose())
 </script>
 
 <template>
   <TresMesh
-    v-if="appearance.parts.bodyShape !== 'rounded-cube'"
+    v-if="appearance.bellyPatchDesign.visible && appearance.parts.bodyShape !== 'rounded-cube'"
     :position="vector(scheme.model.body.position)"
     :scale="shellScale"
     :render-order="2"
@@ -102,7 +135,12 @@ onBeforeUnmount(() => patchMask.value?.dispose())
     />
   </TresMesh>
 
-  <TresMesh v-else :position="cubePatchPosition" :scale="cubePatchScale" :render-order="2">
+  <TresMesh
+    v-else-if="appearance.bellyPatchDesign.visible"
+    :position="cubePatchPosition"
+    :scale="cubePatchScale"
+    :render-order="2"
+  >
     <TresPlaneGeometry :args="[1, 1, 16, 20]" />
     <TresMeshStandardMaterial
       :color="appearance.palette.coatWarm"
