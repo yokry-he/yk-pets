@@ -9,6 +9,7 @@ const nonTailSnapshot = JSON.stringify({
   proportions: original.proportions,
   palette: original.palette,
   glow: original.glow,
+  frontPawDesign: original.frontPawDesign,
   earDesign: original.earDesign,
   antennaDesign: original.antennaDesign,
   symbols: original.symbols,
@@ -30,6 +31,7 @@ assert.equal(JSON.stringify({
   proportions: tailPatched.proportions,
   palette: tailPatched.palette,
   glow: tailPatched.glow,
+  frontPawDesign: tailPatched.frontPawDesign,
   earDesign: tailPatched.earDesign,
   antennaDesign: tailPatched.antennaDesign,
   symbols: tailPatched.symbols,
@@ -47,6 +49,7 @@ const nonEarSnapshot = JSON.stringify({
   proportions: original.proportions,
   palette: original.palette,
   glow: original.glow,
+  frontPawDesign: original.frontPawDesign,
   tailDesign: original.tailDesign,
   antennaDesign: original.antennaDesign,
   symbols: original.symbols,
@@ -66,6 +69,7 @@ assert.equal(JSON.stringify({
   proportions: earPatched.proportions,
   palette: earPatched.palette,
   glow: earPatched.glow,
+  frontPawDesign: earPatched.frontPawDesign,
   tailDesign: earPatched.tailDesign,
   antennaDesign: earPatched.antennaDesign,
   symbols: earPatched.symbols,
@@ -76,4 +80,41 @@ assert.equal(earPatched.earDesign.innerColor, '#8b6cff')
 assert.equal(earPatched.earDesign.tipColor, '#77f2df')
 assert.equal(earPatched.earDesign.innerGlowIntensity, 1.35)
 
-console.log('Pet Studio local patch isolation passed: tail and ear edits preserve all unrelated appearance sections.')
+const nonPawSnapshot = JSON.stringify({
+  identity: original.identity,
+  parts: original.parts,
+  proportions: original.proportions,
+  palette: original.palette,
+  glow: original.glow,
+  earDesign: original.earDesign,
+  tailDesign: original.tailDesign,
+  antennaDesign: original.antennaDesign,
+  symbols: original.symbols,
+  speciesParts: original.speciesParts,
+})
+const pawPatched = applyPetAppearanceLocalPatch(original, {
+  frontPawDesign: {
+    style: 'mitten',
+    embedDepth: .16,
+    outwardAngle: .18,
+    shoulderScale: 1.24,
+  },
+})
+assert.equal(JSON.stringify({
+  identity: pawPatched.identity,
+  parts: pawPatched.parts,
+  proportions: pawPatched.proportions,
+  palette: pawPatched.palette,
+  glow: pawPatched.glow,
+  earDesign: pawPatched.earDesign,
+  tailDesign: pawPatched.tailDesign,
+  antennaDesign: pawPatched.antennaDesign,
+  symbols: pawPatched.symbols,
+  speciesParts: pawPatched.speciesParts,
+}), nonPawSnapshot)
+assert.equal(pawPatched.frontPawDesign.style, 'mitten')
+assert.equal(pawPatched.frontPawDesign.embedDepth, .16)
+assert.equal(pawPatched.frontPawDesign.outwardAngle, .18)
+assert.equal(pawPatched.frontPawDesign.shoulderScale, 1.24)
+
+console.log('Pet Studio local patch isolation passed: tail, ear, and front-paw edits preserve all unrelated appearance sections.')
