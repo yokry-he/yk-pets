@@ -12,7 +12,9 @@ const renderer = read('apps/playground/app/components/studio/ExtensionAlignedClo
 const body = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue')
 const bellyPatch = read('apps/playground/app/components/studio/ExtensionCloudFoxBellyPatch.vue')
 const energyBall = read('apps/playground/app/components/studio/ExtensionCloudFoxEnergyBall.vue')
+const gazeOverlay = read('apps/playground/app/components/studio/ExtensionCloudFoxGazeOverlay.vue')
 const head = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
+const mealOverlay = read('apps/playground/app/components/studio/ExtensionCloudFoxMealOverlay.vue')
 const tail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue')
 const orbit = read('apps/playground/app/components/studio/ExtensionCloudFoxOrbit.vue')
 const effects = read('apps/playground/app/components/studio/ExtensionCloudFoxMotionEffects.vue')
@@ -61,7 +63,7 @@ const checks = [
   ['single grouped dropdown', toolbar.includes('<select') && toolbar.includes('<optgroup') && toolbar.includes('EXTENSION_CLOUD_FOX_MOTIONS.length') && !page.includes('v-for="[id,label] in motions"')],
   ['dropdown emits the actual selected option', toolbar.includes('event.currentTarget as HTMLSelectElement') && toolbar.includes('isExtensionCloudFoxMotion') && toolbar.includes(':value="selected"') && !toolbar.includes('v-model="selected"')],
   ['same-motion replay key', page.includes('motionKey.value += 1') && page.includes(':motion-key="motionKey"') && renderer.includes('previousMotionKey')],
-  ['motion key reaches all cloud-fox rigs', (renderer.match(/:motion-key="motionKey"/g)?.length || 0) >= 5],
+  ['motion key reaches all cloud-fox rigs', (renderer.match(/:motion-key="motionKey"/g)?.length || 0) >= 7],
   ['rotation finish normalizes without reverse unwind', renderer.includes('normalizeFinishedRotation') && renderer.includes('Math.round(group.rotation.y / TAU)') && renderer.includes('frame.backflipRotation * TAU')],
   ['tail tornado leaves whole body yaw stable and spins tail locally', !tailTornadoRotatesWholeBody && renderer.includes("state === 'tail-tornado'") && tail.includes('TAIL_TORNADO_TURNS') && tail.includes('tailWindmillAngle') && tail.includes('Math.round((tail.value.rotation.z - directionRotation.value.z) / TAU)')],
   ['belly supports thin oval and shield shells', renderer.includes('ExtensionCloudFoxBellyPatch') && bellyPatch.includes("style === 'oval'") && bellyPatch.includes("style === 'shield'") && bellyPatch.includes('bodyScale.value.z * 1.008') && bellyPatch.includes('TresSphereGeometry') && !body.includes('bellyPosition') && effects.includes('TresCircleGeometry')],
@@ -69,12 +71,12 @@ const checks = [
   ['stretching closes eyes at the raised-head phase', head.includes('const stretchOpen') && head.includes('frame.stretchStrength') && head.includes('targetX = -.5 * frame.stretchStrength')],
   ['resting and cloud nap have full body phases', runtime.includes('restingPose') && renderer.includes('.66 * frame.restingPose') && renderer.includes('-1.16 * frame.cloudNapPose') && effects.includes("cloud.value.position.set(-.02, -.88")],
   ['ball and catch use one shared pose source', propMotion.includes('interface BallMotionPose') && propMotion.includes('interface CatchMotionPose') && sharedBallConsumers.every(source => source.includes('createBallMotionPose') && source.includes('createCatchMotionPose'))],
-  ['playing ball drives all four limbs and head-local gaze', body.includes('ballPose.activeSide') && body.includes('ballKick') && head.includes('head.value.worldToLocal(ballWorld)') && head.includes('-eyeX.value + eyeOffsetX') && head.includes('eyeX.value + eyeOffsetX')],
-  ['diving catch shares body paw and prop targets', propMotion.includes('pawTarget = ballPosition.clone().sub(bodyTarget)') && renderer.includes('catchPose.bodyTarget') && body.includes('catchPose.pawTarget') && effects.includes('catchPose.ballPosition')],
+  ['playing ball drives all four limbs and visible binocular gaze', body.includes('ballPose.activeSide') && body.includes('ballKick') && renderer.includes('headBehavior') && renderer.includes('ExtensionCloudFoxGazeOverlay') && gazeOverlay.includes('const gazeX = clamp(target.x * .125') && gazeOverlay.includes('update(leftHighlight.value, -1)') && gazeOverlay.includes('update(rightHighlight.value, 1)')],
+  ['diving catch uses the restored front-facing centered composition', propMotion.includes('facingYaw: 0') && propMotion.includes('.58 * (1 - travel)') && renderer.includes('front view stays fully frontal') && !renderer.includes('catchPose.facingYaw') && renderer.includes('catchPose.bodyTarget') && body.includes('catchPose.pawTarget') && effects.includes('catchPose.ballPosition')],
   ['backflip uses crouch tuck rotation and landing phases', runtime.includes('backflipCrouch') && runtime.includes('backflipTuck') && runtime.includes('backflipLand') && renderer.includes('frame.backflipRotation * TAU')],
   ['head highlights remain mirrored', head.includes('side * highlightX')],
   ['thought bubbles and ballistic sneeze particles', effects.includes('thoughtBubbles') && effects.includes('localTime * localTime') && effects.includes("props.behavior === 'thinking'")],
-  ['meal includes extension-style table and bowl', effects.includes('MEAL_TABLE_HEIGHT = .84') && effects.includes('MEAL_BOWL_LOCAL_Y = MEAL_TABLE_HEIGHT + .13') && effects.includes('ref="meal"') && effects.includes('ref="food"')],
+  ['eating suppresses the old low table and uses the mouth-level floating overlay', renderer.includes("props.behavior === 'eating' ? 'idle' : props.behavior") && renderer.includes('ExtensionCloudFoxMealOverlay') && mealOverlay.includes('FLOATING_TABLE_Y = -.62') && mealOverlay.includes('TABLE_Z = .94') && mealOverlay.includes('BOWL_Y = TABLE_HEIGHT + .13') && mealOverlay.includes('ref="meal"') && mealOverlay.includes('ref="food"')],
   ['energy balls use explicit antenna and paw anchors', renderer.includes('ExtensionCloudFoxEnergyBall') && energyBall.includes('antennaTipMidpointAnchor') && energyBall.includes('frontPawMidpointAnchor') && energyBall.includes('releaseTravel')],
   ['burst particles only travel outward and fade', energyBall.includes('const distance = releaseTravel *') && energyBall.includes('1 - smoothStep(.66, 1, releaseTravel)')],
   ['energy starfield expands and fades outward', runtime.includes('energyStarfield') && effects.includes('energyStars') && effects.includes('const spread = travel *') && effects.includes('1 - smoothStep(.66, 1, travel)')],
