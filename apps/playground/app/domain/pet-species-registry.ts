@@ -1,4 +1,4 @@
-/** Phase 6+11: species registry, Moon Cat implementation, style mapping, motion fallback, continuous front paws, and body-orbit design. */
+/** Phase 6+12: species registry, Moon Cat implementation, style mapping, motion fallback, continuous front paws, body-orbit design, and belly-patch recipes. */
 import {
   PET_STYLE_RULES,
   applyAppearanceScope,
@@ -27,7 +27,7 @@ export interface PetSpeciesDefinition {
 }
 
 export const PET_SPECIES_REGISTRY: Readonly<Record<PetSpeciesId, PetSpeciesDefinition>> = {
-  'cloud-fox': { id: 'cloud-fox', label: '云狐', labelEn: 'Cloud Fox', status: 'active', slots: ['ears','eyes','nose','mouth','antenna','front-paws','tail','body-orbit','chest-symbol','back-symbol'], supportedBehaviors: ['idle','greeting','jumping','stretching','spinning','resting'], fallbackBehavior: 'idle', defaultStyle: 'nebula' },
+  'cloud-fox': { id: 'cloud-fox', label: '云狐', labelEn: 'Cloud Fox', status: 'active', slots: ['ears','eyes','nose','mouth','antenna','front-paws','tail','belly-patch','body-orbit','chest-symbol','back-symbol'], supportedBehaviors: ['idle','greeting','jumping','stretching','spinning','resting'], fallbackBehavior: 'idle', defaultStyle: 'nebula' },
   'moon-cat': { id: 'moon-cat', label: '月猫', labelEn: 'Moon Cat', status: 'active', slots: ['ears','eyes','nose','mouth','whiskers','forehead-mark','tail','chest-symbol'], supportedBehaviors: ['idle','greeting','jumping','stretching','resting'], fallbackBehavior: 'greeting', defaultStyle: 'cute' },
   'nebula-slime': { id: 'nebula-slime', label: '星云史莱姆', labelEn: 'Nebula Slime', status: 'planned', slots: ['core','eyes','surface-pattern'], supportedBehaviors: ['idle'], fallbackBehavior: 'idle', defaultStyle: 'nebula' },
   'star-rabbit': { id: 'star-rabbit', label: '星兔', labelEn: 'Star Rabbit', status: 'planned', slots: ['ears','eyes','nose','tail','forehead-mark'], supportedBehaviors: ['idle'], fallbackBehavior: 'idle', defaultStyle: 'crystal' },
@@ -89,11 +89,17 @@ export const BODY_ORBIT_DESIGN_RANGES = Object.freeze({
   particleCount: [0, 24] as const,
 })
 
+export type BellyPatchStyle = 'oval' | 'shield'
+export interface BellyPatchDesignRecipe {
+  style: BellyPatchStyle
+}
+
 export interface MultiSpeciesAppearanceRecipe extends Omit<PetStudioAppearanceRecipe, 'speciesId'> {
   speciesId: PetSpeciesId
   speciesParts: SpeciesSpecificParts
   frontPawDesign: FrontPawDesignRecipe
   orbitDesign: BodyOrbitDesignRecipe
+  bellyPatchDesign: BellyPatchDesignRecipe
 }
 
 export function defaultSpeciesParts(): SpeciesSpecificParts {
@@ -119,9 +125,20 @@ export function defaultBodyOrbitDesign(): BodyOrbitDesignRecipe {
   }
 }
 
+export function defaultBellyPatchDesign(): BellyPatchDesignRecipe {
+  return { style: 'shield' }
+}
+
 export function createMultiSpeciesAppearance(speciesId: PetSpeciesId = 'cloud-fox'): MultiSpeciesAppearanceRecipe {
   const base = createPetStudioAppearanceV2()
-  return { ...base, speciesId, speciesParts: defaultSpeciesParts(), frontPawDesign: defaultFrontPawDesign(), orbitDesign: defaultBodyOrbitDesign() }
+  return {
+    ...base,
+    speciesId,
+    speciesParts: defaultSpeciesParts(),
+    frontPawDesign: defaultFrontPawDesign(),
+    orbitDesign: defaultBodyOrbitDesign(),
+    bellyPatchDesign: defaultBellyPatchDesign(),
+  }
 }
 
 export function normalizeMultiSpeciesAppearance(input: unknown): MultiSpeciesAppearanceRecipe {
@@ -135,10 +152,13 @@ export function normalizeMultiSpeciesAppearance(input: unknown): MultiSpeciesApp
   const paw = candidate.frontPawDesign || pawFallback
   const orbitFallback = defaultBodyOrbitDesign()
   const orbit = candidate.orbitDesign || orbitFallback
+  const bellyFallback = defaultBellyPatchDesign()
+  const belly = candidate.bellyPatchDesign || bellyFallback
   const number = (value: unknown, min: number, max: number, fallbackValue: number) => typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallbackValue
   const color = (value: unknown, fallbackValue: string) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : fallbackValue
   const markStyles: SpeciesSpecificParts['foreheadMark']['style'][] = ['crescent','star','crystal']
   const pawStyles = FRONT_PAW_STYLES.map(item => item.id)
+  const bellyStyles: BellyPatchStyle[] = ['oval', 'shield']
   const ringCount = [1, 2, 3].includes(orbit.ringCount as number) ? orbit.ringCount as 1 | 2 | 3 : orbitFallback.ringCount
   return {
     ...base,
@@ -171,6 +191,9 @@ export function normalizeMultiSpeciesAppearance(input: unknown): MultiSpeciesApp
       primaryColor: color(orbit.primaryColor, base.palette.primaryGlow),
       secondaryColor: color(orbit.secondaryColor, base.palette.secondaryGlow),
     },
+    bellyPatchDesign: {
+      style: bellyStyles.includes(belly.style as BellyPatchStyle) ? belly.style as BellyPatchStyle : bellyFallback.style,
+    },
   }
 }
 
@@ -200,7 +223,7 @@ export function resolveSpeciesBehavior(speciesId: PetSpeciesId, requested: Cloud
 export function applyStyleAcrossSpecies(current: MultiSpeciesAppearanceRecipe, style: PetStyleId, scope: AppearanceApplyScope) {
   const cloudRecipe = normalizePetStudioAppearanceV2({ ...current, speciesId: 'cloud-fox' })
   const styled = applyAppearanceScope(cloudRecipe, PET_STYLE_RULES[style](cloudRecipe), scope)
-  const next = normalizeMultiSpeciesAppearance({ ...current, ...styled, speciesId: current.speciesId, speciesParts: current.speciesParts, frontPawDesign: current.frontPawDesign, orbitDesign: current.orbitDesign })
+  const next = normalizeMultiSpeciesAppearance({ ...current, ...styled, speciesId: current.speciesId, speciesParts: current.speciesParts, frontPawDesign: current.frontPawDesign, orbitDesign: current.orbitDesign, bellyPatchDesign: current.bellyPatchDesign })
   if (scope === 'all' || scope === 'shape') {
     const pawStyle: Record<PetStyleId, FrontPawStyle> = { cute: 'mitten', mechanical: 'mechanical', nebula: 'soft', crystal: 'tapered' }
     next.frontPawDesign.style = pawStyle[style]
@@ -253,5 +276,5 @@ export function randomizeMultiSpeciesAppearance(current: MultiSpeciesAppearanceR
     primaryColor: randomized.palette.primaryGlow,
     secondaryColor: randomized.palette.secondaryGlow,
   }
-  return normalizeMultiSpeciesAppearance({ ...current, ...randomized, speciesId: current.speciesId, speciesParts: locks.shape ? current.speciesParts : { ...current.speciesParts, moonTailCurl: Number((.35 + random() * .85).toFixed(2)) }, frontPawDesign, orbitDesign })
+  return normalizeMultiSpeciesAppearance({ ...current, ...randomized, speciesId: current.speciesId, speciesParts: locks.shape ? current.speciesParts : { ...current.speciesParts, moonTailCurl: Number((.35 + random() * .85).toFixed(2)) }, frontPawDesign, orbitDesign, bellyPatchDesign: current.bellyPatchDesign })
 }
