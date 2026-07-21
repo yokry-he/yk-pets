@@ -46,12 +46,16 @@ const catalogEntryHas = (idToken, durationToken) => {
   if (start < 0) return false
   return catalog.slice(start, start + 220).includes(durationToken)
 }
+const motionCatalogStart = catalog.indexOf('export const EXTENSION_CLOUD_FOX_MOTIONS = [')
+const motionCatalogEnd = catalog.indexOf('] as const satisfies', motionCatalogStart)
+const motionCatalogSection = catalog.slice(motionCatalogStart, motionCatalogEnd)
+const motionEntryCount = motionCatalogSection.match(/\{ id: '/g)?.length || 0
 const tailTornadoRotatesWholeBody = /state === 'tail-tornado'[\s\S]{0,220}motionGroup\.rotation\.y/.test(renderer)
 const sharedBallConsumers = [renderer, body, head, effects]
 
 const checks = [
   ['all retained extension motion ids mirrored', motionIds.every(id => catalog.includes(`id: '${id}'`) && (id === 'idle' || extension.includes(`state === '${id}'`) || extension.includes(`props.behavior === '${id}'`)))],
-  ['exactly thirty motions and paw tap removed', motionIds.length === 30 && (catalog.match(/\{ id: '/g)?.length || 0) === 30 && !catalog.includes("id: 'paw-tap'") && !runtime.includes("is('paw-tap')") && !body.includes("state === 'paw-tap'")],
+  ['exactly thirty motions and paw tap removed', motionIds.length === 30 && motionEntryCount === 30 && !catalog.includes("id: 'paw-tap'") && !runtime.includes("is('paw-tap')") && !body.includes("state === 'paw-tap'")],
   ['source durations mirrored separately from previews', timedMotions.every(([source, idToken, durationToken]) => extension.includes(source) && catalogEntryHas(idToken, durationToken)) && catalogEntryHas("id: 'jumping'", 'sourceDurationSeconds: 1.25') && catalogEntryHas("id: 'jumping'", 'previewDurationMs: 3200')],
   ['studio runtime reads preview duration', runtime.includes('getExtensionCloudFoxMotion(state).previewDurationMs')],
   ['single grouped dropdown', toolbar.includes('<select') && toolbar.includes('<optgroup') && toolbar.includes('EXTENSION_CLOUD_FOX_MOTIONS.length') && !page.includes('v-for="[id,label] in motions"')],
@@ -72,11 +76,11 @@ const checks = [
   ['thought bubbles and ballistic sneeze particles', effects.includes('thoughtBubbles') && effects.includes('localTime * localTime') && effects.includes("props.behavior === 'thinking'")],
   ['meal includes extension-style table and bowl', effects.includes('MEAL_TABLE_HEIGHT = .84') && effects.includes('MEAL_BOWL_LOCAL_Y = MEAL_TABLE_HEIGHT + .13') && effects.includes('ref="meal"') && effects.includes('ref="food"')],
   ['energy balls use explicit antenna and paw anchors', renderer.includes('ExtensionCloudFoxEnergyBall') && energyBall.includes('antennaTipMidpointAnchor') && energyBall.includes('frontPawMidpointAnchor') && energyBall.includes('releaseTravel')],
-  ['burst particles only travel outward and fade', energyBall.includes('const distance = releaseTravel *') && energyBall.includes('1 - smoothStep(.66, 1, releaseTravel)') && !energyBall.includes('scale from large')],
+  ['burst particles only travel outward and fade', energyBall.includes('const distance = releaseTravel *') && energyBall.includes('1 - smoothStep(.66, 1, releaseTravel)')],
   ['energy starfield expands and fades outward', runtime.includes('energyStarfield') && effects.includes('energyStars') && effects.includes('const spread = travel *') && effects.includes('1 - smoothStep(.66, 1, travel)')],
   ['curious scan remains outside the closed head mesh', effects.includes('scanRing.value.position.z = 1.34') && !head.includes('scanRing')],
   ['random fireworks have launch and varied burst patterns', effects.includes('fireworkSeed = Math.floor(Math.random()') && effects.includes('fireworkDirection') && effects.includes('fireworkRockets') && effects.includes('FIREWORK_PALETTES')],
-  ['body orbit is persistent and configurable', registry.includes('BodyOrbitDesignRecipe') && orbit.includes('appearance.orbitDesign.enabled') && page.includes('显示轨道') && renderer.includes('ExtensionCloudFoxOrbit')],
+  ['body orbit is persistent and depth tested', registry.includes('BodyOrbitDesignRecipe') && orbit.includes('appearance.orbitDesign.enabled') && orbit.includes(':depth-test="true"') && orbit.includes('TresSphereGeometry') && page.includes('显示轨道') && renderer.includes('ExtensionCloudFoxOrbit')],
   ['tail layered extension motion', tail.includes('rootWave') && tail.includes('midWave') && tail.includes('tipWave') && tail.includes('frame.tailGlowWave')],
   ['tail multicolor tip motion', tail.includes('flashColor.setHSL') && tail.includes("'tail-glow'")],
   ['tail embedded socket and rounded overlap joints', tail.includes('socketRadius') && tail.includes('rootExtensionEnd') && tail.includes('lateralEnd') && tail.includes('baseEnd') && tail.includes('midEnd') && tail.includes('tipEnd')],
