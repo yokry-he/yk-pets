@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  渲染云狐身体、内嵌前爪、后肢和身份标志，并通过共享球/飞扑姿态驱动完整四肢动作。
-  Renders the Cloud Fox torso, embedded front paws, hind limbs, and symbols while driving all limbs from shared ball and catch poses.
+  渲染云狐身体、内嵌前爪、后肢和可调胸背标志，并通过共享球/飞扑姿态驱动完整四肢动作。
+  Renders the Cloud Fox torso, embedded paws, hind limbs, and adjustable chest/back symbols while driving limbs from shared poses.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
@@ -94,6 +94,33 @@ const leftHind = shallowRef<Group>()
 const rightHind = shallowRef<Group>()
 const chestTexture = shallowRef<CanvasTexture>()
 const backTexture = shallowRef<CanvasTexture>()
+
+const chestMode = computed(() => props.appearance.chestDisplay.mode)
+const showEnergyCore = computed(() => chestMode.value === 'energy-core' || chestMode.value === 'hybrid')
+const showChestSymbol = computed(() => props.appearance.symbols.chest.enabled && (chestMode.value === 'symbol' || chestMode.value === 'hybrid'))
+const chestCoreScale = computed(() => chestMode.value === 'hybrid' ? .68 : 1)
+const chestSymbolPosition = computed(() => vector([
+  props.appearance.symbols.chest.offsetX,
+  -.26 + props.appearance.symbols.chest.offsetY,
+  .9 + props.appearance.symbols.chest.offsetZ,
+]))
+const backSymbolPosition = computed(() => vector([
+  props.appearance.symbols.back.offsetX,
+  -.2 + props.appearance.symbols.back.offsetY,
+  -.86 - props.appearance.symbols.back.offsetZ,
+]))
+const chestSymbolScale = computed(() => vector([
+  .34 * props.appearance.symbols.chest.scale,
+  .34 * props.appearance.symbols.chest.scale,
+  .34,
+]))
+const backSymbolScale = computed(() => vector([
+  .48 * props.appearance.symbols.back.scale,
+  .48 * props.appearance.symbols.back.scale,
+  .48,
+]))
+const chestSymbolRotation = computed(() => rotation([0, 0, props.appearance.symbols.chest.rotation]))
+const backSymbolRotation = computed(() => rotation([0, Math.PI, -props.appearance.symbols.back.rotation]))
 
 function setPawMotionRef(node: unknown, side: number) {
   const group = node as Group | undefined
@@ -421,15 +448,17 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     </TresMesh>
   </TresGroup>
 
-  <TresMesh :position="vector(scheme.model.chestCore.position)">
+  <TresMesh v-if="showEnergyCore" :position="vector(scheme.model.chestCore.position)" :scale="vector([chestCoreScale, chestCoreScale, chestCoreScale])">
     <TresSphereGeometry :args="[scheme.model.chestCore.radius, 32, 32]" />
     <TresMeshStandardMaterial :color="appearance.palette.secondaryGlow" :emissive="appearance.palette.secondaryGlow" :emissive-intensity="scheme.model.chestCore.emissiveIntensity" :metalness=".25" :roughness=".12" />
   </TresMesh>
-  <TresGroup v-if="appearance.symbols.chest.enabled && chestTexture" :position="vector([0, -.26, .765])" :scale="vector([.34 * appearance.symbols.chest.scale, .34 * appearance.symbols.chest.scale, .34])">
+
+  <TresGroup v-if="showChestSymbol && chestTexture" :position="chestSymbolPosition" :rotation="chestSymbolRotation" :scale="chestSymbolScale">
     <TresPointLight :color="appearance.symbols.chest.color" :intensity="appearance.symbols.chest.glowIntensity * .55" />
-    <TresMesh><TresPlaneGeometry /><TresMeshBasicMaterial :map="chestTexture" transparent :side="DoubleSide" /></TresMesh>
+    <TresMesh :render-order="4"><TresPlaneGeometry /><TresMeshBasicMaterial :map="chestTexture" transparent :side="DoubleSide" :depth-test="true" /></TresMesh>
   </TresGroup>
-  <TresGroup v-if="appearance.symbols.back.enabled && backTexture" :position="vector([0, -.2, -.84])" :rotation="rotation([0, Math.PI, 0])" :scale="vector([.48 * appearance.symbols.back.scale, .48 * appearance.symbols.back.scale, .48])">
-    <TresMesh><TresPlaneGeometry /><TresMeshBasicMaterial :map="backTexture" transparent :side="DoubleSide" /></TresMesh>
+
+  <TresGroup v-if="appearance.symbols.back.enabled && backTexture" :position="backSymbolPosition" :rotation="backSymbolRotation" :scale="backSymbolScale">
+    <TresMesh :render-order="4"><TresPlaneGeometry /><TresMeshBasicMaterial :map="backTexture" transparent :side="DoubleSide" :depth-test="true" /></TresMesh>
   </TresGroup>
 </template>
