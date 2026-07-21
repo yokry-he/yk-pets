@@ -8,6 +8,8 @@ const propMotion = read('apps/playground/app/domain/cloud-fox-prop-motion.ts')
 const registry = read('apps/playground/app/domain/pet-species-registry.ts')
 const page = read('apps/playground/app/pages/studio.vue')
 const toolbar = read('apps/playground/app/components/studio/StudioMotionToolbar.vue')
+const bellyEditor = read('apps/playground/app/components/studio/StudioBellyPatchEditor.vue')
+const symbolEditor = read('apps/playground/app/components/studio/StudioSymbolEditor.vue')
 const renderer = read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue')
 const body = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue')
 const bellyPatch = read('apps/playground/app/components/studio/ExtensionCloudFoxBellyPatch.vue')
@@ -66,7 +68,8 @@ const checks = [
   ['motion key reaches all cloud-fox rigs', (renderer.match(/:motion-key="motionKey"/g)?.length || 0) >= 7],
   ['rotation finish normalizes without reverse unwind', renderer.includes('normalizeFinishedRotation') && renderer.includes('Math.round(group.rotation.y / TAU)') && renderer.includes('frame.backflipRotation * TAU')],
   ['tail tornado leaves whole body yaw stable and spins tail locally', !tailTornadoRotatesWholeBody && renderer.includes("state === 'tail-tornado'") && tail.includes('TAIL_TORNADO_TURNS') && tail.includes('tailWindmillAngle') && tail.includes('Math.round((tail.value.rotation.z - directionRotation.value.z) / TAU)')],
-  ['belly supports thin oval and shield shells', renderer.includes('ExtensionCloudFoxBellyPatch') && bellyPatch.includes("style === 'oval'") && bellyPatch.includes("style === 'shield'") && bellyPatch.includes('bodyScale.value.z * 1.008') && bellyPatch.includes('TresSphereGeometry') && !body.includes('bellyPosition') && effects.includes('TresCircleGeometry')],
+  ['belly supports five thin scalable silhouettes', renderer.includes('ExtensionCloudFoxBellyPatch') && ['oval','shield','bean','teardrop','heart'].every(style => registry.includes(`id: '${style}'`) && bellyPatch.includes(`style === '${style}'`)) && bellyPatch.includes('design.width') && bellyPatch.includes('design.height') && bellyPatch.includes('design.offsetY') && bellyPatch.includes('bodyScale.value.z * 1.008') && bellyEditor.includes('宽度') && bellyEditor.includes('高度') && bellyEditor.includes('上下位置')],
+  ['chest display modes and symbol placement are configurable', ['none','energy-core','symbol','hybrid'].every(mode => registry.includes(`id: '${mode}'`)) && body.includes('showEnergyCore') && body.includes('showChestSymbol') && body.includes('chestSymbolPosition') && body.includes('backSymbolPosition') && symbolEditor.includes('左右位置') && symbolEditor.includes('上下位置') && symbolEditor.includes('前后位置')],
   ['flapping includes hind legs and sustained blush', body.includes("state === 'flapping'") && body.includes('targetZ = side * flap * .5') && head.includes("state === 'flapping'") && head.includes('.56 + Math.sin(stateElapsed * 2.1)')],
   ['stretching closes eyes at the raised-head phase', head.includes('const stretchOpen') && head.includes('frame.stretchStrength') && head.includes('targetX = -.5 * frame.stretchStrength')],
   ['resting and cloud nap have full body phases', runtime.includes('restingPose') && renderer.includes('.66 * frame.restingPose') && renderer.includes('-1.16 * frame.cloudNapPose') && effects.includes("cloud.value.position.set(-.02, -.88")],
@@ -76,7 +79,7 @@ const checks = [
   ['backflip uses crouch tuck rotation and landing phases', runtime.includes('backflipCrouch') && runtime.includes('backflipTuck') && runtime.includes('backflipLand') && renderer.includes('frame.backflipRotation * TAU')],
   ['head highlights remain mirrored', head.includes('side * highlightX')],
   ['thought bubbles and ballistic sneeze particles', effects.includes('thoughtBubbles') && effects.includes('localTime * localTime') && effects.includes("props.behavior === 'thinking'")],
-  ['eating suppresses the old low table and uses the mouth-level floating overlay', renderer.includes("props.behavior === 'eating' ? 'idle' : props.behavior") && renderer.includes('ExtensionCloudFoxMealOverlay') && mealOverlay.includes('FLOATING_TABLE_Y = -.62') && mealOverlay.includes('TABLE_Z = .94') && mealOverlay.includes('BOWL_Y = TABLE_HEIGHT + .13') && mealOverlay.includes('ref="meal"') && mealOverlay.includes('ref="food"')],
+  ['eating suppresses the old low table and uses the lowered floating overlay', renderer.includes("props.behavior === 'eating' ? 'idle' : props.behavior") && renderer.includes('ExtensionCloudFoxMealOverlay') && mealOverlay.includes('FLOATING_TABLE_Y = -.68') && mealOverlay.includes('TABLE_Z = .94') && mealOverlay.includes('BOWL_Y = TABLE_HEIGHT + .13') && mealOverlay.includes('ref="meal"') && mealOverlay.includes('ref="food"')],
   ['energy balls use explicit antenna and paw anchors', renderer.includes('ExtensionCloudFoxEnergyBall') && energyBall.includes('antennaTipMidpointAnchor') && energyBall.includes('frontPawMidpointAnchor') && energyBall.includes('releaseTravel')],
   ['burst particles only travel outward and fade', energyBall.includes('const distance = releaseTravel *') && energyBall.includes('1 - smoothStep(.66, 1, releaseTravel)')],
   ['energy starfield expands and fades outward', runtime.includes('energyStarfield') && effects.includes('energyStars') && effects.includes('const spread = travel *') && effects.includes('1 - smoothStep(.66, 1, travel)')],
@@ -90,8 +93,8 @@ const checks = [
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
 if (failures.length) {
-  console.error('Chrome extension motion / Phase 12 visual check failed:')
+  console.error('Chrome extension motion / Phase 13 visual check failed:')
   for (const failure of failures) console.error(`- ${failure}`)
   process.exit(1)
 }
-console.log(`Chrome extension Phase 12 motion and visual checks passed: ${checks.length} checks, ${motionIds.length} motions.`)
+console.log(`Chrome extension Phase 13 motion and visual checks passed: ${checks.length} checks, ${motionIds.length} motions.`)
