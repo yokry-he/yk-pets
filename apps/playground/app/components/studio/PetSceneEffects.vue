@@ -3,12 +3,12 @@ import { useLoop } from '@tresjs/core'
 import { AdditiveBlending, Euler, Vector3 } from 'three'
 import type { Group } from 'three'
 import { sceneActionMultiplier, type PetSceneRecipe } from '~/domain/pet-scene'
-import type { CloudFoxStudioBehavior } from '~/domain/pet-studio-phase4'
-const props = defineProps<{ scene: PetSceneRecipe; behavior: CloudFoxStudioBehavior }>()
+import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
+const props = defineProps<{ scene: PetSceneRecipe; behavior: ExtensionCloudFoxMotionId }>()
 const v3=(x:number,y:number,z:number)=>new Vector3(x,y,z), rot=(x:number,y:number,z:number)=>new Euler(x,y,z)
 const particles=shallowRef<Group>(), halo=shallowRef<Group>()
 const points=computed(()=>Array.from({length:props.scene.particles.count},(_,index)=>{const angle=index*2.399963;const radius=1.7+(index%9)*.21;return {index,x:Math.cos(angle)*radius,y:-1.1+(index%13)*.29,z:-1.8+((index*7)%17)*.23,scale:.7+(index%5)*.16}}))
-useLoop().onBeforeRender(({elapsed,delta})=>{const multiplier=sceneActionMultiplier(props.scene,props.behavior);if(particles.value){particles.value.rotation.y+=delta*props.scene.particles.speed*.18*multiplier;particles.value.position.y=Math.sin(elapsed*.45)*.08}if(halo.value){const pulse=1+Math.sin(elapsed*1.6*multiplier)*.06;halo.value.scale.setScalar(pulse)}})
+useLoop().onBeforeRender(({elapsed,delta})=>{const multiplier=sceneActionMultiplier(props.scene,props.behavior as never);if(particles.value){particles.value.rotation.y+=delta*props.scene.particles.speed*.18*multiplier;particles.value.position.y=Math.sin(elapsed*.45)*.08}if(halo.value){const pulse=1+Math.sin(elapsed*1.6*multiplier)*.06;halo.value.scale.setScalar(pulse)}})
 </script>
 <template>
 <TresGroup>
