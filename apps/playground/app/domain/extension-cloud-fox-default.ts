@@ -66,6 +66,9 @@ export function createExtensionClassicAppearance(): MultiSpeciesAppearanceRecipe
       innerGlowColor: palette.primaryGlow,
       innerGlowIntensity: .25,
     },
+    bellyPatchDesign: {
+      style: 'shield',
+    },
     frontPawDesign: {
       style: 'soft',
       rootHeight: 0,
