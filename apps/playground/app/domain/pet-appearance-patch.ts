@@ -7,6 +7,7 @@ import type { EarDesignRecipe, TailDesignRecipe, TailSegmentRecipe } from './pet
 import {
   normalizeMultiSpeciesAppearance,
   type BellyPatchDesignRecipe,
+  type ChestDisplayDesignRecipe,
   type FrontPawDesignRecipe,
   type MultiSpeciesAppearanceRecipe,
 } from './pet-species-registry'
@@ -18,6 +19,7 @@ export interface PetAppearanceLocalPatch {
   glow?: Partial<MultiSpeciesAppearanceRecipe['glow']>
   antennaDesign?: Partial<MultiSpeciesAppearanceRecipe['antennaDesign']>
   bellyPatchDesign?: Partial<BellyPatchDesignRecipe>
+  chestDisplay?: Partial<ChestDisplayDesignRecipe>
   frontPawDesign?: Partial<FrontPawDesignRecipe>
   earDesign?: Partial<EarDesignRecipe>
   tailDesign?: Partial<Omit<TailDesignRecipe, 'segments' | 'tipGlow'>> & {
@@ -42,6 +44,7 @@ export function applyPetAppearanceLocalPatch(
     glow: { ...current.glow, ...patch.glow },
     antennaDesign: { ...current.antennaDesign, ...patch.antennaDesign },
     bellyPatchDesign: { ...current.bellyPatchDesign, ...patch.bellyPatchDesign },
+    chestDisplay: { ...current.chestDisplay, ...patch.chestDisplay },
     frontPawDesign: { ...current.frontPawDesign, ...patch.frontPawDesign },
     earDesign: { ...current.earDesign, ...patch.earDesign },
     tailDesign: {
