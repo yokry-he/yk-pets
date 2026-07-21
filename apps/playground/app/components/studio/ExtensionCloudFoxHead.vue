@@ -132,7 +132,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   if (leftEye.value) {
     leftEye.value.scale.y = damp(leftEye.value.scale.y, state === 'confused' ? baseEyeY * .72 : baseEyeY, 12, delta)
     leftEye.value.scale.x = damp(leftEye.value.scale.x, state === 'excited' ? 1.14 : 1, 10, delta)
-    // 动作只叠加局部视线偏移，绝不能把左眼的基础挂点缓动回头部中心。
+    // 动作只叠加局部视线偏移，绝不能把左眼的基础挂点缓动回头部中心。 / Motion only adds a local gaze offset and must never damp the left-eye base mount toward the head center.
     leftEye.value.position.x = damp(leftEye.value.position.x, -eyeX.value + scanOffset, 9, delta)
   }
   if (rightEye.value) {
