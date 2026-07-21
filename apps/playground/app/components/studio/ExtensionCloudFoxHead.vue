@@ -151,7 +151,8 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const wakeOpen = state === 'waking' ? smoothStep(.08, .72, frame.progress) : 1
   const sneezeSquint = state === 'sparkle-sneeze' ? 1 - frame.sneezeCharge * .72 : 1
   const shySquint = state === 'shy-peek' ? 1 - frame.shyPose * .45 : 1
-  const baseEyeY = asleep ? .08 : resting ? mix(1, .34, frame.restingPose) : blink * wakeOpen * sneezeSquint * shySquint
+  const stretchOpen = state === 'stretching' ? mix(1, .08, frame.stretchStrength) : 1
+  const baseEyeY = asleep ? .08 : resting ? mix(1, .34, frame.restingPose) : blink * wakeOpen * sneezeSquint * shySquint * stretchOpen
   const scanOffset = state === 'curious-scan'
     ? Math.sin(frame.curiousProgress * Math.PI * 3) * .035 * frame.curiousPose
     : state === 'playing-ball'
@@ -182,9 +183,11 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 
   const cheekOpacity = state === 'happy' || state === 'talking' || state === 'excited'
     ? .34
-    : state === 'greeting' || state === 'jumping' || state === 'shy-peek'
-      ? .28
-      : 0
+    : state === 'flapping'
+      ? .56 + Math.sin(stateElapsed * 2.1) * .055
+      : state === 'greeting' || state === 'jumping' || state === 'shy-peek'
+        ? .28
+        : 0
   for (const material of cheekMaterials.value) material.opacity = damp(material.opacity, cheekOpacity, 9, delta)
 
   const earEnergy = state === 'energy-burst'
