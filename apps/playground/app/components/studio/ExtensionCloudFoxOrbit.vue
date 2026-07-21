@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  渲染可配置且常驻身体外侧的发光轨道；动作只增强速度、亮度和脉冲，不再从身体内部生成轨道。
-  Renders configurable persistent body orbits outside the torso; motions only enhance speed, brightness, and pulse.
+  渲染可配置且常驻身体外侧的发光轨道；轨道和圆点粒子启用深度测试，后半部分由身体自然遮挡。
+  Renders configurable persistent body orbits with depth-tested rings and round particles so the torso naturally occludes the rear half.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
@@ -33,6 +33,11 @@ const ringScale = computed(() => vector(
   props.appearance.orbitDesign.radius,
 ))
 const ringCount = computed(() => props.appearance.orbitDesign.ringCount)
+const orbitCenterY = computed(() => {
+  const verticalExtent = props.appearance.orbitDesign.radius * props.appearance.orbitDesign.verticalScale
+  return Math.max(-.82, Math.min(-.32, .68 - verticalExtent))
+})
+const mainOrbitRotation = computed(() => rotation(Math.PI / 2 + props.appearance.orbitDesign.tilt, 0, .18))
 
 useLoop().onBeforeRender(({ elapsed, delta }) => {
   const design = props.appearance.orbitDesign
@@ -49,7 +54,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   if (ringA.value) ringA.value.rotation.z += delta * design.speed * 1.15 * speedBoost
   if (ringB.value) ringB.value.rotation.z -= delta * design.speed * .82 * speedBoost
   if (ringC.value) ringC.value.rotation.z += delta * design.speed * .58 * speedBoost
-  if (particleGroup.value) particleGroup.value.rotation.y += delta * design.speed * .72 * speedBoost
+  if (particleGroup.value) particleGroup.value.rotation.z += delta * design.speed * 1.15 * speedBoost
 
   const intensity = Math.min(1, .18 + design.intensity * .18 + (energy ? .26 : playful ? .1 : 0))
   if (materialA.value) materialA.value.opacity = intensity
@@ -62,11 +67,11 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   <TresGroup
     ref="root"
     :visible="appearance.orbitDesign.enabled"
-    :position="vector(0, -.18, 0)"
+    :position="vector(0, orbitCenterY, 0)"
   >
     <TresGroup
       ref="ringA"
-      :rotation="rotation(Math.PI / 2 + appearance.orbitDesign.tilt, 0, .18)"
+      :rotation="mainOrbitRotation"
       :scale="ringScale"
     >
       <TresMesh>
@@ -77,7 +82,9 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
           transparent
           :opacity=".36"
           :blending="AdditiveBlending"
+          :depth-test="true"
           :depth-write="false"
+          :tone-mapped="false"
         />
       </TresMesh>
     </TresGroup>
@@ -96,7 +103,9 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
           transparent
           :opacity=".3"
           :blending="AdditiveBlending"
+          :depth-test="true"
           :depth-write="false"
+          :tone-mapped="false"
         />
       </TresMesh>
     </TresGroup>
@@ -115,21 +124,27 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
           transparent
           :opacity=".22"
           :blending="AdditiveBlending"
+          :depth-test="true"
           :depth-write="false"
+          :tone-mapped="false"
         />
       </TresMesh>
     </TresGroup>
 
-    <TresGroup ref="particleGroup" :rotation="rotation(.2, 0, appearance.orbitDesign.tilt)">
+    <TresGroup ref="particleGroup" :rotation="mainOrbitRotation" :scale="ringScale">
       <TresMesh
         v-for="index in particleIndexes"
         :key="index"
         :position="vector(
-          Math.cos(index / Math.max(1, particleIndexes.length) * Math.PI * 2) * appearance.orbitDesign.radius,
-          Math.sin(index / Math.max(1, particleIndexes.length) * Math.PI * 2) * appearance.orbitDesign.radius * appearance.orbitDesign.verticalScale,
-          Math.sin(index * 1.71) * .08,
+          Math.cos(index / Math.max(1, particleIndexes.length) * Math.PI * 2),
+          Math.sin(index / Math.max(1, particleIndexes.length) * Math.PI * 2),
+          0,
         )"
-        :scale="vector(.025 + index % 3 * .006, .025 + index % 3 * .006, .025 + index % 3 * .006)"
+        :scale="vector(
+          (.025 + index % 3 * .006) / Math.max(.001, ringScale.x),
+          (.025 + index % 3 * .006) / Math.max(.001, ringScale.y),
+          (.025 + index % 3 * .006) / Math.max(.001, ringScale.z),
+        )"
       >
         <TresSphereGeometry :args="[1, 10, 10]" />
         <TresMeshBasicMaterial
@@ -137,7 +152,9 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
           transparent
           :opacity=".68"
           :blending="AdditiveBlending"
+          :depth-test="true"
           :depth-write="false"
+          :tone-mapped="false"
         />
       </TresMesh>
     </TresGroup>
