@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 const phaseArg = process.argv.find(argument => argument.startsWith('--phase='))
-const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 11
+const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 13
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const files = {
   package: read('package.json'),
@@ -24,9 +24,12 @@ const files = {
   extensionAlignedEnergy: read('apps/playground/app/components/studio/ExtensionCloudFoxEnergyBall.vue'),
   extensionAlignedHead: read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue'),
   extensionAlignedTail: read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue'),
+  mealOverlay: read('apps/playground/app/components/studio/ExtensionCloudFoxMealOverlay.vue'),
   motionEffects: read('apps/playground/app/components/studio/ExtensionCloudFoxMotionEffects.vue'),
   orbit: read('apps/playground/app/components/studio/ExtensionCloudFoxOrbit.vue'),
   motionToolbar: read('apps/playground/app/components/studio/StudioMotionToolbar.vue'),
+  bellyEditor: read('apps/playground/app/components/studio/StudioBellyPatchEditor.vue'),
+  symbolEditor: read('apps/playground/app/components/studio/StudioSymbolEditor.vue'),
   earEditor: read('apps/playground/app/components/studio/StudioEarEditor.vue'),
   tailEditor: read('apps/playground/app/components/studio/StudioTailEditor.vue'),
   moonCat: read('apps/playground/app/components/studio/MoonCat.vue'),
@@ -99,16 +102,20 @@ const checks = [
   [10, 'single dropdown and replay', files.motionToolbar.includes('<select') && files.motionToolbar.includes('<optgroup') && files.page.includes('motionKey.value += 1') && !files.page.includes('v-for="[id,label] in motions"')],
   [10, 'motion props and effects', files.motionEffects.includes('fireworkBursts') && files.motionEffects.includes('starGroup') && files.motionEffects.includes('cloud-nap') && files.motionEffects.includes('createBallMotionPose')],
   [10, 'continuous rounded tail joints', files.extensionAlignedTail.includes('socketRadius') && files.extensionAlignedTail.includes('connectorQuaternion') && files.extensionAlignedTail.includes('rootExtensionEnd') && files.extensionAlignedTail.includes('tipEnd')],
-  [10, 'motion parity CI', files.package.includes('check:cloud-fox-motion-parity') && files.motionParityCheck.includes('Phase 12')],
+  [10, 'motion parity CI', files.package.includes('check:cloud-fox-motion-parity') && files.motionParityCheck.includes('Phase 13')],
   [11, 'curved dual-style belly and soft shadow base', files.registry.includes('BellyPatchDesignRecipe') && files.extensionAlignedBelly.includes("style === 'oval'") && files.extensionAlignedBelly.includes("style === 'shield'") && files.extensionAlignedBelly.includes('bodyScale.value.z * 1.008') && !files.extensionAlignedBody.includes('bellyPosition') && files.motionEffects.includes('TresCircleGeometry')],
   [11, 'mirrored eye highlights and shared head-local gaze', files.extensionAlignedHead.includes('side * highlightX') && files.extensionAlignedHead.includes('head.value.worldToLocal(ballWorld)')],
-  [11, 'rotation actions finish without reverse unwind', files.extensionAlignedRenderer.includes('normalizeFinishedRotation') && files.extensionAlignedRenderer.includes("state === 'spinning'") && files.extensionAlignedTail.includes('TAIL_TORNADO_TURNS') && !files.extensionAlignedRenderer.includes("else if (state === 'tail-tornado')")],
+  [11, 'rotation actions finish without reverse unwind', files.extensionAlignedRenderer.includes('normalizeFinishedRotation') && files.extensionAlignedRenderer.includes("state === 'spinning'") && files.extensionAlignedTail.includes('TAIL_TORNADO_TURNS') && !files.extensionAlignedRenderer.includes("else if (state === 'tail-tornado'")],
   [11, 'persistent configurable orbit', files.registry.includes('BodyOrbitDesignRecipe') && files.orbit.includes('appearance.orbitDesign.enabled') && files.page.includes('显示轨道') && files.extensionAlignedRenderer.includes('ExtensionCloudFoxOrbit')],
   [11, 'thought bubbles and ballistic sneeze', files.motionEffects.includes('thoughtBubbles') && files.motionEffects.includes('localTime * localTime')],
   [11, 'enhanced prone stretch shared-ball and juggle limbs', files.motionRuntime.includes('restingPose') && files.propMotion.includes('interface BallMotionPose') && files.extensionAlignedBody.includes('ballPose.activeSide') && files.extensionAlignedBody.includes('frame.juggleWave') && files.extensionAlignedHead.includes('-.5 * frame.stretchStrength')],
   [11, 'staged backflip and shared diving catch', files.motionRuntime.includes('backflipCrouch') && files.motionRuntime.includes('backflipTuck') && files.motionRuntime.includes('backflipLand') && files.propMotion.includes('interface CatchMotionPose') && files.extensionAlignedRenderer.includes('catchPose.bodyTarget')],
   [11, 'anchored energy ball outward particles and randomized fireworks', files.extensionAlignedEnergy.includes('antennaTipMidpointAnchor') && files.extensionAlignedEnergy.includes('frontPawMidpointAnchor') && files.extensionAlignedEnergy.includes('const distance = releaseTravel *') && files.motionEffects.includes('fireworkSeed = Math.floor(Math.random()')],
   [11, 'paw tap removed', !files.motionCatalog.includes("id: 'paw-tap'") && !files.motionRuntime.includes("is('paw-tap')")],
+  [13, 'five configurable belly styles', ['oval','shield','bean','teardrop','heart'].every(style => files.registry.includes(`id: '${style}'`) && files.extensionAlignedBelly.includes(`style === '${style}'`)) && files.registry.includes('BELLY_PATCH_DESIGN_RANGES') && files.bellyEditor.includes('宽度') && files.bellyEditor.includes('高度') && files.bellyEditor.includes('上下位置')],
+  [13, 'chest core modes and adjustable symbols', files.registry.includes('CHEST_DISPLAY_MODES') && files.registry.includes('ChestDisplayDesignRecipe') && files.phase3.includes('offsetX: number') && files.phase3.includes('offsetY: number') && files.phase3.includes('offsetZ: number') && files.extensionAlignedBody.includes('showEnergyCore') && files.extensionAlignedBody.includes('showChestSymbol') && files.symbolEditor.includes('显示模式') && files.symbolEditor.includes('大小')],
+  [13, 'back symbol raised and meal table lowered', files.extensionDefaults.includes('offsetY: .18') && files.extensionAlignedBody.includes('-.2 + props.appearance.symbols.back.offsetY') && files.mealOverlay.includes('FLOATING_TABLE_Y = -.68')],
+  [13, 'new local patch fields remain isolated', files.patchDomain.includes('chestDisplay?:') && files.patchTest.includes("mode: 'hybrid'") && files.patchTest.includes("style: 'heart'") && files.patchTest.includes('offsetZ: .14')],
 ]
 const activeChecks = checks.filter(([phase]) => phase <= requestedPhase)
 const failures = activeChecks.filter(([, , passed]) => !passed).map(([, name]) => name)
