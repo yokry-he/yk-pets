@@ -16,6 +16,7 @@ import ExtensionCloudFoxMotionEffects from './ExtensionCloudFoxMotionEffects.vue
 import ExtensionCloudFoxOrbit from './ExtensionCloudFoxOrbit.vue'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import { createExtensionCloudFoxMotionFrame } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
+import { createBallMotionPose, createCatchMotionPose } from '~/domain/cloud-fox-prop-motion'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
@@ -87,6 +88,8 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 
   const stateElapsed = Math.max(0, elapsed - startedAt)
   const frame = createExtensionCloudFoxMotionFrame(props.behavior, stateElapsed)
+  const ballPose = createBallMotionPose(frame.ballProgress)
+  const catchPose = createCatchMotionPose(frame.catchProgress)
   const state = props.behavior
   const resting = state === 'resting'
   const sleeping = state === 'sleeping'
@@ -96,7 +99,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const juggle = state === 'star-juggle'
   const diving = state === 'diving-catch'
 
-  const catchYaw = diving ? -.58 * frame.catchAir : 0
+  const catchYaw = diving ? catchPose.facingYaw : 0
   const napYaw = cloudNap ? -.16 * frame.cloudNapPose : 0
   presentationGroup.rotation.y = damp(presentationGroup.rotation.y, viewY.value + catchYaw + napYaw, 7, delta)
 
@@ -116,9 +119,8 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 
   const happyHop = state === 'happy' || state === 'talking' ? Math.max(0, Math.sin(elapsed * 8.5)) * .1 : 0
   const flapHop = state === 'flapping' ? Math.max(0, Math.sin(stateElapsed * 9)) * .1 : 0
-  const ballHop = state === 'playing-ball' ? Math.max(0, Math.sin(stateElapsed * 5.4)) * .055 : 0
+  const ballHop = state === 'playing-ball' ? ballPose.height * .055 : 0
   const juggleHop = juggle ? Math.max(0, Math.sin(frame.juggleProgress * Math.PI * 4)) * .055 * frame.jugglePose : 0
-  const catchLift = diving ? Math.sin(frame.catchProgress * Math.PI) * .42 * frame.catchAir : 0
   const targetY = baseY
     + Math.sin(elapsed * bobSpeed) * bobAmount
     + happyHop
@@ -126,7 +128,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     + flapHop
     + ballHop
     + frame.backflipLift
-    + catchLift
+    + (diving ? catchPose.bodyTarget.y : 0)
     + juggleHop
     - frame.backflipCrouch * .18
     - frame.backflipLand * .12
@@ -134,9 +136,9 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const targetX = state === 'playing'
     ? Math.sin(elapsed * 2.4) * .2
     : state === 'playing-ball'
-      ? Math.sin(frame.ballProgress * Math.PI * 4) * .09
+      ? ballPose.position.x * .125
       : diving
-        ? -1.05 * frame.catchAir + .35 * frame.catchLand
+        ? catchPose.bodyTarget.x
         : juggle
           ? Math.sin(frame.juggleProgress * Math.PI * 6) * .09 * frame.jugglePose
           : cloudNap
@@ -144,7 +146,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
             : 0
 
   const targetZ = diving
-    ? .72 * frame.catchAir - .12 * frame.catchLand
+    ? catchPose.bodyTarget.z
     : cloudNap
       ? .08 * frame.cloudNapPose
       : 0
