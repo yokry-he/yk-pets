@@ -10,7 +10,9 @@ import type { Group } from 'three'
 import ExtensionCloudFoxBody from './ExtensionCloudFoxBody.vue'
 import ExtensionCloudFoxBellyPatch from './ExtensionCloudFoxBellyPatch.vue'
 import ExtensionCloudFoxEnergyBall from './ExtensionCloudFoxEnergyBall.vue'
+import ExtensionCloudFoxGazeOverlay from './ExtensionCloudFoxGazeOverlay.vue'
 import ExtensionCloudFoxHead from './ExtensionCloudFoxHead.vue'
+import ExtensionCloudFoxMealOverlay from './ExtensionCloudFoxMealOverlay.vue'
 import ExtensionCloudFoxTail from './ExtensionCloudFoxTail.vue'
 import ExtensionCloudFoxMotionEffects from './ExtensionCloudFoxMotionEffects.vue'
 import ExtensionCloudFoxOrbit from './ExtensionCloudFoxOrbit.vue'
@@ -35,6 +37,8 @@ const TAU = Math.PI * 2
 const presentation = shallowRef<Group>()
 const motion = shallowRef<Group>()
 const viewY = computed(() => ({ front: 0, left: Math.PI / 2, back: Math.PI, right: -Math.PI / 2 }[props.view]))
+const effectsBehavior = computed<ExtensionCloudFoxMotionId>(() => props.behavior === 'eating' ? 'idle' : props.behavior)
+const headBehavior = computed<ExtensionCloudFoxMotionId>(() => ['playing-ball', 'diving-catch'].includes(props.behavior) ? 'idle' : props.behavior)
 
 let previousBehavior: ExtensionCloudFoxMotionId = props.behavior
 let previousMotionKey = props.motionKey
@@ -78,9 +82,10 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const juggle = state === 'star-juggle'
   const diving = state === 'diving-catch'
 
-  const catchYaw = diving ? catchPose.facingYaw : 0
+  // 飞扑保持当前选择视角，不再额外转成不稳定的 3/4 角度；正面视角始终正面接球。
+  // Catch keeps the selected view and no longer adds the unstable three-quarter yaw; front view stays fully frontal.
   const napYaw = cloudNap ? -.16 * frame.cloudNapPose : 0
-  presentationGroup.rotation.y = damp(presentationGroup.rotation.y, viewY.value + catchYaw + napYaw, 7, delta)
+  presentationGroup.rotation.y = damp(presentationGroup.rotation.y, viewY.value + napYaw, 7, delta)
 
   const bobSpeed = sleeping ? 1.1 : state === 'thinking' ? 3.2 : state === 'playing' || state === 'flapping' || frame.highEnergy ? 4.7 : eating || stretching ? 1.35 : 1.9
   const bobAmount = sleeping ? .026 : state === 'happy' || state === 'talking' ? .1 : state === 'playing' || state === 'flapping' || frame.highEnergy ? .11 : state === 'excited' ? .14 : resting || eating || stretching || cloudNap ? .014 : .06
@@ -157,7 +162,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
             : state === 'sparkle-sneeze'
               ? frame.sneezeRelease * .22 - frame.sneezeCharge * .1
               : diving
-                ? -.28 * frame.catchAir + .18 * frame.catchLand
+                ? -.16 * frame.catchAir + .12 * frame.catchLand
                 : 0
     motionGroup.rotation.x = damp(motionGroup.rotation.x, targetXRotation, 7, delta)
   }
@@ -176,9 +181,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
               ? -.08 * frame.shyPose
               : juggle
                 ? Math.sin(frame.juggleProgress * Math.PI * 6) * .08 * frame.jugglePose
-                : diving
-                  ? -.18 * frame.catchAir
-                  : 0
+                : 0
   motionGroup.rotation.z = damp(motionGroup.rotation.z, targetZRotation, 7, delta)
 
   const squash = frame.jumpLanding * .08 + frame.energyCharge * .035 + frame.backflipCrouch * .09 + frame.backflipLand * .07
@@ -192,14 +195,16 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 
 <template>
   <TresGroup ref="presentation">
-    <ExtensionCloudFoxMotionEffects :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
+    <ExtensionCloudFoxMotionEffects :appearance="appearance" :behavior="effectsBehavior" :motion-key="motionKey" />
+    <ExtensionCloudFoxMealOverlay :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
     <TresGroup ref="motion" :position="vector(scheme.model.rootPosition)">
       <ExtensionCloudFoxOrbit :appearance="appearance" :behavior="behavior" />
       <ExtensionCloudFoxEnergyBall :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
       <ExtensionCloudFoxTail :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
       <ExtensionCloudFoxBody :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
       <ExtensionCloudFoxBellyPatch :appearance="appearance" />
-      <ExtensionCloudFoxHead :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
+      <ExtensionCloudFoxHead :appearance="appearance" :behavior="headBehavior" :motion-key="motionKey" />
+      <ExtensionCloudFoxGazeOverlay :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
     </TresGroup>
   </TresGroup>
 </template>
