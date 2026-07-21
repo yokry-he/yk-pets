@@ -1,0 +1,44 @@
+import { readFileSync } from 'node:fs'
+
+const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+const rootPackage = read('package.json')
+const petCore = read('packages/pet-core/src/index.ts')
+const petCorePackage = read('packages/pet-core/package.json')
+const webComponent = read('packages/pet-web-component/src/index.ts')
+const vueAdapter = read('packages/pet-vue-adapter/src/index.ts')
+const extensionPackage = read('apps/extension/package.json')
+const playgroundPackage = read('apps/playground/package.json')
+const studioSync = read('apps/playground/app/domain/pet-extension-sync.ts')
+const studioPlugin = read('apps/playground/app/plugins/pet-extension-sync.client.ts')
+const extensionSync = read('apps/extension/entrypoints/pet-recipe-sync.content.ts')
+const avatarHost = read('apps/extension/components/avatar/AvatarCanvas.vue')
+const adapter = read('apps/extension/entrypoints/content/yk-pet-adapter.ts')
+const productionCanvas = read('apps/extension/components/avatar/ProductionAvatarCanvas.vue')
+const configuredFox = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
+const appearance = read('apps/extension/components/avatar/appearance.ts')
+const productionFox = read('apps/extension/components/avatar/CloudFox.vue')
+
+const checks = [
+  ['pet-core package is a workspace library', petCorePackage.includes('"name": "@yk-pets/pet-core"') && petCorePackage.includes('"./src/index.ts"')],
+  ['framework-neutral recipe species and renderer interfaces', ['PetRecipeEnvelope', 'PetSpeciesDefinition', 'PetRendererAdapter', 'PetRendererRegistry'].every(token => petCore.includes(token)) && !petCore.includes("from 'vue'") && !petCore.includes("from 'three'")],
+  ['versioned recipe storage and sync protocol', petCore.includes('PET_RECIPE_PROTOCOL_VERSION') && petCore.includes('YK_PET_RECIPE_STORAGE_KEY') && petCore.includes('PetRecipeSyncRequest') && petCore.includes('PetRecipeSyncResult')],
+  ['yk-pet custom element delegates to renderer registry', webComponent.includes("YK_PET_ELEMENT_NAME = 'yk-pet'") && webComponent.includes('petRendererRegistry.resolve') && webComponent.includes('rendererInstance.update') && webComponent.includes('rendererInstance?.destroy')],
+  ['Vue adapter is isolated from pet-core', vueAdapter.includes('createVuePetRendererAdapter') && vueAdapter.includes('createApp') && vueAdapter.includes('PetRendererAdapter')],
+  ['workspace apps depend on pet-core packages', extensionPackage.includes('"@yk-pets/pet-core": "workspace:*"') && extensionPackage.includes('"@yk-pets/pet-web-component": "workspace:*"') && extensionPackage.includes('"@yk-pets/pet-vue-adapter": "workspace:*"') && playgroundPackage.includes('"@yk-pets/pet-core": "workspace:*"')],
+  ['Studio save synchronizes a recipe envelope', studioPlugin.includes("name !== 'save'") && studioPlugin.includes('syncAppearanceToBrowserExtension(store.recipe)') && studioSync.includes('createStudioRecipeEnvelope') && studioSync.includes('window.postMessage(request, window.location.origin)')],
+  ['extension bridge validates and stores Studio recipes', extensionSync.includes('isPetRecipeSyncRequest') && extensionSync.includes('normalizePetRecipeEnvelope') && extensionSync.includes('chrome.storage.local.set') && extensionSync.includes('createPetRecipeSyncResult')],
+  ['AvatarCanvas compatibility API mounts yk-pet', avatarHost.includes("document.createElement('yk-pet')") && avatarHost.includes('registerExtensionCloudFoxPetElement') && avatarHost.includes('YK_PET_RECIPE_STORAGE_KEY') && avatarHost.includes('chrome.storage.onChanged.addListener')],
+  ['extension Vue adapter mounts production canvas without recursion', adapter.includes('ProductionAvatarCanvas') && !adapter.includes("import AvatarCanvas") && adapter.includes("id: 'extension-cloud-fox'")],
+  ['production canvas consumes recipe behind web component', productionCanvas.includes('PetRecipeEnvelope') && productionCanvas.includes('ConfiguredCloudFox') && productionCanvas.includes(':recipe="recipe"')],
+  ['formal Cloud Fox remains the single motion implementation', configuredFox.includes("import CloudFox from './CloudFox.vue'") && productionFox.includes('WAVE_DURATION_SECONDS') && productionFox.includes('TAIL_GLOW_DURATION_SECONDS') && !configuredFox.includes('WAVE_DURATION_SECONDS')],
+  ['formal Cloud Fox reads custom palette proportions belly and symbols', appearance.includes('resolveExtensionCloudFoxAppearance') && configuredFox.includes('materialRoles') && configuredFox.includes('visual.bellyPatchDesign.visible') && configuredFox.includes('showChestSymbol') && configuredFox.includes('visual.symbols.back.enabled')],
+  ['root exposes architecture check', rootPackage.includes('check:pet-core-web-component') && rootPackage.includes('check-pet-core-web-component.mjs')],
+]
+
+const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
+if (failures.length) {
+  console.error('pet-core / <yk-pet> architecture check failed:')
+  for (const failure of failures) console.error(`- ${failure}`)
+  process.exit(1)
+}
+console.log(`pet-core / <yk-pet> architecture check passed: ${checks.length} checks.`)
