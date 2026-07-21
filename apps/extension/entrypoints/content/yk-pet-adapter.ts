@@ -6,7 +6,7 @@
 import { petRendererRegistry, type PetRecord } from '@yk-pets/pet-core'
 import { createVuePetRendererAdapter } from '@yk-pets/pet-vue-adapter'
 import { defineYkPetElement } from '@yk-pets/pet-web-component'
-import AvatarCanvas from '../../components/avatar/AvatarCanvas.vue'
+import ProductionAvatarCanvas from '../../components/avatar/ProductionAvatarCanvas.vue'
 
 let registered = false
 
@@ -15,7 +15,7 @@ export function registerExtensionCloudFoxPetElement() {
   registered = true
   petRendererRegistry.register(createVuePetRendererAdapter({
     id: 'extension-cloud-fox',
-    component: AvatarCanvas,
+    component: ProductionAvatarCanvas,
     supports: speciesId => speciesId === 'cloud-fox',
     mapProps(state): PetRecord {
       return {
