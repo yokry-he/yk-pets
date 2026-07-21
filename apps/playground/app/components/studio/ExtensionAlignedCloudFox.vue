@@ -6,8 +6,9 @@
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
 import { Vector3 } from 'three'
-import type { Group } from 'three'
+import type { Group, Mesh } from 'three'
 import ExtensionCloudFoxBody from './ExtensionCloudFoxBody.vue'
+import ExtensionCloudFoxFlushBelly from './ExtensionCloudFoxFlushBelly.vue'
 import ExtensionCloudFoxHead from './ExtensionCloudFoxHead.vue'
 import ExtensionCloudFoxTail from './ExtensionCloudFoxTail.vue'
 import ExtensionCloudFoxMotionEffects from './ExtensionCloudFoxMotionEffects.vue'
@@ -31,6 +32,7 @@ const TAU = Math.PI * 2
 
 const presentation = shallowRef<Group>()
 const motion = shallowRef<Group>()
+const bodyRig = shallowRef<Group>()
 const viewY = computed(() => ({ front: 0, left: Math.PI / 2, back: Math.PI, right: -Math.PI / 2 }[props.view]))
 
 let previousBehavior: ExtensionCloudFoxMotionId = props.behavior
@@ -38,6 +40,25 @@ let previousMotionKey = props.motionKey
 let startedAt = 0
 let spinStart = 0
 let flipStart = 0
+let legacyBellySuppressed = false
+
+function suppressLegacyBelly() {
+  const rig = bodyRig.value
+  if (!rig || legacyBellySuppressed) return
+  rig.traverse((object) => {
+    if (legacyBellySuppressed || object.type !== 'Mesh') return
+    const mesh = object as Mesh
+    const isLegacyBelly = Math.abs(mesh.position.x) < .001
+      && mesh.position.z > .7
+      && mesh.scale.x > .45
+      && mesh.scale.y > .58
+      && mesh.scale.z < .2
+    if (!isLegacyBelly) return
+    mesh.visible = false
+    mesh.name = 'legacy-protruding-belly-suppressed'
+    legacyBellySuppressed = true
+  })
+}
 
 function normalizeFinishedRotation(group: Group, previous: ExtensionCloudFoxMotionId) {
   if (previous === 'spinning' || previous === 'tail-tornado') {
@@ -52,6 +73,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const presentationGroup = presentation.value
   const motionGroup = motion.value
   if (!presentationGroup || !motionGroup) return
+  suppressLegacyBelly()
 
   if (previousBehavior !== props.behavior || previousMotionKey !== props.motionKey) {
     normalizeFinishedRotation(motionGroup, previousBehavior)
@@ -194,7 +216,10 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     <TresGroup ref="motion" :position="vector(scheme.model.rootPosition)">
       <ExtensionCloudFoxOrbit :appearance="appearance" :behavior="behavior" />
       <ExtensionCloudFoxTail :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
-      <ExtensionCloudFoxBody :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
+      <TresGroup ref="bodyRig">
+        <ExtensionCloudFoxBody :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
+        <ExtensionCloudFoxFlushBelly :appearance="appearance" />
+      </TresGroup>
       <ExtensionCloudFoxHead :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
     </TresGroup>
   </TresGroup>
