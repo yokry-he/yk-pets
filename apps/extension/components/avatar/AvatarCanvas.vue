@@ -1,21 +1,21 @@
 <!--
   文件职责 / File responsibility
-  负责 TresJS 画布、相机、灯光和云狐模型装配。
-  Owns the TresJS canvas, camera, lighting, and cloud-fox model assembly.
+  负责 TresJS 画布、相机、灯光和云狐模型装配，并把 pet-core 配方传入正式渲染器。
+  Owns the TresJS canvas, camera, lighting, and Cloud Fox assembly while forwarding the pet-core recipe to production rendering.
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { Vector3 } from 'three'
+import type { PetRecipeEnvelope } from '@yk-pets/pet-core'
 import CloudFox from './CloudFox.vue'
+import { resolveExtensionCloudFoxAppearance } from './appearance'
 import type { PetEmotion } from './types'
 
-// Three.js 数组参数统一转换为 Vector3，避免模板内重复创建逻辑。 / Convert template coordinates consistently to Vector3 objects.
 function vec3(x: number, y: number, z: number) {
   return new Vector3(x, y, z)
 }
 
-// 画布只接收视觉状态；业务动作在外层转换为 behavior 和 motionKey。 / The canvas receives visual state only; outer layers translate business actions into behavior and motionKey.
 const props = withDefaults(defineProps<{
   behavior: string
   emotion: PetEmotion
@@ -25,6 +25,7 @@ const props = withDefaults(defineProps<{
   transparent?: boolean
   pointer?: { x: number; y: number }
   motionKey?: number
+  recipe?: PetRecipeEnvelope | null
 }>(), {
   speaking: false,
   score: 100,
@@ -32,8 +33,10 @@ const props = withDefaults(defineProps<{
   transparent: false,
   pointer: () => ({ x: 0, y: 0 }),
   motionKey: 0,
+  recipe: null,
 })
 
+const visual = computed(() => resolveExtensionCloudFoxAppearance(props.recipe))
 const secretMode = computed(() => props.behavior === 'excited')
 const wideScene = computed(() => props.behavior === 'fireworks-show')
 const cameraPosition = computed(() => wideScene.value
@@ -45,7 +48,6 @@ const canvasClass = computed(() => ({
   'avatar-canvas--transparent': props.transparent,
   'avatar-canvas--compact': props.compact,
 }))
-
 </script>
 
 <template>
@@ -62,8 +64,8 @@ const canvasClass = computed(() => ({
       <TresPerspectiveCamera :position="cameraPosition" :fov="wideScene ? 38 : compact ? 33 : 35" />
       <TresAmbientLight :intensity="1.35" />
       <TresDirectionalLight :position="vec3(4, 6, 4)" :intensity="3.8" />
-      <TresPointLight :position="vec3(-3, 1, 2)" :intensity="secretMode ? 7 : 3.6" color="#7667ff" />
-      <TresPointLight :position="vec3(3, -1, 2)" :intensity="secretMode ? 6 : 2.8" color="#50e3d1" />
+      <TresPointLight :position="vec3(-3, 1, 2)" :intensity="secretMode ? 7 : 3.6" :color="visual.palette.primaryGlow" />
+      <TresPointLight :position="vec3(3, -1, 2)" :intensity="secretMode ? 6 : 2.8" :color="visual.palette.secondaryGlow" />
       <TresGroup :scale="vec3(foxScale, foxScale, foxScale)">
         <CloudFox
           :behavior="behavior"
@@ -72,6 +74,7 @@ const canvasClass = computed(() => ({
           :pointer="pointer"
           :secret-mode="secretMode"
           :motion-key="motionKey"
+          :recipe="recipe"
           theme="dark"
         />
       </TresGroup>
@@ -81,7 +84,6 @@ const canvasClass = computed(() => ({
 </template>
 
 <style scoped>
-/* 画布容器与透明模式 / Canvas container and transparent mode */
 .avatar-canvas {
   position: relative;
   width: 100%;
