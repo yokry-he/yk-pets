@@ -20,9 +20,11 @@ import {
 import type { EarDesignRecipe, TailDesignRecipe, TailSegmentRecipe } from '~/domain/pet-studio-phase2'
 import {
   applyStyleAcrossSpecies,
+  auditFrontPawDesign,
   normalizeMultiSpeciesAppearance,
   randomizeMultiSpeciesAppearance,
   switchPetSpecies,
+  type FrontPawDesignRecipe,
   type MultiSpeciesAppearanceRecipe,
   type PetSpeciesId,
 } from '~/domain/pet-species-registry'
@@ -60,6 +62,7 @@ const mergeCloudResult = (current: MultiSpeciesAppearanceRecipe, result: PetStud
   ...result,
   speciesId: current.speciesId,
   speciesParts: current.speciesParts,
+  frontPawDesign: current.frontPawDesign,
 })
 
 export const usePetAppearanceStore = defineStore('pet-appearance', {
@@ -76,7 +79,12 @@ export const usePetAppearanceStore = defineStore('pet-appearance', {
     customSchemes: [],
   }),
   getters: {
-    findings: state => auditPetStudioAppearance(asCloudFox(state.recipe)),
+    findings: (state) => {
+      const appearanceFindings = auditPetStudioAppearance(asCloudFox(state.recipe))
+      const frontPawFindings = auditFrontPawDesign(state.recipe.frontPawDesign)
+      if (!frontPawFindings.length) return appearanceFindings
+      return appearanceFindings.filter(item => item.id !== 'geometry-ok').concat(frontPawFindings)
+    },
     canUndo: state => state.undoStack.length > 0,
     canRedo: state => state.redoStack.length > 0,
   },
@@ -107,6 +115,10 @@ export const usePetAppearanceStore = defineStore('pet-appearance', {
     markDirty() { this.dirty = true },
     patchParts(patch: Partial<MultiSpeciesAppearanceRecipe['parts']>) {
       this.recipe = applyPetAppearanceLocalPatch(this.recipe, { parts: patch })
+      this.dirty = true
+    },
+    patchFrontPawDesign(patch: Partial<FrontPawDesignRecipe>) {
+      this.recipe = applyPetAppearanceLocalPatch(this.recipe, { frontPawDesign: patch })
       this.dirty = true
     },
     patchEarDesign(patch: Partial<EarDesignRecipe>) {
