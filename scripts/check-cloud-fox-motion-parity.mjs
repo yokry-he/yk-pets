@@ -47,7 +47,7 @@ const checks = [
   ['head motion parity', ['sleeping','thinking','confused','listening','sparkle-sneeze','curious-scan','antenna-charge'].every(id => head.includes(`state === '${id}'`))],
   ['visible prop and effect parity', ['playing-ball','eating','energy-burst','star-juggle','cloud-nap','sparkle-sneeze','curious-scan','fireworks-show'].every(id => effects.includes(`'${id}'`))],
   ['tail layered extension motion', tail.includes('rootWave') && tail.includes('midWave') && tail.includes('tipWave') && tail.includes('frame.tailGlowWave')],
-  ['tail embedded socket', tail.includes('socketRadius') && tail.includes('bodyBack') && tail.includes('socketRadius * .38')],
+  ['tail embedded socket', tail.includes('socketRadius') && tail.includes('bodyBack') && tail.includes('socketRadius.value * .38')],
   ['tail rounded overlap joints', tail.includes('rootExtensionEnd') && tail.includes('lateralEnd') && tail.includes('baseEnd') && tail.includes('midEnd') && tail.includes('tipEnd') && (tail.match(/TresSphereGeometry/g)?.length || 0) >= 8],
   ['offset connectors prevent segment gaps', tail.includes('connectorDirection') && tail.includes('connectorQuaternion') && tail.includes('connectorLength + segment.connectorWidth')],
 ]
