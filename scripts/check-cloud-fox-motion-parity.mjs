@@ -9,6 +9,7 @@ const page = read('apps/playground/app/pages/studio.vue')
 const toolbar = read('apps/playground/app/components/studio/StudioMotionToolbar.vue')
 const renderer = read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue')
 const body = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue')
+const flushBelly = read('apps/playground/app/components/studio/ExtensionCloudFoxFlushBelly.vue')
 const head = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
 const tail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue')
 const orbit = read('apps/playground/app/components/studio/ExtensionCloudFoxOrbit.vue')
@@ -48,7 +49,7 @@ const checks = [
   ['same-motion replay key', page.includes('motionKey.value += 1') && page.includes(':motion-key="motionKey"') && renderer.includes('previousMotionKey')],
   ['motion key reaches all cloud-fox rigs', (renderer.match(/:motion-key="motionKey"/g)?.length || 0) >= 4],
   ['rotation finish normalizes without reverse unwind', renderer.includes('normalizeFinishedRotation') && renderer.includes('Math.round(group.rotation.y / TAU)') && renderer.includes('TAU * 3')],
-  ['belly inset and shadow-only base', body.includes('bellyScale') && body.includes('.11 * props.appearance.proportions.bodyDepth') && !body.includes('scheme.model.shadow.softPosition') && effects.includes('TresCircleGeometry')],
+  ['belly follows torso shell instead of protruding slab', renderer.includes('suppressLegacyBelly') && renderer.includes('legacy-protruding-belly-suppressed') && renderer.includes('ExtensionCloudFoxFlushBelly') && flushBelly.includes('bodyScale.value.z * 1.008') && flushBelly.includes('TresSphereGeometry') && !body.includes('scheme.model.shadow.softPosition') && effects.includes('TresCircleGeometry')],
   ['flapping includes hind legs', body.includes("state === 'flapping'") && body.includes('targetZ = side * flap * .5')],
   ['resting and cloud nap have full body phases', runtime.includes('restingPose') && renderer.includes('.66 * frame.restingPose') && renderer.includes('-1.16 * frame.cloudNapPose')],
   ['playing ball and juggling drive paws', body.includes('ballX = Math.sin(frame.ballProgress') && body.includes("state === 'star-juggle'") && body.includes('frame.juggleWave')],
