@@ -6,6 +6,8 @@ const extensionCanvas = read('apps/extension/components/avatar/AvatarCanvas.vue'
 const profile = read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts')
 const defaults = read('apps/playground/app/domain/extension-cloud-fox-default.ts')
 const phase2 = read('apps/playground/app/domain/pet-studio-phase2.ts')
+const registry = read('apps/playground/app/domain/pet-species-registry.ts')
+const patchDomain = read('apps/playground/app/domain/pet-appearance-patch.ts')
 const studioRenderer = [
   read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue'),
   read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue'),
@@ -65,6 +67,8 @@ checks.push(
   ['independent tail tip glow', phase2.includes('TailTipGlowRecipe') && studioRenderer.includes('tipGlow.enabled') && studioUi.includes('尾巴尖发光')],
   ['independent ear color channels', phase2.includes('EarDesignRecipe') && studioRenderer.includes('earDesign.outerColor') && studioRenderer.includes('earDesign.innerColor') && studioRenderer.includes('earDesign.tipColor') && studioUi.includes('耳尖颜色')],
   ['local patch updates', store.includes('patchEarDesign') && store.includes('patchTailDesign') && store.includes('patchTailSegment') && studioUi.includes('patchSegment')],
+  ['continuous front-paw surface attachment', studioRenderer.includes('pawSurfaceDepth') && studioRenderer.includes('embedDepth') && studioRenderer.includes('shoulderRadius') && studioRenderer.includes('forearmTopY')],
+  ['configurable front-paw layer', registry.includes('FRONT_PAW_STYLES') && registry.includes('FrontPawDesignRecipe') && defaults.includes('frontPawDesign:') && store.includes('patchFrontPawDesign') && patchDomain.includes('frontPawDesign?:') && studioUi.includes('连续前爪连接')],
 )
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
