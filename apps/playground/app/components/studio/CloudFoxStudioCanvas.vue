@@ -16,14 +16,16 @@ import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-
 import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
   behavior: ExtensionCloudFoxMotionId
-  motionKey: number
+  motionKey?: number
   view: CloudFoxStudioView
   background: CloudFoxStudioBackground
   scene?: PetSceneRecipe
-}>()
+}>(), {
+  motionKey: 0,
+})
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vec3 = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
 const legacyScene = computed(() => props.background === 'light'
