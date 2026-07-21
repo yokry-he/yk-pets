@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  为吃饭动作提供贴近嘴部的悬浮小桌、饭盆和食物，替代过低且离身体过远的旧道具位置。
-  Provides a mouth-level floating table, bowl, and food for eating, replacing the old low and distant prop placement.
+  为吃饭动作提供贴近嘴部的悬浮小桌、饭盆和食物，并保持桌沿低于嘴部。
+  Provides a mouth-level floating table, bowl, and food while keeping the table edge below the mouth.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
@@ -22,7 +22,7 @@ const meal = shallowRef<Group>()
 const food = shallowRef<Group>()
 const TABLE_HEIGHT = .84
 const BOWL_Y = TABLE_HEIGHT + .13
-const FLOATING_TABLE_Y = -.62
+const FLOATING_TABLE_Y = -.68
 const TABLE_Z = .94
 
 let previousBehavior: ExtensionCloudFoxMotionId = props.behavior
