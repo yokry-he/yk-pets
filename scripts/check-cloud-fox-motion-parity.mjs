@@ -9,7 +9,7 @@ const page = read('apps/playground/app/pages/studio.vue')
 const toolbar = read('apps/playground/app/components/studio/StudioMotionToolbar.vue')
 const renderer = read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue')
 const body = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue')
-const flushBelly = read('apps/playground/app/components/studio/ExtensionCloudFoxFlushBelly.vue')
+const bellyPatch = read('apps/playground/app/components/studio/ExtensionCloudFoxBellyPatch.vue')
 const head = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
 const tail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue')
 const orbit = read('apps/playground/app/components/studio/ExtensionCloudFoxOrbit.vue')
@@ -22,34 +22,42 @@ const motionIds = [
   'backflip', 'tail-tornado', 'energy-burst', 'fireworks-show', 'antenna-charge', 'tail-glow',
 ]
 const timedMotions = [
-  ['WAVE_DURATION_SECONDS = 2.4', 'greeting: 2.4'],
-  ['STRETCH_DURATION_SECONDS = 7', 'stretching: 7'],
-  ['BALL_DURATION_SECONDS = 8.4', "'playing-ball': 8.4"],
-  ['EAT_DURATION_SECONDS = 8', 'eating: 8'],
-  ['BACKFLIP_DURATION_SECONDS = 4.3', 'backflip: 4.3'],
-  ['TAIL_TORNADO_DURATION_SECONDS = 5', "'tail-tornado': 5"],
-  ['DIVING_CATCH_DURATION_SECONDS = 7', "'diving-catch': 7"],
-  ['ENERGY_BURST_DURATION_SECONDS = 6.2', "'energy-burst': 6.2"],
-  ['SHY_PEEK_DURATION_SECONDS = 4.5', "'shy-peek': 4.5"],
-  ['STAR_JUGGLE_DURATION_SECONDS = 8.2', "'star-juggle': 8.2"],
-  ['CLOUD_NAP_DURATION_SECONDS = 18', "'cloud-nap': 18"],
-  ['SPARKLE_SNEEZE_DURATION_SECONDS = 3.9', "'sparkle-sneeze': 3.9"],
-  ['FIREWORKS_DURATION_SECONDS = 12', "'fireworks-show': 12"],
-  ['CURIOUS_SCAN_DURATION_SECONDS = 4', "'curious-scan': 4"],
-  ['ANTENNA_CHARGE_DURATION_SECONDS = 5.2', "'antenna-charge': 5.2"],
-  ['TAIL_GLOW_DURATION_SECONDS = 5.2', "'tail-glow': 5.2"],
+  ['WAVE_DURATION_SECONDS = 2.4', "id: 'greeting'", 'sourceDurationSeconds: 2.4'],
+  ['STRETCH_DURATION_SECONDS = 7', "id: 'stretching'", 'sourceDurationSeconds: 7'],
+  ['BALL_DURATION_SECONDS = 8.4', "id: 'playing-ball'", 'sourceDurationSeconds: 8.4'],
+  ['EAT_DURATION_SECONDS = 8', "id: 'eating'", 'sourceDurationSeconds: 8'],
+  ['BACKFLIP_DURATION_SECONDS = 4.3', "id: 'backflip'", 'sourceDurationSeconds: 4.3'],
+  ['TAIL_TORNADO_DURATION_SECONDS = 5', "id: 'tail-tornado'", 'sourceDurationSeconds: 5'],
+  ['DIVING_CATCH_DURATION_SECONDS = 7', "id: 'diving-catch'", 'sourceDurationSeconds: 7'],
+  ['ENERGY_BURST_DURATION_SECONDS = 6.2', "id: 'energy-burst'", 'sourceDurationSeconds: 6.2'],
+  ['SHY_PEEK_DURATION_SECONDS = 4.5', "id: 'shy-peek'", 'sourceDurationSeconds: 4.5'],
+  ['STAR_JUGGLE_DURATION_SECONDS = 8.2', "id: 'star-juggle'", 'sourceDurationSeconds: 8.2'],
+  ['CLOUD_NAP_DURATION_SECONDS = 18', "id: 'cloud-nap'", 'sourceDurationSeconds: 18'],
+  ['SPARKLE_SNEEZE_DURATION_SECONDS = 3.9', "id: 'sparkle-sneeze'", 'sourceDurationSeconds: 3.9'],
+  ['FIREWORKS_DURATION_SECONDS = 12', "id: 'fireworks-show'", 'sourceDurationSeconds: 12'],
+  ['CURIOUS_SCAN_DURATION_SECONDS = 4', "id: 'curious-scan'", 'sourceDurationSeconds: 4'],
+  ['ANTENNA_CHARGE_DURATION_SECONDS = 5.2', "id: 'antenna-charge'", 'sourceDurationSeconds: 5.2'],
+  ['TAIL_GLOW_DURATION_SECONDS = 5.2', "id: 'tail-glow'", 'sourceDurationSeconds: 5.2'],
 ]
+const catalogEntryHas = (idToken, durationToken) => {
+  const start = catalog.indexOf(idToken)
+  if (start < 0) return false
+  return catalog.slice(start, start + 220).includes(durationToken)
+}
+const tailTornadoRotatesWholeBody = /state === 'tail-tornado'[\s\S]{0,220}motionGroup\.rotation\.y/.test(renderer)
 
 const checks = [
   ['all retained extension motion ids mirrored', motionIds.every(id => catalog.includes(`id: '${id}'`) && (id === 'idle' || extension.includes(`state === '${id}'`) || extension.includes(`props.behavior === '${id}'`)))],
-  ['paw tap removed from studio catalog and runtime', !catalog.includes("id: 'paw-tap'") && !runtime.includes("is('paw-tap')") && !body.includes("state === 'paw-tap'")],
-  ['source durations mirrored', timedMotions.every(([source, target]) => extension.includes(source) && runtime.includes(target))],
+  ['exactly thirty motions and paw tap removed', motionIds.length === 30 && (catalog.match(/\{ id: '/g)?.length || 0) === 30 && !catalog.includes("id: 'paw-tap'") && !runtime.includes("is('paw-tap')") && !body.includes("state === 'paw-tap'")],
+  ['source durations mirrored separately from previews', timedMotions.every(([source, idToken, durationToken]) => extension.includes(source) && catalogEntryHas(idToken, durationToken)) && catalogEntryHas("id: 'jumping'", 'sourceDurationSeconds: 1.25') && catalogEntryHas("id: 'jumping'", 'previewDurationMs: 3200')],
+  ['studio runtime reads preview duration', runtime.includes('getExtensionCloudFoxMotion(state).previewDurationMs')],
   ['single grouped dropdown', toolbar.includes('<select') && toolbar.includes('<optgroup') && toolbar.includes('EXTENSION_CLOUD_FOX_MOTIONS.length') && !page.includes('v-for="[id,label] in motions"')],
   ['dropdown emits the actual selected option', toolbar.includes('event.currentTarget as HTMLSelectElement') && toolbar.includes('isExtensionCloudFoxMotion') && toolbar.includes(':value="selected"') && !toolbar.includes('v-model="selected"')],
   ['same-motion replay key', page.includes('motionKey.value += 1') && page.includes(':motion-key="motionKey"') && renderer.includes('previousMotionKey')],
   ['motion key reaches all cloud-fox rigs', (renderer.match(/:motion-key="motionKey"/g)?.length || 0) >= 4],
-  ['rotation finish normalizes without reverse unwind', renderer.includes('normalizeFinishedRotation') && renderer.includes('Math.round(group.rotation.y / TAU)') && renderer.includes('TAU * 3')],
-  ['belly follows torso shell instead of protruding slab', renderer.includes('suppressLegacyBelly') && renderer.includes('legacy-protruding-belly-suppressed') && renderer.includes('ExtensionCloudFoxFlushBelly') && flushBelly.includes('bodyScale.value.z * 1.008') && flushBelly.includes('TresSphereGeometry') && !body.includes('scheme.model.shadow.softPosition') && effects.includes('TresCircleGeometry')],
+  ['rotation finish normalizes without reverse unwind', renderer.includes('normalizeFinishedRotation') && renderer.includes('Math.round(group.rotation.y / TAU)') && renderer.includes('frame.backflipRotation * TAU')],
+  ['tail tornado leaves whole body yaw stable', !tailTornadoRotatesWholeBody && renderer.includes("state === 'tail-tornado'") && tail.includes("state === 'tail-tornado'")],
+  ['belly supports thin oval and shield shells', renderer.includes('suppressLegacyBelly') && renderer.includes('ExtensionCloudFoxBellyPatch') && bellyPatch.includes("style === 'oval'") && bellyPatch.includes('bodyScale.value.z * 1.008') && bellyPatch.includes('TresSphereGeometry') && !body.includes('scheme.model.shadow.softPosition') && effects.includes('TresCircleGeometry')],
   ['flapping includes hind legs', body.includes("state === 'flapping'") && body.includes('targetZ = side * flap * .5')],
   ['resting and cloud nap have full body phases', runtime.includes('restingPose') && renderer.includes('.66 * frame.restingPose') && renderer.includes('-1.16 * frame.cloudNapPose')],
   ['playing ball and juggling drive paws', body.includes('ballX = Math.sin(frame.ballProgress') && body.includes("state === 'star-juggle'") && body.includes('frame.juggleWave')],
@@ -68,8 +76,8 @@ const checks = [
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
 if (failures.length) {
-  console.error('Chrome extension motion / Phase 11 visual check failed:')
+  console.error('Chrome extension motion / Phase 12 visual check failed:')
   for (const failure of failures) console.error(`- ${failure}`)
   process.exit(1)
 }
-console.log(`Chrome extension Phase 11 motion and visual checks passed: ${checks.length} checks, ${motionIds.length} motions.`)
+console.log(`Chrome extension Phase 12 motion and visual checks passed: ${checks.length} checks, ${motionIds.length} motions.`)
