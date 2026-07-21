@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  渲染地面软影、思考泡泡、球、扩展风格餐桌、睡云、扫描环、喷嚏粒子、能量星空和随机烟花等动作道具与特效。
-  Renders the soft shadow, thought bubbles, ball, extension-style meal table, nap cloud, scan ring, sneeze particles, energy starfield, and randomized fireworks.
+  渲染地面软影、思考泡泡、共享球轨迹、扩展风格餐桌、睡云、扫描环、喷嚏粒子、能量星空和随机烟花等动作道具与特效。
+  Renders the soft shadow, thought bubbles, shared ball trajectory, extension-style meal table, nap cloud, scan ring, sneeze particles, energy starfield, and randomized fireworks.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
@@ -10,6 +10,7 @@ import type { Group, Mesh, MeshBasicMaterial } from 'three'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import { clamp01, createExtensionCloudFoxMotionFrame, mix, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
+import { createBallMotionPose, createCatchMotionPose } from '~/domain/cloud-fox-prop-motion'
 
 const props = defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
@@ -116,6 +117,8 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   }
   const stateElapsed = Math.max(0, elapsed - startedAt)
   const frame = createExtensionCloudFoxMotionFrame(props.behavior, stateElapsed)
+  const ballPose = createBallMotionPose(frame.ballProgress)
+  const catchPose = createCatchMotionPose(frame.catchProgress)
 
   thoughtBubbles.value.forEach((bubble, index) => {
     const active = props.behavior === 'thinking'
@@ -133,15 +136,13 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     const active = props.behavior === 'playing-ball' || props.behavior === 'diving-catch'
     ball.value.visible = active
     if (props.behavior === 'playing-ball') {
-      const hop = Math.abs(Math.sin(frame.ballProgress * Math.PI * 4))
-      ball.value.position.set(Math.sin(frame.ballProgress * Math.PI * 4) * .72, -.74 + hop * 1.38, .92)
+      ball.value.position.copy(ballPose.position)
       ball.value.rotation.x += delta * 4.2
       ball.value.rotation.z += delta * 3.4
-      ball.value.scale.setScalar(.86 + hop * .12)
+      ball.value.scale.setScalar(.86 + ballPose.height * .12)
     }
     else if (props.behavior === 'diving-catch') {
-      const travel = smoothStep(.02, .56, frame.catchProgress)
-      ball.value.position.set(-1.45 + travel * 2.65, 1.72 - travel * 1.08 + Math.sin(travel * Math.PI) * .66, .98)
+      ball.value.position.copy(catchPose.ballPosition)
       ball.value.rotation.x += delta * 8
       ball.value.scale.setScalar(.92)
     }
