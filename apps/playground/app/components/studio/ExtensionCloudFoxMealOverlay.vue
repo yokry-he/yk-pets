@@ -29,7 +29,7 @@ let previousBehavior: ExtensionCloudFoxMotionId = props.behavior
 let previousMotionKey = props.motionKey
 let startedAt = 0
 
-useLoop().onBeforeRender(({ elapsed }) => {
+useLoop().onBeforeRender(({ elapsed, delta }) => {
   if (props.behavior !== previousBehavior || props.motionKey !== previousMotionKey) {
     previousBehavior = props.behavior
     previousMotionKey = props.motionKey
@@ -50,7 +50,7 @@ useLoop().onBeforeRender(({ elapsed }) => {
   if (food.value) {
     const remaining = Math.max(.1, 1 - Math.max(0, (frame.eatProgress - .18) / .62) * .86)
     food.value.scale.y = remaining
-    food.value.rotation.y += .006
+    food.value.rotation.y += delta * .35
   }
 })
 </script>
