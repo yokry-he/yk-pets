@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
 import StudioEarEditor from '~/components/studio/StudioEarEditor.vue'
+import StudioMotionToolbar from '~/components/studio/StudioMotionToolbar.vue'
 import StudioTailEditor from '~/components/studio/StudioTailEditor.vue'
 import { derivePetMonogram } from '~/domain/cloud-fox-appearance'
 import { CLOUD_FOX_BODY_SHAPES, PET_STUDIO_PART_OPTIONS as PARTS, CLOUD_FOX_SPECIES_DEFINITION } from '~/domain/pet-studio-phase2'
-import type { PetStudioAppearanceRecipe, SymbolChannelRecipe, CloudFoxStudioBackground, CloudFoxStudioBehavior, CloudFoxStudioView } from '~/domain/pet-studio-phase3'
+import { getExtensionCloudFoxMotionDurationMs, type ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
+import type { PetStudioAppearanceRecipe, SymbolChannelRecipe, CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase3'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 
 type Tab = 'identity' | 'face' | 'body' | 'tail' | 'glow' | 'symbols' | 'audit'
@@ -13,7 +15,8 @@ const store = usePetAppearanceStore()
 const recipe = computed(() => store.recipe)
 const ranges = CLOUD_FOX_SPECIES_DEFINITION.safeRanges
 const tab = ref<Tab>('body')
-const behavior = ref<CloudFoxStudioBehavior>('idle')
+const behavior = ref<ExtensionCloudFoxMotionId>('idle')
+const motionKey = ref(0)
 const view = ref<CloudFoxStudioView>('front')
 const background = ref<CloudFoxStudioBackground>('dark')
 const fileInput = ref<HTMLInputElement>()
@@ -24,7 +27,6 @@ let lastCheckpoint = 0
 const tabs: Array<[Tab,string]> = [['identity','身份'],['face','头部'],['body','身体'],['tail','尾巴触角'],['glow','发光'],['symbols','标志'],['audit','检查']]
 const views: Array<[CloudFoxStudioView,string]> = [['front','正面'],['left','左侧'],['back','背面'],['right','右侧']]
 const backgrounds: Array<[CloudFoxStudioBackground,string]> = [['dark','深色'],['light','浅色'],['web','网页']]
-const motions: Array<[CloudFoxStudioBehavior,string]> = [['idle','待机'],['greeting','招手'],['jumping','跳跃'],['stretching','伸展'],['spinning','转圈'],['resting','趴下']]
 const bodyControls: Array<[ProportionKey,string]> = [['bodyWidth','身体宽度'],['bodyHeight','身体高度'],['bodyDepth','身体厚度'],['limbLength','四肢长度'],['limbThickness','四肢粗细'],['limbSpacing','四肢间距'],['pawScale','爪子大小']]
 const faceControls: Array<[ProportionKey,string]> = [['headScale','头部大小'],['earScale','耳朵大小'],['eyeScale','眼睛大小'],['eyeSpacing','眼睛间距']]
 const symbolChannels = computed<Array<[string,SymbolChannelRecipe]>>(() => [['胸口',recipe.value.symbols.chest],['后背',recipe.value.symbols.back]])
@@ -38,7 +40,13 @@ function checkpoint() {
 function show(message: string) { notice.value = message; window.setTimeout(() => notice.value = '', 2200) }
 function setProportion(key: ProportionKey, event: Event) { recipe.value.proportions[key] = inputNumber(event); store.markDirty() }
 function setPart(key: 'eyes' | 'nose' | 'mouth' | 'bodyShape', event: Event) { store.patchParts({ [key]: inputValue(event) } as Partial<typeof recipe.value.parts>) }
-function play(next: CloudFoxStudioBehavior) { if (timer) clearTimeout(timer); behavior.value = next; if (next !== 'idle') timer = window.setTimeout(() => behavior.value = 'idle', 3200) }
+function play(next: ExtensionCloudFoxMotionId) {
+  if (timer) clearTimeout(timer)
+  behavior.value = next
+  motionKey.value += 1
+  const duration = getExtensionCloudFoxMotionDurationMs(next)
+  if (duration > 0) timer = window.setTimeout(() => { behavior.value = 'idle'; motionKey.value += 1 }, duration)
+}
 function syncName() { checkpoint(); const monogram = derivePetMonogram(recipe.value.identity.nameEn); recipe.value.identity.monogram = monogram; recipe.value.symbols.chest.text = monogram; store.markDirty() }
 function save() { store.save(); show('外观配方已保存') }
 function reset() { if (confirm('恢复扩展经典默认外观？')) { store.reset(); show('已恢复图 2 对应的扩展经典外观') } }
@@ -64,8 +72,8 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
       <nav><button v-for="[id,label] in tabs" :key="id" :class="{active:tab===id}" @click="tab=id">{{label}}<i v-if="id==='audit'&&store.findings.some(item=>item.severity==='warning')">!</i></button></nav>
       <section class="preview">
         <div class="toolbar"><span>视角</span><button v-for="[id,label] in views" :key="id" :class="{active:view===id}" @click="view=id">{{label}}</button><span>背景</span><button v-for="[id,label] in backgrounds" :key="id" :class="{active:background===id}" @click="background=id">{{label}}</button></div>
-        <ClientOnly><CloudFoxStudioCanvas :appearance="recipe" :behavior="behavior" :view="view" :background="background"/><template #fallback><div class="loading">正在装配宠物…</div></template></ClientOnly>
-        <div class="toolbar"><span>动作测试</span><button v-for="[id,label] in motions" :key="id" :class="{active:behavior===id}" @click="play(id)">{{label}}</button></div>
+        <ClientOnly><CloudFoxStudioCanvas :appearance="recipe" :behavior="behavior" :motion-key="motionKey" :view="view" :background="background"/><template #fallback><div class="loading">正在装配宠物…</div></template></ClientOnly>
+        <StudioMotionToolbar :behavior="behavior" @play="play"/>
       </section>
 
       <aside>
@@ -114,5 +122,5 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 </template>
 
 <style scoped>
-:global(body){margin:0;background:#070912}:global(*){box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer}.page{min-height:100vh;padding:24px;color:#f3f5ff;background:radial-gradient(circle at 75% 4%,#7066ff33,transparent 28%),#070912;font-family:Inter,system-ui}.top{display:flex;justify-content:space-between;align-items:end;gap:20px;max-width:1680px;margin:auto auto 18px}.top a{color:#8fe9dd}.top small{display:block;margin-top:14px;color:#8d86ff}.top h1{margin:6px 0;font-size:clamp(34px,4vw,56px)}.top p{margin:0;color:#aeb7d8}.actions,.toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.actions{justify-content:flex-end}.actions button,.toolbar button,.controls>button{border:1px solid #ffffff24;border-radius:9px;padding:7px 10px;color:#fff;background:#ffffff0d}.actions button:disabled{opacity:.4}.primary,button.active{border-color:#7066ff!important;background:#7066ff3d!important}.layout{display:grid;grid-template-columns:112px minmax(520px,1fr) 370px;gap:14px;max-width:1680px;margin:auto}nav,aside,.toolbar{border:1px solid #ffffff18;border-radius:16px;background:#0e111ecc;backdrop-filter:blur(16px)}nav{display:flex;flex-direction:column;align-self:start;padding:7px}nav button{position:relative;border:0;border-radius:10px;padding:12px;color:#aeb7d8;background:transparent}nav i{position:absolute;right:8px;color:#ffd36a}.toolbar{margin-bottom:9px;padding:9px}.preview>.toolbar:last-child{margin:9px 0 0}.loading{display:grid;place-items:center;min-height:620px}aside{align-self:start;overflow:hidden}aside>header{display:flex;justify-content:space-between;padding:15px;border-bottom:1px solid #ffffff18}aside b{color:#6fe9d7}.warn{color:#ffd36a!important}.controls{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 95px);overflow:auto;padding:16px}.controls h2,.controls h3{margin:0}.controls>p{margin:0;color:#9da6c8;font-size:13px}.controls label{display:flex;flex-direction:column;gap:5px;color:#bbc2dc;font-size:13px}.controls input:not([type=range]):not([type=checkbox]):not([type=color]),.controls select{min-height:38px;border:1px solid #ffffff22;border-radius:9px;padding:7px;color:#fff;background:#111526}.controls input[type=range]{width:100%;accent-color:#7066ff}.controls input[type=color]{width:100%;height:36px;border:0;background:transparent}.check{flex-direction:row!important}.card,.finding{display:flex;flex-direction:column;gap:9px;padding:10px;border:1px solid #ffffff18;border-radius:10px;background:#ffffff08}.swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.finding p{margin:5px 0;color:#bbc2dc}.finding code{font-size:11px;color:#8fe9dd}.finding.warning{border-color:#ffd36a66;background:#ffd36a0d}.notice{position:fixed;right:22px;bottom:20px;padding:10px 13px;border:1px solid #52e0d055;border-radius:10px;background:#0c2327;color:#dffdfa}@media(max-width:1000px){.top{align-items:start;flex-direction:column}.layout{grid-template-columns:1fr}nav{flex-direction:row;overflow:auto}.controls{max-height:none}}
+:global(body){margin:0;background:#070912}:global(*){box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer}.page{min-height:100vh;padding:24px;color:#f3f5ff;background:radial-gradient(circle at 75% 4%,#7066ff33,transparent 28%),#070912;font-family:Inter,system-ui}.top{display:flex;justify-content:space-between;align-items:end;gap:20px;max-width:1680px;margin:auto auto 18px}.top a{color:#8fe9dd}.top small{display:block;margin-top:14px;color:#8d86ff}.top h1{margin:6px 0;font-size:clamp(34px,4vw,56px)}.top p{margin:0;color:#aeb7d8}.actions,.toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.actions{justify-content:flex-end}.actions button,.toolbar button,.controls>button{border:1px solid #ffffff24;border-radius:9px;padding:7px 10px;color:#fff;background:#ffffff0d}.actions button:disabled{opacity:.4}.primary,button.active{border-color:#7066ff!important;background:#7066ff3d!important}.layout{display:grid;grid-template-columns:112px minmax(520px,1fr) 370px;gap:14px;max-width:1680px;margin:auto}nav,aside,.toolbar{border:1px solid #ffffff18;border-radius:16px;background:#0e111ecc;backdrop-filter:blur(16px)}nav{display:flex;flex-direction:column;align-self:start;padding:7px}nav button{position:relative;border:0;border-radius:10px;padding:12px;color:#aeb7d8;background:transparent}nav i{position:absolute;right:8px;color:#ffd36a}.toolbar{margin-bottom:9px;padding:9px}.loading{display:grid;place-items:center;min-height:620px}aside{align-self:start;overflow:hidden}aside>header{display:flex;justify-content:space-between;padding:15px;border-bottom:1px solid #ffffff18}aside b{color:#6fe9d7}.warn{color:#ffd36a!important}.controls{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 95px);overflow:auto;padding:16px}.controls h2,.controls h3{margin:0}.controls>p{margin:0;color:#9da6c8;font-size:13px}.controls label{display:flex;flex-direction:column;gap:5px;color:#bbc2dc;font-size:13px}.controls input:not([type=range]):not([type=checkbox]):not([type=color]),.controls select{min-height:38px;border:1px solid #ffffff22;border-radius:9px;padding:7px;color:#fff;background:#111526}.controls input[type=range]{width:100%;accent-color:#7066ff}.controls input[type=color]{width:100%;height:36px;border:0;background:transparent}.check{flex-direction:row!important}.card,.finding{display:flex;flex-direction:column;gap:9px;padding:10px;border:1px solid #ffffff18;border-radius:10px;background:#ffffff08}.swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.finding p{margin:5px 0;color:#bbc2dc}.finding code{font-size:11px;color:#8fe9dd}.finding.warning{border-color:#ffd36a66;background:#ffd36a0d}.notice{position:fixed;right:22px;bottom:20px;padding:10px 13px;border:1px solid #52e0d055;border-radius:10px;background:#0c2327;color:#dffdfa}@media(max-width:1000px){.top{align-items:start;flex-direction:column}.layout{grid-template-columns:1fr}nav{flex-direction:row;overflow:auto}.controls{max-height:none}}
 </style>
