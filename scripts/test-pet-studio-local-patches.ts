@@ -1,15 +1,24 @@
 import assert from 'node:assert/strict'
 import { createExtensionClassicAppearance } from '../apps/playground/app/domain/extension-cloud-fox-default'
 import { applyPetAppearanceLocalPatch } from '../apps/playground/app/domain/pet-appearance-patch'
+import { normalizeMultiSpeciesAppearance } from '../apps/playground/app/domain/pet-species-registry'
 
 const original = createExtensionClassicAppearance()
+
+const legacyRecipe = JSON.parse(JSON.stringify(original))
+delete legacyRecipe.bellyPatchDesign
+const migratedLegacy = normalizeMultiSpeciesAppearance(legacyRecipe)
+assert.equal(migratedLegacy.bellyPatchDesign.style, 'shield')
+
 const nonTailSnapshot = JSON.stringify({
   identity: original.identity,
   parts: original.parts,
   proportions: original.proportions,
   palette: original.palette,
   glow: original.glow,
+  bellyPatchDesign: original.bellyPatchDesign,
   frontPawDesign: original.frontPawDesign,
+  orbitDesign: original.orbitDesign,
   earDesign: original.earDesign,
   antennaDesign: original.antennaDesign,
   symbols: original.symbols,
@@ -31,7 +40,9 @@ assert.equal(JSON.stringify({
   proportions: tailPatched.proportions,
   palette: tailPatched.palette,
   glow: tailPatched.glow,
+  bellyPatchDesign: tailPatched.bellyPatchDesign,
   frontPawDesign: tailPatched.frontPawDesign,
+  orbitDesign: tailPatched.orbitDesign,
   earDesign: tailPatched.earDesign,
   antennaDesign: tailPatched.antennaDesign,
   symbols: tailPatched.symbols,
@@ -49,7 +60,9 @@ const nonEarSnapshot = JSON.stringify({
   proportions: original.proportions,
   palette: original.palette,
   glow: original.glow,
+  bellyPatchDesign: original.bellyPatchDesign,
   frontPawDesign: original.frontPawDesign,
+  orbitDesign: original.orbitDesign,
   tailDesign: original.tailDesign,
   antennaDesign: original.antennaDesign,
   symbols: original.symbols,
@@ -69,7 +82,9 @@ assert.equal(JSON.stringify({
   proportions: earPatched.proportions,
   palette: earPatched.palette,
   glow: earPatched.glow,
+  bellyPatchDesign: earPatched.bellyPatchDesign,
   frontPawDesign: earPatched.frontPawDesign,
+  orbitDesign: earPatched.orbitDesign,
   tailDesign: earPatched.tailDesign,
   antennaDesign: earPatched.antennaDesign,
   symbols: earPatched.symbols,
@@ -86,6 +101,8 @@ const nonPawSnapshot = JSON.stringify({
   proportions: original.proportions,
   palette: original.palette,
   glow: original.glow,
+  bellyPatchDesign: original.bellyPatchDesign,
+  orbitDesign: original.orbitDesign,
   earDesign: original.earDesign,
   tailDesign: original.tailDesign,
   antennaDesign: original.antennaDesign,
@@ -106,6 +123,8 @@ assert.equal(JSON.stringify({
   proportions: pawPatched.proportions,
   palette: pawPatched.palette,
   glow: pawPatched.glow,
+  bellyPatchDesign: pawPatched.bellyPatchDesign,
+  orbitDesign: pawPatched.orbitDesign,
   earDesign: pawPatched.earDesign,
   tailDesign: pawPatched.tailDesign,
   antennaDesign: pawPatched.antennaDesign,
@@ -117,4 +136,43 @@ assert.equal(pawPatched.frontPawDesign.embedDepth, .16)
 assert.equal(pawPatched.frontPawDesign.outwardAngle, .18)
 assert.equal(pawPatched.frontPawDesign.shoulderScale, 1.24)
 
-console.log('Pet Studio local patch isolation passed: tail, ear, and front-paw edits preserve all unrelated appearance sections.')
+const nonBellySnapshot = JSON.stringify({
+  identity: original.identity,
+  parts: original.parts,
+  proportions: original.proportions,
+  palette: original.palette,
+  glow: original.glow,
+  frontPawDesign: original.frontPawDesign,
+  orbitDesign: original.orbitDesign,
+  earDesign: original.earDesign,
+  tailDesign: original.tailDesign,
+  antennaDesign: original.antennaDesign,
+  symbols: original.symbols,
+  speciesParts: original.speciesParts,
+})
+const ovalPatched = applyPetAppearanceLocalPatch(original, {
+  bellyPatchDesign: { style: 'oval' },
+})
+assert.equal(ovalPatched.bellyPatchDesign.style, 'oval')
+assert.equal(JSON.stringify({
+  identity: ovalPatched.identity,
+  parts: ovalPatched.parts,
+  proportions: ovalPatched.proportions,
+  palette: ovalPatched.palette,
+  glow: ovalPatched.glow,
+  frontPawDesign: ovalPatched.frontPawDesign,
+  orbitDesign: ovalPatched.orbitDesign,
+  earDesign: ovalPatched.earDesign,
+  tailDesign: ovalPatched.tailDesign,
+  antennaDesign: ovalPatched.antennaDesign,
+  symbols: ovalPatched.symbols,
+  speciesParts: ovalPatched.speciesParts,
+}), nonBellySnapshot)
+
+const ovalRoundTrip = normalizeMultiSpeciesAppearance(JSON.parse(JSON.stringify(ovalPatched)))
+const shieldRoundTrip = normalizeMultiSpeciesAppearance(JSON.parse(JSON.stringify(original)))
+assert.equal(ovalRoundTrip.bellyPatchDesign.style, 'oval')
+assert.equal(shieldRoundTrip.bellyPatchDesign.style, 'shield')
+assert.deepEqual(ovalRoundTrip.orbitDesign, original.orbitDesign)
+
+console.log('Pet Studio local patch isolation passed: legacy belly migration, oval/shield round trips, and tail, ear, paw, belly edits preserve unrelated sections.')
