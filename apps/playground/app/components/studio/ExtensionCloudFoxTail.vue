@@ -90,7 +90,7 @@ const directionRotation = computed(() => {
     back: [0, -1.08, 0],
     forward: [0, 1.08, 0],
   }
-  const direction = directions[props.appearance.tailDesign.direction] || directions.left
+  const direction = directions[props.appearance.tailDesign.direction] ?? ([0, 0, 0] as const)
   return rotation([
     direction[0] + baseSegment.value.rotationX,
     direction[1] + baseSegment.value.rotationY,

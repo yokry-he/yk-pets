@@ -38,8 +38,8 @@ const extensionScene = computed(() => isExtensionClassicScene(activeScene.value)
 const canvasDpr = computed<[number, number]>(() => [scheme.scene.camera.normalDpr[0], scheme.scene.camera.normalDpr[1]])
 
 // 相机始终读取当前局部尾巴和身体边界；默认配方仍精确落在扩展 normalPosition。 / Camera always reads current body and local tail bounds while the default recipe still lands exactly on the extension normalPosition.
-const petBounds = computed(() => calculatePetStudioVisualBounds(props.appearance))
-const referenceBounds = calculatePetStudioVisualBounds(createExtensionClassicAppearance())
+const petBounds = computed(() => calculatePetStudioVisualBounds(props.appearance as never))
+const referenceBounds = calculatePetStudioVisualBounds(createExtensionClassicAppearance() as never)
 const cameraFactor = computed(() => Math.max(.82, petBounds.value.radius / referenceBounds.radius))
 const cameraPosition = computed(() => {
   const base = scheme.scene.camera.normalPosition

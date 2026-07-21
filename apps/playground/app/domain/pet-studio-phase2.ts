@@ -247,7 +247,7 @@ export function randomizePetStudioAppearance(current = createPetStudioAppearance
 }
 
 export function calculatePetStudioVisualBounds(recipe: PetStudioAppearanceRecipe): PetVisualBounds {
-  const baseBounds = calculatePetVisualBounds(recipe)
+  const baseBounds = calculatePetVisualBounds(recipe as never)
   const tail = recipe.tailDesign
   const tailReach = tail.rootExtensionLength
     + Math.abs(tail.lateralOffset)
