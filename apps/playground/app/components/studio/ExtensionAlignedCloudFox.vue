@@ -8,13 +8,13 @@ import { useLoop } from '@tresjs/core'
 import { Vector3 } from 'three'
 import type { Group, Mesh } from 'three'
 import ExtensionCloudFoxBody from './ExtensionCloudFoxBody.vue'
-import ExtensionCloudFoxFlushBelly from './ExtensionCloudFoxFlushBelly.vue'
+import ExtensionCloudFoxBellyPatch from './ExtensionCloudFoxBellyPatch.vue'
 import ExtensionCloudFoxHead from './ExtensionCloudFoxHead.vue'
 import ExtensionCloudFoxTail from './ExtensionCloudFoxTail.vue'
 import ExtensionCloudFoxMotionEffects from './ExtensionCloudFoxMotionEffects.vue'
 import ExtensionCloudFoxOrbit from './ExtensionCloudFoxOrbit.vue'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
-import { createExtensionCloudFoxMotionFrame, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
+import { createExtensionCloudFoxMotionFrame } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
@@ -61,7 +61,7 @@ function suppressLegacyBelly() {
 }
 
 function normalizeFinishedRotation(group: Group, previous: ExtensionCloudFoxMotionId) {
-  if (previous === 'spinning' || previous === 'tail-tornado') {
+  if (previous === 'spinning') {
     group.rotation.y -= Math.round(group.rotation.y / TAU) * TAU
   }
   if (previous === 'backflip') {
@@ -104,7 +104,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const baseY = resting
     ? scheme.model.rootPosition[1] - .78 * frame.restingPose
     : cloudNap
-      ? scheme.model.rootPosition[1] - .78 * frame.cloudNapPose
+      ? scheme.model.rootPosition[1] - .38 * frame.cloudNapPose
       : stretching
         ? scheme.model.rootPosition[1] + frame.stretchStrength * .15
         : eating
@@ -156,10 +156,6 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     const eased = 1 - Math.pow(1 - frame.spinProgress, 3)
     motionGroup.rotation.y = spinStart + eased * TAU
   }
-  else if (state === 'tail-tornado') {
-    const eased = smoothStep(.1, .92, frame.tornadoProgress)
-    motionGroup.rotation.y = spinStart + eased * TAU * 3
-  }
   else {
     motionGroup.rotation.y = damp(motionGroup.rotation.y, 0, 7, delta)
   }
@@ -186,19 +182,21 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 
   const targetZRotation = cloudNap
     ? -1.16 * frame.cloudNapPose
-    : state === 'confused'
-      ? Math.sin(elapsed * 2.2) * .09
-      : state === 'listening'
-        ? -.08
-        : state === 'playing'
-          ? Math.sin(elapsed * 4.8) * .06
-          : state === 'shy-peek'
-            ? -.08 * frame.shyPose
-            : juggle
-              ? Math.sin(frame.juggleProgress * Math.PI * 6) * .08 * frame.jugglePose
-              : diving
-                ? -.18 * frame.catchAir
-                : 0
+    : state === 'tail-tornado'
+      ? Math.sin(stateElapsed * 9) * .035 * frame.tornadoStrength
+      : state === 'confused'
+        ? Math.sin(elapsed * 2.2) * .09
+        : state === 'listening'
+          ? -.08
+          : state === 'playing'
+            ? Math.sin(elapsed * 4.8) * .06
+            : state === 'shy-peek'
+              ? -.08 * frame.shyPose
+              : juggle
+                ? Math.sin(frame.juggleProgress * Math.PI * 6) * .08 * frame.jugglePose
+                : diving
+                  ? -.18 * frame.catchAir
+                  : 0
   motionGroup.rotation.z = damp(motionGroup.rotation.z, targetZRotation, 7, delta)
 
   const squash = frame.jumpLanding * .08 + frame.energyCharge * .035 + frame.backflipCrouch * .09 + frame.backflipLand * .07
@@ -218,7 +216,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       <ExtensionCloudFoxTail :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
       <TresGroup ref="bodyRig">
         <ExtensionCloudFoxBody :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
-        <ExtensionCloudFoxFlushBelly :appearance="appearance" />
+        <ExtensionCloudFoxBellyPatch :appearance="appearance" />
       </TresGroup>
       <ExtensionCloudFoxHead :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
     </TresGroup>
