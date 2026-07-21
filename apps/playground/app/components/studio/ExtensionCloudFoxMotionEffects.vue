@@ -9,7 +9,7 @@ import { AdditiveBlending, Euler, Vector3 } from 'three'
 import type { Group, Mesh, MeshBasicMaterial } from 'three'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
-import { clamp01, createExtensionCloudFoxMotionFrame, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
+import { clamp01, createExtensionCloudFoxMotionFrame, mix, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 
 const props = defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
@@ -59,11 +59,19 @@ let startedAt = 0
 let fireworkSeed = 1
 let fireworkStyles = [0, 1, 2]
 
-function setIndexedRef(collection: typeof thoughtBubbles, node: unknown, index: number) {
-  if (node) collection.value[index] = node as Group
+function setThoughtBubble(node: unknown, index: number) {
+  if (node) thoughtBubbles.value[index] = node as Group
+}
+function setSneezeParticle(node: unknown, index: number) {
+  if (node) sneezeParticles.value[index] = node as Group
+}
+function setEnergyStar(node: unknown, index: number) {
+  if (node) energyStars.value[index] = node as Group
 }
 function setFireworkParticle(node: unknown, burstIndex: number, particleIndex: number) {
-  if (node) fireworkBursts.value[burstIndex]![particleIndex] = node as Group
+  if (!node) return
+  fireworkBursts.value[burstIndex] ||= []
+  fireworkBursts.value[burstIndex]![particleIndex] = node as Group
 }
 function setRocket(node: unknown, index: number) {
   if (node) fireworkRockets.value[index] = node as Group
@@ -285,7 +293,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       <TresMeshBasicMaterial color="#050817" transparent :opacity=".22" :depth-write="false" />
     </TresMesh>
 
-    <TresGroup v-for="index in thoughtIndexes" :key="`thought-${index}`" :ref="node => setIndexedRef(thoughtBubbles, node, index)">
+    <TresGroup v-for="index in thoughtIndexes" :key="`thought-${index}`" :ref="node => setThoughtBubble(node, index)">
       <TresMesh><TresSphereGeometry :args="[1, 20, 20]" /><TresMeshBasicMaterial :color="index % 2 ? appearance.palette.secondaryGlow : appearance.palette.coatWarm" transparent :opacity="0" /></TresMesh>
     </TresGroup>
 
@@ -318,7 +326,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       <TresMesh v-for="index in 3" :key="index" :position="vector((index - 2) * .16, (index - 1) * .15, 0)" :scale="vector(.12 + index * .025, .06, .04)"><TresBoxGeometry /><TresMeshBasicMaterial :color="appearance.palette.secondaryGlow" transparent :opacity=".65" /></TresMesh>
     </TresGroup>
 
-    <TresGroup v-for="index in sneezeIndexes" :key="`sneeze-${index}`" :ref="node => setIndexedRef(sneezeParticles, node, index)">
+    <TresGroup v-for="index in sneezeIndexes" :key="`sneeze-${index}`" :ref="node => setSneezeParticle(node, index)">
       <TresMesh><TresDodecahedronGeometry /><TresMeshBasicMaterial :color="index % 2 ? appearance.palette.primaryGlow : appearance.palette.secondaryGlow" transparent :opacity="0" :blending="AdditiveBlending" :depth-write="false" /></TresMesh>
     </TresGroup>
 
@@ -326,7 +334,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       <TresMesh :rotation="rotation(Math.PI / 2, 0, 0)"><TresTorusGeometry :args="[.38, .028, 14, 64]" /><TresMeshBasicMaterial :color="appearance.palette.secondaryGlow" transparent :opacity=".72" :blending="AdditiveBlending" :depth-write="false" /></TresMesh>
     </TresGroup>
 
-    <TresGroup v-for="index in energyStarIndexes" :key="`energy-star-${index}`" :ref="node => setIndexedRef(energyStars, node, index)">
+    <TresGroup v-for="index in energyStarIndexes" :key="`energy-star-${index}`" :ref="node => setEnergyStar(node, index)">
       <TresMesh><TresDodecahedronGeometry /><TresMeshBasicMaterial :color="index % 3 === 0 ? appearance.palette.primaryGlow : index % 3 === 1 ? appearance.palette.secondaryGlow : appearance.palette.tailGlow" transparent :opacity="0" :blending="AdditiveBlending" :depth-write="false" /></TresMesh>
     </TresGroup>
 
