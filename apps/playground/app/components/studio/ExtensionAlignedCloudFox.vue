@@ -82,8 +82,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const juggle = state === 'star-juggle'
   const diving = state === 'diving-catch'
 
-  // 飞扑保持当前选择视角，不再额外转成不稳定的 3/4 角度；正面视角始终正面接球。
-  // Catch keeps the selected view and no longer adds the unstable three-quarter yaw; front view stays fully frontal.
+  /* 飞扑保持当前选择视角，不再额外转成不稳定的 3/4 角度；正面视角始终正面接球。 / Catch keeps the selected view and no longer adds the unstable three-quarter yaw; front view stays fully frontal. */
   const napYaw = cloudNap ? -.16 * frame.cloudNapPose : 0
   presentationGroup.rotation.y = damp(presentationGroup.rotation.y, viewY.value + napYaw, 7, delta)
 
