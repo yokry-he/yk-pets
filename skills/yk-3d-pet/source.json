@@ -2,8 +2,8 @@
   "name": "yk-3d-pet",
   "repository": "https://github.com/yokry-he/yk-3d-pet",
   "version": "0.1.0",
-  "commit": "1fb0f66fce72c22284e3bb3600a15956311dc2ca",
+  "commit": "6799f179bd03a19e593a55b787af028acb9be6d0",
   "defaultPreset": "yk-pets",
-  "validatedWorkflowRun": 29907698905,
+  "validatedWorkflowRun": 29907896663,
   "validationPlatforms": ["ubuntu-latest", "windows-latest", "macos-latest"]
 }
