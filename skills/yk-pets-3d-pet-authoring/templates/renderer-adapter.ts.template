@@ -1,0 +1,32 @@
+/**
+ * 文件职责 / File responsibility
+ * 将 __PET_NAME__ 的 Vue/TresJS 画布注册为 <yk-pet> 可使用的渲染器。
+ * Registers the Vue/TresJS canvas for __PET_NAME__ as a renderer available to <yk-pet>.
+ */
+import { petRendererRegistry, type PetRecord } from '@yk-pets/pet-core'
+import { createVuePetRendererAdapter } from '@yk-pets/pet-vue-adapter'
+import { defineYkPetElement } from '@yk-pets/pet-web-component'
+import __PASCAL_NAME__Rig from './__PASCAL_NAME__Rig.vue'
+import { __CONSTANT_NAME___RENDERER_ID, __CONSTANT_NAME___SPECIES_ID } from './definition'
+
+let registered = false
+
+export function register__PASCAL_NAME__Renderer() {
+  if (registered) return
+  registered = true
+
+  petRendererRegistry.register(createVuePetRendererAdapter({
+    id: __CONSTANT_NAME___RENDERER_ID,
+    component: __PASCAL_NAME__Rig,
+    supports: speciesId => speciesId === __CONSTANT_NAME___SPECIES_ID,
+    mapProps(state): PetRecord {
+      return {
+        ...state.renderProps,
+        appearance: state.recipe.appearance,
+        behavior: state.behavior,
+      }
+    },
+  }))
+
+  defineYkPetElement()
+}
