@@ -1,0 +1,73 @@
+{
+  "operation": "create-pet",
+  "speciesId": "cloud-fox",
+  "petName": "Zeph",
+  "visualStyle": "procedural-cute",
+  "bodyShape": "rounded-ellipsoid",
+  "palette": {
+    "coat": "#eef1ff",
+    "coatShadow": "#aeb6e8",
+    "coatWarm": "#f9fbff",
+    "eye": "#101226",
+    "primaryGlow": "#7066ff",
+    "secondaryGlow": "#52e0d0",
+    "tailGlow": "#caffff",
+    "symbolGlow": "#8fdcff"
+  },
+  "requiredParts": [
+    "large-head",
+    "four-limbs",
+    "independent-eyes",
+    "segmented-tail",
+    "double-antenna",
+    "belly-patch",
+    "chest-symbol",
+    "back-symbol"
+  ],
+  "requiredActions": [
+    "idle",
+    "greeting",
+    "jumping",
+    "flapping",
+    "stretching",
+    "playing-ball",
+    "eating",
+    "diving-catch",
+    "cloud-nap",
+    "tail-tornado",
+    "antenna-charge",
+    "energy-burst"
+  ],
+  "idleActions": [
+    "greeting",
+    "stretching",
+    "playing-ball",
+    "eating",
+    "cloud-nap",
+    "tail-glow"
+  ],
+  "chestSymbol": {
+    "mode": "symbol",
+    "text": "Z",
+    "scale": 1,
+    "offsetX": 0,
+    "offsetY": 0,
+    "offsetZ": 0.02
+  },
+  "backSymbol": {
+    "text": "YK",
+    "scale": 1,
+    "offsetX": 0,
+    "offsetY": 0.18,
+    "offsetZ": 0.02
+  },
+  "constraints": [
+    "front shoulders must be embedded into the body",
+    "tail must use root-mid-tip hierarchy",
+    "eyes must track shared world targets through head local coordinates",
+    "manual actions must override idle actions",
+    "tail tornado must rotate only the tail root",
+    "explosion particles must move outward and fade without reverse collection",
+    "all major actions must be checked from front left back and right views"
+  ]
+}
