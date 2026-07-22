@@ -1,0 +1,179 @@
+<!--
+  文件职责 / File responsibility
+  实现 __PET_NAME__ 的程序化 Transform Rig、待机生命感和基础动作挂点。
+  Implements the procedural Transform Rig, idle vitality, and base action anchors for __PET_NAME__.
+-->
+<script setup lang="ts">
+import { shallowRef } from 'vue'
+import { useLoop } from '@tresjs/core'
+import { Euler, Group, Vector3 } from 'three'
+import type { __PASCAL_NAME__Appearance } from './definition'
+
+const props = withDefaults(defineProps<{
+  appearance: __PASCAL_NAME__Appearance
+  behavior?: string
+  motionKey?: number
+  pointer?: { x: number; y: number }
+  reducedMotion?: boolean
+}>(), {
+  behavior: 'idle',
+  motionKey: 0,
+  pointer: () => ({ x: 0, y: 0 }),
+  reducedMotion: false,
+})
+
+const root = shallowRef<Group>()
+const body = shallowRef<Group>()
+const head = shallowRef<Group>()
+const leftEye = shallowRef<Group>()
+const rightEye = shallowRef<Group>()
+const leftPupil = shallowRef<Group>()
+const rightPupil = shallowRef<Group>()
+const leftFrontShoulder = shallowRef<Group>()
+const leftFrontForearm = shallowRef<Group>()
+const leftFrontPawTip = shallowRef<Group>()
+const rightFrontShoulder = shallowRef<Group>()
+const rightFrontForearm = shallowRef<Group>()
+const rightFrontPawTip = shallowRef<Group>()
+const leftHindLeg = shallowRef<Group>()
+const rightHindLeg = shallowRef<Group>()
+const tailRoot = shallowRef<Group>()
+const tailMid = shallowRef<Group>()
+const tailTip = shallowRef<Group>()
+
+const vec3 = (x: number, y: number, z: number) => new Vector3(x, y, z)
+const euler = (x: number, y: number, z: number) => new Euler(x, y, z)
+const damp = (current: number, target: number, rate: number, delta: number) =>
+  current + (target - current) * Math.min(1, delta * rate)
+
+let elapsed = 0
+let timelineStart = 0
+let previousMotionKey = props.motionKey
+
+useLoop().onBeforeRender(({ delta }) => {
+  elapsed += Math.min(delta, 0.05)
+  if (props.motionKey !== previousMotionKey) {
+    previousMotionKey = props.motionKey
+    timelineStart = elapsed
+  }
+
+  const actionElapsed = elapsed - timelineStart
+  const idleScale = props.reducedMotion ? 0.25 : 1
+  const breath = Math.sin(elapsed * 2.2) * 0.018 * idleScale
+  const isGreeting = props.behavior === 'greeting'
+  const isJumping = props.behavior === 'jumping'
+  const greetingProgress = Math.min(1, actionElapsed / 2.4)
+  const jumpProgress = Math.min(1, actionElapsed / 3.2)
+  const jumpHeight = isJumping ? Math.sin(jumpProgress * Math.PI) * 0.72 : 0
+
+  if (root.value) root.value.position.y = damp(root.value.position.y, jumpHeight, 9, delta)
+  if (body.value) body.value.scale.y = damp(body.value.scale.y, 1 + breath, 7, delta)
+
+  if (head.value) {
+    head.value.rotation.y = damp(head.value.rotation.y, props.pointer.x * 0.1, 6, delta)
+    head.value.rotation.x = damp(head.value.rotation.x, -props.pointer.y * 0.06, 6, delta)
+  }
+
+  const gazeX = Math.max(-0.055, Math.min(0.055, props.pointer.x * 0.045))
+  const gazeY = Math.max(-0.045, Math.min(0.045, -props.pointer.y * 0.035))
+  if (leftPupil.value) {
+    leftPupil.value.position.x = damp(leftPupil.value.position.x, gazeX, 10, delta)
+    leftPupil.value.position.y = damp(leftPupil.value.position.y, gazeY, 10, delta)
+  }
+  if (rightPupil.value) {
+    rightPupil.value.position.x = damp(rightPupil.value.position.x, gazeX, 10, delta)
+    rightPupil.value.position.y = damp(rightPupil.value.position.y, gazeY, 10, delta)
+  }
+
+  if (rightFrontForearm.value) {
+    const raise = isGreeting ? Math.sin(Math.min(1, greetingProgress / 0.22) * Math.PI * 0.5) : 0
+    rightFrontForearm.value.rotation.z = damp(rightFrontForearm.value.rotation.z, raise * 2.35, 10, delta)
+  }
+  if (rightFrontPawTip.value) {
+    const wave = isGreeting && greetingProgress > 0.2 && greetingProgress < 0.82
+      ? Math.sin(greetingProgress * Math.PI * 10) * 0.34
+      : 0
+    rightFrontPawTip.value.rotation.z = damp(rightFrontPawTip.value.rotation.z, wave, 12, delta)
+  }
+
+  const tailWave = Math.sin(elapsed * (isJumping ? 7 : 2.8)) * (isJumping ? 0.2 : 0.08) * idleScale
+  if (tailRoot.value) tailRoot.value.rotation.z = damp(tailRoot.value.rotation.z, tailWave * 0.25, 7, delta)
+  if (tailMid.value) tailMid.value.rotation.z = damp(tailMid.value.rotation.z, tailWave * 0.65, 8, delta)
+  if (tailTip.value) tailTip.value.rotation.z = damp(tailTip.value.rotation.z, tailWave, 9, delta)
+})
+</script>
+
+<template>
+  <TresGroup ref="root">
+    <TresGroup ref="body" :scale="vec3(appearance.proportions.bodyWidth, appearance.proportions.bodyHeight, appearance.proportions.bodyDepth)">
+      <TresMesh cast-shadow>
+        <TresSphereGeometry :args="[1, 48, 48]" />
+        <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness="0.34" />
+      </TresMesh>
+
+      <TresGroup name="chestSymbolAnchor" :position="vec3(0, -0.15, 0.82)" />
+      <TresGroup name="backSymbolAnchor" :position="vec3(0, 0.12, -0.84)" />
+      <TresGroup name="propRoot" />
+
+      <TresGroup ref="leftFrontShoulder" :position="vec3(-0.54, 0.05, 0.68)">
+        <TresGroup ref="leftFrontForearm">
+          <TresMesh :position="vec3(0, -0.2, 0)">
+            <TresCylinderGeometry :args="[0.09, 0.12, 0.4, 20]" />
+            <TresMeshStandardMaterial :color="appearance.palette.coat" />
+          </TresMesh>
+          <TresGroup ref="leftFrontPawTip" :position="vec3(0, -0.43, 0.04)">
+            <TresMesh><TresSphereGeometry :args="[0.14, 24, 24]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" /></TresMesh>
+            <TresGroup name="leftFrontPawAnchor" :position="vec3(0, -0.1, 0.12)" />
+          </TresGroup>
+        </TresGroup>
+      </TresGroup>
+
+      <TresGroup ref="rightFrontShoulder" :position="vec3(0.54, 0.05, 0.68)">
+        <TresGroup ref="rightFrontForearm">
+          <TresMesh :position="vec3(0, -0.2, 0)">
+            <TresCylinderGeometry :args="[0.09, 0.12, 0.4, 20]" />
+            <TresMeshStandardMaterial :color="appearance.palette.coat" />
+          </TresMesh>
+          <TresGroup ref="rightFrontPawTip" :position="vec3(0, -0.43, 0.04)">
+            <TresMesh><TresSphereGeometry :args="[0.14, 24, 24]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" /></TresMesh>
+            <TresGroup name="rightFrontPawAnchor" :position="vec3(0, -0.1, 0.12)" />
+          </TresGroup>
+        </TresGroup>
+      </TresGroup>
+
+      <TresGroup ref="leftHindLeg" :position="vec3(-0.42, -0.88, 0.28)">
+        <TresMesh :scale="vec3(1.2, 0.82, 1.35)"><TresSphereGeometry :args="[0.17, 24, 24]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" /></TresMesh>
+      </TresGroup>
+      <TresGroup ref="rightHindLeg" :position="vec3(0.42, -0.88, 0.28)">
+        <TresMesh :scale="vec3(1.2, 0.82, 1.35)"><TresSphereGeometry :args="[0.17, 24, 24]" /><TresMeshStandardMaterial :color="appearance.palette.coatWarm" /></TresMesh>
+      </TresGroup>
+    </TresGroup>
+
+    <TresGroup ref="tailRoot" :position="vec3(-0.62, -0.35, -0.38)" :rotation="euler(0, 0, -0.15)">
+      <TresMesh :rotation="euler(0, 0, -0.35)"><TresCylinderGeometry :args="[0.2, 0.25, 0.7, 20]" /><TresMeshStandardMaterial :color="appearance.palette.coatShadow" /></TresMesh>
+      <TresGroup ref="tailMid" :position="vec3(-0.24, 0.34, 0)">
+        <TresMesh :rotation="euler(0, 0, -0.55)"><TresCylinderGeometry :args="[0.15, 0.21, 0.64, 20]" /><TresMeshStandardMaterial :color="appearance.palette.coat" /></TresMesh>
+        <TresGroup ref="tailTip" :position="vec3(-0.3, 0.32, 0)">
+          <TresMesh :scale="vec3(1, 1.35, 1)"><TresSphereGeometry :args="[0.2, 24, 24]" /><TresMeshStandardMaterial :color="appearance.palette.tailGlow" :emissive="appearance.palette.tailGlow" :emissive-intensity="1.2" /></TresMesh>
+        </TresGroup>
+      </TresGroup>
+    </TresGroup>
+
+    <TresGroup ref="head" :position="vec3(0, 0.98, 0.08)" :scale="vec3(appearance.proportions.headScale, appearance.proportions.headScale, appearance.proportions.headScale)">
+      <TresMesh :scale="vec3(1.02, 0.9, 0.9)" cast-shadow><TresSphereGeometry :args="[0.88, 48, 48]" /><TresMeshStandardMaterial :color="appearance.palette.coat" /></TresMesh>
+      <TresGroup ref="leftEye" :position="vec3(-0.31 * appearance.proportions.eyeSpacing, 0.08, 0.78)" :scale="vec3(appearance.proportions.eyeScale, appearance.proportions.eyeScale, 1)">
+        <TresMesh :scale="vec3(0.17, 0.23, 0.1)"><TresSphereGeometry :args="[1, 28, 28]" /><TresMeshStandardMaterial :color="appearance.palette.eye" /></TresMesh>
+        <TresGroup ref="leftPupil"><TresMesh :position="vec3(-0.025, 0.045, 0.11)" :scale="vec3(0.045, 0.06, 0.025)"><TresSphereGeometry :args="[1, 16, 16]" /><TresMeshBasicMaterial :color="appearance.palette.secondaryGlow" /></TresMesh></TresGroup>
+      </TresGroup>
+      <TresGroup ref="rightEye" :position="vec3(0.31 * appearance.proportions.eyeSpacing, 0.08, 0.78)" :scale="vec3(appearance.proportions.eyeScale, appearance.proportions.eyeScale, 1)">
+        <TresMesh :scale="vec3(0.17, 0.23, 0.1)"><TresSphereGeometry :args="[1, 28, 28]" /><TresMeshStandardMaterial :color="appearance.palette.eye" /></TresMesh>
+        <TresGroup ref="rightPupil"><TresMesh :position="vec3(0.025, 0.045, 0.11)" :scale="vec3(0.045, 0.06, 0.025)"><TresSphereGeometry :args="[1, 16, 16]" /><TresMeshBasicMaterial :color="appearance.palette.secondaryGlow" /></TresMesh></TresGroup>
+      </TresGroup>
+      <TresGroup name="mouthAnchor" :position="vec3(0, -0.38, 0.98)" />
+      <TresGroup name="leftAntennaTipAnchor" :position="vec3(-0.22, 0.82, 0.05)" />
+      <TresGroup name="rightAntennaTipAnchor" :position="vec3(0.22, 0.82, 0.05)" />
+    </TresGroup>
+
+    <TresGroup name="sceneEffectsRoot" />
+  </TresGroup>
+</template>
