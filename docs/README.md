@@ -34,6 +34,7 @@ YK-PETS is the product brand. The current default pet is a Cloud Fox named Zeph�
 | Topic | 简体中文 | English |
 |---|---|---|
 | Cloud Fox Studio | [外观配方、部件槽位与动作验证](./zh-CN/CLOUD-FOX-STUDIO.md) | [Appearance recipes, part slots, and motion validation](./en/CLOUD-FOX-STUDIO.md) |
+| 3D pet authoring Skill | [生成、修改和验证程序化 3D 宠物](../skills/yk-pets-3d-pet-authoring/SKILL.md) | [Create, extend, and validate procedural 3D pets](../skills/yk-pets-3d-pet-authoring/SKILL.md) |
 | In-page interaction | [网页内 3D 云灵交互](./zh-CN/PET-INTERACTION.md) | [In-page 3D Zeph interaction](./en/PET-INTERACTION.md) |
 | Radial menu | [星云透明层与环形菜单](./zh-CN/NEBULA-RADIAL-MENU.md) | [Nebula transparency and radial menu](./en/NEBULA-RADIAL-MENU.md) |
 | Tail design | [云狐尾巴设计](./zh-CN/TAIL-DESIGN.md) | [Cloud Fox tail design](./en/TAIL-DESIGN.md) |
