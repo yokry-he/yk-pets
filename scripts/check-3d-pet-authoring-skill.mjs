@@ -58,13 +58,14 @@ const definitionTemplate = await safeRead(path.join(skillRoot, 'templates/pet-de
 const rigTemplate = await safeRead(path.join(skillRoot, 'templates/procedural-pet.vue.template'))
 const actionTemplate = await safeRead(path.join(skillRoot, 'templates/action-definition.ts.template'))
 const adapterTemplate = await safeRead(path.join(skillRoot, 'templates/renderer-adapter.ts.template'))
-for (const [label, content] of [
-  ['definition', definitionTemplate],
-  ['rig', rigTemplate],
-  ['action', actionTemplate],
-  ['adapter', adapterTemplate],
-]) {
-  for (const token of ['__SPECIES_ID__', '__PET_NAME__', '__PASCAL_NAME__', '__CONSTANT_NAME__']) {
+const placeholderRequirements = [
+  ['definition', definitionTemplate, ['__SPECIES_ID__', '__PET_NAME__', '__PASCAL_NAME__', '__CONSTANT_NAME__', '__MONOGRAM__']],
+  ['rig', rigTemplate, ['__PET_NAME__', '__PASCAL_NAME__']],
+  ['action', actionTemplate, ['__PET_NAME__', '__PASCAL_NAME__', '__CONSTANT_NAME__']],
+  ['adapter', adapterTemplate, ['__PET_NAME__', '__PASCAL_NAME__', '__CONSTANT_NAME__']],
+]
+for (const [label, content, tokens] of placeholderRequirements) {
+  for (const token of tokens) {
     if (!content.includes(token)) failures.push(`${label} 模板缺少占位符 ${token}。 / Template is missing placeholder.`)
   }
 }
