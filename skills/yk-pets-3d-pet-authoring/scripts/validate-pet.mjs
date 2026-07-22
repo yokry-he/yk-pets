@@ -55,7 +55,7 @@ function validateDefinition(content) {
     'PetSpeciesDefinition',
     'createDefault',
     'normalize',
-    'safeRanges',
+    'SAFE_RANGES',
     'symbols',
     'chest',
     'back',
@@ -63,7 +63,7 @@ function validateDefinition(content) {
   ], '物种定义')
   check(content.includes('Number.isFinite'), '物种定义应拒绝非有限数值。 / Species normalization should reject non-finite numbers.')
   check(content.includes('Math.min') && content.includes('Math.max'), '物种定义应限制安全范围。 / Species normalization should clamp safe ranges.')
-  check(content.includes("/^#[0-9a-f]{6}$/i"), '物种定义应验证十六进制颜色。 / Species normalization should validate hex colors.')
+  check(content.includes('/^#[0-9a-f]{6}$/i'), '物种定义应验证十六进制颜色。 / Species normalization should validate hex colors.')
 }
 
 function validateRig(content, capabilities) {
