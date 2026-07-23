@@ -116,8 +116,7 @@ async function openCurrentPageMemories(button: HTMLButtonElement) {
   button.title = '正在打开当前页面的宠物记忆…'
   button.setAttribute('aria-label', button.title)
 
-  // 两个 Promise 都在点击调用栈中立即启动，避免异步存储消耗 Side Panel 所需的用户手势。
-  // Start both promises synchronously in the click stack so storage does not consume the user gesture required by Side Panel.
+  // 两个 Promise 在点击调用栈中立即启动，避免异步存储消耗 Side Panel 所需的用户手势。 / Start both promises synchronously in the click stack so storage does not consume the user gesture required by Side Panel.
   const requestWrite = chrome.storage.local.set({ [PET_MEMORY_CURRENT_PAGE_REQUEST_KEY]: request })
   const openRequest = chrome.runtime.sendMessage({
     type: 'NOVA_OPEN_SIDE_PANEL',
