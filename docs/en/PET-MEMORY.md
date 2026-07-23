@@ -8,6 +8,7 @@ Open Pet Memory through any of these paths:
 
 - the **Pet Memory** workspace at the top of the Side Panel;
 - **Features → Pet Memory** in the in-page pet menu;
+- the memory count badge at the upper-left of the in-page pet when the current page has memories;
 - the Chrome shortcut: `Ctrl+Shift+.` on Windows/Linux or `Command+Shift+.` on macOS;
 - select text and choose **Let Zeph remember this** from the context menu;
 - right-click the page and choose **Record this page in Pet Memory**;
@@ -51,12 +52,24 @@ The top-level views cover Inbox, Todo, Done, and Current Page. Search matches ti
 
 - Saving a memory triggers a greeting and confirmation from Zeph.
 - Completing a task triggers a celebration response.
-- When the current page has non-archived memories, a count badge appears on the in-page pet.
+- When the current page has non-archived memories, a clickable count badge appears at the upper-left of the in-page pet.
 - Opening Pet Memory from the pet menu switches the Side Panel directly to that workspace.
 - Saving selected text from the context menu produces immediate in-page confirmation.
 - A JSON import produces one short completion response after the result is known.
 
 These responses do not open large automatic overlays or change the host page layout.
+
+## Current-page memory badge
+
+The memory count is an independent button rather than a control nested inside the pet drag target. It supports mouse, `Tab`, `Enter`, and Space. Activating it:
+
+- opens or switches to the Pet Memory workspace in the Side Panel;
+- clears stale search text and tag filters;
+- activates the Current Page view and moves keyboard focus to that filter button;
+- displays loading, success, or failure status in the Side Panel;
+- does not open the pet ring menu or interfere with dragging.
+
+The page and Side Panel exchange one local request that expires after 30 seconds. It contains only the normalized page URL, page title, and creation time, and it is deleted after consumption. There is no polling, upload, or additional permission. If the active tab changes while the panel is opening, the request is rejected with a retry message instead of applying the filter to the wrong page.
 
 ## Relocating page excerpts
 
@@ -110,6 +123,7 @@ Default exports include non-archived memories. Import files are read only after 
 - The current release requires no account and performs no upload or cloud sync.
 - Selected text is read only after an explicit context-menu or quick-capture action.
 - Saved page context is limited to the page title, HTTP/HTTPS URL, and text explicitly selected by the user.
+- Current-page badge requests are short-lived local data and are deleted after consumption or expiration.
 - The implementation does not request `unlimitedStorage`.
 - Up to 500 cards are retained, prioritizing non-archived content when the limit is reached.
 - Removing the extension removes its browser-local data, so important memories should be exported first.

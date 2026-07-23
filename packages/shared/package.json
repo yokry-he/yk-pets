@@ -11,7 +11,8 @@
     "./messages": "./src/messages.ts",
     "./protocol": "./src/protocol.ts",
     "./network": "./src/network.ts",
-    "./pet-memory": "./src/pet-memory.ts"
+    "./pet-memory": "./src/pet-memory.ts",
+    "./pet-memory-navigation": "./src/pet-memory-navigation.ts"
   },
   "types": "./src/index.ts",
   "dependencies": {

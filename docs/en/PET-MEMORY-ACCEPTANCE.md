@@ -20,6 +20,19 @@ Automated tests cannot replace real Chrome checks for the Side Panel, context me
 - Confirm that the current-page memory badge increments.
 - Refresh the page and confirm that the badge remains correct.
 
+## Current-page memory badge
+
+- Confirm that the badge shows the correct count when non-archived memories exist and that the enhanced button is absent at zero.
+- Click the badge and confirm that it opens only the Side Panel without opening the pet ring menu or starting a drag.
+- Focus the badge with `Tab`, then activate it with both `Enter` and Space; verify a clear focus ring.
+- Set a search query and tag filter first, then confirm that the badge clears both.
+- Confirm that the Side Panel activates Current Page directly and moves focus to that filter button.
+- While the Side Panel is on Page Audit or Network Lab, confirm that the badge still switches to Pet Memory.
+- Verify that loading, success, and failure states remain usable in a narrow Side Panel.
+- Change the active tab immediately after clicking and confirm that the request is not applied to the wrong page and a retry message is shown.
+- Confirm that the one-shot local request key is deleted after completion or after its 30-second lifetime.
+- Repeated count updates must not accumulate buttons, MutationObservers, or storage listeners.
+
 ## Status and editing
 
 - Move an Inbox card to Todo.
