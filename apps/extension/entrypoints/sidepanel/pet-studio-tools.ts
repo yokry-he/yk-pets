@@ -1,5 +1,7 @@
 /**
- * Side Panel pet appearance tools: open Studio and import a Studio JSON recipe directly into extension storage.
+ * 文件职责 / File responsibility
+ * 为 Side Panel 提供宠物工坊入口，并将 Studio JSON 配方直接导入扩展活动宠物。
+ * Provides a Pet Studio entrypoint in the Side Panel and imports Studio JSON recipes into the active extension pet.
  */
 import {
   createPetRecipeEnvelope,
