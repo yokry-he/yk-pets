@@ -1,6 +1,6 @@
 # Pet Memory
 
-Pet Memory is YK-PETS' local-first inbox for web context. It is not an isolated notes page: it connects ideas, selected text, audit findings, follow-up tasks, Zeph, and the Local Agent workflow.
+Pet Memory is YK-PETS' local-first inbox for web context. It is not an isolated notes page: it connects ideas, selected text, audit findings, follow-up tasks, Cloud Fox, and the Local Agent workflow.
 
 ## Entry points
 
@@ -10,7 +10,7 @@ Open Pet Memory through any of these paths:
 - **Features → Pet Memory** in the in-page pet menu;
 - the memory count badge at the upper-left of the in-page pet when the current page has memories;
 - the Chrome shortcut: `Ctrl+Shift+.` on Windows/Linux or `Command+Shift+.` on macOS;
-- select text and choose **Let Zeph remember this** from the context menu;
+- select text and choose **Let Cloud Fox remember this** from the context menu;
 - right-click the page and choose **Record this page in Pet Memory**;
 - choose **Remember** on an audit issue card.
 
@@ -42,7 +42,7 @@ Inbox → Todo → Done
 
 - New captures enter the Inbox.
 - **Add to Todo** turns a capture into a task.
-- **Mark Done** triggers completion feedback from Zeph.
+- **Mark Done** triggers completion feedback from Cloud Fox.
 - Completed tasks can be restored to Todo.
 - An archive action can be undone for six seconds.
 
@@ -50,7 +50,7 @@ The top-level views cover Inbox, Todo, Done, and Current Page. Search matches ti
 
 ## 3D pet interaction
 
-- Saving a memory triggers a greeting and confirmation from Zeph.
+- Saving a memory triggers a greeting and confirmation from Cloud Fox.
 - Completing a task triggers a celebration response.
 - When the current page has non-archived memories, a clickable count badge appears at the upper-left of the in-page pet.
 - Opening Pet Memory from the pet menu switches the Side Panel directly to that workspace.
@@ -93,9 +93,23 @@ Audit issue cards include a **Remember** action. The resulting memory card:
 - keeps the page URL and element selector;
 - maps severity to priority;
 - starts in Todo;
-- adds Page Audit and category tags.
+- adds Page Audit and category tags;
+- stores the stable `relatedAuditIssueId` used to restore the same finding later.
 
-A later phase will connect these cards to source candidates, patches, and validation results.
+### Continuing an audit memory into a source patch
+
+Audit memory cards display **Generate Patch**. Activating it makes YK-PETS:
+
+1. reload the exact card from local memory storage and read `relatedAuditIssueId`;
+2. verify that the active tab is still the card's source page;
+3. load the local `nova:report:<tabId>` audit report for that tab;
+4. switch to Page Audit and clear severity and category filters;
+5. find, scroll to, and focus the exact IssueCard through its stable `data-issue-id`;
+6. activate the existing **Source Patch** button and continue through the established Local Agent flow.
+
+This entry point does not create a WebSocket and does not send `patch.generate` or `patch.apply` itself. When disconnected, the existing `ensureAgentConnected()` path still opens connection settings and validates the address, token, and project. A connection already in progress or another busy patch operation blocks duplicate activation. Diff, Apply, Checks, and Rollback remain entirely controlled by the existing safety flow.
+
+The Side Panel reports a clear error instead of guessing when the active tab changed, the stored report belongs to another page, the linked issue no longer exists, or the memory card lacks a related issue ID.
 
 ## Import and export
 
@@ -124,7 +138,8 @@ Default exports include non-archived memories. Import files are read only after 
 - Selected text is read only after an explicit context-menu or quick-capture action.
 - Saved page context is limited to the page title, HTTP/HTTPS URL, and text explicitly selected by the user.
 - Current-page badge requests are short-lived local data and are deleted after consumption or expiration.
-- The implementation does not request `unlimitedStorage`.
+- Audit-patch continuation reads only the local memory card, active tab, and local audit report; it does not upload page content.
+- The implementation does not request `unlimitedStorage`, and audit-patch continuation adds no browser permission.
 - Up to 500 cards are retained, prioritizing non-archived content when the limit is reached.
 - Removing the extension removes its browser-local data, so important memories should be exported first.
 
@@ -133,5 +148,5 @@ Default exports include non-archived memories. Import files are read only after 
 - Page screenshots are not stored.
 - Excerpts can be relocated on demand, but major page-text changes may prevent an exact match.
 - Cloud sync and cross-device merging are not available.
-- Ordinary memory cards cannot yet instruct the Local Agent to edit source code.
+- Only Audit cards with a valid `relatedAuditIssueId`, matching source page, and current local audit report can continue into the Local Agent; ordinary memories never modify source code.
 - JSON import does not overwrite conflicting cards or provide an interactive per-card conflict resolver.

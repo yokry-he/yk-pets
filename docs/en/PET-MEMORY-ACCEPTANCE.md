@@ -1,6 +1,6 @@
 # Pet Memory Manual Acceptance Checklist
 
-Automated tests cannot replace real Chrome checks for the Side Panel, context menus, keyboard shortcuts, and in-page 3D feedback. Complete these flows before release.
+Automated tests cannot replace real Chrome checks for the Side Panel, context menus, keyboard shortcuts, Local Agent, and in-page 3D feedback. Complete these flows before release.
 
 ## Quick capture
 
@@ -9,12 +9,12 @@ Automated tests cannot replace real Chrome checks for the Side Panel, context me
 - Confirm that the Side Panel opens on Pet Memory.
 - Confirm that the composer includes the page title and URL and receives keyboard focus.
 - Enter text and press `Ctrl/Command + Enter`.
-- Confirm that a new Inbox card appears and the in-page pet acknowledges the save.
+- Confirm that a new Inbox card appears and Cloud Fox acknowledges the save.
 
 ## Selected text
 
 - Select text on a page.
-- Choose **Let Zeph remember this** from the context menu.
+- Choose **Let Cloud Fox remember this** from the context menu.
 - Confirm that no large blocking overlay opens.
 - Confirm that a quote card appears in the Inbox.
 - Confirm that the current-page memory badge increments.
@@ -37,7 +37,7 @@ Automated tests cannot replace real Chrome checks for the Side Panel, context me
 
 - Move an Inbox card to Todo.
 - Mark a Todo card as Done.
-- Confirm that Zeph produces completion feedback.
+- Confirm that Cloud Fox produces completion feedback.
 - Restore a completed card to Todo.
 - Edit and save the title, body, tags, and priority.
 - Archive a card and undo within six seconds.
@@ -60,7 +60,24 @@ Automated tests cannot replace real Chrome checks for the Side Panel, context me
 - Choose **Remember** on an issue card.
 - Confirm that the Side Panel switches to Pet Memory.
 - Confirm that the new card starts in Todo.
-- Verify its title, explanation, page, selector, category tags, and priority.
+- Verify its title, explanation, page, selector, category tags, priority, and `relatedAuditIssueId`.
+
+## Continuing an audit memory into a Local Agent patch
+
+- Remember at least two Page Audit findings with different severity levels or categories.
+- Return to Pet Memory and confirm that **Generate Patch** appears only for Audit cards with a related issue identifier.
+- In Page Audit, set severity and category filters that hide the target finding, return to the memory card, and choose **Generate Patch**.
+- Confirm that the Side Panel switches to Page Audit, resets both filters to All, and scrolls and focuses the correct IssueCard.
+- Confirm that restoration uses the saved `relatedAuditIssueId`; another issue with a similar title must not be selected.
+- With a saved valid token but a disconnected Local Agent, activate the entry and confirm that it follows the existing connection path before generating a proposal.
+- With no token, confirm that the existing Agent settings and error state open and token validation is not bypassed.
+- While the Agent status is `connecting`, activate repeatedly and confirm that no second WebSocket or duplicate generation request is created.
+- While patch generation, apply, checks, or rollback is busy, confirm that another activation is blocked.
+- After connection, confirm that the existing Diff remains visible and that Apply, Checks, and Rollback are available only through the existing controls.
+- Change to another active tab and confirm a source-page mismatch error without generating a patch.
+- Remove `nova:report:<tabId>` for the current tab and confirm that the flow asks for a new audit.
+- Run a new audit that no longer contains the saved `relatedAuditIssueId`; confirm a missing-linked-issue error instead of title or body guessing.
+- In Chrome extension inspection tools, confirm that the feature adds no permission, background polling, upload, persistent host-page DOM mutation, or independent `patch.generate` call.
 
 ## JSON import and export
 
@@ -81,3 +98,4 @@ Automated tests cannot replace real Chrome checks for the Side Panel, context me
 - The page listens for extension-local storage changes without polling.
 - Save, import, and completion feedback do not interrupt an active manually selected motion.
 - The memory badge does not cover the audit badge or the pet click target.
+- Repeatedly switch between Pet Memory and Page Audit and confirm that Generate Patch buttons, status nodes, and MutationObservers do not accumulate.

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * 文件职责 / File responsibility
- * 防止宠物记忆的本地存储、快捷捕捉、JSON 导入、摘录重新定位、当前页面徽章、Side Panel 工作区和宠物反馈链路回退。
- * Prevents regressions in pet-memory local storage, quick capture, JSON import, excerpt relocation, current-page badges, Side Panel workspace, and pet feedback flows.
+ * 防止宠物记忆的本地存储、快捷捕捉、JSON 导入、摘录重新定位、当前页面徽章、审计补丁续接、Side Panel 工作区和宠物反馈链路回退。
+ * Prevents regressions in pet-memory local storage, quick capture, JSON import, excerpt relocation, current-page badges, audit-patch continuation, Side Panel workspace, and pet feedback flows.
  */
 import { readFileSync } from 'node:fs'
 
@@ -16,6 +16,8 @@ const composable = read('apps/extension/features/pet-memory/presentation/composa
 const component = read('apps/extension/features/pet-memory/presentation/components/PetMemory.vue')
 const memoryImportTools = read('apps/extension/entrypoints/sidepanel/pet-memory-import-tools.ts')
 const memoryCurrentPageTools = read('apps/extension/entrypoints/sidepanel/pet-memory-current-page-tools.ts')
+const memoryAuditPatchTools = read('apps/extension/entrypoints/sidepanel/pet-memory-audit-patch-tools.ts')
+const localAgent = read('apps/extension/entrypoints/sidepanel/composables/useLocalAgent.ts')
 const sidePanelMain = read('apps/extension/entrypoints/sidepanel/main.ts')
 const background = read('apps/extension/entrypoints/background.ts')
 const content = read('apps/extension/entrypoints/content.ts')
@@ -43,6 +45,10 @@ const checks = [
   ['current-page badge preserves the Side Panel user gesture', memoryBadgeContent.includes('Promise.all([requestWrite, openRequest])') && memoryBadgeContent.includes("type: 'NOVA_OPEN_SIDE_PANEL'") && memoryBadgeContent.includes("action: 'open-memory'") && memoryBadgeContent.includes('PET_MEMORY_CURRENT_PAGE_REQUEST_KEY')],
   ['Side Panel resets stale filters and focuses Current Page', memoryCurrentPageTools.includes('clearSearch(controls.search)') && memoryCurrentPageTools.includes('controls.allTags?.click()') && memoryCurrentPageTools.includes('controls.pageButton.click()') && memoryCurrentPageTools.includes('controls.pageButton.focus') && memoryCurrentPageTools.includes('已显示当前页面的')],
   ['current-page bridge is event-driven and lifecycle-cleaned', sidePanelMain.includes('installPetMemoryCurrentPageTools') && memoryCurrentPageTools.includes('chrome.storage.onChanged.addListener') && memoryCurrentPageTools.includes('chrome.runtime.onMessage.addListener') && memoryCurrentPageTools.includes("window.addEventListener('pagehide'") && !memoryCurrentPageTools.includes('setInterval(') && !memoryBadgeContent.includes('setInterval(')],
+  ['audit memories continue through exact stored issue identifiers', memoryAuditPatchTools.includes('relatedAuditIssueId') && memoryAuditPatchTools.includes('REPORT_STORAGE_PREFIX') && memoryAuditPatchTools.includes('report.issues.some(issue => issue.id === issueId)') && issueCard.includes(':data-issue-id="issue.id"')],
+  ['audit-memory patch continuation uses the existing IssueCard action', sidePanelMain.includes('installPetMemoryAuditPatchTools') && issueCard.includes('data-issue-action="generate-patch"') && memoryAuditPatchTools.includes('patchButton.click()') && app.includes('await agent.generatePatch(issue, report.value.url)') && !app.includes('await agent.generatePatch(issue, currentTab.value.url)')],
+  ['audit-memory patch continuation preserves Local Agent boundaries', !memoryAuditPatchTools.includes('new WebSocket') && !memoryAuditPatchTools.includes("type: 'patch.generate'") && !memoryAuditPatchTools.includes("type: 'patch.apply'") && localAgent.includes("if (status.value === 'connecting') return") && localAgent.includes('if (patchGenerationPending)')],
+  ['audit-memory patch continuation is event-driven and lifecycle-cleaned', memoryAuditPatchTools.includes('new MutationObserver') && memoryAuditPatchTools.includes("window.addEventListener('pagehide'") && memoryAuditPatchTools.includes('window.clearTimeout(statusTimer)') && !memoryAuditPatchTools.includes('setInterval(')],
   ['selection and page context menus are installed', background.includes("contexts: ['selection']") && background.includes("contexts: ['page']") && background.includes('saveSelectionMemory')],
   ['keyboard shortcut opens a focused memory draft', manifest.includes("'quick-pet-memory'") && background.includes('openMemoryComposer') && background.includes('focusComposer: true')],
   ['Side Panel memory workspace supports capture search status and export', component.includes('交给云灵记住') && component.includes('memory-search') && component.includes('runPrimaryAction') && component.includes("exportMemories('markdown')")],
