@@ -1,13 +1,14 @@
 /**
  * 文件职责 / File responsibility
- * 定义跨扩展上下文共享的宠物记忆卡、存储信封、草稿意图和规范化工具。
- * Defines pet-memory cards, storage envelopes, draft intents, and normalization utilities shared across extension contexts.
+ * 定义跨扩展上下文共享的宠物记忆卡、导入计划、存储信封、草稿意图和规范化工具。
+ * Defines pet-memory cards, import plans, storage envelopes, draft intents, and normalization utilities shared across extension contexts.
  */
 
 export const PET_MEMORY_STORE_VERSION = 1
 export const PET_MEMORY_STORAGE_KEY = 'yk-pets:pet-memory:v1'
 export const PET_MEMORY_PENDING_PREFIX = 'yk-pets:pending-memory:'
 export const PET_MEMORY_MAX_CARDS = 500
+export const PET_MEMORY_IMPORT_MAX_BYTES = 8_000_000
 
 export const PET_MEMORY_TYPES = [
   'note',
@@ -78,6 +79,19 @@ export interface PetMemoryStore {
   updatedAt: string
 }
 
+export interface PetMemoryImportResult {
+  requestedCount: number
+  importedCount: number
+  duplicateCount: number
+  conflictCount: number
+  invalidCount: number
+  truncatedCount: number
+}
+
+export interface PetMemoryImportPlan extends PetMemoryImportResult {
+  cards: PetMemoryCard[]
+}
+
 export interface PetMemoryPageContext {
   pageUrl: string
   pageTitle: string
@@ -141,6 +155,52 @@ export function normalizePetMemoryCard(value: unknown): PetMemoryCard | null {
   }
 }
 
+export function planPetMemoryImport(
+  existingCards: PetMemoryCard[],
+  value: unknown,
+  maxCards = PET_MEMORY_MAX_CARDS,
+): PetMemoryImportPlan {
+  const parsed = parsePetMemoryImport(value)
+  const existingById = new Map(existingCards.map(card => [card.id, card]))
+  const fingerprints = new Set(existingCards.map(memoryCardFingerprint))
+  const candidates: PetMemoryCard[] = []
+  let duplicateCount = parsed.duplicateCount
+  let conflictCount = parsed.conflictCount
+
+  for (const card of parsed.cards) {
+    const existing = existingById.get(card.id)
+    const fingerprint = memoryCardFingerprint(card)
+    if (existing) {
+      if (memoryCardFingerprint(existing) === fingerprint) duplicateCount += 1
+      else conflictCount += 1
+      continue
+    }
+    if (fingerprints.has(fingerprint)) {
+      duplicateCount += 1
+      continue
+    }
+    fingerprints.add(fingerprint)
+    candidates.push(card)
+  }
+
+  const availableSlots = Math.max(0, maxCards - existingCards.length)
+  const prioritizedCandidates = [
+    ...candidates.filter(card => card.status !== 'archived'),
+    ...candidates.filter(card => card.status === 'archived'),
+  ]
+  const imported = prioritizedCandidates.slice(0, availableSlots)
+
+  return {
+    cards: [...imported, ...existingCards].slice(0, maxCards),
+    requestedCount: parsed.requestedCount,
+    importedCount: imported.length,
+    duplicateCount,
+    conflictCount,
+    invalidCount: parsed.invalidCount,
+    truncatedCount: Math.max(0, prioritizedCandidates.length - imported.length),
+  }
+}
+
 export function normalizePetMemoryTags(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   const tags = value
@@ -166,6 +226,69 @@ export function normalizeMemoryPageUrl(value?: string): string | undefined {
 export function memoryMatchesPage(card: PetMemoryCard, pageUrl?: string): boolean {
   const normalized = normalizeMemoryPageUrl(pageUrl)
   return Boolean(normalized && card.pageUrl === normalized && card.status !== 'archived')
+}
+
+function parsePetMemoryImport(value: unknown) {
+  const envelope = Array.isArray(value) ? { cards: value } : value
+  if (!isRecord(envelope) || !Array.isArray(envelope.cards)) {
+    throw new Error('JSON 文件必须包含 cards 数组。')
+  }
+  if (envelope.version !== undefined && envelope.version !== PET_MEMORY_STORE_VERSION) {
+    throw new Error(`不支持的宠物记忆版本：${String(envelope.version)}。`)
+  }
+
+  const cards: PetMemoryCard[] = []
+  const fingerprintsById = new Map<string, string>()
+  let invalidCount = 0
+  let duplicateCount = 0
+  let conflictCount = 0
+
+  for (const value of envelope.cards) {
+    const card = normalizePetMemoryCard(value)
+    if (!card || !isMeaningfulMemoryCard(card)) {
+      invalidCount += 1
+      continue
+    }
+    const fingerprint = memoryCardFingerprint(card)
+    const previousFingerprint = fingerprintsById.get(card.id)
+    if (previousFingerprint) {
+      if (previousFingerprint === fingerprint) duplicateCount += 1
+      else conflictCount += 1
+      continue
+    }
+    fingerprintsById.set(card.id, fingerprint)
+    cards.push(card)
+  }
+
+  return {
+    cards,
+    requestedCount: envelope.cards.length,
+    invalidCount,
+    duplicateCount,
+    conflictCount,
+  }
+}
+
+function isMeaningfulMemoryCard(card: PetMemoryCard) {
+  return Boolean(card.title || card.content || card.selection || card.pageUrl)
+}
+
+function memoryCardFingerprint(card: PetMemoryCard) {
+  return JSON.stringify({
+    type: card.type,
+    title: card.title,
+    content: card.content,
+    selection: card.selection,
+    selector: card.selector,
+    pageUrl: card.pageUrl,
+    pageTitle: card.pageTitle,
+    status: card.status,
+    priority: card.priority,
+    tags: card.tags,
+    relatedAuditIssueId: card.relatedAuditIssueId,
+    relatedNetworkRequestId: card.relatedNetworkRequestId,
+    relatedPatchId: card.relatedPatchId,
+  })
 }
 
 function normalizeIsoDate(value: unknown): string | undefined {
