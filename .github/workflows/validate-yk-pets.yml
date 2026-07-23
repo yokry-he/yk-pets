@@ -35,7 +35,11 @@ jobs:
           from pathlib import Path
           path = Path('scripts/apply-pet-memory-mvp.mjs')
           source = path.read_text()
-          path.write_text(source.replace('${state.memoryCount}', r'\${state.memoryCount}'))
+          source = source.replace('${state.memoryCount}', r'\${state.memoryCount}')
+          source = source.replace('           @rollback-preview', '          @rollback-preview')
+          source = source.replace('           @remember', '          @remember')
+          source = source.replace('           @patch', '          @patch')
+          path.write_text(source)
           PY
           set +e
           node scripts/apply-pet-memory-mvp.mjs > /tmp/pet-memory-migration.log 2>&1
