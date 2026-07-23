@@ -38,7 +38,7 @@ const checks = [
   ['production canvas consumes recipe behind web component', productionCanvas.includes('PetRecipeEnvelope') && productionCanvas.includes('ConfiguredCloudFox') && productionCanvas.includes(':recipe="recipe"')],
   ['production canvas has shadow-safe explicit dimensions', productionCanvas.includes('rootStyle') && productionCanvas.includes("height: '100%'") && productionCanvas.includes(':style="tresStyle"')],
   ['formal Cloud Fox remains the single motion implementation', configuredFox.includes("import CloudFox from './CloudFox.vue'") && productionFox.includes('WAVE_DURATION_SECONDS') && productionFox.includes('TAIL_GLOW_DURATION_SECONDS') && !configuredFox.includes('WAVE_DURATION_SECONDS')],
-  ['formal Cloud Fox reads custom palette proportions belly and symbols', appearance.includes('resolveExtensionCloudFoxAppearance') && configuredFox.includes('materialRoles') && configuredFox.includes('visual.bellyPatchDesign.visible') && configuredFox.includes('showChestSymbol') && configuredFox.includes('visual.symbols.back.enabled')],
+  ['formal Cloud Fox reads custom palette proportions belly modes and symbols', appearance.includes('resolveExtensionCloudFoxAppearance') && appearance.includes('ExtensionBellyPatchMode') && configuredFox.includes('materialRoles') && configuredFox.includes("bellyPatchDesign.mode === 'custom'") && configuredFox.includes("bellyPatchDesign.mode === 'model-default'") && configuredFox.includes('showChestSymbol') && configuredFox.includes('visual.symbols.back.enabled')],
   ['root exposes architecture check', rootPackage.includes('check:pet-core-web-component') && rootPackage.includes('check-pet-core-web-component.mjs')],
 ]
 
