@@ -12,7 +12,6 @@ let registered = false
 
 export function registerExtensionCloudFoxPetElement() {
   if (registered) return
-  registered = true
   petRendererRegistry.register(createVuePetRendererAdapter({
     id: 'extension-cloud-fox',
     component: ProductionAvatarCanvas,
@@ -26,4 +25,5 @@ export function registerExtensionCloudFoxPetElement() {
     },
   }))
   defineYkPetElement()
+  registered = true
 }
