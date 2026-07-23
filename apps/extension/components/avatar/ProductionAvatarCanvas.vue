@@ -40,7 +40,8 @@ const wideScene = computed(() => props.behavior === 'fireworks-show')
 const cameraPosition = computed(() => wideScene.value
   ? props.compact ? vec3(0, 0.62, 11.3) : vec3(0, 0.72, 10.8)
   : props.compact ? vec3(0, 0.08, 9.7) : vec3(0, 0.42, 8.8))
-const pixelRatio = computed<[number, number]>(() => props.compact ? [1, 1.2] : [1, 1.4])
+const pixelRatio = computed<[number, number]>(() => props.compact ? [.75, 1] : [.9, 1.25])
+const frameRateLimit = computed(() => props.compact ? 30 : 40)
 const foxScale = computed(() => props.compact ? 0.92 : 1)
 const canvasClass = computed(() => ({ 'avatar-canvas--transparent': props.transparent, 'avatar-canvas--compact': props.compact }))
 const rootStyle = computed(() => ({
@@ -73,9 +74,12 @@ const tresStyle = {
       :clear-color="transparent ? '#000000' : '#0a0d18'"
       :clear-alpha="transparent ? 0 : 1"
       :dpr="pixelRatio"
+      :fps-limit="frameRateLimit"
       :style="tresStyle"
+      :antialias="!compact"
+      render-mode="always"
+      power-preference="low-power"
       alpha
-      antialias
     >
       <TresPerspectiveCamera :position="cameraPosition" :fov="wideScene ? 38 : compact ? 33 : 35" />
       <TresAmbientLight :intensity="1.35" />

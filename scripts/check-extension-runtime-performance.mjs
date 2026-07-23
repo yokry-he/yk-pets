@@ -1,0 +1,30 @@
+import { readFileSync } from 'node:fs'
+
+const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+const rootPackage = read('package.json')
+const productionCanvas = read('apps/extension/components/avatar/ProductionAvatarCanvas.vue')
+const configuredFox = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
+const avatarHost = read('apps/extension/components/avatar/AvatarCanvas.vue')
+const overlay = read('apps/extension/entrypoints/content/NovaPetOverlay.vue')
+const content = read('apps/extension/entrypoints/content.ts')
+
+const checks = [
+  ['TresJS canvas caps FPS and compact DPR', productionCanvas.includes(':fps-limit="frameRateLimit"') && productionCanvas.includes("props.compact ? [.75, 1]") && productionCanvas.includes('power-preference="low-power"')],
+  ['compact overlay disables antialiasing', productionCanvas.includes(':antialias="!compact"')],
+  ['pointer updates are throttled before renderer propagation', overlay.includes('POINTER_UPDATE_INTERVAL_MS = 34') && overlay.includes('schedulePointerUpdate') && overlay.includes('pointerUpdateTimer')],
+  ['motion audio loads on demand instead of preloading every asset', !overlay.includes('preloadMotionVoices()')],
+  ['Web Component renderer updates are coalesced and deduplicated', avatarHost.includes('schedulePetElementUpdate') && avatarHost.includes('lastStateSignature') && !avatarHost.includes('{ deep: true }')],
+  ['appearance scene traversal has a bounded retry window', configuredFox.includes('appearanceRetryFrames < 12') && configuredFox.includes('if (!appearanceDirty) return')],
+  ['page audit yields between DOM rule groups', content.includes('await yieldToMain()') && content.includes('MAX_AUDIT_ELEMENTS_PER_RULE = 160')],
+  ['concurrent audit requests are rejected', content.includes('if (auditRunning)') && content.includes('auditRunning = false')],
+  ['highlight scroll tracking is active only while highlighted', content.includes('startHighlightTracking') && content.includes('stopHighlightTracking')],
+  ['root typecheck includes extension performance gate', rootPackage.includes('check-extension-runtime-performance.mjs')],
+]
+
+const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
+if (failures.length) {
+  console.error('extension runtime performance check failed:')
+  for (const failure of failures) console.error(`- ${failure}`)
+  process.exit(1)
+}
+console.log(`extension runtime performance check passed: ${checks.length} checks.`)

@@ -61,6 +61,8 @@ const hostStyle = computed(() => ({
 }))
 
 let readinessTimer: number | null = null
+let stateFlushFrame: number | null = null
+let lastStateSignature = ''
 
 function hasExtensionStorage() {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
@@ -76,6 +78,20 @@ function clearReadinessTimer() {
   readinessTimer = null
 }
 
+function clearStateFlush() {
+  if (stateFlushFrame === null) return
+  window.cancelAnimationFrame(stateFlushFrame)
+  stateFlushFrame = null
+}
+
+function schedulePetElementUpdate() {
+  if (fallbackActive.value || stateFlushFrame !== null) return
+  stateFlushFrame = window.requestAnimationFrame(() => {
+    stateFlushFrame = null
+    updatePetElement()
+  })
+}
+
 function detachPetElement() {
   const element = petElement.value
   if (!element) return
@@ -88,6 +104,7 @@ function detachPetElement() {
 function activateFallback(reason: string) {
   if (fallbackActive.value) return
   clearReadinessTimer()
+  clearStateFlush()
   console.warn('[YK-PETS yk-pet fallback]', reason)
   detachPetElement()
   fallbackActive.value = true
@@ -131,11 +148,27 @@ function updatePetElement() {
     return
   }
 
+  const recipe = effectiveRecipe.value
+  const signature = [
+    recipe.recipeId,
+    recipe.updatedAt,
+    props.behavior,
+    props.emotion,
+    props.speaking ? 1 : 0,
+    props.score,
+    props.compact ? 1 : 0,
+    props.transparent ? 1 : 0,
+    Math.round(props.pointer.x * 100) / 100,
+    Math.round(props.pointer.y * 100) / 100,
+    props.motionKey,
+  ].join('|')
+  if (signature === lastStateSignature) return
+
   try {
     element.setState({
-      recipe: effectiveRecipe.value,
-      speciesId: effectiveRecipe.value.speciesId,
-      rendererId: effectiveRecipe.value.rendererId,
+      recipe,
+      speciesId: recipe.speciesId,
+      rendererId: recipe.rendererId,
       behavior: props.behavior,
       renderProps: {
         emotion: props.emotion,
@@ -147,6 +180,7 @@ function updatePetElement() {
         motionKey: props.motionKey,
       },
     })
+    lastStateSignature = signature
   }
   catch (error) {
     activateFallback(error instanceof Error ? error.message : String(error))
@@ -158,7 +192,7 @@ async function restoreRecipe() {
   const stored = await chrome.storage.local.get(YK_PET_RECIPE_STORAGE_KEY)
   const normalized = normalizePetRecipeEnvelope(stored[YK_PET_RECIPE_STORAGE_KEY])
   if (normalized) activeRecipe.value = normalized
-  updatePetElement()
+  schedulePetElementUpdate()
 }
 
 function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>, areaName: string) {
@@ -166,7 +200,7 @@ function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>,
   const normalized = normalizePetRecipeEnvelope(changes[YK_PET_RECIPE_STORAGE_KEY]?.newValue)
   if (!normalized) return
   activeRecipe.value = normalized
-  updatePetElement()
+  schedulePetElementUpdate()
 }
 
 watch(
@@ -182,8 +216,7 @@ watch(
     props.motionKey,
     props.recipe,
   ] as const,
-  updatePetElement,
-  { deep: true },
+  schedulePetElementUpdate,
 )
 
 onMounted(() => {
@@ -219,6 +252,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearReadinessTimer()
+  clearStateFlush()
   if (hasExtensionStorage()) chrome.storage.onChanged.removeListener(onStorageChanged)
   detachPetElement()
 })

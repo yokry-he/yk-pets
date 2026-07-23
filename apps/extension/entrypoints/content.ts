@@ -54,6 +54,7 @@ export default defineContentScript({
     let latestReport: AuditReport | null = null
     let currentIssueIndex = 0
     let previewIssueId: string | null = null
+    let auditRunning = false
 
     // 宠物动作路由：轻量反馈留在页面，复杂结果通过 Runtime 进入 Side Panel。 / Pet action router: keep lightweight feedback in-page and send complex results to the Side Panel.
     const overlay = createNovaOverlay(async (action) => {
@@ -114,6 +115,8 @@ export default defineContentScript({
         throw new Error('至少选择一条审计规则后才能开始页面审计。')
       }
       const enabledCategories = categoriesForRules(enabledRuleCodes)
+      if (auditRunning) throw new Error('页面审计正在进行，请稍候。')
+      auditRunning = true
       overlay.patch({
         behavior: 'thinking',
         speech: `我正在执行你选择的 ${enabledRuleCodes.length} 条页面检查。`,
@@ -135,6 +138,9 @@ export default defineContentScript({
           busy: false,
         })
         throw error
+      }
+      finally {
+        auditRunning = false
       }
     }
 
@@ -341,6 +347,15 @@ function setupPerformanceObservers(state: PerformanceState) {
   }
 }
 
+const MAX_AUDIT_ELEMENTS_PER_RULE = 160
+
+function yieldToMain() {
+  return new Promise<void>((resolve) => {
+    if (document.visibilityState === 'visible') window.requestAnimationFrame(() => resolve())
+    else window.setTimeout(resolve, 0)
+  })
+}
+
 // 审计流水线：DOM 规则与性能规则合并后统一评分和排序。 / Audit pipeline: merge DOM and performance findings before scoring and ordering.
 async function runAudit(performanceState: PerformanceState, enabledRuleCodes: AuditIssueCode[]): Promise<AuditReport> {
   if (document.readyState === 'loading') {
@@ -350,10 +365,15 @@ async function runAudit(performanceState: PerformanceState, enabledRuleCodes: Au
   const enabled = new Set(enabledRuleCodes)
   const issues: AuditIssue[] = []
   auditImages(issues, enabled)
+  await yieldToMain()
   auditFormControls(issues, enabled)
+  await yieldToMain()
   auditInteractiveNames(issues, enabled)
+  await yieldToMain()
   auditDocumentStructure(issues, enabled)
+  await yieldToMain()
   auditBestPractices(issues, enabled)
+  await yieldToMain()
   const metrics = collectMetrics(performanceState)
   auditPerformance(issues, metrics, enabled)
   const enabledCategories = categoriesForRules(enabledRuleCodes)
@@ -375,7 +395,7 @@ async function runAudit(performanceState: PerformanceState, enabledRuleCodes: Au
 }
 
 function auditImages(issues: AuditIssue[], enabled: ReadonlySet<AuditIssueCode>) {
-  for (const image of [...document.images].slice(0, 250)) {
+  for (const image of [...document.images].slice(0, MAX_AUDIT_ELEMENTS_PER_RULE)) {
     if (image.closest('[data-nova-extension-root]')) continue
     const selector = buildSelector(image)
     const src = image.currentSrc || image.src || image.getAttribute('src') || ''
@@ -441,7 +461,7 @@ function auditImages(issues: AuditIssue[], enabled: ReadonlySet<AuditIssueCode>)
 function auditFormControls(issues: AuditIssue[], enabled: ReadonlySet<AuditIssueCode>) {
   if (!enabled.has('form-label-missing')) return
   const controls = document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')
-  for (const control of [...controls].slice(0, 250)) {
+  for (const control of [...controls].slice(0, MAX_AUDIT_ELEMENTS_PER_RULE)) {
     if (control instanceof HTMLInputElement && ['hidden', 'submit', 'button', 'image', 'reset'].includes(control.type)) continue
     if (!isElementVisible(control) || hasAccessibleName(control)) continue
 
@@ -472,7 +492,7 @@ function auditFormControls(issues: AuditIssue[], enabled: ReadonlySet<AuditIssue
 function auditInteractiveNames(issues: AuditIssue[], enabled: ReadonlySet<AuditIssueCode>) {
   if (enabled.has('button-name-missing')) {
     const buttons = document.querySelectorAll<HTMLElement>('button, [role="button"]')
-    for (const button of [...buttons].slice(0, 250)) {
+    for (const button of [...buttons].slice(0, MAX_AUDIT_ELEMENTS_PER_RULE)) {
       if (!isElementVisible(button) || hasAccessibleName(button)) continue
       issues.push(createIssue({
       code: 'button-name-missing',
@@ -491,7 +511,7 @@ function auditInteractiveNames(issues: AuditIssue[], enabled: ReadonlySet<AuditI
 
   if (enabled.has('link-name-missing')) {
     const links = document.querySelectorAll<HTMLAnchorElement>('a[href]')
-    for (const link of [...links].slice(0, 250)) {
+    for (const link of [...links].slice(0, MAX_AUDIT_ELEMENTS_PER_RULE)) {
       if (!isElementVisible(link) || hasAccessibleName(link)) continue
       issues.push(createIssue({
       code: 'link-name-missing',
@@ -951,14 +971,28 @@ function createHighlightLayer() {
   }
 
   const viewport = window.visualViewport
-  window.addEventListener('scroll', update, true)
-  window.addEventListener('resize', update)
-  viewport?.addEventListener('resize', update)
-  viewport?.addEventListener('scroll', update)
+  let highlightTracking = false
+  const startHighlightTracking = () => {
+    if (highlightTracking) return
+    highlightTracking = true
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    viewport?.addEventListener('resize', update)
+    viewport?.addEventListener('scroll', update)
+  }
+  const stopHighlightTracking = () => {
+    if (!highlightTracking) return
+    highlightTracking = false
+    window.removeEventListener('scroll', update, true)
+    window.removeEventListener('resize', update)
+    viewport?.removeEventListener('resize', update)
+    viewport?.removeEventListener('scroll', update)
+  }
 
   mountWhenReady(host)
   return {
     show(element: HTMLElement, title: string) {
+      startHighlightTracking()
       if (target !== element) {
         resizeObserver.disconnect()
         resizeObserver.observe(element)
@@ -972,6 +1006,7 @@ function createHighlightLayer() {
     },
     hide() {
       resizeObserver.disconnect()
+      stopHighlightTracking()
       target = null
       host.hidden = true
     },

@@ -40,6 +40,7 @@ const visual = computed(() => resolveExtensionCloudFoxAppearance(props.recipe))
 const vector = (x: number, y: number, z: number) => new Vector3(x, y, z)
 const rotation = (x: number, y: number, z: number) => new Euler(x, y, z)
 let appearanceDirty = true
+let appearanceRetryFrames = 0
 
 const rootScale = computed(() => vector(
   visual.value.proportions.bodyWidth,
@@ -134,10 +135,25 @@ function replaceTexture(target: typeof chestTexture, next?: CanvasTexture) {
   target.value = next
 }
 
-watch(() => visual.value.bellyPatchDesign.style, style => replaceTexture(bellyTexture, createBellyTexture(style)), { immediate: true })
-watch(() => visual.value.symbols.chest, symbol => replaceTexture(chestTexture, createSymbolTexture(symbol.text, symbol.color, symbol.glowIntensity)), { immediate: true, deep: true })
-watch(() => visual.value.symbols.back, symbol => replaceTexture(backTexture, createSymbolTexture(symbol.text, symbol.color, symbol.glowIntensity)), { immediate: true, deep: true })
-watch(visual, () => { appearanceDirty = true }, { deep: true, immediate: true })
+watch(
+  () => [visual.value.bellyPatchDesign.mode, visual.value.bellyPatchDesign.style] as const,
+  ([mode, style]) => replaceTexture(bellyTexture, mode === 'custom' ? createBellyTexture(style) : undefined),
+  { immediate: true },
+)
+watch(
+  () => visual.value.symbols.chest,
+  symbol => replaceTexture(chestTexture, symbol.enabled ? createSymbolTexture(symbol.text, symbol.color, symbol.glowIntensity) : undefined),
+  { immediate: true, deep: true },
+)
+watch(
+  () => visual.value.symbols.back,
+  symbol => replaceTexture(backTexture, symbol.enabled ? createSymbolTexture(symbol.text, symbol.color, symbol.glowIntensity) : undefined),
+  { immediate: true, deep: true },
+)
+watch(visual, () => {
+  appearanceRetryFrames = 0
+  appearanceDirty = true
+}, { deep: true, immediate: true })
 
 function roleFor(material: MeshStandardMaterial): PaletteRole | undefined {
   const hex = `#${material.color.getHexString()}`
@@ -151,7 +167,10 @@ function roleFor(material: MeshStandardMaterial): PaletteRole | undefined {
 
 function applyAppearance() {
   const group = root.value
-  if (!group) return
+  if (!group) {
+    appearanceDirty = appearanceRetryFrames < 12
+    return
+  }
   group.traverse((object) => {
     const mesh = object as Mesh
     if (!mesh.isMesh) return
@@ -176,11 +195,14 @@ function applyAppearance() {
     legacyCore.value.visible = showCore.value
     legacyCore.value.scale.setScalar(visual.value.chestDisplay.mode === 'hybrid' ? .72 : 1)
   }
-  appearanceDirty = false
+  const resolved = Boolean(legacyCore.value && legacyBelly.value)
+  appearanceDirty = !resolved && appearanceRetryFrames < 12
 }
 
 useLoop().onBeforeRender(() => {
-  if (appearanceDirty || !legacyCore.value || !legacyBelly.value) applyAppearance()
+  if (!appearanceDirty) return
+  appearanceRetryFrames += 1
+  applyAppearance()
 })
 
 onBeforeUnmount(() => {
