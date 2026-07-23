@@ -107,6 +107,7 @@ export type YkPetsRuntimeMessage =
   | { type: 'YK_PET_MEMORY_UPDATE'; cardId: string; patch: PetMemoryUpdatePatch }
   | { type: 'YK_PET_MEMORY_ARCHIVE'; cardId: string }
   | { type: 'YK_PET_MEMORY_UPDATED'; reason: 'created' | 'updated' | 'archived'; card: PetMemoryCard }
+  | { type: 'YK_PET_MEMORY_DRAFT_READY'; tabId: number }
   | { type: 'YK_PET_MEMORY_GET_CONTEXT' }
 
 /** @deprecated Use YkPetAction. */
