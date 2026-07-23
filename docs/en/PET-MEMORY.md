@@ -58,6 +58,20 @@ The top-level views cover Inbox, Todo, Done, and Current Page. Search matches ti
 
 These responses do not open large automatic overlays or change the host page layout.
 
+## Relocating page excerpts
+
+Cards with selected text display **Locate excerpt**. After an explicit click:
+
+- the current tab is searched directly when it already matches the source page;
+- otherwise the source page is opened by that user action before matching starts;
+- an existing element selector narrows the first search when available; otherwise matching starts with the full page;
+- an exact browser selection and a short-lived overlay highlight the result, while duplicate matches are reported;
+- changed content, invalid source URLs, and missing visible matches produce clear failure states;
+- scanning is bounded to 20,000 text nodes and about 2 MB of text and runs only after the click;
+- the overlay is removed after 12 seconds without permanent DOM markers, polling, or upload.
+
+Older cards without a selector still use their saved quote text. Imported or integration-created cards that already include a selector use it automatically.
+
 ## Turning audit findings into memories
 
 Audit issue cards include a **Remember** action. The resulting memory card:
@@ -103,7 +117,7 @@ Default exports include non-archived memories. Import files are read only after 
 ## Current limitations
 
 - Page screenshots are not stored.
-- Text highlights are not restored on revisits.
+- Excerpts can be relocated on demand, but major page-text changes may prevent an exact match.
 - Cloud sync and cross-device merging are not available.
 - Ordinary memory cards cannot yet instruct the Local Agent to edit source code.
 - JSON import does not overwrite conflicting cards or provide an interactive per-card conflict resolver.

@@ -9,6 +9,7 @@ import type { PetIdentity } from './brand'
 import type {
   PetMemoryCard,
   PetMemoryCreateInput,
+  PetMemoryRelocateInput,
   PetMemoryUpdatePatch,
 } from './pet-memory'
 
@@ -105,6 +106,7 @@ export type YkPetsRuntimeMessage =
   | { type: 'YK_PET_MEMORY_LIST' }
   | { type: 'YK_PET_MEMORY_CREATE'; input: PetMemoryCreateInput }
   | { type: 'YK_PET_MEMORY_IMPORT'; payload: unknown }
+  | { type: 'YK_PET_MEMORY_HIGHLIGHT'; input: PetMemoryRelocateInput }
   | { type: 'YK_PET_MEMORY_UPDATE'; cardId: string; patch: PetMemoryUpdatePatch }
   | { type: 'YK_PET_MEMORY_ARCHIVE'; cardId: string }
   | { type: 'YK_PET_MEMORY_UPDATED'; reason: 'created' | 'updated' | 'archived'; card: PetMemoryCard }

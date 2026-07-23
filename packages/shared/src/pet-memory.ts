@@ -92,6 +92,20 @@ export interface PetMemoryImportPlan extends PetMemoryImportResult {
   cards: PetMemoryCard[]
 }
 
+export interface PetMemoryRelocateInput {
+  cardId?: string
+  selection: string
+  selector?: string
+  pageUrl?: string
+  pageTitle?: string
+}
+
+export interface PetMemoryRelocateResult {
+  matchCount: number
+  usedSelector: boolean
+  openedNewTab: boolean
+}
+
 export interface PetMemoryPageContext {
   pageUrl: string
   pageTitle: string

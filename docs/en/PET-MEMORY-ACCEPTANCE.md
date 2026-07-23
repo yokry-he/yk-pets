@@ -30,6 +30,17 @@ Automated tests cannot replace real Chrome checks for the Side Panel, context me
 - Archive a card and undo within six seconds.
 - Verify search and tag filtering.
 
+## Page excerpt relocation
+
+- Save a selection that spans multiple inline elements on the current page.
+- Choose **Locate excerpt** and confirm that the page scrolls to an exact browser selection with a short-lived overlay.
+- When the same text appears more than once, confirm that the result reports the match count and selects the first visible match.
+- Switch to another tab, locate again, and confirm that a new source tab opens and completes the highlight.
+- Change or remove the source text and confirm a clear failure state without continuous scanning.
+- Verify both an imported card with a selector and an older selector-free card, confirming that each locates the excerpt or reports a clear failure.
+- Confirm that the overlay disappears after about 12 seconds and reduced-motion mode avoids smooth scrolling.
+- Repeated relocation must not accumulate scroll, resize, or runtime listeners.
+
 ## Page Audit integration
 
 - Run Page Audit.
