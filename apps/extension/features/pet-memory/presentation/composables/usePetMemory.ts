@@ -1,12 +1,13 @@
 /**
  * 文件职责 / File responsibility
- * 封装 Side Panel 中宠物记忆卡的后台消息、乐观状态和跨上下文刷新。
- * Encapsulates pet-memory background messaging, optimistic state, and cross-context refresh for the Side Panel.
+ * 封装 Side Panel 中宠物记忆卡的后台消息、导入状态、乐观状态和跨上下文刷新。
+ * Encapsulates pet-memory background messaging, import state, optimistic state, and cross-context refresh for the Side Panel.
  */
 import { onBeforeUnmount, ref } from 'vue'
 import type {
   PetMemoryCard,
   PetMemoryCreateInput,
+  PetMemoryImportResult,
   PetMemoryUpdatePatch,
 } from '@nova/shared/pet-memory'
 import type { NovaRuntimeMessage } from '@nova/shared/messages'
@@ -15,6 +16,7 @@ export function usePetMemory() {
   const cards = ref<PetMemoryCard[]>([])
   const loading = ref(false)
   const saving = ref(false)
+  const importing = ref(false)
   const error = ref('')
 
   async function refresh() {
@@ -61,6 +63,28 @@ export function usePetMemory() {
     }
   }
 
+  async function importJson(payload: unknown) {
+    importing.value = true
+    error.value = ''
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'YK_PET_MEMORY_IMPORT', payload } satisfies NovaRuntimeMessage) as {
+        ok?: boolean
+        result?: PetMemoryImportResult
+        error?: string
+      } | undefined
+      if (!response?.ok || !response.result) throw new Error(response?.error || '无法导入宠物记忆。')
+      await refresh()
+      return response.result
+    }
+    catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause)
+      throw cause
+    }
+    finally {
+      importing.value = false
+    }
+  }
+
   async function update(cardId: string, patch: PetMemoryUpdatePatch) {
     saving.value = true
     error.value = ''
@@ -101,9 +125,11 @@ export function usePetMemory() {
     cards,
     loading,
     saving,
+    importing,
     error,
     refresh,
     create,
+    importJson,
     update,
     archive,
   }
