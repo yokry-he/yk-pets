@@ -34,7 +34,7 @@ const checks = [
   ['production fireworks retain 12 seconds three launches and 48 particles', catalog.includes("id: 'fireworks-show'") && catalog.includes('sourceDurationSeconds: 12') && fireworks.includes('fireworksProgress * PRODUCTION_FIREWORK_BURST_COUNT') && fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48')],
   ['fireworks retain exact rocket stagger burst gravity and palettes', fireworks.includes('rocketTrail') && fireworks.includes('(particleIndex % 7) * .012') && fireworks.includes('* 2.65') && fireworks.includes('localBurst ** 2 * .42') && fireworksDomain.includes('#f7fbff') && fireworksDomain.includes('#ff91dc')],
   ['fireworks retain exact extension head eye and alternating-paw logic', headIntent.includes('targetX = -.42') && gaze.includes('gazeY = .052') && body.includes("state === 'fireworks-show'") && body.includes('Math.floor(Math.min(2.999, frame.fireworksProgress * 3))') && body.includes('2.58 * frame.fireworksSalute')],
-  ['extension menu and Studio catalog share the canonical manual durations', extensionRegistry.includes('duration: 12000') && catalog.includes('previewDurationMs: 12000')],
+  ['extension trigger and Studio source both preserve the production fireworks duration', extensionRegistry.includes('duration: 12000') && catalog.includes('sourceDurationSeconds: 12')],
   ['four Studio views remain in the canonical component', core.includes("front: 0, left: Math.PI / 2, back: Math.PI, right: -Math.PI / 2")],
 ]
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
