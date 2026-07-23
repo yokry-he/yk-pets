@@ -12,7 +12,8 @@
     "./protocol": "./src/protocol.ts",
     "./network": "./src/network.ts",
     "./pet-memory": "./src/pet-memory.ts",
-    "./pet-memory-navigation": "./src/pet-memory-navigation.ts"
+    "./pet-memory-navigation": "./src/pet-memory-navigation.ts",
+    "./pet-runtime-preferences": "./src/pet-runtime-preferences.ts"
   },
   "types": "./src/index.ts",
   "dependencies": {
