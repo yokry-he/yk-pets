@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  在不复制正式 CloudFox 动作实现的前提下，将共享配方映射到其材质、比例、肚皮和胸背标志。
-  Maps shared recipes onto the production CloudFox materials, proportions, belly, and symbols without duplicating its motion implementation.
+  默认配方继续复用正式 CloudFox 动作运行时；Studio/导入配方则切换为完整配方模型，避免只在默认外观上叠加局部部件。
+  Keeps the production CloudFox motion runtime for default recipes while switching Studio/import recipes to a complete recipe model instead of additive overlays.
 -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
@@ -10,11 +10,13 @@ import { CanvasTexture, DoubleSide, Euler, Vector3 } from 'three'
 import type { Group, Material, Mesh, MeshStandardMaterial } from 'three'
 import type { PetRecipeEnvelope } from '@yk-pets/pet-core'
 import CloudFox from './CloudFox.vue'
+import StudioRecipeCloudFox from './StudioRecipeCloudFox.vue'
 import {
   resolveExtensionCloudFoxAppearance,
   type ExtensionBellyPatchStyle,
   type ExtensionCloudFoxAppearance,
 } from './appearance'
+import { isStudioRecipeCloudFox } from './studio-recipe-appearance'
 import type { PetEmotion } from './types'
 
 const props = defineProps<{
@@ -37,6 +39,7 @@ const backTexture = shallowRef<CanvasTexture>()
 const bellyTexture = shallowRef<CanvasTexture>()
 const materialRoles = new WeakMap<Material, PaletteRole>()
 const visual = computed(() => resolveExtensionCloudFoxAppearance(props.recipe))
+const recipeDriven = computed(() => isStudioRecipeCloudFox(props.recipe))
 const vector = (x: number, y: number, z: number) => new Vector3(x, y, z)
 const rotation = (x: number, y: number, z: number) => new Euler(x, y, z)
 let appearanceDirty = true
@@ -136,23 +139,25 @@ function replaceTexture(target: typeof chestTexture, next?: CanvasTexture) {
 }
 
 watch(
-  () => [visual.value.bellyPatchDesign.mode, visual.value.bellyPatchDesign.style] as const,
-  ([mode, style]) => replaceTexture(bellyTexture, mode === 'custom' ? createBellyTexture(style) : undefined),
+  () => [recipeDriven.value, visual.value.bellyPatchDesign.mode, visual.value.bellyPatchDesign.style] as const,
+  ([custom, mode, style]) => replaceTexture(bellyTexture, !custom && mode === 'custom' ? createBellyTexture(style) : undefined),
   { immediate: true },
 )
 watch(
-  () => visual.value.symbols.chest,
-  symbol => replaceTexture(chestTexture, symbol.enabled ? createSymbolTexture(symbol.text, symbol.color, symbol.glowIntensity) : undefined),
+  () => [recipeDriven.value, visual.value.symbols.chest] as const,
+  ([custom, symbol]) => replaceTexture(chestTexture, !custom && symbol.enabled ? createSymbolTexture(symbol.text, symbol.color, symbol.glowIntensity) : undefined),
   { immediate: true, deep: true },
 )
 watch(
-  () => visual.value.symbols.back,
-  symbol => replaceTexture(backTexture, symbol.enabled ? createSymbolTexture(symbol.text, symbol.color, symbol.glowIntensity) : undefined),
+  () => [recipeDriven.value, visual.value.symbols.back] as const,
+  ([custom, symbol]) => replaceTexture(backTexture, !custom && symbol.enabled ? createSymbolTexture(symbol.text, symbol.color, symbol.glowIntensity) : undefined),
   { immediate: true, deep: true },
 )
-watch(visual, () => {
+watch([visual, recipeDriven], () => {
+  legacyCore.value = undefined
+  legacyBelly.value = undefined
   appearanceRetryFrames = 0
-  appearanceDirty = true
+  appearanceDirty = !recipeDriven.value
 }, { deep: true, immediate: true })
 
 function roleFor(material: MeshStandardMaterial): PaletteRole | undefined {
@@ -166,6 +171,10 @@ function roleFor(material: MeshStandardMaterial): PaletteRole | undefined {
 }
 
 function applyAppearance() {
+  if (recipeDriven.value) {
+    appearanceDirty = false
+    return
+  }
   const group = root.value
   if (!group) {
     appearanceDirty = appearanceRetryFrames < 12
@@ -183,11 +192,10 @@ function applyAppearance() {
       const standard = material as MeshStandardMaterial
       if (!standard?.color) continue
       const role = materialRoles.get(material) || roleFor(standard)
-      if (role) {
-        materialRoles.set(material, role)
-        standard.color.set(visual.value.palette[role])
-        if (standard.emissive && ['primaryGlow', 'secondaryGlow', 'tailGlow', 'antennaGlow'].includes(role)) standard.emissive.set(visual.value.palette[role])
-      }
+      if (!role) continue
+      materialRoles.set(material, role)
+      standard.color.set(visual.value.palette[role])
+      if (standard.emissive && ['primaryGlow', 'secondaryGlow', 'tailGlow', 'antennaGlow'].includes(role)) standard.emissive.set(visual.value.palette[role])
     }
   })
   if (legacyBelly.value) legacyBelly.value.visible = visual.value.bellyPatchDesign.mode === 'model-default'
@@ -213,7 +221,18 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <TresGroup ref="root" :scale="rootScale">
+  <StudioRecipeCloudFox
+    v-if="recipeDriven"
+    :behavior="behavior"
+    :emotion="emotion"
+    :speaking="speaking"
+    :pointer="pointer"
+    :secret-mode="secretMode"
+    :motion-key="motionKey"
+    :recipe="recipe"
+  />
+
+  <TresGroup v-else ref="root" :scale="rootScale">
     <CloudFox :behavior="behavior" :emotion="emotion" :speaking="speaking" :pointer="pointer" :secret-mode="secretMode" :motion-key="motionKey" :theme="theme" />
 
     <TresMesh v-if="visual.bellyPatchDesign.mode === 'custom'" :position="bellyPosition" :scale="bellyScale" :render-order="3">
