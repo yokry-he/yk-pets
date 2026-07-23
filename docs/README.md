@@ -12,6 +12,7 @@ YK-PETS is the product brand. The current default pet is a Cloud Fox named Zeph�
 | Cloud Fox Studio | [云狐工坊](./zh-CN/CLOUD-FOX-STUDIO.md) | [Cloud Fox Studio](./en/CLOUD-FOX-STUDIO.md) |
 | Project status | [当前项目状态](./zh-CN/PROJECT-STATUS.md) | [Current project status](./en/PROJECT-STATUS.md) |
 | User guide | [使用操作手册](./zh-CN/USER-GUIDE.md) | [User Guide](./en/USER-GUIDE.md) |
+| Pet Memory | [宠物记忆：网页随手记与任务收件箱](./zh-CN/PET-MEMORY.md) | [Pet Memory: web capture and task inbox](./en/PET-MEMORY.md) |
 | Network Lab | [网络实验室与 Mock 工作台](./zh-CN/NETWORK-LAB-OPERATIONS.md) | [Network Lab and Mock Workbench](./en/NETWORK-LAB-OPERATIONS.md) |
 | Build and release | [构建、打包与发布](./zh-CN/BUILD-AND-RELEASE.md) | [Build, Package, and Release](./en/BUILD-AND-RELEASE.md) |
 | Troubleshooting | [故障排查](./zh-CN/TROUBLESHOOTING.md) | [Troubleshooting](./en/TROUBLESHOOTING.md) |
