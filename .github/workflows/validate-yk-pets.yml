@@ -56,17 +56,11 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-      - name: Remove one-time migration and restore validation workflow
-        run: |
-          rm scripts/apply-pet-memory-mvp.mjs
-          rm .github/workflows/apply-pet-memory-mvp.yml
-          git show HEAD^:.github/workflows/validate-yk-pets.yml > .github/workflows/validate-yk-pets.yml
-
       - name: Commit generated Pet Memory MVP
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add apps/extension package.json
           git commit -m "feat: add local-first Pet Memory MVP"
           git push origin HEAD:agent/cloud-fox-studio-v0610
 
