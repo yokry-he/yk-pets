@@ -54,6 +54,7 @@ The top-level views cover Inbox, Todo, Done, and Current Page. Search matches ti
 - When the current page has non-archived memories, a count badge appears on the in-page pet.
 - Opening Pet Memory from the pet menu switches the Side Panel directly to that workspace.
 - Saving selected text from the context menu produces immediate in-page confirmation.
+- A JSON import produces one short completion response after the result is known.
 
 These responses do not open large automatic overlays or change the host page layout.
 
@@ -69,14 +70,25 @@ Audit issue cards include a **Remember** action. The resulting memory card:
 
 A later phase will connect these cards to source candidates, patches, and validation results.
 
-## Export
+## Import and export
 
-Pet Memory supports:
+The Pet Memory transfer menu supports:
 
-- Markdown for documents, issues, and task tools;
-- JSON for backup, migration, and future import.
+- **Import JSON** for restoring or migrating YK-PETS v1 memory exports;
+- **Export Markdown** for documents, issues, and task tools;
+- **Export JSON** for local backup and migration.
 
-Exports currently include non-archived memories.
+JSON import uses a safe merge policy:
+
+- existing memories are not cleared and cards with matching IDs are not overwritten;
+- exact duplicates are skipped;
+- matching IDs with different content are reported as conflicts and skipped;
+- invalid cards, duplicates, conflicts, and capacity truncation are reported separately;
+- both `{ "version": 1, "cards": [...] }` envelopes and direct card arrays are accepted;
+- one import file can be up to 8 MB;
+- the local 500-card boundary still applies, and cards beyond the available capacity are not written.
+
+Default exports include non-archived memories. Import files are read only after explicit file selection and are never uploaded.
 
 ## Data and privacy
 
@@ -94,4 +106,4 @@ Exports currently include non-archived memories.
 - Text highlights are not restored on revisits.
 - Cloud sync and cross-device merging are not available.
 - Ordinary memory cards cannot yet instruct the Local Agent to edit source code.
-- JSON is currently an export/backup format; import will be added in a later phase.
+- JSON import does not overwrite conflicting cards or provide an interactive per-card conflict resolver.

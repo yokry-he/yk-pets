@@ -38,15 +38,22 @@ Automated tests cannot replace real Chrome checks for the Side Panel, context me
 - Confirm that the new card starts in Todo.
 - Verify its title, explanation, page, selector, category tags, and priority.
 
-## Export
+## JSON import and export
 
 - Download Markdown and verify readable content.
 - Download JSON and verify a complete structure.
 - Confirm that archived content is excluded from the default export.
+- Choose **Import JSON** and import the file that was just exported.
+- Confirm that the import button shows a loading state and the result separately reports imported, duplicate, conflicting, invalid, and capacity-truncated cards.
+- Confirm that the first import adds cards and importing the same file again reports duplicates without creating copies.
+- Change the content of a card while keeping an existing ID, import it again, and confirm that it is reported as a conflict without overwriting local content.
+- Confirm clear errors for invalid JSON, a missing `cards` array, versions other than 1, and files larger than 8 MB.
+- Confirm that Current Page, search, status actions, and the in-page memory badge refresh after import.
+- Confirm that importing does not upload the file or add permissions.
 
 ## Performance and non-interference
 
 - Pet Memory does not continuously scan the page DOM while the Side Panel is closed.
 - The page listens for extension-local storage changes without polling.
-- Save and completion feedback do not interrupt an active manually selected motion.
+- Save, import, and completion feedback do not interrupt an active manually selected motion.
 - The memory badge does not cover the audit badge or the pet click target.
