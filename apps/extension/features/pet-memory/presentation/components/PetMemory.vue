@@ -14,7 +14,7 @@ import {
   type PetMemoryPriority,
   type PetMemoryStatus,
 } from '@nova/shared/pet-memory'
-import type { NovaPetVisualState } from '@nova/shared/messages'
+import type { NovaPetVisualState, NovaRuntimeMessage } from '@nova/shared/messages'
 import { usePetMemory } from '../composables/usePetMemory'
 
 const props = defineProps<{
@@ -92,6 +92,7 @@ const viewOptions: Array<{ id: MemoryView; label: string; count: () => number }>
 ]
 
 onMounted(async () => {
+  chrome.runtime.onMessage.addListener(onMemoryRuntimeMessage)
   await memory.refresh()
   await consumePendingIntent()
 })
@@ -105,7 +106,15 @@ watch(
   },
 )
 
-onBeforeUnmount(() => clearUndoTimer())
+onBeforeUnmount(() => {
+  clearUndoTimer()
+  chrome.runtime.onMessage.removeListener(onMemoryRuntimeMessage)
+})
+
+function onMemoryRuntimeMessage(message: NovaRuntimeMessage) {
+  if (message.type !== 'YK_PET_MEMORY_DRAFT_READY' || message.tabId !== props.tab?.id || !props.active) return
+  consumePendingIntent().catch(() => undefined)
+}
 
 async function consumePendingIntent() {
   const tabId = props.tab?.id

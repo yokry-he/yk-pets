@@ -17,6 +17,7 @@ const emit = defineEmits<{
   highlight: [issue: AuditIssue]
   preview: [issue: AuditIssue]
   rollbackPreview: [issue: AuditIssue]
+  remember: [issue: AuditIssue]
   patch: [issue: AuditIssue]
 }>()
 
@@ -55,6 +56,7 @@ const categoryLabel: Record<AuditIssue['category'], string> = {
       >
         {{ previewing ? '撤销预览' : '预览修改' }}
       </button>
+      <button type="button" @click="emit('remember', issue)">记住</button>
       <button type="button" :disabled="!agentConnected || busy" @click="emit('patch', issue)">
         源码补丁
       </button>

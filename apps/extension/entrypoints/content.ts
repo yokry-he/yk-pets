@@ -21,6 +21,7 @@ import type {
   NovaPetVisualState,
   NovaRuntimeMessage,
 } from '@nova/shared/messages'
+import { PET_MEMORY_STORAGE_KEY, memoryMatchesPage, normalizePetMemoryStore } from '@nova/shared/pet-memory'
 import overlayStyles from './content/nova-pet-overlay.css?inline'
 
 // 页面审计使用的跨观察器状态。 / Cross-observer state used by the page audit.
@@ -54,6 +55,7 @@ export default defineContentScript({
     let latestReport: AuditReport | null = null
     let currentIssueIndex = 0
     let previewIssueId: string | null = null
+    let memoryRefreshTimer: number | null = null
     let auditRunning = false
 
     // 宠物动作路由：轻量反馈留在页面，复杂结果通过 Runtime 进入 Side Panel。 / Pet action router: keep lightweight feedback in-page and send complex results to the Side Panel.
@@ -79,7 +81,7 @@ export default defineContentScript({
       }
 
       const issue = getCurrentIssue()
-      const isNavigationAction = action === 'open-report' || action === 'network-lab' || action === 'connect-agent'
+      const isNavigationAction = action === 'open-report' || action === 'open-memory' || action === 'network-lab' || action === 'connect-agent'
       overlay.patch({
         behavior: isNavigationAction ? 'greeting' : 'thinking',
         speech: getDelegatedActionSpeech(action),
@@ -107,6 +109,33 @@ export default defineContentScript({
     })
 
     setupPerformanceObservers(performanceState)
+
+    async function refreshPageMemoryCount() {
+      const stored = await chrome.storage.local.get(PET_MEMORY_STORAGE_KEY)
+      const store = normalizePetMemoryStore(stored[PET_MEMORY_STORAGE_KEY])
+      const memoryCount = store.cards.filter(card => memoryMatchesPage(card, location.href)).length
+      overlay.patch({ memoryCount })
+    }
+
+    function schedulePageMemoryRefresh() {
+      if (memoryRefreshTimer !== null) return
+      memoryRefreshTimer = window.setTimeout(() => {
+        memoryRefreshTimer = null
+        refreshPageMemoryCount().catch(() => undefined)
+      }, 80)
+    }
+
+    function onMemoryStorageChanged(changes: Record<string, chrome.storage.StorageChange>, areaName: string) {
+      if (areaName !== 'local' || !changes[PET_MEMORY_STORAGE_KEY]) return
+      schedulePageMemoryRefresh()
+    }
+
+    chrome.storage.onChanged.addListener(onMemoryStorageChanged)
+    refreshPageMemoryCount().catch(() => undefined)
+    window.addEventListener('pagehide', () => {
+      if (memoryRefreshTimer !== null) window.clearTimeout(memoryRefreshTimer)
+      chrome.storage.onChanged.removeListener(onMemoryStorageChanged)
+    }, { once: true })
 
     async function runAuditAndPublish(requestedCategories?: AuditCategory[], requestedRuleCodes?: AuditIssueCode[]) {
       const enabledRuleCodes = await resolveEnabledAuditRules(requestedRuleCodes, requestedCategories)
@@ -289,6 +318,16 @@ export default defineContentScript({
         return false
       }
 
+      if (message.type === 'YK_PET_MEMORY_GET_CONTEXT') {
+        sendResponse({
+          ok: true,
+          pageUrl: location.href,
+          pageTitle: document.title || location.hostname,
+          selection: document.getSelection()?.toString().trim().slice(0, 4_000) || undefined,
+        })
+        return false
+      }
+
       return false
     })
   },
@@ -297,6 +336,7 @@ export default defineContentScript({
 function getDelegatedActionSpeech(action: NovaPetAction) {
   const messages: Partial<Record<NovaPetAction, string>> = {
     'open-report': '我把详细报告打开给你。',
+    'open-memory': '正在打开宠物记忆，之前保存的网页上下文都在那里。',
     'network-lab': '正在打开网络实验室，你可以一键开启拦截与 Mock。',
     'connect-agent': '正在打开本地 Agent 连接设置。',
     'generate-patch': '我会去项目源码里定位当前问题并生成补丁。',
@@ -1043,6 +1083,7 @@ function createNovaOverlay(onAction: (action: NovaPetAction) => void | Promise<v
     previewActive: false,
     busy: false,
     agentConnected: false,
+    memoryCount: 0,
   }
   let liveState: NovaPetVisualState | null = null
 

@@ -760,3 +760,22 @@ button {
   cursor: wait;
   font: 850 15px/1 ui-sans-serif, system-ui, sans-serif;
 }
+
+.nova-pet-memory-badge {
+  position: absolute;
+  left: 16px;
+  top: 22px;
+  min-width: 34px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  padding: 0 7px;
+  border: 2px solid rgba(9,12,25,.88);
+  border-radius: 999px;
+  color: #f2f0ff;
+  background: linear-gradient(110deg, #7066ff, #5d8cff);
+  box-shadow: 0 8px 18px rgba(0,0,0,.22), 0 0 18px rgba(112,102,255,.2);
+  font-weight: 850;
+  font-size: 9px;
+  pointer-events: none;
+}

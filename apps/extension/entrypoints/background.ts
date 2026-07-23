@@ -182,7 +182,7 @@ async function openMemoryComposer(tab: chrome.tabs.Tab, source: PetMemoryDraftIn
     openPromise,
     chrome.storage.local.set({ [pendingKey]: intent }),
   ])
-  window.setTimeout(() => {
+  setTimeout(() => {
     chrome.runtime.sendMessage({ type: 'YK_PET_MEMORY_DRAFT_READY', tabId: tab.id! } satisfies NovaRuntimeMessage).catch(() => undefined)
   }, 180)
 }

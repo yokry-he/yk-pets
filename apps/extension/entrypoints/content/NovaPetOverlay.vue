@@ -202,6 +202,15 @@ const featureItems = computed<ActionMenuItem[]>(() => [
     disabled: () => props.state.busy,
   },
   {
+    id: 'memory',
+    kind: 'action',
+    mode: 'features',
+    action: 'open-memory',
+    icon: '✎',
+    label: '宠物记忆',
+    description: '记录当前网页、选中文字和稍后要处理的任务',
+  },
+  {
     id: 'report',
     kind: 'action',
     mode: 'features',
@@ -339,7 +348,7 @@ function runAction(action: NovaPetAction) {
   hideTooltip()
   emit('action', action)
   playBehavior(action === 'audit' || action === 'generate-patch' || action === 'run-checks' ? 'thinking' : 'greeting', 900, false, 'ui')
-  if (action === 'open-report' || isAgentAction(action)) closeMenu()
+  if (action === 'open-report' || action === 'open-memory' || isAgentAction(action)) closeMenu()
 }
 
 function isAgentAction(action: NovaPetAction) {
@@ -1220,6 +1229,7 @@ onBeforeUnmount(() => {
         :pointer="avatarPointer"
         :motion-key="motionNonce"
       />
+      <span v-if="state.memoryCount" class="nova-pet-memory-badge" :title="`当前页面有 ${state.memoryCount} 条宠物记忆`">✎ {{ state.memoryCount > 99 ? '99+' : state.memoryCount }}</span>
       <span v-if="state.issueCount" class="nova-pet-badge">{{ state.issueCount > 99 ? '99+' : state.issueCount }}</span>
       <span v-if="state.busy" class="nova-pet-busy" />
     </button>
