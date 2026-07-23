@@ -16,6 +16,10 @@ import { registerExtensionCloudFoxPetElement } from '../../entrypoints/content/y
 import ProductionAvatarCanvas from './ProductionAvatarCanvas.vue'
 import type { PetEmotion } from './types'
 
+type PetElementCandidate = HTMLElement & {
+  setState?: YkPetElement['setState']
+}
+
 const props = withDefaults(defineProps<{
   behavior: string
   emotion: PetEmotion
@@ -37,7 +41,7 @@ const props = withDefaults(defineProps<{
 })
 
 const mountHost = shallowRef<HTMLDivElement>()
-const petElement = shallowRef<YkPetElement>()
+const petElement = shallowRef<PetElementCandidate>()
 const fallbackActive = ref(false)
 const activeRecipe = shallowRef<PetRecipeEnvelope>(createPetRecipeEnvelope({
   speciesId: 'cloud-fox',
@@ -62,25 +66,42 @@ function hasExtensionStorage() {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
 }
 
+function hasPetStateApi(element: PetElementCandidate | undefined): element is PetElementCandidate & { setState: YkPetElement['setState'] } {
+  return Boolean(element) && typeof element?.setState === 'function'
+}
+
 function clearReadinessTimer() {
   if (readinessTimer === null) return
   window.clearTimeout(readinessTimer)
   readinessTimer = null
 }
 
+function detachPetElement() {
+  const element = petElement.value
+  if (!element) return
+  element.removeEventListener('yk-pet-ready', onPetReady)
+  element.removeEventListener('yk-pet-error', onPetError)
+  element.remove()
+  petElement.value = undefined
+}
+
 function activateFallback(reason: string) {
   if (fallbackActive.value) return
   clearReadinessTimer()
   console.warn('[YK-PETS yk-pet fallback]', reason)
+  detachPetElement()
   fallbackActive.value = true
-  petElement.value?.remove()
-  petElement.value = undefined
 }
 
 function probeRenderedCanvas() {
   readinessTimer = null
   if (fallbackActive.value) return
-  const canvas = petElement.value?.shadowRoot?.querySelector('canvas')
+  const element = petElement.value
+  if (!hasPetStateApi(element)) {
+    activateFallback('The <yk-pet> node was not upgraded and has no setState() API.')
+    return
+  }
+  const canvas = element.shadowRoot?.querySelector('canvas')
   const rect = canvas?.getBoundingClientRect()
   if (!canvas || !rect || rect.width < 2 || rect.height < 2) {
     activateFallback('The Web Component renderer did not create a visible canvas in time.')
@@ -103,21 +124,33 @@ function onPetError(event: Event) {
 
 function updatePetElement() {
   if (fallbackActive.value) return
-  petElement.value?.setState({
-    recipe: effectiveRecipe.value,
-    speciesId: effectiveRecipe.value.speciesId,
-    rendererId: effectiveRecipe.value.rendererId,
-    behavior: props.behavior,
-    renderProps: {
-      emotion: props.emotion,
-      speaking: props.speaking,
-      score: props.score,
-      compact: props.compact,
-      transparent: props.transparent,
-      pointer: props.pointer,
-      motionKey: props.motionKey,
-    },
-  })
+  const element = petElement.value
+  if (!element) return
+  if (!hasPetStateApi(element)) {
+    activateFallback('The <yk-pet> node did not upgrade in the content-script execution world.')
+    return
+  }
+
+  try {
+    element.setState({
+      recipe: effectiveRecipe.value,
+      speciesId: effectiveRecipe.value.speciesId,
+      rendererId: effectiveRecipe.value.rendererId,
+      behavior: props.behavior,
+      renderProps: {
+        emotion: props.emotion,
+        speaking: props.speaking,
+        score: props.score,
+        compact: props.compact,
+        transparent: props.transparent,
+        pointer: props.pointer,
+        motionKey: props.motionKey,
+      },
+    })
+  }
+  catch (error) {
+    activateFallback(error instanceof Error ? error.message : String(error))
+  }
 }
 
 async function restoreRecipe() {
@@ -156,7 +189,8 @@ watch(
 onMounted(() => {
   try {
     registerExtensionCloudFoxPetElement()
-    const element = document.createElement('yk-pet') as YkPetElement
+    const element = document.createElement('yk-pet') as PetElementCandidate
+    globalThis.customElements?.upgrade(element)
     element.style.display = 'block'
     element.style.width = '100%'
     element.style.height = '100%'
@@ -166,8 +200,14 @@ onMounted(() => {
     element.addEventListener('yk-pet-error', onPetError)
     petElement.value = element
     mountHost.value?.append(element)
-    updatePetElement()
-    scheduleRendererProbe(1200)
+
+    if (!hasPetStateApi(element)) {
+      activateFallback('The <yk-pet> custom element is unavailable or was claimed by the host page.')
+    }
+    else {
+      updatePetElement()
+      scheduleRendererProbe(1200)
+    }
   }
   catch (error) {
     activateFallback(error instanceof Error ? error.message : String(error))
@@ -180,12 +220,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearReadinessTimer()
   if (hasExtensionStorage()) chrome.storage.onChanged.removeListener(onStorageChanged)
-  if (petElement.value) {
-    petElement.value.removeEventListener('yk-pet-ready', onPetReady)
-    petElement.value.removeEventListener('yk-pet-error', onPetError)
-    petElement.value.remove()
-  }
-  petElement.value = undefined
+  detachPetElement()
 })
 </script>
 
