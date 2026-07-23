@@ -40,8 +40,8 @@ const wideScene = computed(() => props.behavior === 'fireworks-show')
 const highMotion = computed(() => ['backflip', 'tail-tornado', 'diving-catch', 'energy-burst', 'fireworks-show'].includes(props.behavior))
 const quietMotion = computed(() => ['idle', 'resting', 'sleeping', 'cloud-nap'].includes(props.behavior))
 const cameraPosition = computed(() => wideScene.value
-  ? props.compact ? vec3(0, .62, 11.3) : vec3(0, .72, 10.8)
-  : props.compact ? vec3(0, .08, 9.7) : vec3(0, .42, 8.8))
+  ? props.compact ? vec3(0, 0.62, 11.3) : vec3(0, 0.72, 10.8)
+  : props.compact ? vec3(0, 0.08, 9.7) : vec3(0, 0.42, 8.8))
 const pixelRatio = computed<[number, number]>(() => props.compact ? [.6, .9] : [.8, 1.15])
 const frameRateLimit = computed(() => {
   if (!props.compact) return highMotion.value ? 36 : quietMotion.value ? 20 : 30
@@ -89,9 +89,10 @@ const tresStyle = {
       alpha
     >
       <TresPerspectiveCamera :position="cameraPosition" :fov="wideScene ? 38 : compact ? 33 : 35" />
-      <TresAmbientLight :intensity="1.28" />
-      <TresDirectionalLight :position="vec3(4, 6, 4)" :intensity="3.5" />
-      <TresPointLight v-if="!compact || secretMode || highMotion" :position="vec3(-3, 1, 2)" :intensity="secretMode ? 6 : 2.8" :color="visual.palette.primaryGlow" />
+      <TresAmbientLight :intensity="1.35" />
+      <TresDirectionalLight :position="vec3(4, 6, 4)" :intensity="3.8" />
+      <TresPointLight v-if="!compact || secretMode || highMotion" :position="vec3(-3, 1, 2)" :intensity="secretMode ? 7 : 3.6" :color="visual.palette.primaryGlow" />
+      <TresPointLight v-if="!compact || secretMode" :position="vec3(3, -1, 2)" :intensity="secretMode ? 6 : 2.8" :color="visual.palette.secondaryGlow" />
       <TresGroup :scale="vec3(foxScale, foxScale, foxScale)">
         <ConfiguredCloudFox :behavior="behavior" :emotion="emotion" :speaking="speaking" :pointer="pointer" :secret-mode="secretMode" :motion-key="motionKey" :recipe="recipe" theme="dark" />
       </TresGroup>
