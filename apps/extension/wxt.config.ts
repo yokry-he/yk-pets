@@ -6,7 +6,6 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'wxt'
 
-const playgroundDomainRoot = fileURLToPath(new URL('../playground/app/domain', import.meta.url))
 const unifiedCloudFoxSource = fileURLToPath(new URL('../playground/app/components/studio/ExtensionAlignedCloudFox.vue', import.meta.url))
 
 /**
@@ -15,17 +14,11 @@ const unifiedCloudFoxSource = fileURLToPath(new URL('../playground/app/component
  */
 export default defineConfig({
   modules: ['@wxt-dev/module-vue'],
-  // 统一云狐入口使用独立别名；WXT 保留 ~ 指向扩展 srcDir，不在此覆盖。 / The unified Cloud Fox entry uses a dedicated alias; WXT keeps ~ pointed at the extension srcDir and it is not overridden here.
+  // 统一云狐入口使用独立别名；WXT 保留 ~ 指向扩展 srcDir，领域导入由 extension/domain 薄桥接模块转发。 / The unified Cloud Fox entry uses a dedicated alias; WXT keeps ~ pointed at the extension srcDir while extension/domain bridge modules forward domain imports.
   alias: {
     'yk-pets-unified-cloud-fox': unifiedCloudFoxSource,
   },
   vite: () => ({
-    // 共享 Studio 组件中的 ~/domain/ 只在扩展打包时映射到 Playground 领域层，避免覆盖 WXT 的通用 ~ 别名。 / Shared Studio components map ~/domain/ to the Playground domain layer only during extension bundling without overriding WXT's general ~ alias.
-    resolve: {
-      alias: [
-        { find: /^~\/domain\//, replacement: `${playgroundDomainRoot}/` },
-      ],
-    },
     // Nuxt 在 Studio 中提供该标记；扩展构建保持相同客户端语义。 / Nuxt provides this flag in Studio; the extension build keeps the same client-side semantics.
     define: { 'import.meta.client': 'true' },
   }),

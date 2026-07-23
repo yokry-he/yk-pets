@@ -8,9 +8,6 @@
       "~/*": [
         "./*"
       ],
-      "~/domain/*": [
-        "../playground/app/domain/*"
-      ],
       "yk-pets-unified-cloud-fox": [
         "types/unified-cloud-fox.d.ts"
       ]
