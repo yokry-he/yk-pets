@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
  * 实现只负责生命周期和适配器选择的 <yk-pet> 自定义元素，不绑定任何 UI 框架或具体物种。
- * Implements the <yk-pet> custom element for lifecycle and adapter selection without binding a UI framework or species.
+ * Implements the <yk-pet> custom element for lifecycle and adapter selection without binding any UI framework or species.
  */
 import {
   createPetRecipeEnvelope,
@@ -42,7 +42,50 @@ export class YkPetElement extends HTMLElement {
     super()
     const shadow = this.attachShadow({ mode: 'open' })
     const style = document.createElement('style')
-    style.textContent = ':host{display:block;width:100%;height:100%;contain:layout style paint}.mount{width:100%;height:100%}.error{display:grid;place-items:center;width:100%;height:100%;font:600 12px/1.4 system-ui;color:#dbe5ff;background:rgba(12,15,30,.5);border-radius:inherit}'
+    style.textContent = `
+      :host {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        overflow: visible;
+        contain: layout style paint;
+      }
+      .mount {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        overflow: visible;
+      }
+      .mount > * {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+      }
+      .mount canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+        background: transparent !important;
+      }
+      .error {
+        display: grid;
+        place-items: center;
+        width: 100%;
+        height: 100%;
+        padding: 12px;
+        font: 600 12px/1.4 system-ui;
+        color: #dbe5ff;
+        text-align: center;
+        background: rgba(12,15,30,.72);
+        border-radius: inherit;
+      }
+    `
     this.mountPoint = document.createElement('div')
     this.mountPoint.className = 'mount'
     shadow.append(style, this.mountPoint)
@@ -161,6 +204,7 @@ export class YkPetElement extends HTMLElement {
         this.dispatchEvent(new CustomEvent('yk-pet-ready', { detail: { rendererId: adapter.id }, bubbles: true, composed: true }))
       }
       catch (error) {
+        this.mountPoint.innerHTML = '<div class="error">宠物渲染失败 / Pet renderer failed</div>'
         this.emitError(error instanceof Error ? error.message : String(error))
       }
       return
