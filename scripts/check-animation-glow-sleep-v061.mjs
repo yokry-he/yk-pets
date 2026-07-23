@@ -15,7 +15,7 @@ const retainedBehaviors = ['curious-scan', 'antenna-charge', 'tail-glow']
 const checks = [
   ['版本统一为 0.6.10', pkg.version === '0.6.10' && extensionPkg.version === '0.6.10' && wxt.includes("version: '0.6.10'")],
   ['悬停不直接覆盖主动画', overlay.includes('@mouseenter="onAvatarEnter"') && !overlay.includes('@mouseenter="playBehavior')],
-  ['悬停不启动任何动作', overlay.includes('function onAvatarEnter()') && overlay.includes('Hover only updates gaze intent')],
+  ['悬停只缓存边界并更新节流视线', overlay.includes('function onAvatarEnter(event: MouseEvent)') && overlay.includes('Hover only updates gaze intent') && overlay.includes('schedulePointerUpdate')],
   ['动作请求队列', overlay.includes('interface QueuedBehaviorRequest') && overlay.includes('queuedBehavior') && overlay.includes('behaviorPriority')],
   ['动作间中性稳定阶段', overlay.includes("localBehavior.value = 'idle'") && overlay.includes('}, 240)')],
   ['普通闲时动作 10-18 秒', overlay.includes('10_000 + Math.round(Math.random() * 8_000)')],
