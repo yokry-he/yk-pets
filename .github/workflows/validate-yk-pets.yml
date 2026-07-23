@@ -28,6 +28,8 @@ jobs:
           node-version: 22
 
       - name: Apply Pet Memory MVP
+        id: migrate
+        shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -35,7 +37,20 @@ jobs:
           source = path.read_text()
           path.write_text(source.replace('${state.memoryCount}', r'\${state.memoryCount}'))
           PY
-          node scripts/apply-pet-memory-mvp.mjs
+          set +e
+          node scripts/apply-pet-memory-mvp.mjs > /tmp/pet-memory-migration.log 2>&1
+          status=$?
+          cat /tmp/pet-memory-migration.log
+          exit "$status"
+
+      - name: Upload Pet Memory migration failure log
+        if: failure() && steps.migrate.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pet-memory-migration-errors
+          path: /tmp/pet-memory-migration.log
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Remove one-time migration and restore validation workflow
         run: |
