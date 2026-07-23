@@ -34,6 +34,7 @@ const files = {
   fireworksDomain: read('apps/playground/app/domain/production-cloud-fox-fireworks.ts'),
   headIntent: read('apps/playground/app/components/studio/ProductionCloudFoxHeadIntent.vue'),
   configured: read('apps/extension/components/avatar/ConfiguredCloudFox.vue'),
+  wxt: read('apps/extension/wxt.config.ts'),
   patchDomain: read('apps/playground/app/domain/pet-appearance-patch.ts'),
   patchTest: read('scripts/test-pet-studio-local-patches.ts'),
   toolbar: read('apps/playground/app/components/studio/StudioMotionToolbar.vue'),
@@ -41,6 +42,8 @@ const files = {
   symbolEditor: read('apps/playground/app/components/studio/StudioSymbolEditor.vue'),
   bellyEditor: read('apps/playground/app/components/studio/StudioBellyPatchEditor.vue'),
 }
+const unifiedSource = files.configured.includes("from 'yk-pets-unified-cloud-fox'")
+  && files.wxt.includes("../playground/app/components/studio/ExtensionAlignedCloudFox.vue")
 const checks = [
   [1, 'automatic camera fitting and independent body dimensions', files.base.includes('calculatePetVisualBounds') && files.canvas.includes('cameraFactor') && ['bodyWidth','bodyHeight','bodyDepth'].every(key => files.base.includes(`${key}: number`))],
   [2, 'extended parts antennae and segmented tail', files.phase2.includes("'floppy'") && files.phase2.includes('antennaRod') && files.phase2.includes('MAX_TAIL_SEGMENTS = 8')],
@@ -53,7 +56,7 @@ const checks = [
   [9, 'configurable continuous front paws and isolation tests', files.registry.includes('FRONT_PAW_STYLES') && files.registry.includes('FRONT_PAW_DESIGN_RANGES') && files.body.includes('pawSurfaceDepth') && files.tailEditor.includes('连续前爪连接') && files.patchTest.includes('nonPawSnapshot')],
   [10, 'thirty-motion registry and shared frame remain', files.motionCatalog.includes('EXTENSION_CLOUD_FOX_MOTIONS') && files.motionRuntime.includes('createExtensionCloudFoxMotionFrame') && files.core.includes('createExtensionCloudFoxMotionFrame') && files.toolbar.includes('<optgroup') && files.page.includes('motionKey.value += 1')],
   [11, 'complete prop effects and extension fireworks remain', files.core.includes('ExtensionCloudFoxEnergyBall') && files.core.includes('ExtensionCloudFoxMealOverlay') && files.effects.includes('starGroup') && files.effects.includes('cloud-nap') && files.fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48')],
-  [12, 'Studio and extension use the same canonical composition source', files.configured.includes("../../../playground/app/components/studio/ExtensionAlignedCloudFox.vue") && files.core.includes('ProductionCloudFoxFireworks') && files.headIntent.includes('createProductionFireworkBurstPlan')],
+  [12, 'Studio and extension use the same canonical composition source', unifiedSource && files.core.includes('ProductionCloudFoxFireworks') && files.headIntent.includes('createProductionFireworkBurstPlan')],
   [13, 'belly chest symbols and all major recipe channels remain configurable', ['oval','shield','bean','teardrop','heart'].every(style => files.registry.includes(`id: '${style}'`)) && files.bellyEditor.includes('宽度') && files.symbolEditor.includes('显示模式') && files.head.includes('earDesign.innerColor') && files.tail.includes('tipGlow.enabled')],
 ]
 const activeChecks = checks.filter(([phase]) => phase <= requestedPhase)

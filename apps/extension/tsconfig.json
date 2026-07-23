@@ -7,6 +7,9 @@
     "paths": {
       "~/*": [
         "../playground/app/*"
+      ],
+      "yk-pets-unified-cloud-fox": [
+        "types/unified-cloud-fox.d.ts"
       ]
     },
     "types": [

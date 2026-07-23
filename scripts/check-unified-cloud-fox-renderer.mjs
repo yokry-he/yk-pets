@@ -15,8 +15,14 @@ const procedural = read('apps/playground/app/components/studio/ProceduralPet.vue
 const production = read('apps/extension/components/avatar/ProductionAvatarCanvas.vue')
 const avatar = read('apps/extension/components/avatar/AvatarCanvas.vue')
 const wxt = read('apps/extension/wxt.config.ts')
+const tsconfig = read('apps/extension/tsconfig.json')
+const unifiedType = read('apps/extension/types/unified-cloud-fox.d.ts')
+const unifiedSource = configured.includes("from 'yk-pets-unified-cloud-fox'")
+  && wxt.includes("'yk-pets-unified-cloud-fox'")
+  && wxt.includes("../playground/app/components/studio/ExtensionAlignedCloudFox.vue")
 const checks = [
-  ['extension and Studio use the same canonical component', configured.includes("../../../playground/app/components/studio/ExtensionAlignedCloudFox.vue") && procedural.includes('ExtensionAlignedCloudFox')],
+  ['extension and Studio use the same canonical component', unifiedSource && procedural.includes('ExtensionAlignedCloudFox')],
+  ['extension type boundary does not create a renderer copy', tsconfig.includes('types/unified-cloud-fox.d.ts') && unifiedType.includes('DefineComponent') && !unifiedType.includes('ExtensionAlignedCloudFox.vue')],
   ['extension no longer renders legacy CloudFox or a second recipe topology', configured.includes('<ExtensionAlignedCloudFox') && !configured.includes('<CloudFox') && !configured.includes('recipeDriven')],
   ['default recipe enters the same component', avatar.includes("source: 'default'") && avatar.includes('appearance: {}') && configured.includes('normalizeMultiSpeciesAppearance') && configured.includes('createExtensionClassicAppearance')],
   ['canonical component retains the complete Studio part stack', ['ExtensionCloudFoxBody','ExtensionCloudFoxTail','ExtensionCloudFoxEnergyBall','ExtensionCloudFoxMealOverlay','ExtensionCloudFoxMotionEffects','ProductionCloudFoxHeadIntent'].every(token => core.includes(token)) && headIntent.includes('ExtensionCloudFoxHead') && headIntent.includes('ExtensionCloudFoxGazeOverlay')],
@@ -26,7 +32,7 @@ const checks = [
   ['production fireworks retain exact phase and gravity math', fireworks.includes("localProgress - .36") && fireworks.includes('2.4') && fireworks.includes('smoothStep(.72, .99') && fireworks.includes('(particleIndex % 7) * .012') && fireworks.includes('* 2.65') && fireworks.includes('localBurst ** 2 * .42')],
   ['production fireworks share head and eye targets from the same seed', headIntent.includes('createProductionFireworkBurstPlan') && gaze.includes('createProductionFireworkBurstPlan') && core.includes(':firework-seed="fireworkSeed"')],
   ['hidden and offscreen optimization pauses work without reducing quality', core.includes('loop.stop()') && core.includes('loop.start()') && avatar.includes('new IntersectionObserver') && core.includes('resumeNonce')],
-  ['cross-app source alias is explicit', wxt.includes("new URL('../playground/app'") && wxt.includes("'import.meta.client': 'true'")],
+  ['cross-app source aliases are explicit', wxt.includes("new URL('../playground/app'") && wxt.includes("'import.meta.client': 'true'") && unifiedSource],
   ['full visual quality remains locked', production.includes("props.compact ? [.75, 1] : [.9, 1.25]") && production.includes('props.compact ? 30 : 40') && (production.match(/<TresPointLight/g)?.length || 0) === 2 && production.includes('filter:blur(16px)')],
 ]
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)

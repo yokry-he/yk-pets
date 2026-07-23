@@ -13,16 +13,19 @@ const headIntent = read('apps/playground/app/components/studio/ProductionCloudFo
 const tail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue')
 const production = read('apps/extension/components/avatar/ProductionAvatarCanvas.vue')
 const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
+const wxt = read('apps/extension/wxt.config.ts')
 const studioCanvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const store = read('apps/playground/app/stores/pet-appearance.ts')
 const phase2 = read('apps/playground/app/domain/pet-studio-phase2.ts')
 const registry = read('apps/playground/app/domain/pet-species-registry.ts')
 const patchDomain = read('apps/playground/app/domain/pet-appearance-patch.ts')
 const studioUi = [read('apps/playground/app/pages/studio.vue'), read('apps/playground/app/components/studio/StudioTailEditor.vue'), read('apps/playground/app/components/studio/StudioEarEditor.vue')].join('\n')
+const unifiedSource = configured.includes("from 'yk-pets-unified-cloud-fox'")
+  && wxt.includes("../playground/app/components/studio/ExtensionAlignedCloudFox.vue")
 const exactTokens = ['0.94, 1.12, 0.82','0, -0.32, 0','0, 0.92, 0.06','1.02, 0.88, 0.9','0.31, 0.08, 0.77','0.56, 0.65, -0.04','0.5, -0.04, 0.82','0.48, -1.08, 0.22','-0.58, -0.48, -0.34']
 const checks = [
   ['production model profile retains exact values', exactTokens.every(token => profile.includes(token))],
-  ['extension uses the exact Studio composition component', configured.includes("../../../playground/app/components/studio/ExtensionAlignedCloudFox.vue") && core.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME')],
+  ['extension uses the exact Studio composition component', unifiedSource && core.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME')],
   ['complete body head intent and continuous tail remain', headIntent.includes('ExtensionCloudFoxHead') && body.includes('pawSurfaceDepth') && body.includes('frontPawDesign') && head.includes('earDesign.innerColor') && tail.includes('TresTubeGeometry') && tail.includes('tipGlow.enabled')],
   ['production camera values remain exact', production.includes('vec3(0, 0.42, 8.8)') && production.includes('vec3(0, 0.08, 9.7)') && production.includes('vec3(0, 0.72, 10.8)')],
   ['production light values remain exact', production.includes(':intensity="1.35"') && production.includes(':intensity="3.8"') && production.includes('secretMode ? 7 : 3.6') && production.includes('secretMode ? 6 : 2.8')],

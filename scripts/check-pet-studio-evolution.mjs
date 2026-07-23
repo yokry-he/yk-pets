@@ -24,13 +24,15 @@ const body = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.v
 const head = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
 const tail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue')
 const effects = read('apps/playground/app/components/studio/ExtensionCloudFoxMotionEffects.vue')
-const fireworks = read('apps/playground/app/components/studio/ProductionCloudFoxFireworks.vue')
 const fireworksDomain = read('apps/playground/app/domain/production-cloud-fox-fireworks.ts')
 const headIntent = read('apps/playground/app/components/studio/ProductionCloudFoxHeadIntent.vue')
 const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
+const wxt = read('apps/extension/wxt.config.ts')
 const pawEditor = read('apps/playground/app/components/studio/StudioTailEditor.vue')
 const patchDomain = read('apps/playground/app/domain/pet-appearance-patch.ts')
 const patchTest = read('scripts/test-pet-studio-local-patches.ts')
+const unifiedSource = configured.includes("from 'yk-pets-unified-cloud-fox'")
+  && wxt.includes("../playground/app/components/studio/ExtensionAlignedCloudFox.vue")
 const expectations = [
   ['schema v2 and legacy migration', domain.includes('PET_STUDIO_SCHEMA_VERSION = 2') && domain.includes('normalizePetStudioAppearanceV2')],
   ['independent symbols and derived colors', domain.includes('chest: SymbolChannelRecipe') && domain.includes('back: SymbolChannelRecipe') && ['highlight','shade','halo'].every(key => domain.includes(key))],
@@ -41,7 +43,7 @@ const expectations = [
   ['species registry and active Moon Cat', registry.includes('PET_SPECIES_REGISTRY') && registry.includes("'moon-cat'") && moonCat.includes('foreheadMark') && moonCat.includes('whiskers')],
   ['planned species and motion fallback', registry.includes("'nebula-slime'") && registry.includes("'star-rabbit'") && registry.includes('resolveSpeciesBehavior') && speciesPage.includes('实际动作')],
   ['generic renderer dispatch remains', proceduralPet.includes('MoonCat') && proceduralPet.includes('ExtensionAlignedCloudFox') && !proceduralPet.includes('CustomizableCloudFox')],
-  ['extension and Studio share the same Cloud Fox composition', configured.includes("../../../playground/app/components/studio/ExtensionAlignedCloudFox.vue") && core.includes('ExtensionCloudFoxBody')],
+  ['extension and Studio share the same Cloud Fox composition', unifiedSource && core.includes('ExtensionCloudFoxBody')],
   ['complete body head tail and prop layers remain', body.includes('frontPawDesign') && head.includes('earDesign.innerColor') && tail.includes('tipGlow.enabled') && core.includes('ExtensionCloudFoxEnergyBall') && core.includes('ExtensionCloudFoxMealOverlay')],
   ['full action effects remain', effects.includes('thoughtBubbles') && effects.includes('starGroup') && effects.includes('cloud-nap') && effects.includes('sparkle-sneeze') && fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48') && headIntent.includes('createProductionFireworkBurstPlan')],
   ['ear tail and front-paw local controls remain', phase2.includes('interface EarDesignRecipe') && phase2.includes('interface TailDesignRecipe') && registry.includes('FRONT_PAW_DESIGN_RANGES') && pawEditor.includes('连续前爪连接')],

@@ -12,6 +12,7 @@ const headIntent = read('apps/playground/app/components/studio/ProductionCloudFo
 const gaze = read('apps/playground/app/components/studio/ExtensionCloudFoxGazeOverlay.vue')
 const extensionRegistry = read('apps/extension/components/avatar/pet-motions.ts')
 const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
+const wxt = read('apps/extension/wxt.config.ts')
 const catalog = read('apps/playground/app/domain/chrome-extension-cloud-fox-motions.ts')
 const runtime = read('apps/playground/app/domain/chrome-extension-cloud-fox-motion-runtime.ts')
 const body = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue')
@@ -20,13 +21,15 @@ const tail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.v
 const effects = read('apps/playground/app/components/studio/ExtensionCloudFoxMotionEffects.vue')
 const page = read('apps/playground/app/pages/studio.vue')
 const toolbar = read('apps/playground/app/components/studio/StudioMotionToolbar.vue')
+const unifiedSource = configured.includes("from 'yk-pets-unified-cloud-fox'")
+  && wxt.includes("../playground/app/components/studio/ExtensionAlignedCloudFox.vue")
 const motionIds = [
   'idle','sleeping','thinking','happy','talking','excited','confused','waking','listening','greeting','playing','spinning','jumping','flapping','resting','stretching',
   'playing-ball','eating','diving-catch','shy-peek','star-juggle','cloud-nap','sparkle-sneeze','curious-scan','backflip','tail-tornado','energy-burst','fireworks-show','antenna-charge','tail-glow',
 ]
 const checks = [
   ['exactly thirty motions remain and paw tap stays removed', motionIds.length === 30 && motionIds.every(id => catalog.includes(`id: '${id}'`)) && !catalog.includes("id: 'paw-tap'")],
-  ['Studio and extension use one motion component', configured.includes("../../../playground/app/components/studio/ExtensionAlignedCloudFox.vue") && core.includes('ExtensionCloudFoxBody')],
+  ['Studio and extension use one motion component', unifiedSource && core.includes('ExtensionCloudFoxBody')],
   ['same-motion replay reaches every canonical motion consumer', page.includes('motionKey.value += 1') && (core.match(/:motion-key="effectiveMotionKey"/g)?.length || 0) >= 7],
   ['single grouped motion dropdown remains', toolbar.includes('<select') && toolbar.includes('<optgroup') && toolbar.includes('EXTENSION_CLOUD_FOX_MOTIONS.length')],
   ['shared frame still drives body head tail and effects', [core, body, head, tail, effects].every(source => source.includes('createExtensionCloudFoxMotionFrame')) && runtime.includes('createExtensionCloudFoxMotionFrame')],

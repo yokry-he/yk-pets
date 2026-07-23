@@ -15,10 +15,15 @@ const avatarHost = read('apps/extension/components/avatar/AvatarCanvas.vue')
 const adapter = read('apps/extension/entrypoints/content/yk-pet-adapter.ts')
 const productionCanvas = read('apps/extension/components/avatar/ProductionAvatarCanvas.vue')
 const configuredFox = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
+const wxt = read('apps/extension/wxt.config.ts')
+const extensionTsconfig = read('apps/extension/tsconfig.json')
+const unifiedType = read('apps/extension/types/unified-cloud-fox.d.ts')
 const canonicalCore = read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue')
 const canonicalBody = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue')
 const canonicalHead = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
 const canonicalTail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue')
+const unifiedSource = configuredFox.includes("from 'yk-pets-unified-cloud-fox'")
+  && wxt.includes("../playground/app/components/studio/ExtensionAlignedCloudFox.vue")
 
 const checks = [
   ['pet-core package is a workspace library', petCorePackage.includes('"name": "@yk-pets/pet-core"') && petCorePackage.includes('"./src/index.ts"')],
@@ -39,7 +44,8 @@ const checks = [
   ['extension Vue adapter mounts production canvas without recursion', adapter.includes('ProductionAvatarCanvas') && !adapter.includes("import AvatarCanvas") && adapter.includes("id: 'extension-cloud-fox'")],
   ['production canvas consumes recipe behind web component', productionCanvas.includes('PetRecipeEnvelope') && productionCanvas.includes('ConfiguredCloudFox') && productionCanvas.includes(':recipe="recipe"')],
   ['production canvas has shadow-safe explicit dimensions', productionCanvas.includes('rootStyle') && productionCanvas.includes("height: '100%'") && productionCanvas.includes(':style="tresStyle"')],
-  ['Studio composition is the single Cloud Fox model and motion implementation', configuredFox.includes("../../../playground/app/components/studio/ExtensionAlignedCloudFox.vue") && configuredFox.includes('<ExtensionAlignedCloudFox') && !configuredFox.includes("import CloudFox from './CloudFox.vue'") && canonicalCore.includes('createExtensionCloudFoxMotionFrame')],
+  ['Studio composition is the single Cloud Fox model and motion implementation', unifiedSource && configuredFox.includes('<ExtensionAlignedCloudFox') && !configuredFox.includes("import CloudFox from './CloudFox.vue'") && canonicalCore.includes('createExtensionCloudFoxMotionFrame')],
+  ['extension typechecking uses a public boundary while WXT builds the same source', extensionTsconfig.includes('types/unified-cloud-fox.d.ts') && unifiedType.includes('DefineComponent') && unifiedSource],
   ['single canonical topology consumes complete appearance channels', canonicalBody.includes('frontPawDesign') && canonicalBody.includes('symbols.chest') && canonicalHead.includes('earDesign') && canonicalHead.includes('antennaDesign') && canonicalTail.includes('tailDesign') && canonicalCore.includes('ExtensionCloudFoxOrbit')],
   ['root exposes architecture check', rootPackage.includes('check:pet-core-web-component') && rootPackage.includes('check-pet-core-web-component.mjs')],
 ]

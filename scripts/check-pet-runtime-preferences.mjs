@@ -12,7 +12,10 @@ const settings = read('apps/extension/entrypoints/sidepanel/pet-runtime-settings
 const main = read('apps/extension/entrypoints/sidepanel/main.ts')
 const motions = read('apps/extension/components/avatar/pet-motions.ts')
 const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
+const wxt = read('apps/extension/wxt.config.ts')
 const core = read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue')
+const unifiedSource = configured.includes("from 'yk-pets-unified-cloud-fox'")
+  && wxt.includes("../playground/app/components/studio/ExtensionAlignedCloudFox.vue")
 const checks = [
   ['shared runtime preference contract is exported', shared.includes("YK_PET_RUNTIME_PREFERENCES_STORAGE_KEY = 'yk-pets:runtime-preferences:v1'") && sharedPackage.includes('pet-runtime-preferences')],
   ['recommended idle defaults avoid high energy and easter motions', shared.includes('YK_PET_RECOMMENDED_IDLE_MOTION_IDS') && !shared.match(/YK_PET_RECOMMENDED_IDLE_MOTION_IDS[\s\S]*?'fireworks-show'/)],
@@ -25,7 +28,7 @@ const checks = [
   ['Side Panel exposes both master switches and motion checkboxes', settings.includes('data-load-3d') && settings.includes('data-idle-enabled') && settings.includes('data-idle-motion')],
   ['Side Panel options come from the canonical motion registry', settings.includes('PET_MOTIONS.filter') && motions.includes('idleEligible')],
   ['Side Panel installs runtime controls', main.includes('installPetRuntimeSettingsTools(document)')],
-  ['all recipes use the same Studio composition topology', configured.includes("../../../playground/app/components/studio/ExtensionAlignedCloudFox.vue") && !configured.includes('recipeDriven') && !configured.includes('<CloudFox')],
+  ['all recipes use the same Studio composition topology', unifiedSource && !configured.includes('recipeDriven') && !configured.includes('<CloudFox')],
 ]
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
 if (failures.length) {

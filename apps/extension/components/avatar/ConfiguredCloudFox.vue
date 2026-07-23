@@ -1,12 +1,12 @@
 <!--
   文件职责 / File responsibility
-  将默认、Studio 和导入配方统一归一化为 Studio 配方，并交给 Studio 与扩展共用的唯一云狐模型和动作组合层。
-  Normalizes default, Studio, and imported recipes into the Studio recipe and sends them to the single Cloud Fox model and motion composition shared by Studio and the extension.
+  将默认、Studio 和导入配方统一归一化为 Studio 配方，并通过稳定模块边界交给 Studio 与扩展共用的唯一云狐模型和动作组合层。
+  Normalizes default, Studio, and imported recipes into the Studio recipe and passes them through a stable module boundary to the sole Cloud Fox model and motion composition shared by Studio and the extension.
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { PetRecipeEnvelope } from '@yk-pets/pet-core'
-import ExtensionAlignedCloudFox from '../../../playground/app/components/studio/ExtensionAlignedCloudFox.vue'
+import ExtensionAlignedCloudFox from 'yk-pets-unified-cloud-fox'
 import { createExtensionClassicAppearance } from '~/domain/extension-cloud-fox-default'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import { normalizeMultiSpeciesAppearance } from '~/domain/pet-species-registry'
