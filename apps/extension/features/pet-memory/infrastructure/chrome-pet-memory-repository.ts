@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 以单写入队列管理 chrome.storage.local 中的宠物记忆卡，并执行输入清洗、容量控制和状态迁移。
- * Manages pet-memory cards in chrome.storage.local through a serialized mutation queue with input sanitation, capacity limits, and status transitions.
+ * 以单写入队列管理 chrome.storage.local 中的宠物记忆卡，并执行输入清洗、导入合并、容量控制和状态迁移。
+ * Manages pet-memory cards in chrome.storage.local through a serialized mutation queue with input sanitation, import merging, capacity limits, and status transitions.
  */
 import {
   PET_MEMORY_MAX_CARDS,
@@ -13,8 +13,10 @@ import {
   normalizeMemoryPageUrl,
   normalizePetMemoryStore,
   normalizePetMemoryTags,
+  planPetMemoryImport,
   type PetMemoryCard,
   type PetMemoryCreateInput,
+  type PetMemoryImportResult,
   type PetMemoryStatus,
   type PetMemoryStore,
   type PetMemoryUpdatePatch,
@@ -70,6 +72,21 @@ export function createPetMemoryCard(input: PetMemoryCreateInput): Promise<PetMem
     store.cards.unshift(card)
     compactStore(store)
     return card
+  })
+}
+
+export function importPetMemoryCards(payload: unknown): Promise<PetMemoryImportResult> {
+  return enqueueMutation(async (store) => {
+    const plan = planPetMemoryImport(store.cards, payload)
+    store.cards = plan.cards
+    return {
+      requestedCount: plan.requestedCount,
+      importedCount: plan.importedCount,
+      duplicateCount: plan.duplicateCount,
+      conflictCount: plan.conflictCount,
+      invalidCount: plan.invalidCount,
+      truncatedCount: plan.truncatedCount,
+    }
   })
 }
 
