@@ -14,6 +14,7 @@ import {
 import {
   archivePetMemoryCard,
   createPetMemoryCard,
+  importPetMemoryCards,
   listPetMemoryCards,
   updatePetMemoryCard,
 } from '../features/pet-memory/infrastructure/chrome-pet-memory-repository'
@@ -92,6 +93,16 @@ export default defineBackground(() => {
         .then(async (card) => {
           await notifyPetMemoryUpdated('created', card)
           sendResponse({ ok: true, card })
+        })
+        .catch(error => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }))
+      return true
+    }
+
+    if (message.type === 'YK_PET_MEMORY_IMPORT') {
+      importPetMemoryCards(message.payload)
+        .then(async (result) => {
+          if (result.importedCount > 0) await notifyPetMemoryImported()
+          sendResponse({ ok: true, result })
         })
         .catch(error => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }))
       return true
@@ -214,6 +225,10 @@ async function getMemoryPageContext(tab: chrome.tabs.Tab): Promise<PetMemoryPage
 
 async function notifyPetMemoryUpdated(reason: 'created' | 'updated' | 'archived', card: Awaited<ReturnType<typeof createPetMemoryCard>>) {
   await chrome.runtime.sendMessage({ type: 'YK_PET_MEMORY_UPDATED', reason, card } satisfies NovaRuntimeMessage).catch(() => undefined)
+}
+
+async function notifyPetMemoryImported() {
+  await chrome.runtime.sendMessage({ type: 'YK_PET_MEMORY_UPDATED', reason: 'imported' } satisfies NovaRuntimeMessage).catch(() => undefined)
 }
 
 function firstLine(value: string) {
