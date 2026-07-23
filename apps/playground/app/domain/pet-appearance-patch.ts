@@ -36,6 +36,22 @@ export function applyPetAppearanceLocalPatch(
   current: MultiSpeciesAppearanceRecipe,
   patch: PetAppearanceLocalPatch,
 ): MultiSpeciesAppearanceRecipe {
+  const bellyPatch = patch.bellyPatchDesign
+  const changesCustomGeometry = Boolean(bellyPatch) && [
+    bellyPatch?.style,
+    bellyPatch?.width,
+    bellyPatch?.height,
+    bellyPatch?.offsetY,
+  ].some(value => value !== undefined)
+  const bellyPatchDesign = bellyPatch
+    ? {
+        ...current.bellyPatchDesign,
+        ...bellyPatch,
+        ...(!bellyPatch.mode && bellyPatch.visible === false ? { mode: 'none' as const } : {}),
+        ...(!bellyPatch.mode && changesCustomGeometry ? { mode: 'custom' as const, visible: true } : {}),
+      }
+    : current.bellyPatchDesign
+
   return normalizeMultiSpeciesAppearance({
     ...current,
     parts: { ...current.parts, ...patch.parts },
@@ -43,7 +59,7 @@ export function applyPetAppearanceLocalPatch(
     palette: { ...current.palette, ...patch.palette },
     glow: { ...current.glow, ...patch.glow },
     antennaDesign: { ...current.antennaDesign, ...patch.antennaDesign },
-    bellyPatchDesign: { ...current.bellyPatchDesign, ...patch.bellyPatchDesign },
+    bellyPatchDesign,
     chestDisplay: { ...current.chestDisplay, ...patch.chestDisplay },
     frontPawDesign: { ...current.frontPawDesign, ...patch.frontPawDesign },
     earDesign: { ...current.earDesign, ...patch.earDesign },

@@ -16,6 +16,7 @@ delete legacyRecipe.symbols.back.offsetY
 delete legacyRecipe.symbols.back.offsetZ
 const migratedLegacy = normalizeMultiSpeciesAppearance(legacyRecipe)
 assert.deepEqual(migratedLegacy.bellyPatchDesign, {
+  mode: 'model-default',
   visible: true,
   style: 'shield',
   width: 1,
@@ -186,6 +187,7 @@ const heartPatched = applyPetAppearanceLocalPatch(original, {
   },
 })
 assert.deepEqual(heartPatched.bellyPatchDesign, {
+  mode: 'custom',
   visible: true,
   style: 'heart',
   width: 1.18,
@@ -227,8 +229,10 @@ assert.deepEqual(symbolPatched.orbitDesign, original.orbitDesign)
 
 const heartRoundTrip = normalizeMultiSpeciesAppearance(JSON.parse(JSON.stringify(heartPatched)))
 const shieldRoundTrip = normalizeMultiSpeciesAppearance(JSON.parse(JSON.stringify(original)))
+assert.equal(heartRoundTrip.bellyPatchDesign.mode, 'custom')
 assert.equal(heartRoundTrip.bellyPatchDesign.style, 'heart')
 assert.equal(heartRoundTrip.bellyPatchDesign.width, 1.18)
+assert.equal(shieldRoundTrip.bellyPatchDesign.mode, 'model-default')
 assert.equal(shieldRoundTrip.bellyPatchDesign.style, 'shield')
 assert.deepEqual(heartRoundTrip.orbitDesign, original.orbitDesign)
 
