@@ -1,3 +1,8 @@
+/**
+ * 文件职责 / File responsibility
+ * 防止网页宠物重新引入无限帧率、未节流状态传播、同步大 DOM 扫描和常驻滚动监听。
+ * Prevents the in-page pet from reintroducing uncapped rendering, unthrottled state propagation, synchronous large-DOM scans, or permanent scroll listeners.
+ */
 import { readFileSync } from 'node:fs'
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
