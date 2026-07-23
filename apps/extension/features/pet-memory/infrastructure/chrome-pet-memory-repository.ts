@@ -45,7 +45,7 @@ export function createPetMemoryCard(input: PetMemoryCreateInput): Promise<PetMem
       || firstMeaningfulLine(selection)
       || pageTitle
       || '新的宠物记忆'
-    const status = input.status && PET_MEMORY_STATUSES.includes(input.status) && input.status !== 'archived'
+    const status = input.status && PET_MEMORY_STATUSES.includes(input.status)
       ? input.status
       : 'inbox'
     const card: PetMemoryCard = {
