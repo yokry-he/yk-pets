@@ -1,15 +1,16 @@
 <!--
   文件职责 / File responsibility
-  渲染地面软影、思考泡泡、共享球轨迹、扩展风格餐桌、睡云、扫描环、喷嚏粒子、能量星空和随机烟花等动作道具与特效。
-  Renders the soft shadow, thought bubbles, shared ball trajectory, extension-style meal table, nap cloud, scan ring, sneeze particles, energy starfield, and randomized fireworks.
+  渲染地面软影、思考泡泡、共享球轨迹、扩展风格餐桌、睡云、扫描环、喷嚏粒子和能量星空；正式烟花由独立共享组件负责。
+  Renders the soft shadow, thought bubbles, shared ball trajectory, extension-style meal table, nap cloud, scan ring, sneeze particles, and energy starfield; production fireworks live in the dedicated shared component.
 -->
 <script setup lang="ts">
+import { shallowRef } from 'vue'
 import { useLoop } from '@tresjs/core'
 import { AdditiveBlending, Euler, Vector3 } from 'three'
 import type { Group, Mesh, MeshBasicMaterial } from 'three'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
-import { clamp01, createExtensionCloudFoxMotionFrame, mix, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
+import { createExtensionCloudFoxMotionFrame, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import { createBallMotionPose, createCatchMotionPose } from '~/domain/cloud-fox-prop-motion'
 
 const props = defineProps<{
@@ -33,34 +34,19 @@ const scanRing = shallowRef<Group>()
 const thoughtBubbles = shallowRef<Group[]>([])
 const sneezeParticles = shallowRef<Group[]>([])
 const energyStars = shallowRef<Group[]>([])
-const fireworkRockets = shallowRef<Group[]>([])
-const fireworkBursts = shallowRef<Group[][]>([[], [], []])
 
 const THINK_BUBBLE_COUNT = 5
 const SNEEZE_PARTICLE_COUNT = 20
 const ENERGY_STAR_COUNT = 46
-const FIREWORK_BURST_COUNT = 3
-const FIREWORK_PARTICLE_COUNT = 40
 const MEAL_TABLE_HEIGHT = .84
 const MEAL_BOWL_LOCAL_Y = MEAL_TABLE_HEIGHT + .13
 const thoughtIndexes = Array.from({ length: THINK_BUBBLE_COUNT }, (_, index) => index)
 const sneezeIndexes = Array.from({ length: SNEEZE_PARTICLE_COUNT }, (_, index) => index)
 const energyStarIndexes = Array.from({ length: ENERGY_STAR_COUNT }, (_, index) => index)
-const fireworkParticleIndexes = Array.from({ length: FIREWORK_PARTICLE_COUNT }, (_, index) => index)
-const fireworkBurstIndexes = Array.from({ length: FIREWORK_BURST_COUNT }, (_, index) => index)
-
-const FIREWORK_PALETTES = [
-  ['#ffffff', '#72f2ff', '#7a6fff', '#d788ff'],
-  ['#fff9d8', '#ffd45e', '#ff7aac', '#ffffff'],
-  ['#dffff4', '#52e0d0', '#65b9ff', '#a788ff'],
-  ['#ffe9fb', '#ff72d0', '#a27cff', '#ffffff'],
-] as const
 
 let previousBehavior: ExtensionCloudFoxMotionId = props.behavior
 let previousMotionKey = props.motionKey
 let startedAt = 0
-let fireworkSeed = 1
-let fireworkStyles = [0, 1, 2]
 
 function setThoughtBubble(node: unknown, index: number) {
   if (node) thoughtBubbles.value[index] = node as Group
@@ -71,38 +57,9 @@ function setSneezeParticle(node: unknown, index: number) {
 function setEnergyStar(node: unknown, index: number) {
   if (node) energyStars.value[index] = node as Group
 }
-function setFireworkParticle(node: unknown, burstIndex: number, particleIndex: number) {
-  if (!node) return
-  fireworkBursts.value[burstIndex] ||= []
-  fireworkBursts.value[burstIndex]![particleIndex] = node as Group
-}
-function setRocket(node: unknown, index: number) {
-  if (node) fireworkRockets.value[index] = node as Group
-}
 function materialOf(group: Group) {
   const mesh = group.children[0] as Mesh | undefined
   return mesh?.material as MeshBasicMaterial | undefined
-}
-function fireworkColor(burstIndex: number, particleIndex: number) {
-  const palette = FIREWORK_PALETTES[(fireworkSeed + burstIndex) % FIREWORK_PALETTES.length]!
-  return palette[(particleIndex + fireworkSeed + burstIndex * 2) % palette.length]!
-}
-function fireworkDirection(style: number, index: number) {
-  const angle = index / FIREWORK_PARTICLE_COUNT * Math.PI * 2
-  if (style === 0) {
-    const y = 1 - ((index + .5) / FIREWORK_PARTICLE_COUNT) * 2
-    const radius = Math.sqrt(Math.max(0, 1 - y * y))
-    const theta = index * 2.399963
-    return vector(Math.cos(theta) * radius, y * .92, Math.sin(theta) * radius * .52).normalize()
-  }
-  if (style === 1) return vector(Math.cos(angle), Math.sin(angle), Math.sin(angle * 3) * .16).normalize()
-  if (style === 2) {
-    const ray = index % 2 === 0 ? 1 : .42
-    return vector(Math.cos(angle) * ray, Math.sin(angle) * ray, Math.sin(index * 1.71) * .14).normalize()
-  }
-  const x = Math.pow(Math.sin(angle), 3)
-  const y = (13 * Math.cos(angle) - 5 * Math.cos(angle * 2) - 2 * Math.cos(angle * 3) - Math.cos(angle * 4)) / 16
-  return vector(x, y, Math.sin(angle * 2) * .1).normalize()
 }
 
 useLoop().onBeforeRender(({ elapsed, delta }) => {
@@ -110,10 +67,6 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     previousBehavior = props.behavior
     previousMotionKey = props.motionKey
     startedAt = elapsed
-    if (props.behavior === 'fireworks-show') {
-      fireworkSeed = Math.floor(Math.random() * 1000)
-      fireworkStyles = [0, 1, 2].map((_, index) => (fireworkSeed + index * 3) % 4)
-    }
   }
   const stateElapsed = Math.max(0, elapsed - startedAt)
   const frame = createExtensionCloudFoxMotionFrame(props.behavior, stateElapsed)
@@ -235,49 +188,6 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     const material = materialOf(star)
     if (material) material.opacity = Math.max(0, fade * (.55 + Math.sin(elapsed * 5 + index * 1.7) * .18))
   })
-
-  fireworkBurstIndexes.forEach((burstIndex) => {
-    const local = clamp01(frame.fireworksProgress * FIREWORK_BURST_COUNT - burstIndex)
-    const rocket = fireworkRockets.value[burstIndex]
-    if (rocket) {
-      const rocketActive = props.behavior === 'fireworks-show' && local > 0 && local < .38
-      rocket.visible = rocketActive
-      if (rocketActive) {
-        const launch = smoothStep(.01, .36, local)
-        const startX = burstIndex % 2 === 0 ? -.62 : .62
-        const endX = burstIndex % 2 === 0 ? -.78 : .78
-        rocket.position.set(mix(startX, endX, launch), -.72 + launch * 3.12, .32)
-        rocket.scale.setScalar(.8 + launch * .22)
-      }
-    }
-
-    const burstProgress = clamp01((local - .3) / .7)
-    const ease = 1 - Math.pow(1 - burstProgress, 2.35)
-    const fade = 1 - smoothStep(.68, .99, burstProgress)
-    const originX = burstIndex % 2 === 0 ? -.78 : .78
-    const originY = 2.38 + burstIndex * .22
-    const style = fireworkStyles[burstIndex] || 0
-    fireworkBursts.value[burstIndex]?.forEach((particle, particleIndex) => {
-      const active = props.behavior === 'fireworks-show' && burstProgress > .01 && fade > .01
-      particle.visible = active
-      if (!active) return
-      const direction = fireworkDirection(style, particleIndex)
-      const distance = ease * (1.7 + (particleIndex % 5) * .18)
-      particle.position.set(
-        originX + direction.x * distance,
-        originY + direction.y * distance - burstProgress * burstProgress * .58,
-        .25 + direction.z * distance,
-      )
-      particle.rotation.z += delta * (2 + particleIndex % 4)
-      const size = Math.max(.001, Math.sin(burstProgress * Math.PI) * fade * (.055 + particleIndex % 4 * .012))
-      particle.scale.setScalar(size)
-      const material = materialOf(particle)
-      if (material) {
-        material.color.set(fireworkColor(burstIndex, particleIndex))
-        material.opacity = Math.max(0, Math.sin(burstProgress * Math.PI) * fade)
-      }
-    })
-  })
 })
 </script>
 
@@ -340,15 +250,5 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     <TresGroup v-for="index in energyStarIndexes" :key="`energy-star-${index}`" :ref="node => setEnergyStar(node, index)">
       <TresMesh><TresDodecahedronGeometry /><TresMeshBasicMaterial :color="index % 3 === 0 ? appearance.palette.primaryGlow : index % 3 === 1 ? appearance.palette.secondaryGlow : appearance.palette.tailGlow" transparent :opacity="0" :blending="AdditiveBlending" :depth-write="false" /></TresMesh>
     </TresGroup>
-
-    <template v-for="burstIndex in fireworkBurstIndexes" :key="`firework-${burstIndex}`">
-      <TresGroup :ref="node => setRocket(node, burstIndex)">
-        <TresMesh :scale="vector(.055, .14, .055)"><TresSphereGeometry :args="[1, 14, 14]" /><TresMeshBasicMaterial :color="fireworkColor(burstIndex, 0)" :blending="AdditiveBlending" :tone-mapped="false" /></TresMesh>
-        <TresMesh :position="vector(0, -.18, 0)" :scale="vector(.025, .2, .025)"><TresCylinderGeometry :args="[1, 1, 1, 10]" /><TresMeshBasicMaterial :color="fireworkColor(burstIndex, 1)" transparent :opacity=".72" :blending="AdditiveBlending" :depth-write="false" /></TresMesh>
-      </TresGroup>
-      <TresGroup v-for="particleIndex in fireworkParticleIndexes" :key="`firework-${burstIndex}-${particleIndex}`" :ref="node => setFireworkParticle(node, burstIndex, particleIndex)">
-        <TresMesh><TresSphereGeometry :args="[1, 10, 10]" /><TresMeshBasicMaterial :color="fireworkColor(burstIndex, particleIndex)" transparent :opacity="0" :blending="AdditiveBlending" :depth-write="false" :tone-mapped="false" /></TresMesh>
-      </TresGroup>
-    </template>
   </TresGroup>
 </template>

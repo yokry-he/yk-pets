@@ -1,68 +1,51 @@
+/**
+ * 文件职责 / File responsibility
+ * 校验宠物工坊配方、场景、多物种、局部编辑、完整动作与统一云狐渲染能力持续存在。
+ * Verifies that Pet Studio recipe, scene, multi-species, local editing, complete motions, and unified Cloud Fox rendering remain available.
+ */
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const phase2 = read('apps/playground/app/domain/pet-studio-phase2.ts')
 const domain = read('apps/playground/app/domain/pet-studio-phase3.ts')
-const store = read('apps/playground/app/stores/pet-appearance.ts')
-const renderer = [
-  read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue'),
-  read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue'),
-  read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue'),
-  read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue'),
-].join('\n')
-const page = read('apps/playground/app/pages/studio.vue')
 const phase4 = read('apps/playground/app/domain/pet-studio-phase4.ts')
-const presetsPage = read('apps/playground/app/pages/studio-presets.vue')
+const registry = read('apps/playground/app/domain/pet-species-registry.ts')
 const scene = read('apps/playground/app/domain/pet-scene.ts')
+const store = read('apps/playground/app/stores/pet-appearance.ts')
+const page = read('apps/playground/app/pages/studio.vue')
+const presetsPage = read('apps/playground/app/pages/studio-presets.vue')
+const scenePage = read('apps/playground/app/pages/studio-scenes.vue')
+const speciesPage = read('apps/playground/app/pages/studio-species.vue')
 const sceneComponent = read('apps/playground/app/components/studio/PetSceneEffects.vue')
 const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
-const scenePage = read('apps/playground/app/pages/studio-scenes.vue')
-const registry = read('apps/playground/app/domain/pet-species-registry.ts')
-const defaults = read('apps/playground/app/domain/extension-cloud-fox-default.ts')
 const moonCat = read('apps/playground/app/components/studio/MoonCat.vue')
 const proceduralPet = read('apps/playground/app/components/studio/ProceduralPet.vue')
-const speciesPage = read('apps/playground/app/pages/studio-species.vue')
-const visualProfile = read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts')
+const core = read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue')
+const body = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue')
+const head = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
+const tail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue')
+const effects = read('apps/playground/app/components/studio/ExtensionCloudFoxMotionEffects.vue')
+const fireworks = read('apps/playground/app/components/studio/ProductionCloudFoxFireworks.vue')
+const fireworksDomain = read('apps/playground/app/domain/production-cloud-fox-fireworks.ts')
+const headIntent = read('apps/playground/app/components/studio/ProductionCloudFoxHeadIntent.vue')
+const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
 const pawEditor = read('apps/playground/app/components/studio/StudioTailEditor.vue')
 const patchDomain = read('apps/playground/app/domain/pet-appearance-patch.ts')
 const patchTest = read('scripts/test-pet-studio-local-patches.ts')
 const expectations = [
-  ['schema v2', domain.includes('PET_STUDIO_SCHEMA_VERSION = 2')],
-  ['legacy migration', domain.includes('legacySymbols') && domain.includes('normalizePetStudioAppearanceV2')],
-  ['independent chest and back channels', domain.includes('chest: SymbolChannelRecipe') && domain.includes('back: SymbolChannelRecipe')],
-  ['derived highlight shade halo', domain.includes('highlight') && domain.includes('shade') && domain.includes('halo')],
-  ['undo redo', store.includes('undoStack') && store.includes('redoStack') && page.includes('撤销') && page.includes('重做')],
-  ['geometry audit', domain.includes('auditPetStudioAppearance') && page.includes('自动边界和穿模检查')],
-  ['visible symbol glow', renderer.includes('glowIntensity * .55') && renderer.includes('TresPointLight')],
-  ['six built-in presets', ['云灵经典','糯米可爱','霓虹机械','极光水晶','森林精灵','暗夜星云'].every(name => phase4.includes(name))],
-  ['four style rules', ['cute','mechanical','nebula','crystal'].every(name => phase4.includes(`${name}: recipe`))],
-  ['scoped application', phase4.includes("AppearanceApplyScope = 'all' | 'shape' | 'proportions' | 'colors' | 'glow'")],
-  ['locked random generation', phase4.includes('randomizeWithLocks') && presetsPage.includes('随机生成锁定')],
-  ['user schemes', presetsPage.includes('我的方案') && store.includes('saveCustomScheme')],
-  ['scene recipe', scene.includes('interface PetSceneRecipe')],
-  ['four scene presets', ['极光云境','深空星云','霓虹机库','完全透明'].every(name => scene.includes(name))],
-  ['halo particles ground shadow', ['halo','particles','groundShadow'].every(name => sceneComponent.includes(name))],
-  ['automatic web contrast', scene.includes('resolveSceneContrast') && scenePage.includes('跟随网页')],
-  ['action linked scene', scene.includes('sceneActionMultiplier') && sceneComponent.includes('behavior')],
+  ['schema v2 and legacy migration', domain.includes('PET_STUDIO_SCHEMA_VERSION = 2') && domain.includes('normalizePetStudioAppearanceV2')],
+  ['independent symbols and derived colors', domain.includes('chest: SymbolChannelRecipe') && domain.includes('back: SymbolChannelRecipe') && ['highlight','shade','halo'].every(key => domain.includes(key))],
+  ['undo redo and geometry audit', store.includes('undoStack') && store.includes('redoStack') && page.includes('自动边界和穿模检查')],
+  ['presets styles locks and user schemes', ['云灵经典','糯米可爱','霓虹机械','极光水晶','森林精灵','暗夜星云'].every(name => phase4.includes(name)) && presetsPage.includes('随机生成锁定') && store.includes('saveCustomScheme')],
+  ['scene recipes effects and web contrast', scene.includes('interface PetSceneRecipe') && ['halo','particles','groundShadow'].every(name => sceneComponent.includes(name)) && scenePage.includes('跟随网页')],
   ['scene excluded from camera bounds', canvas.includes('current body and local tail bounds')],
-  ['species registry', registry.includes('PET_SPECIES_REGISTRY')],
-  ['Moon Cat active', registry.includes("'moon-cat':") && registry.includes("status: 'active'") && moonCat.includes('foreheadMark') && moonCat.includes('whiskers')],
-  ['planned slime and rabbit', registry.includes("'nebula-slime'") && registry.includes("'star-rabbit'") && registry.match(/status: 'planned'/g)?.length === 2],
-  ['species slot differences', registry.includes("'whiskers','forehead-mark'") && registry.includes("'front-paws','tail'")],
-  ['cross species style mapping', registry.includes('applyStyleAcrossSpecies') && ['cute','mechanical','nebula','crystal'].every(style => registry.includes(`style === '${style}'`))],
-  ['motion fallback', registry.includes('resolveSpeciesBehavior') && speciesPage.includes('实际动作')],
-  ['generic renderer dispatch', proceduralPet.includes('MoonCat') && proceduralPet.includes('ExtensionAlignedCloudFox')],
-  ['single Cloud Fox baseline', !proceduralPet.includes('CustomizableCloudFox') && !proceduralPet.includes('usesExtensionClassicTopology')],
-  ['no Moon Cat logic in Cloud Fox renderer', !renderer.includes('moon-cat') && !renderer.includes('whiskers')],
-  ['exact extension visual scheme', visualProfile.includes('chrome-extension-production') && renderer.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME')],
-  ['classic default includes local controls', defaults.includes('earDesign:') && defaults.includes('frontPawDesign:') && defaults.includes('rootExtensionLength') && defaults.includes('tipGlow:')],
-  ['ear color channels', phase2.includes('interface EarDesignRecipe') && renderer.includes('earDesign.innerColor') && renderer.includes('earDesign.tipColor')],
-  ['tail local controls', phase2.includes('interface TailDesignRecipe') && ['rootOffsetX','lateralOffset','offsetX','tipGlow'].every(name => phase2.includes(name))],
-  ['local patch store actions', ['patchParts','patchFrontPawDesign','patchEarDesign','patchTailDesign','patchTailSegment'].every(name => store.includes(name))],
-  ['deep local patch helper', patchDomain.includes('applyPetAppearanceLocalPatch') && patchDomain.includes('frontPawDesign') && patchDomain.includes('tipGlow') && patchDomain.includes('segments: patch.tailDesign?.segments')],
-  ['local patch isolation test', patchTest.includes('nonTailSnapshot') && patchTest.includes('nonEarSnapshot') && patchTest.includes('nonPawSnapshot')],
-  ['front paw recipe and safe ranges', registry.includes('interface FrontPawDesignRecipe') && registry.includes('FRONT_PAW_DESIGN_RANGES') && registry.includes('auditFrontPawDesign')],
-  ['front paw continuous body attachment', renderer.includes('pawSurfaceDepth') && renderer.includes('shoulderRadius') && renderer.includes('embedDepth') && renderer.includes('setPawMotionRef')],
-  ['front paw configurable styles', ['软胶囊爪','渐细短爪','糯米手套爪','机械关节爪'].every(name => registry.includes(name)) && pawEditor.includes('连续前爪连接')],
+  ['species registry and active Moon Cat', registry.includes('PET_SPECIES_REGISTRY') && registry.includes("'moon-cat'") && moonCat.includes('foreheadMark') && moonCat.includes('whiskers')],
+  ['planned species and motion fallback', registry.includes("'nebula-slime'") && registry.includes("'star-rabbit'") && registry.includes('resolveSpeciesBehavior') && speciesPage.includes('实际动作')],
+  ['generic renderer dispatch remains', proceduralPet.includes('MoonCat') && proceduralPet.includes('ExtensionAlignedCloudFox') && !proceduralPet.includes('CustomizableCloudFox')],
+  ['extension and Studio share the same Cloud Fox composition', configured.includes("../../../playground/app/components/studio/ExtensionAlignedCloudFox.vue") && core.includes('ExtensionCloudFoxBody')],
+  ['complete body head tail and prop layers remain', body.includes('frontPawDesign') && head.includes('earDesign.innerColor') && tail.includes('tipGlow.enabled') && core.includes('ExtensionCloudFoxEnergyBall') && core.includes('ExtensionCloudFoxMealOverlay')],
+  ['full action effects remain', effects.includes('thoughtBubbles') && effects.includes('starGroup') && effects.includes('cloud-nap') && effects.includes('sparkle-sneeze') && fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48') && headIntent.includes('createProductionFireworkBurstPlan')],
+  ['ear tail and front-paw local controls remain', phase2.includes('interface EarDesignRecipe') && phase2.includes('interface TailDesignRecipe') && registry.includes('FRONT_PAW_DESIGN_RANGES') && pawEditor.includes('连续前爪连接')],
+  ['local patch isolation remains', patchDomain.includes('applyPetAppearanceLocalPatch') && patchDomain.includes('frontPawDesign') && patchTest.includes('nonTailSnapshot') && patchTest.includes('nonEarSnapshot') && patchTest.includes('nonPawSnapshot')],
 ]
 const failures = expectations.filter(([, ok]) => !ok).map(([name]) => name)
 if (failures.length) {

@@ -49,6 +49,7 @@ const props = withDefaults(defineProps<{
   recipe: null,
 })
 
+const shellRef = shallowRef<HTMLDivElement>()
 const mountHost = shallowRef<HTMLDivElement>()
 const petElement = shallowRef<PetElementCandidate>()
 const fallbackActive = ref(false)
@@ -71,6 +72,7 @@ const effectiveBehavior = computed(() => {
   if (!runtimePreferences.value.idleEnabled) return 'idle'
   return runtimePreferences.value.idleMotionIds.includes(motion.id as YkPetIdleMotionId) ? props.behavior : 'idle'
 })
+const viewportActive = ref(true)
 const render3d = computed(() => runtimeReady.value && load3dPet.value)
 const hostStyle = computed(() => ({
   position: 'relative' as const,
@@ -88,6 +90,7 @@ let mountGeneration = 0
 let lastStateSignature = ''
 let uiMotionPermitTimer: number | null = null
 let manualMotionPermitTimer: number | null = null
+let viewportObserver: IntersectionObserver | null = null
 
 function hasExtensionStorage() {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
@@ -193,6 +196,7 @@ function updatePetElement() {
     Math.round(props.pointer.x * 100) / 100,
     Math.round(props.pointer.y * 100) / 100,
     props.motionKey,
+    viewportActive.value ? 1 : 0,
   ].join('|')
   if (signature === lastStateSignature) return
 
@@ -210,6 +214,7 @@ function updatePetElement() {
         transparent: props.transparent,
         pointer: props.pointer,
         motionKey: props.motionKey,
+        active: viewportActive.value,
       },
     })
     lastStateSignature = signature
@@ -302,6 +307,7 @@ watch(
     props.pointer.y,
     props.motionKey,
     props.recipe,
+    viewportActive.value,
   ] as const,
   schedulePetElementUpdate,
 )
@@ -347,10 +353,27 @@ function onOverlayInteraction(event: Event) {
   manualMotionPermitTimer = window.setTimeout(clearManualMotionPermit, motion.duration + 900)
 }
 
+function installViewportObserver() {
+  viewportObserver?.disconnect()
+  const target = shellRef.value
+  if (!target || typeof IntersectionObserver === 'undefined') {
+    viewportActive.value = true
+    return
+  }
+  viewportObserver = new IntersectionObserver((entries) => {
+    const next = Boolean(entries[0]?.isIntersecting)
+    if (viewportActive.value === next) return
+    viewportActive.value = next
+    schedulePetElementUpdate()
+  }, { root: null, rootMargin: '80px', threshold: 0 })
+  viewportObserver.observe(target)
+}
+
 onMounted(async () => {
   document.addEventListener('pointerdown', onOverlayInteraction, true)
   document.addEventListener('click', onOverlayInteraction, true)
   if (hasExtensionStorage()) chrome.storage.onChanged.addListener(onStorageChanged)
+  installViewportObserver()
   await restoreStoredState()
   if (render3d.value) await mountPetElement()
 })
@@ -360,13 +383,15 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', onOverlayInteraction, true)
   clearUiMotionPermit()
   clearManualMotionPermit()
+  viewportObserver?.disconnect()
+  viewportObserver = null
   stop3dRenderer()
   if (hasExtensionStorage()) chrome.storage.onChanged.removeListener(onStorageChanged)
 })
 </script>
 
 <template>
-  <div class="avatar-web-component-shell" :style="hostStyle" :data-render-mode="render3d ? '3d' : 'static'">
+  <div ref="shellRef" class="avatar-web-component-shell" :style="hostStyle" :data-render-mode="render3d ? '3d' : 'static'">
     <div
       v-if="render3d && !fallbackActive"
       ref="mountHost"
@@ -384,6 +409,7 @@ onBeforeUnmount(() => {
       :pointer="pointer"
       :motion-key="motionKey"
       :recipe="effectiveRecipe"
+      :active="viewportActive"
     />
     <div v-else class="avatar-static-fallback" role="img" aria-label="3D 云灵已关闭，点击仍可打开 YK-PETS 功能">
       <span class="avatar-static-fallback__ear avatar-static-fallback__ear--left" />

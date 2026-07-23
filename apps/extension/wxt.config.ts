@@ -1,8 +1,9 @@
 /**
  * 文件职责 / File responsibility
- * WXT 构建配置与 Chrome Manifest V3 权限、Side Panel、快捷键、压缩包名称和 CSP 声明。
- * WXT build configuration and Chrome Manifest V3 permissions, Side Panel, shortcuts, ZIP naming, and CSP declarations.
+ * WXT 构建配置与 Chrome Manifest V3 权限、共享 Studio 云狐源码别名、Side Panel、快捷键、压缩包名称和 CSP 声明。
+ * WXT build configuration for Chrome Manifest V3 permissions, the shared Studio Cloud Fox source alias, Side Panel, shortcuts, ZIP naming, and CSP declarations.
  */
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'wxt'
 
 /**
@@ -11,6 +12,14 @@ import { defineConfig } from 'wxt'
  */
 export default defineConfig({
   modules: ['@wxt-dev/module-vue'],
+  // Studio 云狐组件保留原有 ~/domain 导入，两端解析到同一份源码。 / Studio Cloud Fox components keep their ~/domain imports while both builds resolve the same source.
+  alias: {
+    '~': fileURLToPath(new URL('../playground/app', import.meta.url)),
+  },
+  vite: () => ({
+    // Nuxt 在 Studio 中提供该标记；扩展构建保持相同客户端语义。 / Nuxt provides this flag in Studio; the extension build keeps the same client-side semantics.
+    define: { 'import.meta.client': 'true' },
+  }),
   zip: {
     artifactTemplate: 'yk-pets-{{version}}-{{browser}}.zip',
   },

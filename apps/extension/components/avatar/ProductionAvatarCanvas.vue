@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  作为 <yk-pet> 的扩展正式 TresJS 渲染实现，消费 pet-core 配方并保持既有完整视觉质量。
-  Serves as the extension production TresJS renderer behind <yk-pet>, consuming pet-core recipes while preserving the existing full visual quality.
+  作为 <yk-pet> 的扩展正式 TresJS 渲染实现，消费统一云狐配方并保持既定 DPR、帧率、灯光和星云视觉质量。
+  Serves as the production TresJS renderer behind <yk-pet>, consuming the unified Cloud Fox recipe while preserving the established DPR, frame rate, lighting, and nebula quality.
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
@@ -11,6 +11,8 @@ import type { PetRecipeEnvelope } from '@yk-pets/pet-core'
 import ConfiguredCloudFox from './ConfiguredCloudFox.vue'
 import { resolveExtensionCloudFoxAppearance } from './appearance'
 import type { PetEmotion } from './types'
+
+type CloudFoxRendererView = 'front' | 'left' | 'back' | 'right'
 
 function vec3(x: number, y: number, z: number) { return new Vector3(x, y, z) }
 
@@ -24,6 +26,8 @@ const props = withDefaults(defineProps<{
   pointer?: { x: number; y: number }
   motionKey?: number
   recipe?: PetRecipeEnvelope | null
+  view?: CloudFoxRendererView
+  active?: boolean
 }>(), {
   speaking: false,
   score: 100,
@@ -32,14 +36,16 @@ const props = withDefaults(defineProps<{
   pointer: () => ({ x: 0, y: 0 }),
   motionKey: 0,
   recipe: null,
+  view: 'front',
+  active: true,
 })
 
 const visual = computed(() => resolveExtensionCloudFoxAppearance(props.recipe))
 const secretMode = computed(() => props.behavior === 'excited')
 const wideScene = computed(() => props.behavior === 'fireworks-show')
 const cameraPosition = computed(() => wideScene.value
-  ? props.compact ? vec3(0, 0.62, 11.3) : vec3(0, 0.72, 10.8)
-  : props.compact ? vec3(0, 0.08, 9.7) : vec3(0, 0.42, 8.8))
+  ? props.compact ? vec3(0, .62, 11.3) : vec3(0, .72, 10.8)
+  : props.compact ? vec3(0, .08, 9.7) : vec3(0, .42, 8.8))
 const pixelRatio = computed<[number, number]>(() => props.compact ? [.75, 1] : [.9, 1.25])
 const frameRateLimit = computed(() => props.compact ? 30 : 40)
 const foxScale = computed(() => props.compact ? .92 : 1)
@@ -57,14 +63,7 @@ const rootStyle = computed(() => ({
     ? 'transparent'
     : 'radial-gradient(circle at 50% 76%,rgba(82,224,208,.1),transparent 34%),radial-gradient(circle at 50% 8%,rgba(112,102,255,.18),transparent 42%),#0a0d18',
 }))
-const tresStyle = {
-  display: 'block',
-  width: '100%',
-  height: '100%',
-  minWidth: '0',
-  minHeight: '0',
-  background: 'transparent',
-}
+const tresStyle = { display: 'block', width: '100%', height: '100%', minWidth: '0', minHeight: '0', background: 'transparent' }
 </script>
 
 <template>
@@ -87,7 +86,7 @@ const tresStyle = {
       <TresPointLight :position="vec3(-3, 1, 2)" :intensity="secretMode ? 7 : 3.6" :color="visual.palette.primaryGlow" />
       <TresPointLight :position="vec3(3, -1, 2)" :intensity="secretMode ? 6 : 2.8" :color="visual.palette.secondaryGlow" />
       <TresGroup :scale="vec3(foxScale, foxScale, foxScale)">
-        <ConfiguredCloudFox :behavior="behavior" :emotion="emotion" :speaking="speaking" :pointer="pointer" :secret-mode="secretMode" :motion-key="motionKey" :recipe="recipe" theme="dark" />
+        <ConfiguredCloudFox :behavior="behavior" :emotion="emotion" :speaking="speaking" :pointer="pointer" :secret-mode="secretMode" :motion-key="motionKey" :recipe="recipe" :view="view" :active="active" theme="dark" />
       </TresGroup>
     </TresCanvas>
     <div class="avatar-glow" :style="{ opacity: Math.max(.18, score / 130) }" />

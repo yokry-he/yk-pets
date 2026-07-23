@@ -1,9 +1,10 @@
 <!--
   文件职责 / File responsibility
-  在玩球与正面飞扑动作中覆盖静态眼睛高光，并用共享球坐标驱动清晰可见的双眼追视。
-  Covers the static eye highlights during ball play and front-facing catch, then drives clearly visible binocular gaze from the shared ball pose.
+  覆盖静态眼睛高光，并用共享球、网页指针和正式烟花发射原点驱动清晰可见的双眼追视。
+  Covers static eye highlights and drives visible binocular gaze from shared ball poses, the page pointer, and production fireworks origins.
 -->
 <script setup lang="ts">
+import { computed, shallowRef } from 'vue'
 import { useLoop } from '@tresjs/core'
 import { Vector3 } from 'three'
 import type { Group } from 'three'
@@ -11,13 +12,19 @@ import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cl
 import { createExtensionCloudFoxMotionFrame } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import { createBallMotionPose, createCatchMotionPose } from '~/domain/cloud-fox-prop-motion'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
+import { createProductionFireworkBurstPlan, PRODUCTION_FIREWORK_BURST_COUNT } from '~/domain/production-cloud-fox-fireworks'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
   behavior: ExtensionCloudFoxMotionId
   motionKey: number
-}>()
+  pointer?: { x: number; y: number }
+  fireworkSeed?: number
+}>(), {
+  pointer: () => ({ x: 0, y: 0 }),
+  fireworkSeed: 0,
+})
 
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vector = (x: number, y: number, z: number) => new Vector3(x, y, z)
@@ -58,19 +65,38 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   }
   const stateElapsed = Math.max(0, elapsed - startedAt)
   const frame = createExtensionCloudFoxMotionFrame(props.behavior, stateElapsed)
-  const active = props.behavior === 'playing-ball' || props.behavior === 'diving-catch'
+  const pointerActive = (props.behavior === 'idle' || props.behavior === 'listening')
+    && (Math.abs(props.pointer.x) > .01 || Math.abs(props.pointer.y) > .01)
+  const active = props.behavior === 'playing-ball'
+    || props.behavior === 'diving-catch'
+    || props.behavior === 'fireworks-show'
+    || pointerActive
   if (root.value) root.value.visible = active
   if (!active) return
 
-  const target = props.behavior === 'playing-ball'
-    ? createBallMotionPose(frame.ballProgress).position
-    : createCatchMotionPose(frame.catchProgress).ballPosition
-  const gazeX = clamp(target.x * .125, -.095, .095)
-  const gazeY = clamp((target.y + .08) * .055, -.052, .058)
+  let gazeX = 0
+  let gazeY = 0
+  if (props.behavior === 'playing-ball' || props.behavior === 'diving-catch') {
+    const target = props.behavior === 'playing-ball'
+      ? createBallMotionPose(frame.ballProgress).position
+      : createCatchMotionPose(frame.catchProgress).ballPosition
+    gazeX = clamp(target.x * .125, -.095, .095)
+    gazeY = clamp((target.y + .08) * .055, -.052, .058)
+  }
+  else if (props.behavior === 'fireworks-show') {
+    const burstIndex = Math.floor(Math.min(PRODUCTION_FIREWORK_BURST_COUNT - .001, frame.fireworksProgress * PRODUCTION_FIREWORK_BURST_COUNT))
+    const burst = createProductionFireworkBurstPlan(props.fireworkSeed, burstIndex)
+    gazeX = clamp(burst.originX * .025, -.045, .045)
+    gazeY = .052
+  }
+  else {
+    gazeX = clamp(props.pointer.x * .038, -.052, .052)
+    gazeY = clamp(-props.pointer.y * .036, -.052, .052)
+  }
+
   const blinkPhase = (elapsed + .73) % 4.8
   const blinkDistance = Math.abs(blinkPhase - 4.64)
   const blinkScale = blinkDistance < .13 ? .12 + blinkDistance / .13 * .88 : 1
-
   const update = (group: Group | undefined, side: -1 | 1) => {
     if (!group) return
     const targetX = side * eyeX.value + side * baseHighlightX + gazeX
