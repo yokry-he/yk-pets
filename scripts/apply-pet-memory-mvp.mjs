@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// One-time repository migration for the local-first Pet Memory MVP.
 import { readFile, writeFile } from 'node:fs/promises'
 
 async function replaceOnce(path, before, after, label) {
