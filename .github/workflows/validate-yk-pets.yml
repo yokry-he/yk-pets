@@ -28,7 +28,14 @@ jobs:
           node-version: 22
 
       - name: Apply Pet Memory MVP
-        run: node scripts/apply-pet-memory-mvp.mjs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-pet-memory-mvp.mjs')
+          source = path.read_text()
+          path.write_text(source.replace('${state.memoryCount}', r'\${state.memoryCount}'))
+          PY
+          node scripts/apply-pet-memory-mvp.mjs
 
       - name: Remove one-time migration and restore validation workflow
         run: |
