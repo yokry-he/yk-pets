@@ -14,8 +14,8 @@ const overlay = read('apps/extension/entrypoints/content/NovaPetOverlay.vue')
 const content = read('apps/extension/entrypoints/content.ts')
 
 const checks = [
-  ['TresJS canvas uses adaptive FPS and compact DPR', productionCanvas.includes(':fps-limit="frameRateLimit"') && productionCanvas.includes("props.compact ? [.6, .9]") && productionCanvas.includes('if (quietMotion.value) return 12') && productionCanvas.includes('power-preference="low-power"')],
-  ['compact overlay disables antialiasing and optional point light', productionCanvas.includes(':antialias="!compact"') && productionCanvas.includes('v-if="!compact || secretMode || highMotion"')],
+  ['TresJS canvas preserves established FPS and DPR caps', productionCanvas.includes(':fps-limit="frameRateLimit"') && productionCanvas.includes("props.compact ? [.75, 1]") && productionCanvas.includes('props.compact ? 30 : 40') && productionCanvas.includes('power-preference="low-power"')],
+  ['compact overlay disables antialiasing without removing scene lights', productionCanvas.includes(':antialias="!compact"') && !productionCanvas.includes('<TresPointLight v-if=') && productionCanvas.match(/<TresPointLight/g)?.length === 2],
   ['pointer updates are throttled before renderer propagation', overlay.includes('POINTER_UPDATE_INTERVAL_MS = 34') && overlay.includes('schedulePointerUpdate') && overlay.includes('pointerUpdateTimer')],
   ['motion audio loads on demand instead of preloading every asset', !overlay.includes('preloadMotionVoices()')],
   ['Web Component renderer updates are coalesced and deduplicated', avatarHost.includes('schedulePetElementUpdate') && avatarHost.includes('lastStateSignature') && !avatarHost.includes('{ deep: true }')],
