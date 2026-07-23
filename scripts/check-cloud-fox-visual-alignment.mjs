@@ -24,7 +24,7 @@ const checks = [
   ['production model profile retains exact values', exactTokens.every(token => profile.includes(token))],
   ['extension uses the exact Studio composition component', configured.includes("../../../playground/app/components/studio/ExtensionAlignedCloudFox.vue") && core.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME')],
   ['complete body head intent and continuous tail remain', headIntent.includes('ExtensionCloudFoxHead') && body.includes('pawSurfaceDepth') && body.includes('frontPawDesign') && head.includes('earDesign.innerColor') && tail.includes('TresTubeGeometry') && tail.includes('tipGlow.enabled')],
-  ['production camera values remain exact', production.includes('vec3(0, .42, 8.8)') && production.includes('vec3(0, .08, 9.7)') && production.includes('vec3(0, .72, 10.8)')],
+  ['production camera values remain exact', production.includes('vec3(0, 0.42, 8.8)') && production.includes('vec3(0, 0.08, 9.7)') && production.includes('vec3(0, 0.72, 10.8)')],
   ['production light values remain exact', production.includes(':intensity="1.35"') && production.includes(':intensity="3.8"') && production.includes('secretMode ? 7 : 3.6') && production.includes('secretMode ? 6 : 2.8')],
   ['production visual quality remains fixed', production.includes("props.compact ? [.75, 1] : [.9, 1.25]") && production.includes('props.compact ? 30 : 40') && production.includes('filter:blur(16px)')],
   ['Studio camera and lights retain the same production scheme', studioCanvas.includes('scheme.scene.camera.normalPosition') && studioCanvas.includes('scheme.scene.lights.directionalIntensity')],
