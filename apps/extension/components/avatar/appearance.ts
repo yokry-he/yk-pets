@@ -6,6 +6,7 @@
 import { isRecord, type PetRecipeEnvelope, type PetRecord } from '@yk-pets/pet-core'
 
 export type ExtensionBellyPatchStyle = 'oval' | 'shield' | 'bean' | 'teardrop' | 'heart'
+export type ExtensionBellyPatchMode = 'model-default' | 'custom' | 'none'
 export type ExtensionChestDisplayMode = 'none' | 'energy-core' | 'symbol' | 'hybrid'
 
 export interface ExtensionSymbolAppearance {
@@ -53,6 +54,7 @@ export interface ExtensionCloudFoxAppearance {
     antennaScale: number
   }
   bellyPatchDesign: {
+    mode: ExtensionBellyPatchMode
     visible: boolean
     style: ExtensionBellyPatchStyle
     width: number
@@ -76,7 +78,7 @@ const defaults: ExtensionCloudFoxAppearance = {
     bodyWidth: 1, bodyHeight: 1, bodyDepth: 1, headScale: 1, limbLength: 1, limbThickness: 1,
     limbSpacing: 1, pawScale: 1, earScale: 1, eyeScale: 1, eyeSpacing: 1, tailLength: 1, tailWidth: 1, antennaScale: 1,
   },
-  bellyPatchDesign: { visible: true, style: 'shield', width: 1, height: 1, offsetY: 0 },
+  bellyPatchDesign: { mode: 'model-default', visible: true, style: 'shield', width: 1, height: 1, offsetY: 0 },
   chestDisplay: { mode: 'energy-core' },
   symbols: {
     chest: { enabled: false, text: 'Z', color: '#52e0d0', scale: 1, rotation: 0, glowIntensity: 1.8, offsetX: 0, offsetY: 0, offsetZ: 0 },
@@ -128,7 +130,21 @@ export function resolveExtensionCloudFoxAppearance(recipe?: PetRecipeEnvelope | 
   const chestDisplay = record(appearance.chestDisplay)
   const symbols = record(appearance.symbols)
   const bellyStyles: ExtensionBellyPatchStyle[] = ['oval', 'shield', 'bean', 'teardrop', 'heart']
+  const bellyModes: ExtensionBellyPatchMode[] = ['model-default', 'custom', 'none']
   const chestModes: ExtensionChestDisplayMode[] = ['none', 'energy-core', 'symbol', 'hybrid']
+  const customBellyGeometry = belly.style !== undefined && (
+    belly.style !== defaults.bellyPatchDesign.style
+    || (typeof belly.width === 'number' && Math.abs(belly.width - 1) > .001)
+    || (typeof belly.height === 'number' && Math.abs(belly.height - 1) > .001)
+    || (typeof belly.offsetY === 'number' && Math.abs(belly.offsetY) > .001)
+  )
+  const bellyMode: ExtensionBellyPatchMode = bellyModes.includes(belly.mode as ExtensionBellyPatchMode)
+    ? belly.mode as ExtensionBellyPatchMode
+    : belly.visible === false
+      ? 'none'
+      : customBellyGeometry
+        ? 'custom'
+        : 'model-default'
   return {
     parts: {
       bodyShape: typeof parts.bodyShape === 'string' ? parts.bodyShape : defaults.parts.bodyShape,
@@ -162,7 +178,8 @@ export function resolveExtensionCloudFoxAppearance(recipe?: PetRecipeEnvelope | 
       antennaScale: number(proportions.antennaScale, 1, .65, 1.5),
     },
     bellyPatchDesign: {
-      visible: belly.visible !== false,
+      mode: bellyMode,
+      visible: bellyMode !== 'none',
       style: bellyStyles.includes(belly.style as ExtensionBellyPatchStyle) ? belly.style as ExtensionBellyPatchStyle : 'shield',
       width: number(belly.width, 1, .65, 1.3),
       height: number(belly.height, 1, .65, 1.25),

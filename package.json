@@ -5,7 +5,9 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.13.1",
-  "engines": { "node": ">=22.0.0" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev:extension": "corepack pnpm --filter @nova/extension dev",
     "build:extension": "corepack pnpm --filter @nova/extension build",
@@ -14,7 +16,7 @@
     "build:agent": "corepack pnpm --filter @nova/local-agent build",
     "dev:playground": "corepack pnpm --filter @nova/playground dev",
     "build:playground": "corepack pnpm --filter @nova/playground build",
-    "typecheck": "node scripts/check-documentation.mjs && node scripts/check-yk-pets-brand.mjs && node scripts/check-cloud-fox-studio.mjs && node scripts/check-pet-studio-evolution.mjs && node scripts/check-cloud-fox-visual-alignment.mjs && node scripts/check-cloud-fox-motion-parity.mjs && node scripts/check-pet-core-web-component.mjs && node scripts/check-3d-pet-authoring-skill.mjs && corepack pnpm run test:pet-studio-local-patches && node scripts/check-pet-vitality-fireworks-v060.mjs && node scripts/check-animation-glow-sleep-v061.mjs && node scripts/check-interaction-mock-v062.mjs && node scripts/check-motion-feedback-v063.mjs && node scripts/check-rule-proxy-v064.mjs && node scripts/check-fetch-mock-v065.mjs && node scripts/check-whole-json-response-v066.mjs && node scripts/check-audit-network-feedback-v067.mjs && node scripts/check-audit-pet-audio-v068.mjs && corepack pnpm run test:network-rule-create && node scripts/check-pet-actions.mjs && node scripts/check-nebula-overlay.mjs && node scripts/check-tail-design.mjs && node scripts/check-motion-controls.mjs && node scripts/check-notice-motion.mjs && node scripts/check-thought-bubble.mjs && node scripts/check-menu-interaction.mjs && node scripts/check-menu-registry.mjs && node scripts/check-minimal-menu.mjs && node scripts/check-life-motions-v040.mjs && node scripts/check-tail-paw-menu-v042.mjs && node scripts/check-motion-gaze-meal-v043.mjs && node scripts/check-network-lab-v050.mjs && node scripts/check-mock-workbench-high-energy-v051.mjs && corepack pnpm -r --if-present typecheck",
+    "typecheck": "node scripts/check-documentation.mjs && node scripts/check-yk-pets-brand.mjs && node scripts/check-cloud-fox-studio.mjs && node scripts/check-pet-studio-evolution.mjs && node scripts/check-cloud-fox-visual-alignment.mjs && node scripts/check-cloud-fox-motion-parity.mjs && node scripts/check-pet-core-web-component.mjs && node scripts/check-pet-appearance-import.mjs && node scripts/check-3d-pet-authoring-skill.mjs && corepack pnpm run test:pet-studio-local-patches && node scripts/check-pet-vitality-fireworks-v060.mjs && node scripts/check-animation-glow-sleep-v061.mjs && node scripts/check-interaction-mock-v062.mjs && node scripts/check-motion-feedback-v063.mjs && node scripts/check-rule-proxy-v064.mjs && node scripts/check-fetch-mock-v065.mjs && node scripts/check-whole-json-response-v066.mjs && node scripts/check-audit-network-feedback-v067.mjs && node scripts/check-audit-pet-audio-v068.mjs && corepack pnpm run test:network-rule-create && node scripts/check-pet-actions.mjs && node scripts/check-nebula-overlay.mjs && node scripts/check-tail-design.mjs && node scripts/check-motion-controls.mjs && node scripts/check-notice-motion.mjs && node scripts/check-thought-bubble.mjs && node scripts/check-menu-interaction.mjs && node scripts/check-menu-registry.mjs && node scripts/check-minimal-menu.mjs && node scripts/check-life-motions-v040.mjs && node scripts/check-tail-paw-menu-v042.mjs && node scripts/check-motion-gaze-meal-v043.mjs && node scripts/check-network-lab-v050.mjs && node scripts/check-mock-workbench-high-energy-v051.mjs && corepack pnpm -r --if-present typecheck",
     "test": "corepack pnpm -r --if-present test",
     "build": "corepack pnpm build:agent && corepack pnpm build:extension",
     "check:bilingual": "node scripts/check-documentation.mjs",
@@ -55,6 +57,7 @@
     "check:audit-network-feedback": "node scripts/check-audit-network-feedback-v067.mjs",
     "check:audit-pet-audio": "node scripts/check-audit-pet-audio-v068.mjs",
     "check:motion-voice-audio": "node scripts/check-motion-voice-audio.mjs",
-    "check:pet-voice-presets": "node scripts/check-pet-voice-presets-v0610.mjs"
+    "check:pet-voice-presets": "node scripts/check-pet-voice-presets-v0610.mjs",
+    "check:pet-appearance-import": "node scripts/check-pet-appearance-import.mjs"
   }
 }

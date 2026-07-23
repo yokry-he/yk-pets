@@ -20,6 +20,9 @@ const bodyScale = computed(() => vector([
   scheme.model.body.scale[1] * props.appearance.proportions.bodyHeight,
   scheme.model.body.scale[2] * props.appearance.proportions.bodyDepth,
 ]))
+const effectiveDesign = computed<BellyPatchDesignRecipe>(() => props.appearance.bellyPatchDesign.mode === 'model-default'
+  ? { ...props.appearance.bellyPatchDesign, visible: true, style: 'shield', width: 1, height: 1, offsetY: 0 }
+  : { ...props.appearance.bellyPatchDesign, visible: props.appearance.bellyPatchDesign.mode !== 'none' })
 
 /*
  * 和身体使用同一椭球中心与曲率，只放大不到 1%，因此侧面最多露出一层非常薄的外壳。
@@ -107,7 +110,7 @@ function createPatchMask(design: BellyPatchDesignRecipe) {
 }
 
 watch(
-  () => props.appearance.bellyPatchDesign,
+  () => effectiveDesign.value,
   (design) => {
     patchMask.value?.dispose()
     patchMask.value = createPatchMask(design)
@@ -119,7 +122,7 @@ onBeforeUnmount(() => patchMask.value?.dispose())
 
 <template>
   <TresMesh
-    v-if="appearance.bellyPatchDesign.visible && appearance.parts.bodyShape !== 'rounded-cube'"
+    v-if="appearance.bellyPatchDesign.mode !== 'none' && appearance.parts.bodyShape !== 'rounded-cube'"
     :position="vector(scheme.model.body.position)"
     :scale="shellScale"
     :render-order="2"
@@ -136,7 +139,7 @@ onBeforeUnmount(() => patchMask.value?.dispose())
   </TresMesh>
 
   <TresMesh
-    v-else-if="appearance.bellyPatchDesign.visible"
+    v-else-if="appearance.bellyPatchDesign.mode !== 'none'"
     :position="cubePatchPosition"
     :scale="cubePatchScale"
     :render-order="2"

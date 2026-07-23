@@ -97,7 +97,14 @@ export const BELLY_PATCH_STYLES = [
   { id: 'heart', label: '爱心造型', labelEn: 'Heart' },
 ] as const
 export type BellyPatchStyle = typeof BELLY_PATCH_STYLES[number]['id']
+export const BELLY_PATCH_MODES = [
+  { id: 'model-default', label: '模型默认肚皮', labelEn: 'Model Default' },
+  { id: 'custom', label: 'Studio 自定义肚皮', labelEn: 'Studio Custom' },
+  { id: 'none', label: '不显示肚皮', labelEn: 'None' },
+] as const
+export type BellyPatchMode = typeof BELLY_PATCH_MODES[number]['id']
 export interface BellyPatchDesignRecipe {
+  mode: BellyPatchMode
   visible: boolean
   style: BellyPatchStyle
   width: number
@@ -154,7 +161,7 @@ export function defaultBodyOrbitDesign(): BodyOrbitDesignRecipe {
 }
 
 export function defaultBellyPatchDesign(): BellyPatchDesignRecipe {
-  return { visible: true, style: 'shield', width: 1, height: 1, offsetY: 0 }
+  return { mode: 'model-default', visible: true, style: 'shield', width: 1, height: 1, offsetY: 0 }
 }
 
 export function defaultChestDisplayDesign(): ChestDisplayDesignRecipe {
@@ -193,12 +200,26 @@ export function normalizeMultiSpeciesAppearance(input: unknown): MultiSpeciesApp
   const markStyles: SpeciesSpecificParts['foreheadMark']['style'][] = ['crescent','star','crystal']
   const pawStyles = FRONT_PAW_STYLES.map(item => item.id)
   const bellyStyles = BELLY_PATCH_STYLES.map(item => item.id)
+  const bellyModes = BELLY_PATCH_MODES.map(item => item.id)
   const chestModes = CHEST_DISPLAY_MODES.map(item => item.id)
   const ringCount = [1, 2, 3].includes(orbit.ringCount as number) ? orbit.ringCount as 1 | 2 | 3 : orbitFallback.ringCount
   const migratedChestMode: ChestDisplayMode = base.symbols.chest.enabled ? 'symbol' : chestFallback.mode
   const chestMode = candidate.chestDisplay && chestModes.includes(candidate.chestDisplay.mode as ChestDisplayMode)
     ? candidate.chestDisplay.mode as ChestDisplayMode
     : migratedChestMode
+  const customBellyGeometry = Boolean(candidate.bellyPatchDesign) && (
+    belly.style !== bellyFallback.style
+    || (typeof belly.width === 'number' && Math.abs(belly.width - bellyFallback.width) > .001)
+    || (typeof belly.height === 'number' && Math.abs(belly.height - bellyFallback.height) > .001)
+    || (typeof belly.offsetY === 'number' && Math.abs(belly.offsetY - bellyFallback.offsetY) > .001)
+  )
+  const bellyMode: BellyPatchMode = bellyModes.includes(belly.mode as BellyPatchMode)
+    ? belly.mode as BellyPatchMode
+    : belly.visible === false
+      ? 'none'
+      : customBellyGeometry
+        ? 'custom'
+        : 'model-default'
   return {
     ...base,
     speciesId,
@@ -231,7 +252,8 @@ export function normalizeMultiSpeciesAppearance(input: unknown): MultiSpeciesApp
       secondaryColor: color(orbit.secondaryColor, base.palette.secondaryGlow),
     },
     bellyPatchDesign: {
-      visible: belly.visible !== false,
+      mode: bellyMode,
+      visible: bellyMode !== 'none',
       style: bellyStyles.includes(belly.style as BellyPatchStyle) ? belly.style as BellyPatchStyle : bellyFallback.style,
       width: number(belly.width, ...BELLY_PATCH_DESIGN_RANGES.width, bellyFallback.width),
       height: number(belly.height, ...BELLY_PATCH_DESIGN_RANGES.height, bellyFallback.height),

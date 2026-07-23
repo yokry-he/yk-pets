@@ -155,8 +155,10 @@ function applyAppearance() {
   group.traverse((object) => {
     const mesh = object as Mesh
     if (!mesh.isMesh) return
-    if (!legacyCore.value && Math.abs(mesh.position.y + .26) < .01 && Math.abs(mesh.position.z - .74) < .02) legacyCore.value = mesh
-    if (!legacyBelly.value && Math.abs(mesh.position.y + .26) < .01 && Math.abs(mesh.position.z - .73) < .02 && mesh.scale.z < .3) legacyBelly.value = mesh
+    const isClassicBelly = Math.abs(mesh.position.y + .26) < .01 && Math.abs(mesh.position.z - .73) < .02 && mesh.scale.z < .3
+    const isEnergyCore = Math.abs(mesh.position.y + .26) < .01 && Math.abs(mesh.position.z - .74) < .02 && mesh.scale.z >= .3
+    if (!legacyBelly.value && isClassicBelly) legacyBelly.value = mesh
+    if (!legacyCore.value && isEnergyCore) legacyCore.value = mesh
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
     for (const material of materials) {
       const standard = material as MeshStandardMaterial
@@ -169,7 +171,7 @@ function applyAppearance() {
       }
     }
   })
-  if (legacyBelly.value) legacyBelly.value.visible = false
+  if (legacyBelly.value) legacyBelly.value.visible = visual.value.bellyPatchDesign.mode === 'model-default'
   if (legacyCore.value) {
     legacyCore.value.visible = showCore.value
     legacyCore.value.scale.setScalar(visual.value.chestDisplay.mode === 'hybrid' ? .72 : 1)
@@ -192,7 +194,7 @@ onBeforeUnmount(() => {
   <TresGroup ref="root" :scale="rootScale">
     <CloudFox :behavior="behavior" :emotion="emotion" :speaking="speaking" :pointer="pointer" :secret-mode="secretMode" :motion-key="motionKey" :theme="theme" />
 
-    <TresMesh v-if="visual.bellyPatchDesign.visible" :position="bellyPosition" :scale="bellyScale" :render-order="3">
+    <TresMesh v-if="visual.bellyPatchDesign.mode === 'custom'" :position="bellyPosition" :scale="bellyScale" :render-order="3">
       <TresPlaneGeometry :args="[2, 2, 16, 20]" />
       <TresMeshStandardMaterial :color="visual.palette.coatWarm" :alpha-map="bellyTexture" transparent :alpha-test=".04" :depth-write="true" />
     </TresMesh>

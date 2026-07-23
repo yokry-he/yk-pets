@@ -67,6 +67,7 @@ export function createExtensionClassicAppearance(): MultiSpeciesAppearanceRecipe
       innerGlowIntensity: .25,
     },
     bellyPatchDesign: {
+      mode: 'model-default',
       visible: true,
       style: 'shield',
       width: 1,

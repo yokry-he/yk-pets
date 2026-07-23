@@ -6,7 +6,9 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import { installYkPetsCompatibility } from '../../brand'
+import { installPetStudioTools } from './pet-studio-tools'
 import './style.css'
 
 createApp(App).mount('#app')
 installYkPetsCompatibility(document)
+installPetStudioTools(document).catch(error => console.warn('[YK-PETS pet studio tools]', error))
