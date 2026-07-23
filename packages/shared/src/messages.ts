@@ -104,9 +104,11 @@ export type YkPetsRuntimeMessage =
   | { type: 'NOVA_NETWORK_SNAPSHOT'; snapshot: NetworkSnapshot }
   | { type: 'YK_PET_MEMORY_LIST' }
   | { type: 'YK_PET_MEMORY_CREATE'; input: PetMemoryCreateInput }
+  | { type: 'YK_PET_MEMORY_IMPORT'; payload: unknown }
   | { type: 'YK_PET_MEMORY_UPDATE'; cardId: string; patch: PetMemoryUpdatePatch }
   | { type: 'YK_PET_MEMORY_ARCHIVE'; cardId: string }
   | { type: 'YK_PET_MEMORY_UPDATED'; reason: 'created' | 'updated' | 'archived'; card: PetMemoryCard }
+  | { type: 'YK_PET_MEMORY_UPDATED'; reason: 'imported' }
   | { type: 'YK_PET_MEMORY_DRAFT_READY'; tabId: number }
   | { type: 'YK_PET_MEMORY_GET_CONTEXT' }
 
