@@ -8,62 +8,9 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  migrate-pet-memory:
-    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout migration branch
-        uses: actions/checkout@v4
-        with:
-          ref: agent/cloud-fox-studio-v0610
-          fetch-depth: 0
-
-      - name: Use Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Apply Pet Memory MVP
-        id: migrate
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/apply-pet-memory-mvp.mjs')
-          source = path.read_text()
-          source = source.replace('${state.memoryCount}', r'\${state.memoryCount}')
-          source = source.replace('           @rollback-preview', '          @rollback-preview')
-          source = source.replace('           @remember', '          @remember')
-          source = source.replace('           @patch', '          @patch')
-          path.write_text(source)
-          PY
-          set +e
-          node scripts/apply-pet-memory-mvp.mjs > /tmp/pet-memory-migration.log 2>&1
-          status=$?
-          cat /tmp/pet-memory-migration.log
-          exit "$status"
-
-      - name: Upload Pet Memory migration failure log
-        if: failure() && steps.migrate.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pet-memory-migration-errors
-          path: /tmp/pet-memory-migration.log
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Commit generated Pet Memory MVP
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/extension package.json
-          git commit -m "feat: add local-first Pet Memory MVP"
-          git push origin HEAD:agent/cloud-fox-studio-v0610
-
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
