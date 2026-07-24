@@ -1,72 +1,61 @@
 # Pet Customization System
 
-## Batch scope
+## One recipe and one production model
 
-This phase adds one `customization` recipe layer for YK-PETS Zeph. Legacy Studio recipes, the extension classic appearance, and imported JSON are compatibility-normalized before entering the same Cloud Fox renderer.
+YK-PETS uses one `customization` recipe layer and one production `ExtensionAlignedCloudFox.vue` composition. Legacy Studio data, the extension classic appearance, and imported JSON are compatibility-normalized before entering the same model, motion runtime, and Shape Profile. Default, imported, and Studio pets do not create separate renderers.
 
-## Nose and mouth
+## Stable Studio layout
 
-Nose and mouth choices are no longer recipe-only dropdown values with identical output. The unified head renders visibly different geometry for:
+Search, classic comparison, part hotspots, recent history, and the local scheme library now live directly in the Vue page instead of being injected or moved after mount.
 
-- noses: soft round, fox triangle, sensor, button, and heart;
-- mouths: smile, cat, quiet line, happy open, and soft pout;
-- talking, eating, happy, and sneeze motions continue to animate mouth opening;
-- muzzle, nose, mouth, tongue, and cheek colors are independent.
+- The top bar uses explicit title, search, and action grid tracks.
+- Narrow layouts switch at defined breakpoints.
+- The inspector gives the advanced panel and parameter list independent layout and scrolling.
+- The main Studio page hides the fixed cross-page shortcut and webpage-pet overlay to prevent obstruction.
+- `/` focuses search; `Escape` clears search and exits the read-only classic comparison.
+
+## One face hierarchy
+
+The head now has one animated Head Rig and one FaceRoot.
+
+- The production head no longer renders legacy nose/mouth parts, cover ellipsoids, and replacement parts together.
+- Nose, mouth, tongue, and cheeks use head-local coordinates.
+- Head motion is calculated once and the face follows the sole Head Rig.
+- The default `smile` restores the original production Cloud Fox rounded mouth and tongue.
+- Cat, line, open, and pout styles use thin curves or a thin mouth cavity instead of side-facing torus overlays.
+
+Nose choices remain soft round, fox triangle, sensor, button, and heart. Muzzle, nose, mouth, tongue, and cheek colors are independently configurable.
+
+## Eyes
+
+Spark and crystal-diamond eyes no longer share one dodecahedron.
+
+- Spark eyes use crossed narrow luminous blades for a clear star silhouette.
+- Crystal-diamond eyes use a vertical octahedral crystal with faceted material.
+- Round and oval eyes keep ball, pointer, and fireworks gaze behavior.
+- Spark, diamond, and visor eyes no longer receive a circular gaze overlay.
+
+## Six body shapes and matching heads
+
+The shared `cloud-fox-shape-profile.ts` drives body silhouette, head form, eye/ear spacing, face depth, belly placement, and camera bounds.
+
+- Sphere: uniform round body and round head.
+- Ellipsoid: extension-classic body and head.
+- Capsule: cylindrical center with rounded ends and a taller head.
+- Pear: bottom-heavy body with a compact round head.
+- Bean: tilted two-lobe silhouette with a slightly tilted oval head.
+- Rounded cube: `RoundedBoxGeometry` body and matching rounded-square head.
+
+The new outer silhouettes enclose the production body baseline, preserving the existing paws, hind limbs, tail, symbols, and all thirty motions. Shape Profiles also provide head offsets, face-forward depth, belly front depth, and bounds multipliers.
 
 ## Belly patch
 
-The default is now an explicit **ellipse**, rather than a hidden model-default mode that forces a shield.
+The default remains an explicit **ellipse**. Available shapes are ellipse, egg, shield, teardrop, inverted teardrop, asymmetric bean, rounded rectangle, heart, cloud, and chest fur.
 
-Available silhouettes:
+The belly supports visibility, color, width, height, horizontal/vertical position, rotation, and softness. It now uses a Shape-Profile-aware front patch instead of forcing an ellipsoid shell onto capsule, pear, bean, or rounded-cube bodies.
 
-1. Ellipse
-2. Egg
-3. Shield
-4. Teardrop
-5. Inverted teardrop
-6. Asymmetric bean
-7. Rounded rectangle
-8. Heart
-9. Cloud
-10. Chest fur
+## All-part colors and expanded ranges
 
-The belly supports visibility, color, width, height, horizontal and vertical position, rotation, and edge softness. Legacy `model-default` recipes migrate to an ellipse, while legacy custom shapes map to the nearest explicit name.
+The Colors workspace covers body, limbs, paws, muzzle, nose, mouth, tongue, cheeks, eyes, highlights, ears, antennae, belly, tail glow, energy core, orbits, and symbols. Existing single-model links such as body/tail root, limbs/mid tail, and paws/warm tail tip are clearly disclosed in the UI.
 
-## All-part colors
-
-The Studio Colors workspace covers every visible material channel in the current unified model:
-
-- torso, limbs, and paws;
-- muzzle, nose, mouth, tongue, and cheeks;
-- eyes and highlights;
-- outer ear, inner ear, and ear tip;
-- antenna rod and tip;
-- belly, tail glow, and energy core;
-- primary and secondary orbits plus chest and back symbols.
-
-To preserve the existing single model, torso also colors the tail root, limbs color the mid tail, and paws color the warm tail tip and antenna rod. These links are stated in the UI rather than presented as fake independent channels.
-
-## Expanded ranges
-
-Studio now uses expanded authoring ranges instead of treating the former safe range as a hard stop. Key ranges include:
-
-- body width around `0.55–1.70`;
-- body height around `0.55–1.72`;
-- head scale around `0.68–1.48`;
-- limb length around `0.42–1.38`;
-- ear and eye scales around `0.52–1.72`;
-- tail length around `0.50–1.90`;
-- antenna scale around `0.42–1.82`;
-- belly width and height around `0.42–1.72`.
-
-The Audit workspace reports likely intersections outside the former recommended range instead of silently clamping creative input.
-
-## Studio interaction
-
-- Parts use visual selection cards rather than text-only dropdowns.
-- Sliders include precise numeric entry and per-field reset.
-- One continuous drag creates one undo history entry.
-- Local drafts save automatically.
-- **Save and use for sync** clearly writes the formal Studio appearance.
-- Importing older JSON fills colors, belly, and expanded-range fields.
-- Recipes remain local, with no upload or new browser permissions.
+Studio keeps expanded authoring ranges and reports likely intersections in Audit instead of silently clamping. Recipes and schemes remain local, with no upload, new browser permission, or background polling.
