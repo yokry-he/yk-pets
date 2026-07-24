@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  组合唯一身体表面、按身体 Profile 挂载的前后肢、能量核心和胸背标志，并保留完整动作驱动。
-  Composes the sole torso surface, body-profile-mounted limbs, energy core, and chest/back symbols while retaining full motion driving.
+  组合唯一身体表面、按身体 Profile 挂载的前后肢、能量核心和胸背标志；动作姿态由独立领域函数完整计算。
+  Composes the sole torso surface, body-profile-mounted limbs, energy core, and chest/back symbols while independent domain functions compute complete motion poses.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
@@ -9,10 +9,10 @@ import { CanvasTexture, DoubleSide, Euler, Vector3 } from 'three'
 import type { Group } from 'three'
 import ExtensionCloudFoxBodyShape from './ExtensionCloudFoxBodyShape.vue'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
-import { clamp01, createExtensionCloudFoxMotionFrame, mix, pulse, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
-import { createBallMotionPose, createCatchMotionPose } from '~/domain/cloud-fox-prop-motion'
+import { createExtensionCloudFoxMotionFrame } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import { getCloudFoxBodyProfile } from '~/domain/cloud-fox-shape-profile'
+import { createCloudFoxFrontPawPose, createCloudFoxHindPawPose } from '~/domain/cloud-fox-limb-motion'
 import { resolvePetCustomization } from '~/domain/pet-part-customization'
 import type { SymbolChannelRecipe } from '~/domain/pet-studio-phase4'
 import type { FrontPawStyle, MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
@@ -157,161 +157,23 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   }
   const stateElapsed = Math.max(0, elapsed - startedAt)
   const frame = createExtensionCloudFoxMotionFrame(props.behavior, stateElapsed)
-  const ballPose = createBallMotionPose(frame.ballProgress)
-  const catchPose = createCatchMotionPose(frame.catchProgress)
-  const state = props.behavior
-  const design = props.appearance.frontPawDesign
-
-  const update = (group: Group | undefined, tip: Group | undefined, side: -1 | 1) => {
+  const updateFront = (group: Group | undefined, tip: Group | undefined, side: -1 | 1) => {
     if (!group || !tip) return
-    let targetX = design.forwardAngle
-    let targetY = 0
-    let targetZ = side * design.outwardAngle
-    let scaleY = 1
-    let tipX = 0
-    let tipZ = 0
-
-    if (state === 'greeting' && side === 1) {
-      targetZ = mix(side * design.outwardAngle, 2.42, frame.greetingPose) + frame.greetingWave * .16
-      targetX = -.08 * frame.greetingPose
-      tipZ = frame.greetingWave * .22
-    }
-    else if (state === 'playing' || state === 'flapping') {
-      const wave = Math.sin(elapsed * (state === 'flapping' ? 11.5 : 7.2) + (side < 0 ? 0 : Math.PI))
-      targetZ += side * (.34 + wave * (state === 'flapping' ? .58 : .34))
-      targetX = -.12 - Math.abs(wave) * .24
-      tipZ = wave * .2
-    }
-    else if (state === 'jumping') {
-      targetZ = side * (.28 + frame.jumpLanding * .35)
-      targetX = -.22 - frame.jumpLanding * .2
-      tipX = -.18 * frame.jumpLanding
-    }
-    else if (state === 'stretching') {
-      targetZ = side * mix(design.outwardAngle, 2.28, frame.stretchStrength)
-      targetX = mix(design.forwardAngle, -1.06, frame.stretchStrength)
-      scaleY = 1 + frame.stretchStrength * .12
-      tipZ = side * frame.stretchStrength * .14
-    }
-    else if (state === 'resting' || state === 'sleeping' || state === 'cloud-nap') {
-      const pose = state === 'resting' ? frame.restingPose : state === 'cloud-nap' ? frame.cloudNapPose : 1
-      targetX = mix(design.forwardAngle, state === 'cloud-nap' ? -.76 : -1.02, pose)
-      targetZ = side * mix(design.outwardAngle, state === 'cloud-nap' ? .44 : .14, pose)
-      tipX = -.24 * pose
-    }
-    else if (state === 'thinking' && side < 0) {
-      targetZ = -1.12
-      targetX = -.2
-      tipZ = -.12
-    }
-    else if (state === 'listening' && side === 1) {
-      targetZ = 1.72
-      targetX = -.16
-      tipZ = .12
-    }
-    else if (state === 'confused') {
-      targetZ = side * (.72 + Math.sin(elapsed * 2.4) * .12)
-      targetX = .08
-    }
-    else if (state === 'happy' || state === 'talking' || state === 'excited') {
-      const bounce = Math.sin(elapsed * (state === 'excited' ? 9 : 6.5) + (side < 0 ? 0 : Math.PI))
-      targetZ += side * (.22 + bounce * .18)
-      tipZ = bounce * .12
-    }
-    else if (state === 'waking') {
-      const wake = smoothStep(.02, .7, frame.progress)
-      targetZ = side * mix(.1, 1.4, wake) * (1 - smoothStep(.76, .99, frame.progress))
-      targetX = -.18 * wake
-    }
-    else if (state === 'playing-ball') {
-      const activeBoost = side === ballPose.activeSide ? 1 : .7
-      const reach = clamp01(1 - Math.abs(ballPose.position.x - side * .5) / 1.05) * (.42 + ballPose.height * .58) * activeBoost
-      const tap = side < 0 ? pulse(frame.ballProgress, .12, .31) + pulse(frame.ballProgress, .62, .81) : pulse(frame.ballProgress, .37, .56) + pulse(frame.ballProgress, .78, .95)
-      const intent = Math.max(reach, tap)
-      targetX = -.2 - intent * .62 - ballPose.height * .06
-      targetY = -ballPose.position.x * .12
-      targetZ = side * (.1 + reach * .24) - ballPose.position.x * .14
-      tipX = intent * .4
-      tipZ = -ballPose.position.x * .12
-    }
-    else if (state === 'eating') {
-      const eatPose = smoothStep(.04, .22, frame.eatProgress) * (1 - smoothStep(.88, .99, frame.eatProgress))
-      targetX = -.72 * eatPose
-      targetZ = side * mix(design.outwardAngle, .34, eatPose)
-      tipX = -.28 * eatPose + Math.max(0, Math.sin(frame.eatProgress * Math.PI * 12)) * .08
-    }
-    else if (state === 'backflip' || state === 'diving-catch') {
-      const pose = state === 'backflip' ? frame.backflipTuck : frame.catchReach
-      targetX = -.24 - pose * .82 + (state === 'backflip' ? frame.backflipLand : frame.catchLand) * .24
-      targetZ = side * (-.12 - pose * .24)
-      scaleY = 1 + (state === 'diving-catch' ? pose * .15 : -pose * .12)
-      tipX = -pose * .48
-      if (state === 'diving-catch') {
-        targetY = -catchPose.pawTarget.x * .1 * pose
-        tipZ = -catchPose.pawTarget.x * .06 * pose
-      }
-    }
-    else if (state === 'energy-burst' || state === 'fireworks-show' || state === 'antenna-charge') {
-      const charge = state === 'energy-burst' ? frame.energyCharge : state === 'antenna-charge' ? frame.antennaChargePose : frame.fireworksSalute
-      targetX = -charge * .42
-      targetZ = side * mix(.06, state === 'fireworks-show' ? 2.45 : -.82, charge)
-      tipX = -charge * .32
-      tipZ = side * charge * .18
-    }
-    else if (state === 'tail-tornado') {
-      targetX = -.34 * frame.tornadoStrength
-      targetZ = side * (-.2 - frame.tornadoStrength * .32)
-      tipZ = side * -.18 * frame.tornadoStrength
-    }
-    else if (state === 'shy-peek') {
-      targetX = -.22 * frame.shyPose
-      targetZ = side < 0 ? mix(-.06, -1.46, frame.shyPose) : mix(.06, 1.3, frame.shyPose)
-      tipZ = side < 0 ? -.18 * frame.shyPose : .22 * frame.shyPose
-    }
-    else if (state === 'star-juggle') {
-      const active = side < 0 ? Math.max(0, frame.juggleWave) : Math.max(0, -frame.juggleWave)
-      targetX = -.18 - active * .5
-      targetZ = side * .34 + frame.juggleWave * .42
-      scaleY = 1 + active * .08
-      tipZ = side < 0 ? frame.juggleWave * .26 : -frame.juggleWave * .26
-    }
-    else if (state === 'sparkle-sneeze') {
-      targetZ = side * mix(.06, 1.14, frame.sneezeCharge) + side * frame.sneezeRelease * .24
-      tipZ = side * (.12 * frame.sneezeCharge - frame.sneezeRelease * .28)
-    }
-    else if (state === 'tail-glow') {
-      targetZ += side * frame.tailGlowWave * .08
-      tipZ = side * -frame.tailGlowWave * .07
-    }
-    else if (state === 'curious-scan' && side > 0) {
-      targetZ = .06 + Math.sin(frame.curiousProgress * Math.PI * 3) * .14 * frame.curiousPose
-      tipZ = Math.sin(frame.curiousProgress * Math.PI * 5) * .1 * frame.curiousPose
-    }
-
-    group.rotation.x = damp(group.rotation.x, targetX, 8, delta)
-    group.rotation.y = damp(group.rotation.y, targetY, 8, delta)
-    group.rotation.z = damp(group.rotation.z, targetZ, 8, delta)
-    group.scale.y = damp(group.scale.y, scaleY, 8, delta)
-    tip.rotation.x = damp(tip.rotation.x, tipX, 10, delta)
-    tip.rotation.z = damp(tip.rotation.z, tipZ, 10, delta)
+    const pose = createCloudFoxFrontPawPose(props.behavior, side, elapsed, frame, props.appearance.frontPawDesign)
+    group.rotation.x = damp(group.rotation.x, pose.x, 8, delta)
+    group.rotation.y = damp(group.rotation.y, pose.y, 8, delta)
+    group.rotation.z = damp(group.rotation.z, pose.z, 8, delta)
+    group.scale.y = damp(group.scale.y, pose.scaleY, 8, delta)
+    tip.rotation.x = damp(tip.rotation.x, pose.tipX, 10, delta)
+    tip.rotation.z = damp(tip.rotation.z, pose.tipZ, 10, delta)
   }
-  update(leftMotion.value, leftTip.value, -1)
-  update(rightMotion.value, rightTip.value, 1)
-
+  updateFront(leftMotion.value, leftTip.value, -1)
+  updateFront(rightMotion.value, rightTip.value, 1)
   const updateHind = (group: Group | undefined, side: -1 | 1) => {
     if (!group) return
-    const dance = state === 'playing' ? Math.sin(elapsed * 7.2 + (side < 0 ? 0 : Math.PI)) : 0
-    const high = state === 'flapping' ? Math.sin(stateElapsed * 11.5 + (side < 0 ? 0 : Math.PI)) : 0
-    let targetX = -.04 - frame.jumpLanding * .28 - Math.abs(dance) * .08
-    let targetZ = side * dance * .18
-    if (state === 'flapping') { targetX = -.22 - Math.abs(high) * .48; targetZ = side * high * .5 }
-    else if (state === 'resting') { targetX = mix(-.04, .88, frame.restingPose); targetZ = side * .36 * frame.restingPose }
-    else if (state === 'sleeping' || state === 'cloud-nap') { targetX = .48; targetZ = side * .28 }
-    else if (state === 'backflip') { targetX = -.04 - frame.backflipTuck * .76 + frame.backflipLand * .3; targetZ = side * frame.backflipTuck * .34 }
-    else if (state === 'diving-catch') { targetX = -.12 - frame.catchLaunch * .48 + frame.catchLand * .42; targetZ = side * frame.catchAir * .18 }
-    else if (state === 'tail-tornado') { targetX = -.2 - frame.tornadoStrength * .18; targetZ = side * frame.tornadoStrength * .32 }
-    group.rotation.x = damp(group.rotation.x, targetX, 8, delta)
-    group.rotation.z = damp(group.rotation.z, targetZ, 8, delta)
+    const pose = createCloudFoxHindPawPose(props.behavior, side, elapsed, frame)
+    group.rotation.x = damp(group.rotation.x, pose.x, 8, delta)
+    group.rotation.z = damp(group.rotation.z, pose.z, 8, delta)
   }
   updateHind(leftHind.value, -1)
   updateHind(rightHind.value, 1)
