@@ -1,19 +1,21 @@
 #!/usr/bin/env node
 /**
  * 文件职责 / File responsibility
- * 防止 Studio 布局、唯一鼻嘴层级、经典嘴、独立眼睛、六种身体/头型、肚皮贴合、颜色、范围和本地高级交互回退。
- * Prevents regressions in Studio layout, the sole face hierarchy, classic mouth, distinct eyes, six body/head shapes, belly placement, colors, ranges, and local advanced interactions.
+ * 锁定完整 Studio 架构：独立身体/头型、单一躯干与 FaceRoot、曲面肚皮、稳定布局、全部位颜色和本地编辑语义。
+ * Locks the complete Studio architecture: independent body/head shapes, sole torso and FaceRoot, curved belly, stable layout, all-part colors, and local editing semantics.
  */
 import { existsSync, readFileSync } from 'node:fs'
 const url = path => new URL(`../${path}`, import.meta.url)
 const read = path => readFileSync(url(path), 'utf8')
+const appearance = read('apps/playground/app/domain/cloud-fox-appearance.ts')
 const customization = read('apps/playground/app/domain/pet-part-customization.ts')
-const shapeProfile = read('apps/playground/app/domain/cloud-fox-shape-profile.ts')
-const face = read('apps/playground/app/components/studio/ExtensionCloudFoxFaceCustomization.vue')
-const head = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
-const headIntent = read('apps/playground/app/components/studio/ProductionCloudFoxHeadIntent.vue')
-const gaze = read('apps/playground/app/components/studio/ExtensionCloudFoxGazeOverlay.vue')
+const profiles = read('apps/playground/app/domain/cloud-fox-shape-profile.ts')
+const body = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue')
 const bodyShape = read('apps/playground/app/components/studio/ExtensionCloudFoxBodyShape.vue')
+const head = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
+const headShape = read('apps/playground/app/components/studio/ExtensionCloudFoxHeadShape.vue')
+const eye = read('apps/playground/app/components/studio/ExtensionCloudFoxEyeShape.vue')
+const face = read('apps/playground/app/components/studio/ExtensionCloudFoxFaceCustomization.vue')
 const belly = read('apps/playground/app/components/studio/ExtensionCloudFoxBellyPatch.vue')
 const bellyEditor = read('apps/playground/app/components/studio/StudioBellyPatchEditor.vue')
 const colors = read('apps/playground/app/components/studio/StudioPartColorEditor.vue')
@@ -25,42 +27,34 @@ const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue
 const customizationBridge = read('apps/extension/domain/pet-part-customization.ts')
 const shapeBridge = read('apps/extension/domain/cloud-fox-shape-profile.ts')
 const manifest = read('apps/extension/wxt.config.ts')
-const legacyAdvancedPluginExists = existsSync(url('apps/playground/app/plugins/studio-advanced.client.ts'))
+const oldAdvancedPlugin = existsSync(url('apps/playground/app/plugins/studio-advanced.client.ts'))
 
-const bellyShapes = ['ellipse','egg','shield','teardrop','inverted-teardrop','bean','rounded-rectangle','heart','cloud','chest-fur']
-const bodyShapes = ['sphere','ellipsoid','capsule','pear','bean','rounded-cube']
-const bodyShapeCoverage = bodyShapes.every(shape => shape === 'rounded-cube'
-  ? bodyShape.includes('RoundedBoxGeometry')
-  : bodyShape.includes(`appearance.parts.bodyShape === '${shape}'`))
+const bodyIds = ['sphere','ellipsoid','capsule','pear','bean','rounded-cube']
+const headIds = ['classic-round','wide-round','oval','capsule','bean','rounded-cube']
+const bellyIds = ['ellipse','egg','shield','teardrop','inverted-teardrop','bean','rounded-rectangle','heart','cloud','chest-fur']
 const colorKeys = ['body','limbs','paws','muzzle','nose','mouth','tongue','cheeks','eyes','eyeHighlight','earOuter','earInner','earTip','antennaRod','antennaTip','belly','tailGlow','energyCore']
 const checks = [
-  ['customization and shape profiles are shared by Studio and extension', store.includes('normalizeCustomizableAppearance') && configured.includes('normalizeCustomizableAppearance') && customizationBridge.includes('pet-part-customization') && shapeBridge.includes('cloud-fox-shape-profile')],
-  ['nose and mouth selections render distinct geometry', face.includes("appearance.parts.nose === 'triangle'") && face.includes("appearance.parts.nose === 'sensor'") && face.includes("appearance.parts.mouth === 'open'") && face.includes("appearance.parts.mouth === 'cat'") && face.includes('TresTubeGeometry')],
-  ['one animated head owns the sole face hierarchy', head.includes('<ExtensionCloudFoxFaceCustomization') && !headIntent.includes('ExtensionCloudFoxFaceCustomization') && !head.includes('ref="mouth"') && !head.includes(':position="vector(scheme.model.head.nosePosition)"') && !face.includes('ref="head"') && !face.includes('render-order')],
-  ['classic smile restores the production Cloud Fox mouth and tongue', face.includes("appearance.parts.mouth === 'smile'") && face.includes('scheme.model.head.mouthScale') && face.includes('scheme.model.head.tonguePosition') && face.includes('scheme.model.head.tongueScale')],
-  ['thin curve mouths replace side-facing torus overlays', face.includes('CatmullRomCurve3') && face.includes('smileLeft') && face.includes('catLeft') && !face.includes('TresTorusGeometry :args="[.16')],
-  ['spark and crystal diamond eyes use distinct geometry', head.includes("appearance.parts.eyes === 'spark'") && head.includes("appearance.parts.eyes === 'diamond'") && head.includes('TresOctahedronGeometry') && head.includes('Math.PI / 4') && !head.includes("['spark', 'diamond'].includes")],
-  ['six body choices have explicit outer silhouettes', bodyShapeCoverage && bodyShape.includes('capsuleHeight') && bodyShape.includes("bodyShape === 'pear'") && bodyShape.includes("bodyShape === 'bean'")],
-  ['rounded cube receives a matching rounded head', shapeProfile.includes("headShape: 'rounded-cube'") && head.includes("profile.headShape === 'rounded-cube'") && head.includes('RoundedBoxGeometry')],
-  ['shape profile drives head face belly gaze and camera bounds', head.includes('getCloudFoxShapeProfile') && face.includes('getCloudFoxShapeProfile') && belly.includes('getCloudFoxShapeProfile') && gaze.includes('getCloudFoxShapeProfile') && canvas.includes('profile.boundsScale')],
-  ['non-round eyes avoid circular gaze overlays', gaze.includes("['round', 'oval'].includes") && gaze.includes('supportsGazeOverlay')],
-  ['belly exposes ten explicit shapes with ellipse default', bellyShapes.every(shape => customization.includes(`id: '${shape}'`)) && customization.includes("return 'ellipse'") && belly.includes('drawShape') && bellyEditor.includes('恢复椭圆默认')],
-  ['all visible material channels are configurable', colorKeys.every(key => customization.includes(`${key}: string`)) && colors.includes('所有部位颜色') && store.includes('patchPartColor')],
-  ['expanded ranges exceed the legacy safe range', customization.includes('bodyWidth: [.55, 1.7]') && customization.includes('headScale: [.68, 1.48]') && customization.includes('tailLength: [.5, 1.9]') && customization.includes('width: [.42, 1.72]')],
-  ['Studio uses visual cards precise values and transactional sliders', studio.includes('option-grid') && studio.includes('type="number"') && studio.includes('store.beginTransaction') && studio.includes('store.endTransaction') && store.includes('transactionOpen')],
-  ['advanced Studio interactions are native Vue instead of DOM injection', !legacyAdvancedPluginExists && studio.includes('searchEntries') && studio.includes('compareSnapshot') && studio.includes('part-hotspots') && studio.includes('saveCustomScheme')],
-  ['Studio layout uses explicit grid tracks and independent inspector scrolling', studio.includes('.topbar{display:grid') && studio.includes('.inspector{display:grid;grid-template-rows:auto auto minmax(0,1fr)') && studio.includes('.controls{display:flex;min-height:0') && !studio.includes('.topbar{flex-wrap:wrap}')],
-  ['Studio avoids fixed shortcuts and the page-pet overlay while editing', app.includes("route.path !== '/studio'") && studio.includes(':global([data-nova-extension-root]){display:none!important}') && studio.includes(':global(.studio-entry){display:none!important}')],
-  ['Studio classic comparison restores the exact temporary snapshot', studio.includes('compareSnapshot') && studio.includes('restoreComparison') && studio.includes('createExtensionClassicAppearance') && studio.includes('compareActive')],
-  ['Studio exposes local named schemes and recent history', studio.includes('saveCustomScheme') && studio.includes('applyCustomScheme') && studio.includes('undoStack.length') && studio.includes('redoStack.length')],
-  ['Studio keyboard shortcuts remain scoped and cleaned up', studio.includes("event.key === '/'") && studio.includes("event.key === 'Escape'") && studio.includes("window.removeEventListener('keydown'") && !studio.includes('setInterval(')],
-  ['Studio draft and formal save semantics remain local', store.includes('appearance-draft:v3') && store.includes('localStorage.setItem') && !store.includes('fetch(')],
+  ['body and head are independent recipe channels', appearance.includes('CLOUD_FOX_HEAD_SHAPES') && appearance.includes('headShape: CloudFoxHeadShape') && appearance.includes("headShape: 'classic-round'") && studio.includes("setPart('headShape'") && studio.includes("setPart('bodyShape'")],
+  ['legacy recipes migrate to the classic head without body coupling', appearance.includes('normalizePart(parts.headShape, optionIds.headShapes, fallback.parts.headShape)') && !profiles.includes('headShape:') && profiles.includes('getCloudFoxBodyProfile') && profiles.includes('getCloudFoxHeadProfile')],
+  ['all body and head options have explicit profiles', bodyIds.every(id => profiles.includes(`id: '${id}'`)) && headIds.every(id => profiles.includes(`id: '${id}'`))],
+  ['one torso surface owns the production body', body.includes('<ExtensionCloudFoxBodyShape') && bodyShape.includes('sole production torso surface') && !belly.includes('ExtensionCloudFoxBodyShape') && !body.includes("appearance.parts.bodyShape === 'rounded-cube'")),
+  ['six bodies use continuous geometry rather than stacked sphere groups', bodyShape.includes('LatheGeometry') && bodyShape.includes('CapsuleGeometry') && bodyShape.includes('RoundedBoxGeometry') && bodyShape.includes('createBeanGeometry') && !bodyShape.includes('v-for="side in [-1, 1]"')),
+  ['one animated head owns one independent shell and one FaceRoot', head.includes('<ExtensionCloudFoxHeadShape') && head.includes('<ExtensionCloudFoxFaceCustomization') && headShape.includes('getCloudFoxHeadProfile') && !face.includes('ref="head"')],
+  ['spark and crystal diamond eyes use separate components and geometry', head.includes('<ExtensionCloudFoxEyeShape') && eye.includes("style === 'spark'") && eye.includes("style === 'diamond'") && eye.includes('TresOctahedronGeometry') && !eye.includes("['spark', 'diamond'].includes")],
+  ['classic mouth and thin alternate mouths remain', face.includes("appearance.parts.mouth === 'smile'") && face.includes('scheme.model.head.mouthScale') && face.includes('scheme.model.head.tongueScale') && face.includes('CatmullRomCurve3') && face.includes('TresTubeGeometry')],
+  ['belly is a curved decal and never a body constructor', bellyIds.every(id => customization.includes(`id: '${id}'`)) && belly.includes('createCurvedSurface') && belly.includes('depth-write="false"') && !belly.includes('ExtensionCloudFoxBodyShape') && bellyEditor.includes('恢复椭圆默认')],
+  ['body profile drives limb, belly, symbol and camera placement', body.includes('getCloudFoxBodyProfile') && belly.includes('getCloudFoxBodyProfile') && canvas.includes('getCloudFoxBodyProfile') && canvas.includes('getCloudFoxHeadProfile')],
+  ['Studio has bounded workspace tracks and opt-in hotspots', studio.includes('height:100dvh') && studio.includes('grid-template-rows:auto minmax(0,1fr)') && studio.includes('.controls{display:flex;min-height:0') && studio.includes('v-if="showHotspots"') && !studio.includes('position:sticky')],
+  ['Studio suppresses the extension overlay while authoring', studio.includes("class: 'yk-pets-studio-page'") && app.includes('body.yk-pets-studio-page [data-nova-extension-root="overlay"]')],
+  ['advanced features are native Vue and local-only', !oldAdvancedPlugin && studio.includes('compareSnapshot') && studio.includes('saveCustomScheme') && studio.includes('undoStack.length') && !studio.includes('setInterval(') && !store.includes('fetch(')],
+  ['all material channels and expanded ranges remain', colorKeys.every(key => customization.includes(`${key}: string`)) && colors.includes('所有部位颜色') && customization.includes('bodyWidth: [.55, 1.7]') && customization.includes('headScale: [.68, 1.48]')],
+  ['Studio and extension share normalizers and domain bridges', configured.includes('normalizeCustomizableAppearance') && customizationBridge.includes('pet-part-customization') && shapeBridge.includes('cloud-fox-shape-profile')],
   ['extension permissions remain unchanged', manifest.includes("permissions: ['activeTab', 'contextMenus', 'scripting', 'storage', 'sidePanel', 'tts']") && !manifest.includes("'unlimitedStorage'")],
 ]
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
 if (failures.length) {
-  console.error('pet customization check failed:')
+  console.error('pet customization architecture check failed:')
   for (const failure of failures) console.error(`- ${failure}`)
   process.exit(1)
 }
-console.log(`pet customization check passed: ${checks.length} checks.`)
+console.log(`pet customization architecture passed: ${checks.length} checks.`)

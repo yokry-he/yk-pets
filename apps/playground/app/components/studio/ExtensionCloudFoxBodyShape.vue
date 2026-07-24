@@ -1,54 +1,90 @@
 <!--
   文件职责 / File responsibility
-  在正式云狐身体基线上渲染六种不重复的连续外轮廓，并以略大的外壳保留既有四肢、尾巴和完整动作实现。
-  Renders six distinct continuous outer silhouettes over the production Cloud Fox body baseline while preserving existing limbs, tail, and full motion behavior.
+  以单一连续网格渲染六种身体轮廓；它是正式模型唯一身体表面，不再作为旧身体外层覆盖物。
+  Renders six body silhouettes as one continuous mesh and is the sole production torso surface rather than an overlay around a legacy body.
 -->
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue'
-import { Euler, Vector3 } from 'three'
+import { BufferAttribute, LatheGeometry, SphereGeometry, Vector2, Vector3 } from 'three'
+import { CapsuleGeometry } from 'three/examples/jsm/geometries/CapsuleGeometry.js'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
+import { getCloudFoxBodyProfile } from '~/domain/cloud-fox-shape-profile'
 import { resolvePetCustomization } from '~/domain/pet-part-customization'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 
 const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe }>()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
-const vector = (x: number, y: number, z: number) => new Vector3(x, y, z)
-const rotation = (x: number, y: number, z: number) => new Euler(x, y, z)
+const profile = computed(() => getCloudFoxBodyProfile(props.appearance.parts.bodyShape))
 const colors = computed(() => resolvePetCustomization(props.appearance).colors)
-const bodyPosition = computed(() => vector(scheme.model.body.position[0], scheme.model.body.position[1], scheme.model.body.position[2]))
-const bodyWidth = computed(() => scheme.model.body.scale[0] * props.appearance.proportions.bodyWidth)
-const bodyHeight = computed(() => scheme.model.body.scale[1] * props.appearance.proportions.bodyHeight)
-const bodyDepth = computed(() => scheme.model.body.scale[2] * props.appearance.proportions.bodyDepth)
-const ellipsoidScale = computed(() => vector(bodyWidth.value * 1.025, bodyHeight.value * 1.025, bodyDepth.value * 1.035))
-const sphereRadius = computed(() => Math.max(bodyWidth.value, bodyHeight.value, bodyDepth.value) * 1.025)
-const capsuleRadius = computed(() => Math.max(bodyWidth.value * .92, bodyDepth.value * 1.08))
-const capsuleHeight = computed(() => Math.max(.18, bodyHeight.value * 2.08 - capsuleRadius.value * 2))
-const capsuleEndY = computed(() => capsuleHeight.value * .5)
-const roundedBodyGeometry = new RoundedBoxGeometry(2.08, 2.28, 1.92, 6, .3)
-onBeforeUnmount(() => roundedBodyGeometry.dispose())
+
+function createBeanGeometry() {
+  const geometry = new SphereGeometry(1, 72, 52)
+  const position = geometry.getAttribute('position') as BufferAttribute
+  for (let index = 0; index < position.count; index += 1) {
+    const x = position.getX(index)
+    const y = position.getY(index)
+    const z = position.getZ(index)
+    const bend = Math.sin((y + 1) * Math.PI * .7) * .13
+    const waist = 1 - .09 * Math.exp(-Math.pow(y - .18, 2) / .1)
+    position.setXYZ(index, x * waist + bend, y, z * (1 - .025 * Math.abs(y)))
+  }
+  position.needsUpdate = true
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+const sphereGeometry = new SphereGeometry(1, 72, 52)
+const capsuleGeometry = new CapsuleGeometry(.72, .62, 12, 40)
+const pearGeometry = new LatheGeometry([
+  new Vector2(.18, -1),
+  new Vector2(.62, -.86),
+  new Vector2(.92, -.52),
+  new Vector2(1, -.12),
+  new Vector2(.9, .28),
+  new Vector2(.66, .68),
+  new Vector2(.3, .96),
+  new Vector2(.08, 1.03),
+], 72)
+const beanGeometry = createBeanGeometry()
+const roundedGeometry = new RoundedBoxGeometry(2, 2.08, 1.86, 8, .34)
+const geometry = computed(() => {
+  if (profile.value.geometry === 'capsule') return capsuleGeometry
+  if (profile.value.geometry === 'pear') return pearGeometry
+  if (profile.value.geometry === 'bean') return beanGeometry
+  if (profile.value.geometry === 'rounded-cube') return roundedGeometry
+  return sphereGeometry
+})
+const position = computed(() => {
+  const offset = profile.value.offset
+  return new Vector3(
+    scheme.model.body.position[0] + offset[0] * props.appearance.proportions.bodyWidth,
+    scheme.model.body.position[1] + offset[1] * props.appearance.proportions.bodyHeight,
+    scheme.model.body.position[2] + offset[2] * props.appearance.proportions.bodyDepth,
+  )
+})
+const scale = computed(() => {
+  const body = scheme.model.body.scale
+  const shape = profile.value.scale
+  const radius = scheme.model.body.radius
+  const geometryCompensation = profile.value.geometry === 'rounded-cube' ? .54 : profile.value.geometry === 'capsule' ? .75 : 1
+  return new Vector3(
+    body[0] * radius * props.appearance.proportions.bodyWidth * shape[0] * geometryCompensation,
+    body[1] * radius * props.appearance.proportions.bodyHeight * shape[1] * geometryCompensation,
+    body[2] * radius * props.appearance.proportions.bodyDepth * shape[2] * geometryCompensation,
+  )
+})
+
+onBeforeUnmount(() => {
+  sphereGeometry.dispose()
+  capsuleGeometry.dispose()
+  pearGeometry.dispose()
+  beanGeometry.dispose()
+  roundedGeometry.dispose()
+})
 </script>
 
 <template>
-  <TresGroup :position="bodyPosition">
-    <TresMesh v-if="appearance.parts.bodyShape === 'sphere'" :scale="vector(sphereRadius, sphereRadius, sphereRadius)" cast-shadow>
-      <TresSphereGeometry :args="[scheme.model.body.radius, 64, 64]" /><TresMeshStandardMaterial :color="colors.body" :roughness=".34" :metalness=".04" />
-    </TresMesh>
-    <TresMesh v-else-if="appearance.parts.bodyShape === 'ellipsoid'" :scale="ellipsoidScale" cast-shadow>
-      <TresSphereGeometry :args="[scheme.model.body.radius, 64, 64]" /><TresMeshStandardMaterial :color="colors.body" :roughness=".34" :metalness=".04" />
-    </TresMesh>
-    <TresGroup v-else-if="appearance.parts.bodyShape === 'capsule'">
-      <TresMesh cast-shadow><TresCylinderGeometry :args="[capsuleRadius, capsuleRadius, capsuleHeight, 48]" /><TresMeshStandardMaterial :color="colors.body" :roughness=".33" :metalness=".04" /></TresMesh>
-      <TresMesh v-for="side in [-1, 1]" :key="side" :position="vector(0, side * capsuleEndY, 0)" :scale="vector(capsuleRadius, capsuleRadius, capsuleRadius)" cast-shadow><TresSphereGeometry :args="[1, 48, 48]" /><TresMeshStandardMaterial :color="colors.body" :roughness=".33" :metalness=".04" /></TresMesh>
-    </TresGroup>
-    <TresGroup v-else-if="appearance.parts.bodyShape === 'pear'">
-      <TresMesh :position="vector(0, -bodyHeight * .19, 0)" :scale="vector(bodyWidth * 1.13, bodyHeight * .9, bodyDepth * 1.13)" cast-shadow><TresSphereGeometry :args="[1, 56, 56]" /><TresMeshStandardMaterial :color="colors.body" :roughness=".34" :metalness=".04" /></TresMesh>
-      <TresMesh :position="vector(0, bodyHeight * .54, 0)" :scale="vector(bodyWidth * .84, bodyHeight * .69, bodyDepth * .94)" cast-shadow><TresSphereGeometry :args="[1, 52, 52]" /><TresMeshStandardMaterial :color="colors.body" :roughness=".33" :metalness=".04" /></TresMesh>
-    </TresGroup>
-    <TresGroup v-else-if="appearance.parts.bodyShape === 'bean'" :rotation="rotation(0, 0, -.12)">
-      <TresMesh :position="vector(-bodyWidth * .13, -.04, 0)" :scale="vector(bodyWidth * 1.08, bodyHeight * 1.03, bodyDepth * 1.13)" cast-shadow><TresSphereGeometry :args="[1, 56, 56]" /><TresMeshStandardMaterial :color="colors.body" :roughness=".34" :metalness=".04" /></TresMesh>
-      <TresMesh :position="vector(bodyWidth * .52, bodyHeight * .2, 0)" :scale="vector(bodyWidth * .84, bodyHeight * .76, bodyDepth * .98)" cast-shadow><TresSphereGeometry :args="[1, 52, 52]" /><TresMeshStandardMaterial :color="colors.body" :roughness=".33" :metalness=".04" /></TresMesh>
-    </TresGroup>
-    <TresMesh v-else :geometry="roundedBodyGeometry" :scale="vector(appearance.proportions.bodyWidth, appearance.proportions.bodyHeight, appearance.proportions.bodyDepth)" cast-shadow><TresMeshStandardMaterial :color="colors.body" :roughness=".3" :metalness=".06" /></TresMesh>
-  </TresGroup>
+  <TresMesh :geometry="geometry" :position="position" :scale="scale" cast-shadow receive-shadow>
+    <TresMeshStandardMaterial :color="colors.body" :roughness=".34" :metalness=".035" />
+  </TresMesh>
 </template>

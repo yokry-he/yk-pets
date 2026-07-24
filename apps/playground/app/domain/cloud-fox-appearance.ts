@@ -1,19 +1,28 @@
-/**
+/*
  * 文件职责 / File responsibility
- * 定义云狐工坊的物种能力、可替换部件、外观配方、安全范围、相对挂载点与迁移规则。
- * Defines Cloud Fox Studio species capabilities, replaceable parts, appearance recipes, safe ranges, relative mount points, and migration rules.
+ * 定义云狐可替换部件、独立身体/头型、外观配方、安全范围、相对挂载点与旧配方迁移。
+ * Defines replaceable Cloud Fox parts, independent body/head shapes, appearance recipes, safe ranges, relative mounts, and legacy migration.
  */
 
 export const CLOUD_FOX_APPEARANCE_SCHEMA_VERSION = 1 as const
 export const CLOUD_FOX_STUDIO_STORAGE_KEY = 'yk-pets:studio:cloud-fox:v1'
 
 export const CLOUD_FOX_BODY_SHAPES = [
-  { id: 'sphere', label: '球体', labelEn: 'Sphere' },
-  { id: 'ellipsoid', label: '椭圆体', labelEn: 'Ellipsoid' },
-  { id: 'capsule', label: '胶囊体', labelEn: 'Capsule' },
-  { id: 'pear', label: '梨形', labelEn: 'Pear' },
-  { id: 'bean', label: '豆形', labelEn: 'Bean' },
-  { id: 'rounded-cube', label: '圆角方糖', labelEn: 'Rounded Cube' },
+  { id: 'sphere', label: '球体', labelEn: 'Sphere', description: '宽高接近的圆润身体。' },
+  { id: 'ellipsoid', label: '椭圆体', labelEn: 'Ellipsoid', description: '经典云灵的纵向椭球身体。' },
+  { id: 'capsule', label: '胶囊体', labelEn: 'Capsule', description: '上下圆润、腰身稳定的胶囊轮廓。' },
+  { id: 'pear', label: '梨形', labelEn: 'Pear', description: '上窄下宽、重心较低。' },
+  { id: 'bean', label: '豆形', labelEn: 'Bean', description: '轻微弯曲的不对称有机轮廓。' },
+  { id: 'rounded-cube', label: '圆角方糖', labelEn: 'Rounded Cube', description: '大圆角、低棱角的方形身体。' },
+] as const
+
+export const CLOUD_FOX_HEAD_SHAPES = [
+  { id: 'classic-round', label: '经典圆头', labelEn: 'Classic Round', description: '默认云灵圆头，不随身体变化。' },
+  { id: 'wide-round', label: '宽圆头', labelEn: 'Wide Round', description: '横向更宽、脸颊更饱满。' },
+  { id: 'oval', label: '椭圆头', labelEn: 'Oval', description: '纵向略长的柔和椭圆。' },
+  { id: 'capsule', label: '胶囊头', labelEn: 'Capsule', description: '上下圆润、侧面更平稳。' },
+  { id: 'bean', label: '豆形头', labelEn: 'Bean', description: '轻微偏斜的有机头型。' },
+  { id: 'rounded-cube', label: '圆角方头', labelEn: 'Rounded Square', description: '与方糖身体可搭配，但不会自动联动。' },
 ] as const
 
 export const CLOUD_FOX_PART_OPTIONS = {
@@ -35,7 +44,7 @@ export const CLOUD_FOX_PART_OPTIONS = {
     { id: 'sensor', label: '感应器鼻', labelEn: 'Sensor' },
   ],
   mouths: [
-    { id: 'smile', label: '微笑嘴', labelEn: 'Smile' },
+    { id: 'smile', label: '经典云狐嘴', labelEn: 'Classic Mouth' },
     { id: 'cat', label: '猫系嘴', labelEn: 'Cat Mouth' },
     { id: 'line', label: '安静线条嘴', labelEn: 'Quiet Line' },
   ],
@@ -54,6 +63,7 @@ export const CLOUD_FOX_PART_OPTIONS = {
 } as const
 
 export type CloudFoxBodyShape = typeof CLOUD_FOX_BODY_SHAPES[number]['id']
+export type CloudFoxHeadShape = typeof CLOUD_FOX_HEAD_SHAPES[number]['id']
 export type CloudFoxEarStyle = typeof CLOUD_FOX_PART_OPTIONS.ears[number]['id']
 export type CloudFoxEyeStyle = typeof CLOUD_FOX_PART_OPTIONS.eyes[number]['id']
 export type CloudFoxNoseStyle = typeof CLOUD_FOX_PART_OPTIONS.noses[number]['id']
@@ -83,6 +93,7 @@ export interface CloudFoxIdentityRecipe {
 
 export interface CloudFoxPartRecipe {
   bodyShape: CloudFoxBodyShape
+  headShape: CloudFoxHeadShape
   ears: CloudFoxEarStyle
   eyes: CloudFoxEyeStyle
   nose: CloudFoxNoseStyle
@@ -187,7 +198,7 @@ export const CLOUD_FOX_SPECIES_DEFINITION: CloudFoxSpeciesDefinition = Object.fr
   id: 'cloud-fox',
   label: '云狐',
   labelEn: 'Cloud Fox',
-  supportedSlots: Object.freeze(['body', 'ears', 'eyes', 'nose', 'mouth', 'tail', 'antenna', 'front-limbs', 'chest-symbol', 'back-symbol']),
+  supportedSlots: Object.freeze(['body', 'head', 'ears', 'eyes', 'nose', 'mouth', 'tail', 'antenna', 'front-limbs', 'chest-symbol', 'back-symbol']),
   safeRanges,
   mountPoints: Object.freeze({
     head: Object.freeze({ x: 0, y: 0.74, z: 0.04 }),
@@ -249,7 +260,16 @@ export function createDefaultCloudFoxAppearance(): CloudFoxAppearanceRecipe {
     schemaVersion: CLOUD_FOX_APPEARANCE_SCHEMA_VERSION,
     speciesId: 'cloud-fox',
     identity: { petId: 'zeph', nameZh: '云灵', nameEn: 'Zeph', monogram: 'Z' },
-    parts: { bodyShape: 'ellipsoid', ears: 'pointed', eyes: 'round', nose: 'soft', mouth: 'smile', tail: 'cloud', antenna: 'twin' },
+    parts: {
+      bodyShape: 'ellipsoid',
+      headShape: 'classic-round',
+      ears: 'pointed',
+      eyes: 'round',
+      nose: 'soft',
+      mouth: 'smile',
+      tail: 'cloud',
+      antenna: 'twin',
+    },
     proportions: {
       bodyScale: 1,
       bodyWidth: 1,
@@ -278,6 +298,7 @@ export function createDefaultCloudFoxAppearance(): CloudFoxAppearanceRecipe {
 
 const optionIds = {
   bodyShapes: new Set(CLOUD_FOX_BODY_SHAPES.map(option => option.id)),
+  headShapes: new Set(CLOUD_FOX_HEAD_SHAPES.map(option => option.id)),
   ears: new Set(CLOUD_FOX_PART_OPTIONS.ears.map(option => option.id)),
   eyes: new Set(CLOUD_FOX_PART_OPTIONS.eyes.map(option => option.id)),
   noses: new Set(CLOUD_FOX_PART_OPTIONS.noses.map(option => option.id)),
@@ -324,6 +345,7 @@ export function normalizeCloudFoxAppearance(input: unknown): CloudFoxAppearanceR
     },
     parts: {
       bodyShape: normalizePart(parts.bodyShape, optionIds.bodyShapes, fallback.parts.bodyShape),
+      headShape: normalizePart(parts.headShape, optionIds.headShapes, fallback.parts.headShape),
       ears: normalizePart(parts.ears, optionIds.ears, fallback.parts.ears),
       eyes: normalizePart(parts.eyes, optionIds.eyes, fallback.parts.eyes),
       nose: normalizePart(parts.nose, optionIds.noses, fallback.parts.nose),
@@ -387,6 +409,7 @@ export function randomizeCloudFoxAppearance(current = createDefaultCloudFoxAppea
     parts: {
       ...current.parts,
       bodyShape: randomItem(CLOUD_FOX_BODY_SHAPES, random).id,
+      headShape: randomItem(CLOUD_FOX_HEAD_SHAPES, random).id,
       ears: randomItem(CLOUD_FOX_PART_OPTIONS.ears, random).id,
       eyes: randomItem(CLOUD_FOX_PART_OPTIONS.eyes, random).id,
       nose: randomItem(CLOUD_FOX_PART_OPTIONS.noses, random).id,

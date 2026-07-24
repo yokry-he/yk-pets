@@ -1,13 +1,12 @@
 <!--
   文件职责 / File responsibility
-  组合六种正式身体外轮廓，并把十种肚皮轮廓按共享 Shape Profile 贴到各身体正面，避免旧椭球薄壳在非椭球身体上漂浮。
-  Composes six production body silhouettes and places ten belly shapes on each front surface through the shared Shape Profile, avoiding floating ellipsoid shells on non-ellipsoid bodies.
+  在唯一身体表面上渲染可弯曲的十种肚皮贴片；不创建身体，也不使用会被身体中心遮挡的平面。
+  Renders ten curved belly decals over the sole torso surface; it never creates a body and avoids flat planes occluded at their centers.
 -->
 <script setup lang="ts">
-import { CanvasTexture, Euler, Vector3 } from 'three'
-import ExtensionCloudFoxBodyShape from './ExtensionCloudFoxBodyShape.vue'
+import { BufferAttribute, CanvasTexture, Euler, PlaneGeometry, Vector3 } from 'three'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
-import { getCloudFoxShapeProfile } from '~/domain/cloud-fox-shape-profile'
+import { getCloudFoxBodyProfile } from '~/domain/cloud-fox-shape-profile'
 import { resolvePetCustomization, type PetBellyShape } from '~/domain/pet-part-customization'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 
@@ -18,23 +17,23 @@ const rotation = (x: number, y: number, z: number) => new Euler(x, y, z)
 const customization = computed(() => resolvePetCustomization(props.appearance))
 const design = computed(() => customization.value.belly)
 const colors = computed(() => customization.value.colors)
-const profile = computed(() => getCloudFoxShapeProfile(props.appearance.parts.bodyShape))
-const bodyWidth = computed(() => scheme.model.body.scale[0] * props.appearance.proportions.bodyWidth)
-const bodyHeight = computed(() => scheme.model.body.scale[1] * props.appearance.proportions.bodyHeight)
-const bodyDepth = computed(() => props.appearance.proportions.bodyDepth)
+const profile = computed(() => getCloudFoxBodyProfile(props.appearance.parts.bodyShape))
+const bodyHalfWidth = computed(() => scheme.model.body.scale[0] * scheme.model.body.radius * props.appearance.proportions.bodyWidth * profile.value.scale[0])
+const bodyHalfHeight = computed(() => scheme.model.body.scale[1] * scheme.model.body.radius * props.appearance.proportions.bodyHeight * profile.value.scale[1])
+const bodyHalfDepth = computed(() => scheme.model.body.scale[2] * scheme.model.body.radius * props.appearance.proportions.bodyDepth * profile.value.scale[2])
 const patchPosition = computed(() => vector(
-  design.value.offsetX * bodyWidth.value,
-  scheme.model.body.position[1] + profile.value.bellyOffsetY * bodyHeight.value + design.value.offsetY * bodyHeight.value,
-  scheme.model.body.position[2] + profile.value.bodyFrontDepth * bodyDepth.value + .035,
+  scheme.model.body.position[0] + design.value.offsetX * bodyHalfWidth.value + profile.value.bellyOffset[0] * bodyHalfWidth.value,
+  scheme.model.body.position[1] + design.value.offsetY * bodyHalfHeight.value + profile.value.bellyOffset[1] * bodyHalfHeight.value,
+  scheme.model.body.position[2] + bodyHalfDepth.value * profile.value.bellyDepth + .018,
 ))
 const patchScale = computed(() => vector(
-  1.38 * bodyWidth.value * profile.value.bellyWidth * design.value.width,
-  1.48 * bodyHeight.value * profile.value.bellyHeight * design.value.height,
-  1,
+  bodyHalfWidth.value * 1.3 * profile.value.bellyScale[0] * design.value.width,
+  bodyHalfHeight.value * 1.5 * profile.value.bellyScale[1] * design.value.height,
+  Math.max(.05, bodyHalfDepth.value),
 ))
 const patchRotation = computed(() => rotation(0, 0, design.value.rotation))
-const alphaTest = computed(() => Math.max(.015, .14 - design.value.softness * .11))
 const patchMask = shallowRef<CanvasTexture>()
+const surfaceGeometry = shallowRef<PlaneGeometry>()
 
 function drawShield(context: CanvasRenderingContext2D) {
   context.moveTo(-58, -62); context.bezierCurveTo(-58, -82, -40, -92, -22, -92); context.lineTo(22, -92)
@@ -81,22 +80,61 @@ function drawShape(context: CanvasRenderingContext2D, shape: PetBellyShape) {
 }
 function createPatchMask(shape: PetBellyShape, softness: number) {
   if (!import.meta.client) return
-  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256
-  const context = canvas.getContext('2d'); if (!context) return
-  context.clearRect(0, 0, 256, 256); context.save(); context.translate(128, 128); context.fillStyle = '#fff'
-  context.shadowColor = '#fff'; context.shadowBlur = softness * 18; context.beginPath(); drawShape(context, shape); context.closePath(); context.fill(); context.restore()
-  const texture = new CanvasTexture(canvas); texture.needsUpdate = true; return texture
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 256
+  const context = canvas.getContext('2d')
+  if (!context) return
+  context.clearRect(0, 0, 256, 256)
+  context.save()
+  context.translate(128, 128)
+  context.fillStyle = '#fff'
+  context.shadowColor = '#fff'
+  context.shadowBlur = softness * 14
+  context.beginPath()
+  drawShape(context, shape)
+  context.closePath()
+  context.fill()
+  context.restore()
+  const texture = new CanvasTexture(canvas)
+  texture.needsUpdate = true
+  return texture
+}
+function createCurvedSurface(curvature: number) {
+  const geometry = new PlaneGeometry(1, 1, 24, 32)
+  const position = geometry.getAttribute('position') as BufferAttribute
+  for (let index = 0; index < position.count; index += 1) {
+    const x = position.getX(index)
+    const y = position.getY(index)
+    const normalized = Math.min(1, x * x * 2.2 + y * y * 1.2)
+    position.setZ(index, (1 - normalized) * curvature)
+  }
+  position.needsUpdate = true
+  geometry.computeVertexNormals()
+  return geometry
 }
 watch(() => [design.value.shape, design.value.softness] as const, ([shape, softness]) => {
-  patchMask.value?.dispose(); patchMask.value = createPatchMask(shape, softness)
+  patchMask.value?.dispose()
+  patchMask.value = createPatchMask(shape, softness)
 }, { immediate: true })
-onBeforeUnmount(() => patchMask.value?.dispose())
+watch(() => profile.value.bellyCurvature, (curvature) => {
+  surfaceGeometry.value?.dispose()
+  surfaceGeometry.value = createCurvedSurface(curvature)
+}, { immediate: true })
+onBeforeUnmount(() => { patchMask.value?.dispose(); surfaceGeometry.value?.dispose() })
 </script>
 
 <template>
-  <ExtensionCloudFoxBodyShape :appearance="appearance" />
-  <TresMesh v-if="design.visible && patchMask" :position="patchPosition" :rotation="patchRotation" :scale="patchScale" :render-order="4">
-    <TresPlaneGeometry :args="[1, 1, 20, 20]" />
-    <TresMeshStandardMaterial :color="colors.belly" :roughness=".42" :alpha-map="patchMask" transparent :alpha-test="alphaTest" :depth-write="true" />
+  <TresMesh v-if="design.visible && patchMask && surfaceGeometry" :geometry="surfaceGeometry" :position="patchPosition" :rotation="patchRotation" :scale="patchScale" :render-order="4">
+    <TresMeshStandardMaterial
+      :color="colors.belly"
+      :roughness=".42"
+      :alpha-map="patchMask"
+      transparent
+      :alpha-test=".025"
+      :depth-write="false"
+      polygon-offset
+      :polygon-offset-factor="-2"
+      :polygon-offset-units="-2"
+    />
   </TresMesh>
 </template>

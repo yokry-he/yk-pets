@@ -1,16 +1,19 @@
 <!--
   文件职责 / File responsibility
-  渲染云狐身体、内嵌前爪、后肢和可调胸背标志，并通过共享球/飞扑姿态驱动完整四肢动作。
-  Renders the Cloud Fox torso, embedded paws, hind limbs, and adjustable chest/back symbols while driving limbs from shared poses.
+  组合唯一身体表面、按身体 Profile 挂载的前后肢、能量核心和胸背标志，并保留完整动作驱动。
+  Composes the sole torso surface, body-profile-mounted limbs, energy core, and chest/back symbols while retaining full motion driving.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
 import { CanvasTexture, DoubleSide, Euler, Vector3 } from 'three'
 import type { Group } from 'three'
+import ExtensionCloudFoxBodyShape from './ExtensionCloudFoxBodyShape.vue'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import { clamp01, createExtensionCloudFoxMotionFrame, mix, pulse, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import { createBallMotionPose, createCatchMotionPose } from '~/domain/cloud-fox-prop-motion'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
+import { getCloudFoxBodyProfile } from '~/domain/cloud-fox-shape-profile'
+import { resolvePetCustomization } from '~/domain/pet-part-customization'
 import type { SymbolChannelRecipe } from '~/domain/pet-studio-phase4'
 import type { FrontPawStyle, MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 
@@ -21,9 +24,10 @@ const props = defineProps<{
 }>()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vector = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
-const scale = (value: readonly number[], x = 1, y = x, z = x) => new Vector3((value[0] || 0) * x, (value[1] || 0) * y, (value[2] || 0) * z)
 const rotation = (value: readonly number[]) => new Euler(value[0] || 0, value[1] || 0, value[2] || 0)
 const damp = (current: number, target: number, speed: number, delta: number) => current + (target - current) * Math.min(1, 1 - Math.exp(-speed * delta))
+const profile = computed(() => getCloudFoxBodyProfile(props.appearance.parts.bodyShape))
+const colors = computed(() => resolvePetCustomization(props.appearance).colors)
 
 const PAW_STYLE_PROFILE: Record<FrontPawStyle, {
   length: number
@@ -37,30 +41,16 @@ const PAW_STYLE_PROFILE: Record<FrontPawStyle, {
   mechanical: { length: 1, rootRadius: 1.08, wristRadius: .82, tipScale: [1.02, .82, 1.04] },
 }
 
-const bodyScale = computed(() => scale(
-  scheme.model.body.scale,
-  props.appearance.proportions.bodyWidth,
-  props.appearance.proportions.bodyHeight,
-  props.appearance.proportions.bodyDepth,
-))
+const bodyHalfWidth = computed(() => scheme.model.body.scale[0] * scheme.model.body.radius * props.appearance.proportions.bodyWidth * profile.value.scale[0])
+const bodyHalfHeight = computed(() => scheme.model.body.scale[1] * scheme.model.body.radius * props.appearance.proportions.bodyHeight * profile.value.scale[1])
+const bodyHalfDepth = computed(() => scheme.model.body.scale[2] * scheme.model.body.radius * props.appearance.proportions.bodyDepth * profile.value.scale[2])
 const pawProfile = computed(() => PAW_STYLE_PROFILE[props.appearance.frontPawDesign.style])
-const pawRootX = computed(() => scheme.model.frontPaw.offset[0] * props.appearance.proportions.bodyWidth * props.appearance.proportions.limbSpacing)
-const pawRootY = computed(() => scheme.model.frontPaw.offset[1] + props.appearance.frontPawDesign.rootHeight)
-const pawSurfaceDepth = computed(() => {
-  const body = bodyScale.value
-  const radius = scheme.model.body.radius
-  const normalizedX = pawRootX.value / Math.max(.001, body.x * radius)
-  const normalizedY = (pawRootY.value - scheme.model.body.position[1]) / Math.max(.001, body.y * radius)
-  const surfaceFactor = Math.sqrt(Math.max(.08, 1 - normalizedX ** 2 - normalizedY ** 2))
-  return scheme.model.body.position[2] + body.z * radius * surfaceFactor
-})
-const requestedPawRootZ = computed(() => pawSurfaceDepth.value
+const pawRootX = computed(() => bodyHalfWidth.value * profile.value.frontPawX * props.appearance.proportions.limbSpacing)
+const pawRootY = computed(() => scheme.model.body.position[1] + bodyHalfHeight.value * profile.value.frontPawY + props.appearance.frontPawDesign.rootHeight)
+const pawSurfaceDepth = computed(() => scheme.model.body.position[2] + bodyHalfDepth.value * profile.value.frontPawDepth)
+const pawRootZ = computed(() => pawSurfaceDepth.value
   - props.appearance.frontPawDesign.embedDepth * props.appearance.proportions.limbThickness
   + props.appearance.frontPawDesign.forwardOffset)
-const pawRootZ = computed(() => Math.min(
-  requestedPawRootZ.value,
-  pawSurfaceDepth.value - .055 * props.appearance.proportions.limbThickness,
-))
 const rootRadius = computed(() => Math.max(scheme.model.frontPaw.forearm[0], scheme.model.frontPaw.forearm[1])
   * props.appearance.proportions.limbThickness
   * pawProfile.value.rootRadius
@@ -69,22 +59,22 @@ const wristRadius = computed(() => Math.min(scheme.model.frontPaw.forearm[0], sc
   * props.appearance.proportions.limbThickness
   * pawProfile.value.wristRadius
   * props.appearance.frontPawDesign.wristScale)
-const shoulderRadius = computed(() => Math.max(
-  .13 * props.appearance.proportions.limbThickness * props.appearance.frontPawDesign.shoulderScale,
-  rootRadius.value * 1.08,
-))
+const shoulderRadius = computed(() => Math.max(.13 * props.appearance.proportions.limbThickness, rootRadius.value * 1.08))
 const forearmHeight = computed(() => scheme.model.frontPaw.forearm[2] * props.appearance.proportions.limbLength * pawProfile.value.length)
-const forearmTopY = computed(() => shoulderRadius.value * .28)
-const forearmCenterY = computed(() => forearmTopY.value - forearmHeight.value * .5)
-const forearmBottomY = computed(() => forearmTopY.value - forearmHeight.value)
-const tipScale = computed(() => scale(
-  scheme.model.frontPaw.tipScale,
-  props.appearance.proportions.pawScale * props.appearance.frontPawDesign.palmScale * pawProfile.value.tipScale[0],
-  props.appearance.proportions.pawScale * props.appearance.frontPawDesign.palmScale * pawProfile.value.tipScale[1],
-  props.appearance.proportions.pawScale * props.appearance.frontPawDesign.palmScale * pawProfile.value.tipScale[2],
-))
+const forearmCenterY = computed(() => shoulderRadius.value * .28 - forearmHeight.value * .5)
+const forearmBottomY = computed(() => shoulderRadius.value * .28 - forearmHeight.value)
+const tipScale = computed(() => vector([
+  scheme.model.frontPaw.tipScale[0] * props.appearance.proportions.pawScale * props.appearance.frontPawDesign.palmScale * pawProfile.value.tipScale[0],
+  scheme.model.frontPaw.tipScale[1] * props.appearance.proportions.pawScale * props.appearance.frontPawDesign.palmScale * pawProfile.value.tipScale[1],
+  scheme.model.frontPaw.tipScale[2] * props.appearance.proportions.pawScale * props.appearance.frontPawDesign.palmScale * pawProfile.value.tipScale[2],
+]))
 const tipY = computed(() => forearmBottomY.value - scheme.model.frontPaw.tipRadius * tipScale.value.y * .18)
 const pawPosition = (side: number) => vector([side * pawRootX.value, pawRootY.value, pawRootZ.value])
+const hindPosition = (side: number) => vector([
+  side * bodyHalfWidth.value * profile.value.hindPawX,
+  scheme.model.body.position[1] + bodyHalfHeight.value * profile.value.hindPawY,
+  scheme.model.body.position[2] + bodyHalfDepth.value * profile.value.hindPawDepth,
+])
 
 const leftMotion = shallowRef<Group>()
 const rightMotion = shallowRef<Group>()
@@ -94,48 +84,41 @@ const leftHind = shallowRef<Group>()
 const rightHind = shallowRef<Group>()
 const chestTexture = shallowRef<CanvasTexture>()
 const backTexture = shallowRef<CanvasTexture>()
-
 const chestMode = computed(() => props.appearance.chestDisplay.mode)
 const showEnergyCore = computed(() => chestMode.value === 'energy-core' || chestMode.value === 'hybrid')
 const showChestSymbol = computed(() => props.appearance.symbols.chest.enabled && (chestMode.value === 'symbol' || chestMode.value === 'hybrid'))
 const chestCoreScale = computed(() => chestMode.value === 'hybrid' ? .68 : 1)
 const chestSymbolPosition = computed(() => vector([
   props.appearance.symbols.chest.offsetX,
-  -.26 + props.appearance.symbols.chest.offsetY,
-  .9 + props.appearance.symbols.chest.offsetZ,
+  scheme.model.body.position[1] - .06 + props.appearance.symbols.chest.offsetY,
+  scheme.model.body.position[2] + bodyHalfDepth.value * profile.value.chestDepth + .04 + props.appearance.symbols.chest.offsetZ,
 ]))
 const backSymbolPosition = computed(() => vector([
   props.appearance.symbols.back.offsetX,
-  -.2 + props.appearance.symbols.back.offsetY,
-  -.86 - props.appearance.symbols.back.offsetZ,
+  scheme.model.body.position[1] - .12 + props.appearance.symbols.back.offsetY,
+  scheme.model.body.position[2] + bodyHalfDepth.value * profile.value.backDepth - .04 - props.appearance.symbols.back.offsetZ,
 ]))
-const chestSymbolScale = computed(() => vector([
-  .34 * props.appearance.symbols.chest.scale,
-  .34 * props.appearance.symbols.chest.scale,
-  .34,
-]))
-const backSymbolScale = computed(() => vector([
-  .48 * props.appearance.symbols.back.scale,
-  .48 * props.appearance.symbols.back.scale,
-  .48,
-]))
+const chestSymbolScale = computed(() => vector([.34 * props.appearance.symbols.chest.scale, .34 * props.appearance.symbols.chest.scale, .34]))
+const backSymbolScale = computed(() => vector([.48 * props.appearance.symbols.back.scale, .48 * props.appearance.symbols.back.scale, .48]))
 const chestSymbolRotation = computed(() => rotation([0, 0, props.appearance.symbols.chest.rotation]))
 const backSymbolRotation = computed(() => rotation([0, Math.PI, -props.appearance.symbols.back.rotation]))
+const energyCorePosition = computed(() => vector([
+  scheme.model.chestCore.position[0],
+  scheme.model.chestCore.position[1],
+  scheme.model.body.position[2] + bodyHalfDepth.value * profile.value.chestDepth + .08,
+]))
 
 function setPawMotionRef(node: unknown, side: number) {
-  const group = node as Group | undefined
-  if (side < 0) leftMotion.value = group
-  else rightMotion.value = group
+  if (side < 0) leftMotion.value = node as Group | undefined
+  else rightMotion.value = node as Group | undefined
 }
 function setPawTipRef(node: unknown, side: number) {
-  const group = node as Group | undefined
-  if (side < 0) leftTip.value = group
-  else rightTip.value = group
+  if (side < 0) leftTip.value = node as Group | undefined
+  else rightTip.value = node as Group | undefined
 }
 function setHindRef(node: unknown, side: number) {
-  const group = node as Group | undefined
-  if (side < 0) leftHind.value = group
-  else rightHind.value = group
+  if (side < 0) leftHind.value = node as Group | undefined
+  else rightHind.value = node as Group | undefined
 }
 
 function texture(channel: SymbolChannelRecipe) {
@@ -166,7 +149,6 @@ onBeforeUnmount(() => { chestTexture.value?.dispose(); backTexture.value?.dispos
 let previousBehavior: ExtensionCloudFoxMotionId = props.behavior
 let previousMotionKey = props.motionKey
 let startedAt = 0
-
 useLoop().onBeforeRender(({ elapsed, delta }) => {
   if (previousBehavior !== props.behavior || previousMotionKey !== props.motionKey) {
     previousBehavior = props.behavior
@@ -194,17 +176,11 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       targetX = -.08 * frame.greetingPose
       tipZ = frame.greetingWave * .22
     }
-    else if (state === 'playing') {
-      const dance = Math.sin(elapsed * 7.2 + (side < 0 ? 0 : Math.PI))
-      targetZ += side * (.34 + dance * .34)
-      targetX = -.12 - Math.max(0, dance) * .18
-      tipZ = dance * .2
-    }
-    else if (state === 'flapping') {
-      const flap = frame.flapBeat
-      targetZ = side * (1.05 + flap * .58)
-      targetX = -.12 - Math.abs(flap) * .24
-      tipZ = side * flap * .26
+    else if (state === 'playing' || state === 'flapping') {
+      const wave = Math.sin(elapsed * (state === 'flapping' ? 11.5 : 7.2) + (side < 0 ? 0 : Math.PI))
+      targetZ += side * (.34 + wave * (state === 'flapping' ? .58 : .34))
+      targetX = -.12 - Math.abs(wave) * .24
+      tipZ = wave * .2
     }
     else if (state === 'jumping') {
       targetZ = side * (.28 + frame.jumpLanding * .35)
@@ -217,16 +193,11 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       scaleY = 1 + frame.stretchStrength * .12
       tipZ = side * frame.stretchStrength * .14
     }
-    else if (state === 'resting') {
-      targetX = mix(design.forwardAngle, -1.18, frame.restingPose)
-      targetZ = side * mix(design.outwardAngle, .2, frame.restingPose)
-      scaleY = 1 + frame.restingPose * .08
-      tipX = -.26 * frame.restingPose
-    }
-    else if (state === 'sleeping') {
-      targetX = -.5
-      targetZ = side * -.04
-      tipX = -.22
+    else if (state === 'resting' || state === 'sleeping' || state === 'cloud-nap') {
+      const pose = state === 'resting' ? frame.restingPose : state === 'cloud-nap' ? frame.cloudNapPose : 1
+      targetX = mix(design.forwardAngle, state === 'cloud-nap' ? -.76 : -1.02, pose)
+      targetZ = side * mix(design.outwardAngle, state === 'cloud-nap' ? .44 : .14, pose)
+      tipX = -.24 * pose
     }
     else if (state === 'thinking' && side < 0) {
       targetZ = -1.12
@@ -255,9 +226,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     else if (state === 'playing-ball') {
       const activeBoost = side === ballPose.activeSide ? 1 : .7
       const reach = clamp01(1 - Math.abs(ballPose.position.x - side * .5) / 1.05) * (.42 + ballPose.height * .58) * activeBoost
-      const tap = side < 0
-        ? pulse(frame.ballProgress, .12, .31) + pulse(frame.ballProgress, .62, .81)
-        : pulse(frame.ballProgress, .37, .56) + pulse(frame.ballProgress, .78, .95)
+      const tap = side < 0 ? pulse(frame.ballProgress, .12, .31) + pulse(frame.ballProgress, .62, .81) : pulse(frame.ballProgress, .37, .56) + pulse(frame.ballProgress, .78, .95)
       const intent = Math.max(reach, tap)
       targetX = -.2 - intent * .62 - ballPose.height * .06
       targetY = -ballPose.position.x * .12
@@ -271,38 +240,28 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       targetZ = side * mix(design.outwardAngle, .34, eatPose)
       tipX = -.28 * eatPose + Math.max(0, Math.sin(frame.eatProgress * Math.PI * 12)) * .08
     }
-    else if (state === 'backflip') {
-      targetX = -.24 - frame.backflipTuck * .82 + frame.backflipLand * .2
-      targetZ = side * (-.12 - frame.backflipTuck * .5)
-      scaleY = 1 - frame.backflipTuck * .16
-      tipX = -frame.backflipTuck * .48
+    else if (state === 'backflip' || state === 'diving-catch') {
+      const pose = state === 'backflip' ? frame.backflipTuck : frame.catchReach
+      targetX = -.24 - pose * .82 + (state === 'backflip' ? frame.backflipLand : frame.catchLand) * .24
+      targetZ = side * (-.12 - pose * .24)
+      scaleY = 1 + (state === 'diving-catch' ? pose * .15 : -pose * .12)
+      tipX = -pose * .48
+      if (state === 'diving-catch') {
+        targetY = -catchPose.pawTarget.x * .1 * pose
+        tipZ = -catchPose.pawTarget.x * .06 * pose
+      }
+    }
+    else if (state === 'energy-burst' || state === 'fireworks-show' || state === 'antenna-charge') {
+      const charge = state === 'energy-burst' ? frame.energyCharge : state === 'antenna-charge' ? frame.antennaChargePose : frame.fireworksSalute
+      targetX = -charge * .42
+      targetZ = side * mix(.06, state === 'fireworks-show' ? 2.45 : -.82, charge)
+      tipX = -charge * .32
+      tipZ = side * charge * .18
     }
     else if (state === 'tail-tornado') {
       targetX = -.34 * frame.tornadoStrength
       targetZ = side * (-.2 - frame.tornadoStrength * .32)
       tipZ = side * -.18 * frame.tornadoStrength
-    }
-    else if (state === 'diving-catch') {
-      const activeReach = side === catchPose.activeSide ? 1 : .74
-      targetX = -.22 - frame.catchReach * (.72 + activeReach * .28) + frame.catchLand * .26
-      targetY = -catchPose.pawTarget.x * .1 * frame.catchReach
-      targetZ = side * (.08 - frame.catchReach * .12) - catchPose.pawTarget.x * .1 * frame.catchReach
-      scaleY = 1 + frame.catchReach * (.12 + activeReach * .06)
-      tipX = -frame.catchReach * (.42 + activeReach * .14)
-      tipZ = side * -.18 * frame.catchReach - catchPose.pawTarget.x * .06 * frame.catchReach
-    }
-    else if (state === 'energy-burst') {
-      targetX = -frame.energyCharge * .48 + frame.energyRelease * .18
-      targetZ = side * mix(.06, -.98, frame.energyCharge) + side * frame.energyRelease * 1.38
-      tipX = -frame.energyCharge * .36
-      tipZ = side * -frame.energyRelease * .38
-    }
-    else if (state === 'fireworks-show') {
-      const activeRight = Math.floor(Math.min(2.999, frame.fireworksProgress * 3)) % 2 === 0
-      const active = side > 0 ? activeRight : !activeRight
-      targetZ = active ? side * 2.58 * frame.fireworksSalute : side * -.2 * frame.fireworksSalute
-      scaleY = active ? 1 + frame.fireworksSalute * .12 : 1
-      tipZ = active ? Math.sin(frame.fireworksProgress * Math.PI * 9) * .1 * frame.fireworksSalute : 0
     }
     else if (state === 'shy-peek') {
       targetX = -.22 * frame.shyPose
@@ -316,19 +275,9 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       scaleY = 1 + active * .08
       tipZ = side < 0 ? frame.juggleWave * .26 : -frame.juggleWave * .26
     }
-    else if (state === 'cloud-nap') {
-      targetX = side < 0 ? -.82 * frame.cloudNapPose : -.68 * frame.cloudNapPose
-      targetZ = side < 0 ? .62 * frame.cloudNapPose : -.5 * frame.cloudNapPose
-      tipX = side < 0 ? -.4 * frame.cloudNapPose : -.36 * frame.cloudNapPose
-      tipZ = side < 0 ? .16 * frame.cloudNapPose : -.2 * frame.cloudNapPose
-    }
     else if (state === 'sparkle-sneeze') {
       targetZ = side * mix(.06, 1.14, frame.sneezeCharge) + side * frame.sneezeRelease * .24
       tipZ = side * (.12 * frame.sneezeCharge - frame.sneezeRelease * .28)
-    }
-    else if (state === 'antenna-charge') {
-      targetZ = side * mix(.06, .74, frame.antennaChargePose) + side * frame.antennaRelease * .34
-      tipZ = side * (.1 * frame.antennaChargePose - frame.antennaRelease * .22)
     }
     else if (state === 'tail-glow') {
       targetZ += side * frame.tailGlowWave * .08
@@ -352,49 +301,15 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const updateHind = (group: Group | undefined, side: -1 | 1) => {
     if (!group) return
     const dance = state === 'playing' ? Math.sin(elapsed * 7.2 + (side < 0 ? 0 : Math.PI)) : 0
-    const flap = state === 'flapping' ? Math.sin(stateElapsed * 11.5 + (side < 0 ? 0 : Math.PI)) : 0
-    const ballKick = state === 'playing-ball' ? Math.sin(frame.ballProgress * Math.PI * 8 + (side < 0 ? 0 : Math.PI)) : 0
-    const jumpKick = state === 'jumping' ? frame.jumpLanding : 0
-    let targetX = -.04 - jumpKick * .28 - Math.abs(dance) * .08
+    const high = state === 'flapping' ? Math.sin(stateElapsed * 11.5 + (side < 0 ? 0 : Math.PI)) : 0
+    let targetX = -.04 - frame.jumpLanding * .28 - Math.abs(dance) * .08
     let targetZ = side * dance * .18
-
-    if (state === 'flapping') {
-      targetX = -.22 - Math.abs(flap) * .48
-      targetZ = side * flap * .5
-    }
-    else if (state === 'playing-ball') {
-      targetX = -.1 - Math.abs(ballKick) * .18
-      targetZ = side * ballKick * .22
-    }
-    else if (state === 'resting') {
-      targetX = mix(-.04, .88, frame.restingPose)
-      targetZ = side * .36 * frame.restingPose
-    }
-    else if (state === 'sleeping') {
-      targetX = .42
-      targetZ = side * .2
-    }
-    else if (state === 'cloud-nap') {
-      targetX = .62 * frame.cloudNapPose
-      targetZ = side * .42 * frame.cloudNapPose
-    }
-    else if (state === 'backflip') {
-      targetX = -.04 - frame.backflipTuck * .76 + frame.backflipLand * .3
-      targetZ = side * frame.backflipTuck * .34
-    }
-    else if (state === 'diving-catch') {
-      targetX = -.12 - frame.catchLaunch * .48 + frame.catchLand * .42
-      targetZ = side * frame.catchAir * .18
-    }
-    else if (state === 'tail-tornado') {
-      targetX = -.2 - frame.tornadoStrength * .18
-      targetZ = side * frame.tornadoStrength * .32
-    }
-    else if (state === 'star-juggle') {
-      targetX = -.08 - Math.abs(frame.juggleWave) * .1
-      targetZ = side * frame.juggleWave * .12
-    }
-
+    if (state === 'flapping') { targetX = -.22 - Math.abs(high) * .48; targetZ = side * high * .5 }
+    else if (state === 'resting') { targetX = mix(-.04, .88, frame.restingPose); targetZ = side * .36 * frame.restingPose }
+    else if (state === 'sleeping' || state === 'cloud-nap') { targetX = .48; targetZ = side * .28 }
+    else if (state === 'backflip') { targetX = -.04 - frame.backflipTuck * .76 + frame.backflipLand * .3; targetZ = side * frame.backflipTuck * .34 }
+    else if (state === 'diving-catch') { targetX = -.12 - frame.catchLaunch * .48 + frame.catchLand * .42; targetZ = side * frame.catchAir * .18 }
+    else if (state === 'tail-tornado') { targetX = -.2 - frame.tornadoStrength * .18; targetZ = side * frame.tornadoStrength * .32 }
     group.rotation.x = damp(group.rotation.x, targetX, 8, delta)
     group.rotation.z = damp(group.rotation.z, targetZ, 8, delta)
   }
@@ -404,53 +319,53 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 </script>
 
 <template>
-  <TresMesh :position="vector(scheme.model.body.position)" :scale="bodyScale" cast-shadow>
-    <TresBoxGeometry v-if="appearance.parts.bodyShape === 'rounded-cube'" :args="[1.72, 1.72, 1.72, 8, 8, 8]" />
-    <TresSphereGeometry v-else :args="[scheme.model.body.radius, 64, 64]" />
-    <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness=".34" :metalness=".04" />
-  </TresMesh>
+  <ExtensionCloudFoxBodyShape :appearance="appearance" />
 
   <TresGroup v-for="side in [-1, 1]" :key="`fp${side}`" :position="pawPosition(side)">
     <TresMesh :scale="vector([1.12, 1.02, .94])" cast-shadow>
       <TresSphereGeometry :args="[shoulderRadius, 28, 28]" />
-      <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness=".3" />
+      <TresMeshStandardMaterial :color="colors.body" :roughness=".3" />
     </TresMesh>
     <TresGroup :ref="node => setPawMotionRef(node, side)">
       <TresMesh :position="vector([0, forearmCenterY, 0])" cast-shadow>
         <TresCylinderGeometry :args="[rootRadius, wristRadius, forearmHeight, 24]" />
-        <TresMeshStandardMaterial :color="appearance.palette.coat" :roughness="appearance.frontPawDesign.style === 'mechanical' ? .18 : .26" :metalness="appearance.frontPawDesign.style === 'mechanical' ? .28 : .04" />
+        <TresMeshStandardMaterial :color="colors.limbs" :roughness="appearance.frontPawDesign.style === 'mechanical' ? .18 : .26" :metalness="appearance.frontPawDesign.style === 'mechanical' ? .28 : .04" />
       </TresMesh>
       <TresMesh v-if="appearance.frontPawDesign.style === 'mechanical'" :position="vector([0, forearmBottomY + wristRadius * .35, 0])" cast-shadow>
         <TresSphereGeometry :args="[wristRadius * 1.3, 20, 20]" />
-        <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness=".2" :metalness=".35" />
+        <TresMeshStandardMaterial :color="colors.body" :roughness=".2" :metalness=".35" />
       </TresMesh>
       <TresGroup :ref="node => setPawTipRef(node, side)" :position="vector([0, tipY, scheme.model.frontPaw.tipPosition[2]])">
         <TresMesh :scale="tipScale" cast-shadow>
           <TresSphereGeometry :args="[scheme.model.frontPaw.tipRadius, 28, 28]" />
-          <TresMeshStandardMaterial :color="appearance.palette.coatWarm" :roughness=".26" />
+          <TresMeshStandardMaterial :color="colors.paws" :roughness=".26" />
         </TresMesh>
         <TresMesh v-if="appearance.frontPawDesign.style === 'mitten'" :position="vector([side * scheme.model.frontPaw.tipRadius * .72, .025, .015])" :scale="vector([.72, .58, .72])" cast-shadow>
           <TresSphereGeometry :args="[scheme.model.frontPaw.tipRadius, 20, 20]" />
-          <TresMeshStandardMaterial :color="appearance.palette.coatWarm" :roughness=".28" />
+          <TresMeshStandardMaterial :color="colors.paws" :roughness=".28" />
         </TresMesh>
       </TresGroup>
     </TresGroup>
   </TresGroup>
 
-  <TresGroup v-for="side in [-1, 1]" :key="`hp${side}`" :ref="node => setHindRef(node, side)" :position="vector([side * scheme.model.hindPaw.offset[0], scheme.model.hindPaw.offset[1], scheme.model.hindPaw.offset[2]])">
+  <TresGroup v-for="side in [-1, 1]" :key="`hp${side}`" :ref="node => setHindRef(node, side)" :position="hindPosition(side)">
     <TresMesh :rotation="rotation([scheme.model.hindPaw.legRotation[0], 0, side * scheme.model.hindPaw.legRotation[2]])">
       <TresCylinderGeometry :args="scheme.model.hindPaw.leg" />
-      <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness=".32" />
+      <TresMeshStandardMaterial :color="colors.body" :roughness=".32" />
     </TresMesh>
-    <TresMesh :position="vector(scheme.model.hindPaw.tipPosition)" :scale="scale(scheme.model.hindPaw.tipScale, appearance.proportions.pawScale)">
+    <TresMesh :position="vector(scheme.model.hindPaw.tipPosition)" :scale="vector([
+      scheme.model.hindPaw.tipScale[0] * appearance.proportions.pawScale,
+      scheme.model.hindPaw.tipScale[1] * appearance.proportions.pawScale,
+      scheme.model.hindPaw.tipScale[2] * appearance.proportions.pawScale,
+    ])">
       <TresSphereGeometry :args="[scheme.model.hindPaw.tipRadius, 24, 24]" />
-      <TresMeshStandardMaterial :color="appearance.palette.coatWarm" :roughness=".3" />
+      <TresMeshStandardMaterial :color="colors.paws" :roughness=".3" />
     </TresMesh>
   </TresGroup>
 
-  <TresMesh v-if="showEnergyCore" :position="vector(scheme.model.chestCore.position)" :scale="vector([chestCoreScale, chestCoreScale, chestCoreScale])">
+  <TresMesh v-if="showEnergyCore" :position="energyCorePosition" :scale="vector([chestCoreScale, chestCoreScale, chestCoreScale])">
     <TresSphereGeometry :args="[scheme.model.chestCore.radius, 32, 32]" />
-    <TresMeshStandardMaterial :color="appearance.palette.secondaryGlow" :emissive="appearance.palette.secondaryGlow" :emissive-intensity="scheme.model.chestCore.emissiveIntensity" :metalness=".25" :roughness=".12" />
+    <TresMeshStandardMaterial :color="colors.energyCore" :emissive="colors.energyCore" :emissive-intensity="scheme.model.chestCore.emissiveIntensity" :metalness=".25" :roughness=".12" />
   </TresMesh>
 
   <TresGroup v-if="showChestSymbol && chestTexture" :position="chestSymbolPosition" :rotation="chestSymbolRotation" :scale="chestSymbolScale">
