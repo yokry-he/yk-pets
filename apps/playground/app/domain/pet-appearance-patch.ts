@@ -1,7 +1,7 @@
 /*
  * 文件职责 / File responsibility
- * 对完整可配置外观执行深层局部补丁；同步旧配方与新定制通道，并保持前爪、后爪、肚皮、嘴巴和颜色的局部隔离。
- * Applies deep local patches, synchronizes legacy and customization channels, and preserves isolation for front paws, hind paws, belly, mouth, and colors.
+ * 对完整可配置外观执行深层局部补丁；同步历史通道与独立定制通道，并保持鼻子、嘴巴、前后爪、肚皮和颜色隔离。
+ * Applies deep local patches while synchronizing legacy and independent customization channels and preserving isolation for nose, mouth, front/hind paws, belly, and colors.
  */
 import type { EarDesignRecipe, TailDesignRecipe, TailSegmentRecipe } from './pet-studio-phase2'
 import type { BellyPatchDesignRecipe, ChestDisplayDesignRecipe, MultiSpeciesAppearanceRecipe } from './pet-species-registry'
@@ -13,6 +13,7 @@ import {
   type PetBellyCustomizationRecipe,
   type PetBellyShape,
   type PetMouthCustomizationRecipe,
+  type PetNoseCustomizationRecipe,
   type PetPartColorRecipe,
 } from './pet-part-customization'
 
@@ -34,6 +35,7 @@ export interface PetAppearanceLocalPatch {
   customization?: {
     colors?: Partial<PetPartColorRecipe>
     belly?: Partial<PetBellyCustomizationRecipe>
+    nose?: Partial<PetNoseCustomizationRecipe>
     mouth?: Partial<PetMouthCustomizationRecipe>
   }
   symbols?: {
@@ -66,9 +68,9 @@ export function applyPetAppearanceLocalPatch(
   const colors: PetPartColorRecipe = { ...normalizedCurrent.customization.colors }
   if (patch.palette?.coatShadow) colors.body = patch.palette.coatShadow
   if (patch.palette?.coat) colors.limbs = patch.palette.coat
-  if (patch.palette?.coatWarm) { colors.paws = patch.palette.coatWarm; colors.antennaRod = patch.palette.coatWarm }
+  if (patch.palette?.coatWarm) colors.paws = patch.palette.coatWarm
   if (patch.palette?.eye) colors.eyes = patch.palette.eye
-  if (patch.palette?.secondaryGlow) { colors.eyeHighlight = patch.palette.secondaryGlow; colors.energyCore = patch.palette.secondaryGlow }
+  if (patch.palette?.secondaryGlow) colors.eyeHighlight = patch.palette.secondaryGlow
   if (patch.palette?.antennaGlow) colors.antennaTip = patch.palette.antennaGlow
   if (patch.earDesign?.outerColor) colors.earOuter = patch.earDesign.outerColor
   if (patch.earDesign?.innerColor) colors.earInner = patch.earDesign.innerColor
@@ -110,6 +112,7 @@ export function applyPetAppearanceLocalPatch(
     customization: {
       colors,
       belly,
+      nose: { ...normalizedCurrent.customization.nose, ...patch.customization?.nose },
       mouth: { ...normalizedCurrent.customization.mouth, ...patch.customization?.mouth },
     },
     symbols: {

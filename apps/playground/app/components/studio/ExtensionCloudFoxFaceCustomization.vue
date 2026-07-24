@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  在唯一口鼻部表面坐标中渲染鼻子与五种嘴型；基础或完整配方都通过统一定制解析读取嘴巴参数，不再整体膨胀或侧面悬浮。
-  Renders noses and five mouth styles in the sole muzzle-surface space; both base and complete recipes resolve mouth controls through the sole customization normalizer.
+  在唯一口鼻部表面坐标中渲染可独立定位缩放的鼻子与五种嘴型；每种嘴型独立解释动作开合。
+  Renders independently positioned and scaled noses plus five mouth styles in the sole muzzle-surface coordinate system, with style-specific motion opening.
 -->
 <script setup lang="ts">
 import { CatmullRomCurve3, Euler, Vector3 } from 'three'
@@ -19,7 +19,8 @@ const rotation = (values: readonly number[]) => new Euler(values[0] || 0, values
 const damp = (current: number, target: number, speed: number, delta: number) => current + (target - current) * Math.min(1, 1 - Math.exp(-speed * delta))
 const customization = computed(() => resolvePetCustomization(props.appearance))
 const colors = computed(() => customization.value.colors)
-const design = computed(() => customization.value.mouth)
+const nose = computed(() => customization.value.nose)
+const mouth = computed(() => customization.value.mouth)
 const headScale = computed(() => props.appearance.proportions.headScale)
 const cheekMaterials = shallowRef<MeshBasicMaterial[]>([])
 const animatedOpen = ref(0)
@@ -27,32 +28,41 @@ let previousBehavior: ExtensionCloudFoxMotionId = props.behavior
 let previousMotionKey = props.motionKey
 let startedAt = 0
 
-const noseAnchor = computed(() => resolveCloudFoxMuzzleSurfaceAnchor({ shape: props.appearance.parts.headShape, headScale: headScale.value }, 0, -.02 * headScale.value, .012))
+const noseAnchor = computed(() => resolveCloudFoxMuzzleSurfaceAnchor(
+  { shape: props.appearance.parts.headShape, headScale: headScale.value },
+  nose.value.offsetX * headScale.value,
+  (-.02 + nose.value.offsetY) * headScale.value,
+  nose.value.surfaceOffset,
+))
 const mouthAnchor = computed(() => resolveCloudFoxMuzzleSurfaceAnchor(
   { shape: props.appearance.parts.headShape, headScale: headScale.value },
-  design.value.offsetX * headScale.value,
-  (-.17 + design.value.offsetY) * headScale.value,
-  design.value.surfaceOffset,
+  mouth.value.offsetX * headScale.value,
+  (-.17 + mouth.value.offsetY) * headScale.value,
+  mouth.value.surfaceOffset,
 ))
 const nosePosition = computed(() => vector(noseAnchor.value.position))
-const noseRotation = computed(() => rotation(noseAnchor.value.rotation))
+const noseRotation = computed(() => rotation([noseAnchor.value.rotation[0], noseAnchor.value.rotation[1], nose.value.rotation]))
 const mouthPosition = computed(() => vector(mouthAnchor.value.position))
-const mouthRotation = computed(() => rotation([mouthAnchor.value.rotation[0], mouthAnchor.value.rotation[1], design.value.rotation]))
+const mouthRotation = computed(() => rotation([mouthAnchor.value.rotation[0], mouthAnchor.value.rotation[1], mouth.value.rotation]))
 const noseScale = computed(() => {
-  const factor = headScale.value
-  if (props.appearance.parts.nose === 'sensor') return vector([.16 * factor, .085 * factor, .075 * factor])
-  if (props.appearance.parts.nose === 'button') return vector([.135 * factor, .105 * factor, .068 * factor])
-  if (props.appearance.parts.nose === 'heart') return vector([.115 * factor, .115 * factor, .07 * factor])
-  if (props.appearance.parts.nose === 'triangle') return vector([.135 * factor, .12 * factor, .082 * factor])
-  return vector([.11 * factor, .085 * factor, .07 * factor])
+  let base: readonly [number, number, number] = [.11, .085, .07]
+  if (props.appearance.parts.nose === 'sensor') base = [.16, .085, .075]
+  else if (props.appearance.parts.nose === 'button') base = [.135, .105, .068]
+  else if (props.appearance.parts.nose === 'heart') base = [.115, .115, .07]
+  else if (props.appearance.parts.nose === 'triangle') base = [.135, .12, .082]
+  return vector([
+    base[0] * headScale.value * nose.value.scaleX,
+    base[1] * headScale.value * nose.value.scaleY,
+    base[2] * headScale.value * nose.value.scaleZ,
+  ])
 })
-const mouthBaseScale = computed(() => vector([headScale.value * design.value.width, headScale.value * design.value.height, headScale.value]))
-const openScale = computed(() => design.value.defaultOpen + animatedOpen.value * Math.max(0, design.value.maxOpen - design.value.defaultOpen))
+const mouthBaseScale = computed(() => vector([headScale.value * mouth.value.width, headScale.value * mouth.value.height, headScale.value]))
+const openScale = computed(() => mouth.value.defaultOpen + animatedOpen.value * Math.max(0, mouth.value.maxOpen - mouth.value.defaultOpen))
 const classicGap = computed(() => .046 + animatedOpen.value * .018)
-const tongueScale = computed(() => design.value.tongueScale * (1 + animatedOpen.value * .12))
-const lineThickness = computed(() => .014 * design.value.thickness)
-const curveThickness = computed(() => .014 * design.value.thickness)
-const curveScale = computed(() => vector([1, design.value.curve * (1 + animatedOpen.value * .1), 1]))
+const tongueScale = computed(() => mouth.value.tongueScale * (1 + animatedOpen.value * .12))
+const lineThickness = computed(() => .014 * mouth.value.thickness)
+const curveThickness = computed(() => .014 * mouth.value.thickness)
+const curveScale = computed(() => vector([1, mouth.value.curve * (1 + animatedOpen.value * .1), 1]))
 const smileLeft = new CatmullRomCurve3([vector([-.17, .02, 0]), vector([-.12, -.035, .004]), vector([-.06, -.06, .006]), vector([0, -.052, .008])])
 const smileRight = new CatmullRomCurve3([vector([0, -.052, .008]), vector([.06, -.06, .006]), vector([.12, -.035, .004]), vector([.17, .02, 0])])
 const catLeft = new CatmullRomCurve3([vector([-.16, .015, 0]), vector([-.11, -.055, .004]), vector([-.05, -.07, .006]), vector([0, -.018, .008])])
@@ -66,7 +76,11 @@ function registerCheek(reference: unknown) {
   if (material && !cheekMaterials.value.includes(material)) cheekMaterials.value.push(material)
 }
 useLoop().onBeforeRender(({ elapsed, delta }) => {
-  if (props.behavior !== previousBehavior || props.motionKey !== previousMotionKey) { previousBehavior = props.behavior; previousMotionKey = props.motionKey; startedAt = elapsed }
+  if (props.behavior !== previousBehavior || props.motionKey !== previousMotionKey) {
+    previousBehavior = props.behavior
+    previousMotionKey = props.motionKey
+    startedAt = elapsed
+  }
   const frame = createExtensionCloudFoxMotionFrame(props.behavior, Math.max(0, elapsed - startedAt))
   let targetOpen = 0
   if (props.behavior === 'talking') targetOpen = .35 + Math.max(0, Math.sin(elapsed * 10)) * .55
@@ -74,9 +88,13 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   else if (props.behavior === 'sparkle-sneeze') targetOpen = frame.sneezeRelease
   else if (props.behavior === 'happy' || props.behavior === 'excited') targetOpen = .18
   animatedOpen.value = damp(animatedOpen.value, Math.min(1, targetOpen), 12, delta)
-  const cheekOpacity = props.behavior === 'happy' || props.behavior === 'talking' || props.behavior === 'excited' ? .34
-    : props.behavior === 'flapping' ? .56 + Math.sin((elapsed - startedAt) * 2.1) * .055
-      : props.behavior === 'greeting' || props.behavior === 'jumping' || props.behavior === 'shy-peek' ? .28 : 0
+  const cheekOpacity = props.behavior === 'happy' || props.behavior === 'talking' || props.behavior === 'excited'
+    ? .34
+    : props.behavior === 'flapping'
+      ? .56 + Math.sin((elapsed - startedAt) * 2.1) * .055
+      : props.behavior === 'greeting' || props.behavior === 'jumping' || props.behavior === 'shy-peek'
+        ? .28
+        : 0
   for (const material of cheekMaterials.value) material.opacity = damp(material.opacity, cheekOpacity, 9, delta)
 })
 </script>
@@ -104,15 +122,15 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       <template v-if="appearance.parts.mouth === 'smile'">
         <TresMesh :position="vector([-classicGap, .008, 0])" :scale="vector([.07, .042, .014])"><TresSphereGeometry :args="[1, 28, 20]" /><TresMeshStandardMaterial :color="colors.mouth" :roughness=".2" /></TresMesh>
         <TresMesh :position="vector([classicGap, .008, 0])" :scale="vector([.07, .042, .014])"><TresSphereGeometry :args="[1, 28, 20]" /><TresMeshStandardMaterial :color="colors.mouth" :roughness=".2" /></TresMesh>
-        <TresMesh v-if="design.tongueVisible" :position="vector([0, -.034 + design.tongueOffsetY - animatedOpen * .01, .006])" :scale="vector([.052 * tongueScale, .02 * tongueScale, .006])"><TresSphereGeometry :args="[1, 24, 16]" /><TresMeshBasicMaterial :color="colors.tongue" /></TresMesh>
+        <TresMesh v-if="mouth.tongueVisible" :position="vector([0, -.034 + mouth.tongueOffsetY - animatedOpen * .01, .006])" :scale="vector([.052 * tongueScale, .02 * tongueScale, .006])"><TresSphereGeometry :args="[1, 24, 16]" /><TresMeshBasicMaterial :color="colors.tongue" /></TresMesh>
       </template>
       <template v-else-if="appearance.parts.mouth === 'cat'"><TresGroup :scale="curveScale"><TresMesh><TresTubeGeometry :args="[catLeft, 24, curveThickness, 8, false]" /><TresMeshBasicMaterial :color="colors.mouth" /></TresMesh><TresMesh><TresTubeGeometry :args="[catRight, 24, curveThickness, 8, false]" /><TresMeshBasicMaterial :color="colors.mouth" /></TresMesh></TresGroup></template>
       <TresMesh v-else-if="appearance.parts.mouth === 'line'" :position="vector([0, animatedOpen * -.008, 0])" :scale="vector([.18, lineThickness, .008])"><TresBoxGeometry /><TresMeshBasicMaterial :color="colors.mouth" /></TresMesh>
       <template v-else-if="appearance.parts.mouth === 'open'">
         <TresMesh :scale="vector([.13, .15 * openScale, 1])"><TresCircleGeometry :args="[1, 40]" /><TresMeshBasicMaterial :color="colors.mouth" /></TresMesh>
-        <TresMesh v-if="design.tongueVisible" :position="vector([0, -.055 * openScale + design.tongueOffsetY, .002])" :scale="vector([.082 * tongueScale, .042 * tongueScale, 1])"><TresCircleGeometry :args="[1, 32]" /><TresMeshBasicMaterial :color="colors.tongue" /></TresMesh>
+        <TresMesh v-if="mouth.tongueVisible" :position="vector([0, -.055 * openScale + mouth.tongueOffsetY, .002])" :scale="vector([.082 * tongueScale, .042 * tongueScale, 1])"><TresCircleGeometry :args="[1, 32]" /><TresMeshBasicMaterial :color="colors.tongue" /></TresMesh>
       </template>
-      <TresMesh v-else-if="appearance.parts.mouth === 'pout'" :scale="vector([1 + animatedOpen * .08, 1 + animatedOpen * .08, 1])"><TresTorusGeometry :args="[.052, .012 * design.thickness, 10, 36]" /><TresMeshBasicMaterial :color="colors.mouth" /></TresMesh>
+      <TresMesh v-else-if="appearance.parts.mouth === 'pout'" :scale="vector([1 + animatedOpen * .08, 1 + animatedOpen * .08, 1])"><TresTorusGeometry :args="[.052, .012 * mouth.thickness, 10, 36]" /><TresMeshBasicMaterial :color="colors.mouth" /></TresMesh>
       <template v-else><TresGroup :scale="curveScale"><TresMesh><TresTubeGeometry :args="[smileLeft, 24, curveThickness, 8, false]" /><TresMeshBasicMaterial :color="colors.mouth" /></TresMesh><TresMesh><TresTubeGeometry :args="[smileRight, 24, curveThickness, 8, false]" /><TresMeshBasicMaterial :color="colors.mouth" /></TresMesh></TresGroup></template>
     </TresGroup>
   </TresGroup>

@@ -1,7 +1,7 @@
 /*
  * 文件职责 / File responsibility
- * 定义全部位颜色、显式肚皮、完整嘴巴、扩展前爪与后爪定位，以及兼容历史配方的唯一范围归一化入口。
- * Defines all-part colors, explicit belly, complete mouth, extended front/hind paw placement, and the sole range normalizer for legacy recipes.
+ * 定义全部位独立颜色、鼻子、嘴巴、肚皮、扩展前后爪定位，以及兼容历史配方的唯一范围归一化入口。
+ * Defines independent colors, nose, mouth, belly, extended front/hind paws, and the sole range normalizer for legacy recipes.
  */
 import {
   normalizeMultiSpeciesAppearance,
@@ -40,6 +40,9 @@ export interface PetPartColorRecipe {
 export interface PetBellyCustomizationRecipe {
   visible: boolean; shape: PetBellyShape; width: number; height: number; offsetX: number; offsetY: number; rotation: number; softness: number
 }
+export interface PetNoseCustomizationRecipe {
+  offsetX: number; offsetY: number; surfaceOffset: number; scaleX: number; scaleY: number; scaleZ: number; rotation: number
+}
 export interface PetMouthCustomizationRecipe {
   offsetX: number; offsetY: number; surfaceOffset: number; width: number; height: number; rotation: number; curve: number; thickness: number
   defaultOpen: number; maxOpen: number; tongueVisible: boolean; tongueScale: number; tongueOffsetY: number
@@ -50,34 +53,15 @@ export interface ExtendedFrontPawDesignRecipe extends FrontPawDesignRecipe {
   rightOffsetX: number; rightOffsetY: number; rightOffsetZ: number
 }
 export interface HindPawDesignRecipe {
-  style: HindPawStyle
-  mirror: boolean
-  rootHeight: number
-  embedDepth: number
-  forwardOffset: number
-  lateralOffset: number
-  outwardAngle: number
-  forwardAngle: number
-  legLengthScale: number
-  legThicknessScale: number
-  haunchScale: number
-  ankleScale: number
-  pawScaleX: number
-  pawScaleY: number
-  pawScaleZ: number
-  toeLift: number
-  toeOutwardAngle: number
-  heelDrop: number
-  leftOffsetX: number
-  leftOffsetY: number
-  leftOffsetZ: number
-  rightOffsetX: number
-  rightOffsetY: number
-  rightOffsetZ: number
+  style: HindPawStyle; mirror: boolean; rootHeight: number; embedDepth: number; forwardOffset: number; lateralOffset: number
+  outwardAngle: number; forwardAngle: number; legLengthScale: number; legThicknessScale: number; haunchScale: number; ankleScale: number
+  pawScaleX: number; pawScaleY: number; pawScaleZ: number; toeLift: number; toeOutwardAngle: number; heelDrop: number
+  leftOffsetX: number; leftOffsetY: number; leftOffsetZ: number; rightOffsetX: number; rightOffsetY: number; rightOffsetZ: number
 }
 export interface PetCustomizationRecipe {
   colors: PetPartColorRecipe
   belly: PetBellyCustomizationRecipe
+  nose: PetNoseCustomizationRecipe
   mouth: PetMouthCustomizationRecipe
 }
 
@@ -120,6 +104,10 @@ export const PET_CUSTOMIZATION_RANGES = Object.freeze({
     toeLift: hard('hindPawDesign.toeLift'), toeOutwardAngle: hard('hindPawDesign.toeOutwardAngle'), heelDrop: hard('hindPawDesign.heelDrop'),
     leftOffsetX: hard('hindPawDesign.leftOffsetX'), leftOffsetY: hard('hindPawDesign.leftOffsetY'), leftOffsetZ: hard('hindPawDesign.leftOffsetZ'),
     rightOffsetX: hard('hindPawDesign.rightOffsetX'), rightOffsetY: hard('hindPawDesign.rightOffsetY'), rightOffsetZ: hard('hindPawDesign.rightOffsetZ'),
+  }),
+  nose: Object.freeze({
+    offsetX: hard('customization.nose.offsetX'), offsetY: hard('customization.nose.offsetY'), surfaceOffset: hard('customization.nose.surfaceOffset'),
+    scaleX: hard('customization.nose.scaleX'), scaleY: hard('customization.nose.scaleY'), scaleZ: hard('customization.nose.scaleZ'), rotation: hard('customization.nose.rotation'),
   }),
   antenna: Object.freeze({
     spacing: hard('antennaDesign.spacing'), length: hard('antennaDesign.length'), thickness: hard('antennaDesign.thickness'), tilt: hard('antennaDesign.tilt'),
@@ -181,29 +169,30 @@ function normalizeBelly(customization: unknown, legacy: unknown): PetBellyCustom
     rotation: finite(source.rotation, PET_CUSTOMIZATION_RANGES.belly.rotation, fallback.rotation), softness: finite(source.softness, PET_CUSTOMIZATION_RANGES.belly.softness, fallback.softness),
   }
 }
+function normalizeNose(value: unknown): PetNoseCustomizationRecipe {
+  const source = asRecord(value); const range = PET_CUSTOMIZATION_RANGES.nose
+  return {
+    offsetX: finite(source.offsetX, range.offsetX, 0), offsetY: finite(source.offsetY, range.offsetY, 0),
+    surfaceOffset: finite(source.surfaceOffset, range.surfaceOffset, .012), scaleX: finite(source.scaleX, range.scaleX, 1),
+    scaleY: finite(source.scaleY, range.scaleY, 1), scaleZ: finite(source.scaleZ, range.scaleZ, 1), rotation: finite(source.rotation, range.rotation, 0),
+  }
+}
 function normalizeMouth(value: unknown): PetMouthCustomizationRecipe {
   const source = asRecord(value)
   return {
-    offsetX: finite(source.offsetX, PET_CUSTOMIZATION_RANGES.mouth.offsetX, 0),
-    offsetY: finite(source.offsetY, PET_CUSTOMIZATION_RANGES.mouth.offsetY, 0),
-    surfaceOffset: finite(source.surfaceOffset, PET_CUSTOMIZATION_RANGES.mouth.surfaceOffset, .008),
-    width: finite(source.width, PET_CUSTOMIZATION_RANGES.mouth.width, 1),
-    height: finite(source.height, PET_CUSTOMIZATION_RANGES.mouth.height, 1),
-    rotation: finite(source.rotation, PET_CUSTOMIZATION_RANGES.mouth.rotation, 0),
-    curve: finite(source.curve, PET_CUSTOMIZATION_RANGES.mouth.curve, 1),
-    thickness: finite(source.thickness, PET_CUSTOMIZATION_RANGES.mouth.thickness, 1),
-    defaultOpen: finite(source.defaultOpen, PET_CUSTOMIZATION_RANGES.mouth.defaultOpen, .58),
-    maxOpen: finite(source.maxOpen, PET_CUSTOMIZATION_RANGES.mouth.maxOpen, 1.12),
-    tongueVisible: source.tongueVisible !== false,
-    tongueScale: finite(source.tongueScale, PET_CUSTOMIZATION_RANGES.mouth.tongueScale, 1),
+    offsetX: finite(source.offsetX, PET_CUSTOMIZATION_RANGES.mouth.offsetX, 0), offsetY: finite(source.offsetY, PET_CUSTOMIZATION_RANGES.mouth.offsetY, 0),
+    surfaceOffset: finite(source.surfaceOffset, PET_CUSTOMIZATION_RANGES.mouth.surfaceOffset, .008), width: finite(source.width, PET_CUSTOMIZATION_RANGES.mouth.width, 1),
+    height: finite(source.height, PET_CUSTOMIZATION_RANGES.mouth.height, 1), rotation: finite(source.rotation, PET_CUSTOMIZATION_RANGES.mouth.rotation, 0),
+    curve: finite(source.curve, PET_CUSTOMIZATION_RANGES.mouth.curve, 1), thickness: finite(source.thickness, PET_CUSTOMIZATION_RANGES.mouth.thickness, 1),
+    defaultOpen: finite(source.defaultOpen, PET_CUSTOMIZATION_RANGES.mouth.defaultOpen, .58), maxOpen: finite(source.maxOpen, PET_CUSTOMIZATION_RANGES.mouth.maxOpen, 1.12),
+    tongueVisible: source.tongueVisible !== false, tongueScale: finite(source.tongueScale, PET_CUSTOMIZATION_RANGES.mouth.tongueScale, 1),
     tongueOffsetY: finite(source.tongueOffsetY, PET_CUSTOMIZATION_RANGES.mouth.tongueOffsetY, 0),
   }
 }
 function normalizeFrontPaw(value: unknown, base: FrontPawDesignRecipe): ExtendedFrontPawDesignRecipe {
   const source = asRecord(value); const range = PET_CUSTOMIZATION_RANGES.frontPaw
   return {
-    style: base.style,
-    rootHeight: finite(source.rootHeight, range.rootHeight, 0), embedDepth: finite(source.embedDepth, range.embedDepth, .06),
+    style: base.style, rootHeight: finite(source.rootHeight, range.rootHeight, 0), embedDepth: finite(source.embedDepth, range.embedDepth, .06),
     forwardOffset: finite(source.forwardOffset, range.forwardOffset, .06), outwardAngle: finite(source.outwardAngle, range.outwardAngle, .06),
     forwardAngle: finite(source.forwardAngle, range.forwardAngle, 0), shoulderScale: finite(source.shoulderScale, range.shoulderScale, 1),
     wristScale: finite(source.wristScale, range.wristScale, 1), palmScale: finite(source.palmScale, range.palmScale, 1),
@@ -223,8 +212,7 @@ export function createDefaultHindPawDesign(): HindPawDesignRecipe {
 function normalizeHindPaw(value: unknown): HindPawDesignRecipe {
   const source = asRecord(value); const range = PET_CUSTOMIZATION_RANGES.hindPaw; const fallback = createDefaultHindPawDesign()
   return {
-    style: HIND_PAW_STYLE_IDS.has(String(source.style)) ? source.style as HindPawStyle : fallback.style,
-    mirror: source.mirror !== false,
+    style: HIND_PAW_STYLE_IDS.has(String(source.style)) ? source.style as HindPawStyle : fallback.style, mirror: source.mirror !== false,
     rootHeight: finite(source.rootHeight, range.rootHeight, fallback.rootHeight), embedDepth: finite(source.embedDepth, range.embedDepth, fallback.embedDepth),
     forwardOffset: finite(source.forwardOffset, range.forwardOffset, fallback.forwardOffset), lateralOffset: finite(source.lateralOffset, range.lateralOffset, fallback.lateralOffset),
     outwardAngle: finite(source.outwardAngle, range.outwardAngle, fallback.outwardAngle), forwardAngle: finite(source.forwardAngle, range.forwardAngle, fallback.forwardAngle),
@@ -241,8 +229,8 @@ export function normalizeCustomizableAppearance(input: unknown): CustomizableApp
   const base = normalizeMultiSpeciesAppearance(input)
   const candidate = asRecord(input); const proportions = asRecord(candidate.proportions); const frontPaw = asRecord(candidate.frontPawDesign)
   const antenna = asRecord(candidate.antennaDesign); const orbit = asRecord(candidate.orbitDesign); const glow = asRecord(candidate.glow); const customization = asRecord(candidate.customization)
-  const colors = normalizeColors(customization.colors, base); colors.antennaRod = colors.paws; colors.energyCore = colors.eyeHighlight
-  const belly = normalizeBelly(customization.belly, candidate.bellyPatchDesign); const mouth = normalizeMouth(customization.mouth)
+  const colors = normalizeColors(customization.colors, base)
+  const belly = normalizeBelly(customization.belly, candidate.bellyPatchDesign); const nose = normalizeNose(customization.nose); const mouth = normalizeMouth(customization.mouth)
   for (const key of PROPORTION_KEYS) base.proportions[key] = finite(proportions[key], PET_CUSTOMIZATION_RANGES.proportions[key], base.proportions[key])
   const normalizedFrontPaw = normalizeFrontPaw(frontPaw, base.frontPawDesign)
   const normalizedHindPaw = normalizeHindPaw(candidate.hindPawDesign)
@@ -262,7 +250,7 @@ export function normalizeCustomizableAppearance(input: unknown): CustomizableApp
   Object.assign(base.earDesign, { outerColor: colors.earOuter, innerColor: colors.earInner, tipColor: colors.earTip })
   base.tailDesign.tipGlow.color = colors.tailGlow
   base.bellyPatchDesign = { mode: belly.visible ? 'custom' : 'none', visible: belly.visible, style: ['shield','bean','teardrop','heart'].includes(belly.shape) ? belly.shape as 'shield'|'bean'|'teardrop'|'heart' : 'oval', width: belly.width, height: belly.height, offsetY: belly.offsetY }
-  return { ...base, frontPawDesign: normalizedFrontPaw, hindPawDesign: normalizedHindPaw, customization: { colors, belly, mouth } }
+  return { ...base, frontPawDesign: normalizedFrontPaw, hindPawDesign: normalizedHindPaw, customization: { colors, belly, nose, mouth } }
 }
 
 export function resolvePetCustomization(appearance: MultiSpeciesAppearanceRecipe): PetCustomizationRecipe {
@@ -270,5 +258,5 @@ export function resolvePetCustomization(appearance: MultiSpeciesAppearanceRecipe
 }
 export function createDefaultPetCustomization(appearance: MultiSpeciesAppearanceRecipe): PetCustomizationRecipe {
   const base = normalizeMultiSpeciesAppearance(appearance)
-  return { colors: defaultColors(base), belly: normalizeBelly(undefined, undefined), mouth: normalizeMouth(undefined) }
+  return { colors: defaultColors(base), belly: normalizeBelly(undefined, undefined), nose: normalizeNose(undefined), mouth: normalizeMouth(undefined) }
 }
