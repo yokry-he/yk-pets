@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 校验 Chrome 扩展和 Studio 共用完整三十动作组件，并锁定正式烟花、可重复触发和独立肢体姿态领域逻辑。
- * Verifies that Chrome extension and Studio share all thirty motions while locking fireworks, repeat triggering, and independent limb-pose logic.
+ * 校验 Chrome 扩展、外观工坊和新动作工坊共用完整三十动作组件，并锁定烟花、可重复触发和独立肢体姿态逻辑。
+ * Verifies that the Chrome extension, Appearance Studio, and Motion Studio share all thirty motions while locking fireworks, replay, and independent limb poses.
  */
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -21,7 +21,8 @@ const body = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.v
 const head = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
 const tail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue')
 const effects = read('apps/playground/app/components/studio/ExtensionCloudFoxMotionEffects.vue')
-const page = read('apps/playground/app/pages/studio.vue')
+const appearanceWorkspace = read('apps/playground/app/components/studio/StudioAppearanceWorkspace.vue')
+const motionWorkspace = read('apps/playground/app/pages/studio/motion.vue')
 const toolbar = read('apps/playground/app/components/studio/StudioMotionToolbar.vue')
 const unifiedSource = configured.includes("from 'yk-pets-unified-cloud-fox'") && wxt.includes('../playground/app/components/studio/ExtensionAlignedCloudFox.vue')
 const motionIds = [
@@ -30,8 +31,8 @@ const motionIds = [
 ]
 const checks = [
   ['exactly thirty motions remain and paw tap stays removed', motionIds.length === 30 && motionIds.every(id => catalog.includes(`id: '${id}'`)) && !catalog.includes("id: 'paw-tap'")],
-  ['Studio and extension use one motion component', unifiedSource && core.includes('ExtensionCloudFoxBody')],
-  ['same-motion replay reaches every canonical consumer', /motionKey\.value\s*\+=\s*1/.test(page) && (core.match(/:motion-key="effectiveMotionKey"/g)?.length || 0) >= 7],
+  ['Studio and extension use one motion component', unifiedSource && core.includes('ExtensionCloudFoxBody') && motionWorkspace.includes('CloudFoxStudioCanvas') && !motionWorkspace.includes('ExtensionAlignedCloudFox.vue')],
+  ['same-motion replay reaches every canonical consumer', /motionKey\.value\s*\+=\s*1/.test(appearanceWorkspace) && (core.match(/:motion-key="effectiveMotionKey"/g)?.length || 0) >= 7],
   ['single grouped motion dropdown remains', toolbar.includes('<select') && toolbar.includes('<optgroup') && toolbar.includes('EXTENSION_CLOUD_FOX_MOTIONS.length')],
   ['shared frame drives body head tail effects and limb domain', [core, body, head, tail, effects].every(source => source.includes('createExtensionCloudFoxMotionFrame')) && runtime.includes('createExtensionCloudFoxMotionFrame') && limbMotion.includes('MotionFrame')],
   ['front and hind poses live outside the body renderer', body.includes('createCloudFoxFrontPawPose') && body.includes('createCloudFoxHindPawPose') && limbMotion.includes('createCloudFoxFrontPawPose') && limbMotion.includes('createCloudFoxHindPawPose') && limbBridge.includes('cloud-fox-limb-motion')],
