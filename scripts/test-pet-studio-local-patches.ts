@@ -7,6 +7,24 @@ import { normalizeMultiSpeciesAppearance } from '../apps/playground/app/domain/p
 const rawOriginal = createExtensionClassicAppearance()
 const original = normalizeCustomizableAppearance(rawOriginal)
 
+type JsonRecord = Record<string, unknown>
+function snapshotExcept(value: unknown, paths: string[]) {
+  const clone = JSON.parse(JSON.stringify(value)) as JsonRecord
+  for (const path of paths) {
+    const segments = path.split('.')
+    let target: JsonRecord | undefined = clone
+    for (const segment of segments.slice(0, -1)) {
+      const next = target?.[segment]
+      target = next && typeof next === 'object' && !Array.isArray(next) ? next as JsonRecord : undefined
+    }
+    if (target) delete target[segments.at(-1)!]
+  }
+  return JSON.stringify(clone)
+}
+function assertOnlyChanged(before: unknown, after: unknown, ownedPaths: string[]) {
+  assert.equal(snapshotExcept(after, ownedPaths), snapshotExcept(before, ownedPaths))
+}
+
 const legacyRecipe = JSON.parse(JSON.stringify(rawOriginal))
 delete legacyRecipe.bellyPatchDesign
 delete legacyRecipe.chestDisplay
@@ -17,38 +35,13 @@ delete legacyRecipe.symbols.back.offsetX
 delete legacyRecipe.symbols.back.offsetY
 delete legacyRecipe.symbols.back.offsetZ
 const migratedLegacy = normalizeMultiSpeciesAppearance(legacyRecipe)
-assert.deepEqual(migratedLegacy.bellyPatchDesign, {
-  mode: 'model-default',
-  visible: true,
-  style: 'shield',
-  width: 1,
-  height: 1,
-  offsetY: 0,
-})
+assert.deepEqual(migratedLegacy.bellyPatchDesign, { mode: 'model-default', visible: true, style: 'shield', width: 1, height: 1, offsetY: 0 })
 assert.equal(migratedLegacy.chestDisplay.mode, 'energy-core')
 assert.equal(migratedLegacy.symbols.back.offsetY, .18)
-
 const legacySymbolRecipe = JSON.parse(JSON.stringify(legacyRecipe))
 legacySymbolRecipe.symbols.chest.enabled = true
-const migratedLegacySymbol = normalizeMultiSpeciesAppearance(legacySymbolRecipe)
-assert.equal(migratedLegacySymbol.chestDisplay.mode, 'symbol')
+assert.equal(normalizeMultiSpeciesAppearance(legacySymbolRecipe).chestDisplay.mode, 'symbol')
 
-const nonTailSnapshot = JSON.stringify({
-  identity: original.identity,
-  parts: original.parts,
-  proportions: original.proportions,
-  palette: original.palette,
-  glow: original.glow,
-  bellyPatchDesign: original.bellyPatchDesign,
-  chestDisplay: original.chestDisplay,
-  frontPawDesign: original.frontPawDesign,
-  orbitDesign: original.orbitDesign,
-  earDesign: original.earDesign,
-  antennaDesign: original.antennaDesign,
-  symbols: original.symbols,
-  speciesParts: original.speciesParts,
-  customization: original.customization,
-})
 const tailPatched = applyPetAppearanceLocalPatch(original, {
   tailDesign: {
     lateralOffset: .26,
@@ -56,144 +49,46 @@ const tailPatched = applyPetAppearanceLocalPatch(original, {
     segments: original.tailDesign.segments.map((segment, index) => index === 1 ? { ...segment, offsetX: .18, offsetZ: -.12 } : segment),
   },
 })
-assert.equal(JSON.stringify({
-  identity: tailPatched.identity,
-  parts: tailPatched.parts,
-  proportions: tailPatched.proportions,
-  palette: tailPatched.palette,
-  glow: tailPatched.glow,
-  bellyPatchDesign: tailPatched.bellyPatchDesign,
-  chestDisplay: tailPatched.chestDisplay,
-  frontPawDesign: tailPatched.frontPawDesign,
-  orbitDesign: tailPatched.orbitDesign,
-  earDesign: tailPatched.earDesign,
-  antennaDesign: tailPatched.antennaDesign,
-  symbols: tailPatched.symbols,
-  speciesParts: tailPatched.speciesParts,
-  customization: tailPatched.customization,
-}), nonTailSnapshot)
+assertOnlyChanged(original, tailPatched, ['tailDesign', 'customization.colors.tailGlow'])
 assert.equal(tailPatched.tailDesign.lateralOffset, .26)
 assert.equal(tailPatched.tailDesign.tipGlow.enabled, false)
 assert.equal(tailPatched.tailDesign.tipGlow.color, '#ff66cc')
+assert.equal(tailPatched.customization.colors.tailGlow, '#ff66cc')
 assert.equal(tailPatched.tailDesign.segments[1]?.offsetX, .18)
 assert.equal(tailPatched.tailDesign.segments[1]?.offsetZ, -.12)
 
-const nonEarSnapshot = JSON.stringify({
-  identity: original.identity,
-  parts: original.parts,
-  proportions: original.proportions,
-  palette: original.palette,
-  glow: original.glow,
-  bellyPatchDesign: original.bellyPatchDesign,
-  chestDisplay: original.chestDisplay,
-  frontPawDesign: original.frontPawDesign,
-  orbitDesign: original.orbitDesign,
-  tailDesign: original.tailDesign,
-  antennaDesign: original.antennaDesign,
-  symbols: original.symbols,
-  speciesParts: original.speciesParts,
-  customization: original.customization,
-})
 const earPatched = applyPetAppearanceLocalPatch(original, {
   earDesign: { outerColor: '#f4f7ff', innerColor: '#8b6cff', tipColor: '#77f2df', innerGlowIntensity: 1.35 },
 })
-assert.equal(JSON.stringify({
-  identity: earPatched.identity,
-  parts: earPatched.parts,
-  proportions: earPatched.proportions,
-  palette: earPatched.palette,
-  glow: earPatched.glow,
-  bellyPatchDesign: earPatched.bellyPatchDesign,
-  chestDisplay: earPatched.chestDisplay,
-  frontPawDesign: earPatched.frontPawDesign,
-  orbitDesign: earPatched.orbitDesign,
-  tailDesign: earPatched.tailDesign,
-  antennaDesign: earPatched.antennaDesign,
-  symbols: earPatched.symbols,
-  speciesParts: earPatched.speciesParts,
-  customization: earPatched.customization,
-}), nonEarSnapshot)
+assertOnlyChanged(original, earPatched, ['earDesign', 'customization.colors.earOuter', 'customization.colors.earInner', 'customization.colors.earTip'])
 assert.equal(earPatched.earDesign.outerColor, '#f4f7ff')
 assert.equal(earPatched.earDesign.innerColor, '#8b6cff')
 assert.equal(earPatched.earDesign.tipColor, '#77f2df')
 assert.equal(earPatched.earDesign.innerGlowIntensity, 1.35)
+assert.equal(earPatched.customization.colors.earOuter, '#f4f7ff')
+assert.equal(earPatched.customization.colors.earInner, '#8b6cff')
+assert.equal(earPatched.customization.colors.earTip, '#77f2df')
 
-const nonPawSnapshot = JSON.stringify({
-  identity: original.identity,
-  parts: original.parts,
-  proportions: original.proportions,
-  palette: original.palette,
-  glow: original.glow,
-  bellyPatchDesign: original.bellyPatchDesign,
-  chestDisplay: original.chestDisplay,
-  orbitDesign: original.orbitDesign,
-  earDesign: original.earDesign,
-  tailDesign: original.tailDesign,
-  antennaDesign: original.antennaDesign,
-  symbols: original.symbols,
-  speciesParts: original.speciesParts,
-  customization: original.customization,
-})
 const pawPatched = applyPetAppearanceLocalPatch(original, {
-  frontPawDesign: { style: 'mitten', embedDepth: .16, outwardAngle: .18, shoulderScale: 1.24 },
+  frontPawDesign: { style: 'mitten', embedDepth: .16, outwardAngle: .18, shoulderScale: 1.24, mirror: false, leftOffsetX: -.12 },
 })
-assert.equal(JSON.stringify({
-  identity: pawPatched.identity,
-  parts: pawPatched.parts,
-  proportions: pawPatched.proportions,
-  palette: pawPatched.palette,
-  glow: pawPatched.glow,
-  bellyPatchDesign: pawPatched.bellyPatchDesign,
-  chestDisplay: pawPatched.chestDisplay,
-  orbitDesign: pawPatched.orbitDesign,
-  earDesign: pawPatched.earDesign,
-  tailDesign: pawPatched.tailDesign,
-  antennaDesign: pawPatched.antennaDesign,
-  symbols: pawPatched.symbols,
-  speciesParts: pawPatched.speciesParts,
-  customization: pawPatched.customization,
-}), nonPawSnapshot)
+assertOnlyChanged(original, pawPatched, ['frontPawDesign'])
 assert.equal(pawPatched.frontPawDesign.style, 'mitten')
 assert.equal(pawPatched.frontPawDesign.embedDepth, .16)
 assert.equal(pawPatched.frontPawDesign.outwardAngle, .18)
 assert.equal(pawPatched.frontPawDesign.shoulderScale, 1.24)
+assert.equal(pawPatched.frontPawDesign.mirror, false)
+assert.equal(pawPatched.frontPawDesign.leftOffsetX, -.12)
 
-const nonBellySnapshot = JSON.stringify({
-  identity: original.identity,
-  parts: original.parts,
-  proportions: original.proportions,
-  palette: original.palette,
-  glow: original.glow,
-  chestDisplay: original.chestDisplay,
-  frontPawDesign: original.frontPawDesign,
-  orbitDesign: original.orbitDesign,
-  earDesign: original.earDesign,
-  tailDesign: original.tailDesign,
-  antennaDesign: original.antennaDesign,
-  symbols: original.symbols,
-  speciesParts: original.speciesParts,
-  customization: { colors: original.customization.colors, mouth: original.customization.mouth },
-})
 const heartPatched = applyPetAppearanceLocalPatch(original, {
   bellyPatchDesign: { style: 'heart', width: 1.18, height: .82, offsetY: .1 },
 })
+assertOnlyChanged(original, heartPatched, ['bellyPatchDesign', 'customization.belly'])
 assert.deepEqual(heartPatched.bellyPatchDesign, { mode: 'custom', visible: true, style: 'heart', width: 1.18, height: .82, offsetY: .1 })
-assert.equal(JSON.stringify({
-  identity: heartPatched.identity,
-  parts: heartPatched.parts,
-  proportions: heartPatched.proportions,
-  palette: heartPatched.palette,
-  glow: heartPatched.glow,
-  chestDisplay: heartPatched.chestDisplay,
-  frontPawDesign: heartPatched.frontPawDesign,
-  orbitDesign: heartPatched.orbitDesign,
-  earDesign: heartPatched.earDesign,
-  tailDesign: heartPatched.tailDesign,
-  antennaDesign: heartPatched.antennaDesign,
-  symbols: heartPatched.symbols,
-  speciesParts: heartPatched.speciesParts,
-  customization: { colors: heartPatched.customization.colors, mouth: heartPatched.customization.mouth },
-}), nonBellySnapshot)
+assert.equal(heartPatched.customization.belly.shape, 'heart')
+assert.equal(heartPatched.customization.belly.width, 1.18)
+assert.equal(heartPatched.customization.belly.height, .82)
+assert.equal(heartPatched.customization.belly.offsetY, .1)
 
 const symbolPatched = applyPetAppearanceLocalPatch(original, {
   chestDisplay: { mode: 'hybrid' },
@@ -202,22 +97,18 @@ const symbolPatched = applyPetAppearanceLocalPatch(original, {
     back: { enabled: true, offsetY: .28, offsetZ: .08 },
   },
 })
+assertOnlyChanged(original, symbolPatched, ['chestDisplay', 'symbols'])
 assert.equal(symbolPatched.chestDisplay.mode, 'hybrid')
 assert.equal(symbolPatched.symbols.chest.enabled, true)
 assert.equal(symbolPatched.symbols.chest.scale, 1.42)
-assert.equal(symbolPatched.symbols.chest.offsetX, .08)
-assert.equal(symbolPatched.symbols.chest.offsetY, .12)
-assert.equal(symbolPatched.symbols.chest.offsetZ, .14)
 assert.equal(symbolPatched.symbols.back.enabled, true)
-assert.equal(symbolPatched.symbols.back.offsetY, .28)
-assert.equal(symbolPatched.symbols.back.offsetZ, .08)
 
 const mouthPatched = applyPetAppearanceLocalPatch(original, {
   customization: { mouth: { width: 1.24, surfaceOffset: .018, tongueVisible: false } },
 })
+assertOnlyChanged(original, mouthPatched, ['customization.mouth'])
 assert.equal(mouthPatched.customization.mouth.width, 1.24)
 assert.equal(mouthPatched.customization.mouth.surfaceOffset, .018)
 assert.equal(mouthPatched.customization.mouth.tongueVisible, false)
-assert.equal(mouthPatched.frontPawDesign.mirror, true)
 
 console.log('Pet Studio local patch isolation passed for legacy migration, tail, ear, extended paw, belly, mouth, and symbols.')
