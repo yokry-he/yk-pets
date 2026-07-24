@@ -27,36 +27,87 @@ jobs:
           BUNDLE_SHA256: 5bed7417d8a964d1f60d336d87341c6dee69a08b07feea2e83fe2e3e3c0d91ea
         shell: bash
         run: |
-          set -euo pipefail
-          : > /tmp/yk-pets-bundle.b64
-          for blob in \
-            d17e203eb1d47c078bd03d28d8545555813fbc31 \
-            04c6761f061134cb068f442bfaceb31abcee4dd5 \
-            000ee80b4d5a3daa2bec49a0457dee01f5c08d63 \
-            cceb4d1766e900f8d066029c586068035490f6f1 \
-            82fa259c7b442ec876b31f7375f4059d27da529f \
-            23a6f71befca5b6438009a4f7d6f9ee588e0f28b \
-            431dda72a8c13454b497bd5199c3e94203ddc0af \
-            13634bb95f0aba85659c59bf576a095690915936 \
-            925561c831e8933b150d6950f59bb8d21684c07c \
-            28c04dc050c618f4bac50c349fdaa274eb78f599 \
-            bd2d848ff1aa463f846aed79b92ae9b811d7bcae \
-            3d348ef7bff0f326933aa8096fd77a206141fd9b \
-            612258ea11fdca1090ba43763ec6e231cd11b17f
+          set -u
+          report=/tmp/yk-pets-reconstruct-report.txt
+          fail=/tmp/yk-pets-reconstruct-failed
+          bundle_b64=/tmp/yk-pets-bundle.b64
+          : > "$report"
+          : > "$bundle_b64"
+          valid=1
+
+          while read -r blob expected
           do
-            curl --fail-with-body --silent --show-error \
+            if ! curl --fail-with-body --silent --show-error \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "https://api.github.com/repos/$GITHUB_REPOSITORY/git/blobs/$blob" \
-              | jq -r '.content' | tr -d '\n' | base64 -d >> /tmp/yk-pets-bundle.b64
-          done
-          base64 -d /tmp/yk-pets-bundle.b64 > /tmp/yk-pets-motion-domain-bundle.tar.gz
-          echo "$BUNDLE_SHA256  /tmp/yk-pets-motion-domain-bundle.tar.gz" | sha256sum --check --strict
+              > /tmp/yk-pets-blob.json
+            then
+              echo "$blob download-failed expected=$expected" >> "$report"
+              valid=0
+              continue
+            fi
+            if ! jq -r '.content' /tmp/yk-pets-blob.json | tr -d '\n' | base64 -d > /tmp/yk-pets-part
+            then
+              echo "$blob decode-failed expected=$expected" >> "$report"
+              valid=0
+              continue
+            fi
+            actual="$(sha256sum /tmp/yk-pets-part | cut -d' ' -f1)"
+            bytes="$(wc -c < /tmp/yk-pets-part)"
+            echo "$blob bytes=$bytes expected=$expected actual=$actual" >> "$report"
+            if [ "$actual" != "$expected" ]; then valid=0; fi
+            cat /tmp/yk-pets-part >> "$bundle_b64"
+          done <<'PARTS'
+          d17e203eb1d47c078bd03d28d8545555813fbc31 b3a192dcd051e1a300fd5ff142a149226b859ef6698e966f01ad8a3728d4f71e
+          04c6761f061134cb068f442bfaceb31abcee4dd5 3e063a7bdaa7501300428aaa4006c6b583f827535fb3cf907a53e66ecadd9803
+          000ee80b4d5a3daa2bec49a0457dee01f5c08d63 1a2f58075ddf899145b10ed67e71a3dea08027c502ec4bcc932cbf21c97f69d5
+          cceb4d1766e900f8d066029c586068035490f6f1 d351a17fc7e564fc1bd4419d6937d49752a78d4d2f95ca56243db12324bcb3e7
+          82fa259c7b442ec876b31f7375f4059d27da529f aafa22c21b3f3bff556d63c7c0f52dd2427196df263a43066dfecafbd53ce4dc
+          23a6f71befca5b6438009a4f7d6f9ee588e0f28b 5454a3be34153355f9f6131baa3d930243bcff22f7d954108fc61a8ba4ced56f
+          431dda72a8c13454b497bd5199c3e94203ddc0af 2c6b6c31bed5d222b62371931b2dea7085f62de3aa6ec073d57c0df6df3bf595
+          13634bb95f0aba85659c59bf576a095690915936 436e25e4720fb2857410e454e017f857e758c575ae8996382865b954b33b9981
+          925561c831e8933b150d6950f59bb8d21684c07c 66173f8ef91f4c37d500a13ea33a5d37209c5300295dc07eae98eba25d9963a9
+          28c04dc050c618f4bac50c349fdaa274eb78f599 e46886e32f4ada590d84e6dd8fafa85176d1d4a653b7cc77694c9f98f6d48772
+          bd2d848ff1aa463f846aed79b92ae9b811d7bcae 1fc77009570babf01b25040889111cb787c641aec31386f652e2d709d1993575
+          3d348ef7bff0f326933aa8096fd77a206141fd9b cf9e5da3a712a7a9e7b96734fe759bbced982a63ededf56f7dc58bc30f1d4848
+          612258ea11fdca1090ba43763ec6e231cd11b17f f556229167f0fff11d8a8063bbf91691ff6f04a14296738fdf30a17002f6bb01
+          PARTS
+
+          if base64 -d "$bundle_b64" > /tmp/yk-pets-motion-domain-bundle.tar.gz
+          then
+            actual_bundle="$(sha256sum /tmp/yk-pets-motion-domain-bundle.tar.gz | cut -d' ' -f1)"
+            echo "bundle expected=$BUNDLE_SHA256 actual=$actual_bundle" >> "$report"
+            if [ "$actual_bundle" != "$BUNDLE_SHA256" ]; then valid=0; fi
+          else
+            echo 'bundle decode-failed' >> "$report"
+            valid=0
+          fi
+
+          echo "valid=$valid" >> "$report"
+          cat "$report"
+          if [ "$valid" -ne 1 ]; then
+            touch "$fail"
+            exit 0
+          fi
+
           tar -xzf /tmp/yk-pets-motion-domain-bundle.tar.gz
           cp .__yk_bundle_manifest /tmp/yk-pets-feature-manifest
           rm .__yk_bundle_manifest
           test "$(wc -l < /tmp/yk-pets-feature-manifest)" -eq 25
+
+      - name: Upload reconstruction report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yk-pets-reconstruction-report
+          path: /tmp/yk-pets-reconstruct-report.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Validate reconstruction
+        run: test ! -e /tmp/yk-pets-reconstruct-failed
 
       - name: Use Node.js 22
         uses: actions/setup-node@v4
