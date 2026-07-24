@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 按阶段校验云狐工坊配方、独立头身、场景、物种、编辑器、统一模型、完整动作和扩展同步契约。
- * Validates Cloud Fox Studio recipe, independent head/body, scene, species, editor, unified model, complete motion, and extension sync contracts by phase.
+ * 按阶段校验云狐工坊配方、独立头身、真实表面采样、场景、物种、编辑器、统一模型、完整动作和扩展同步契约。
+ * Validates Cloud Fox Studio recipes, independent head/body surfaces, real surface sampling, scenes, species, editor, unified model, complete motions, and extension sync contracts by phase.
  */
 import { readFileSync } from 'node:fs'
 const phaseArg = process.argv.find(argument => argument.startsWith('--phase='))
@@ -11,6 +11,8 @@ const files = {
   package: read('package.json'),
   base: read('apps/playground/app/domain/cloud-fox-appearance.ts'),
   shapeProfiles: read('apps/playground/app/domain/cloud-fox-shape-profile.ts'),
+  surface: read('apps/playground/app/domain/cloud-fox-surface-model.ts'),
+  eyeMetrics: read('apps/playground/app/domain/cloud-fox-eye-metrics.ts'),
   phase2: read('apps/playground/app/domain/pet-studio-phase2.ts'),
   phase3: read('apps/playground/app/domain/pet-studio-phase3.ts'),
   phase4: read('apps/playground/app/domain/pet-studio-phase4.ts'),
@@ -32,6 +34,7 @@ const files = {
   belly: read('apps/playground/app/components/studio/ExtensionCloudFoxBellyPatch.vue'),
   head: read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue'),
   headShape: read('apps/playground/app/components/studio/ExtensionCloudFoxHeadShape.vue'),
+  eye: read('apps/playground/app/components/studio/ExtensionCloudFoxEyeShape.vue'),
   tail: read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue'),
   effects: read('apps/playground/app/components/studio/ExtensionCloudFoxMotionEffects.vue'),
   fireworks: read('apps/playground/app/components/studio/ProductionCloudFoxFireworks.vue'),
@@ -60,7 +63,7 @@ const checks = [
   [10, 'thirty-motion registry and shared frame remain', files.motionCatalog.includes('EXTENSION_CLOUD_FOX_MOTIONS') && files.motionRuntime.includes('createExtensionCloudFoxMotionFrame') && files.core.includes('createExtensionCloudFoxMotionFrame') && files.toolbar.includes('<optgroup') && files.page.includes('motionKey.value += 1')],
   [11, 'complete prop effects and extension fireworks remain', files.core.includes('ExtensionCloudFoxEnergyBall') && files.core.includes('ExtensionCloudFoxMealOverlay') && files.effects.includes('starGroup') && files.effects.includes('cloud-nap') && files.fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48')],
   [12, 'Studio and extension use the same canonical composition source', unifiedSource && files.core.includes('ProductionCloudFoxFireworks') && files.headIntent.includes('createProductionFireworkBurstPlan')],
-  [13, 'independent head/body sole surfaces and configurable belly remain', files.base.includes('headShape: CloudFoxHeadShape') && files.shapeProfiles.includes('getCloudFoxBodyProfile') && files.shapeProfiles.includes('getCloudFoxHeadProfile') && files.body.includes('<ExtensionCloudFoxBodyShape') && files.bodyShape.includes('sole production torso surface') && files.head.includes('<ExtensionCloudFoxHeadShape') && files.headShape.includes('independently selectable head shell') && !files.belly.includes('ExtensionCloudFoxBodyShape') && files.bellyEditor.includes('宽度') && files.symbolEditor.includes('显示模式')],
+  [13, 'independent head/body real surfaces and projected belly remain', files.base.includes('headShape: CloudFoxHeadShape') && files.shapeProfiles.includes('getCloudFoxBodyProfile') && files.shapeProfiles.includes('getCloudFoxHeadProfile') && files.body.includes('<ExtensionCloudFoxBodyShape') && files.bodyShape.includes('normalized unit envelope') && files.head.includes('<ExtensionCloudFoxHeadShape') && files.headShape.includes('production three-axis head proportions') && files.surface.includes('sampleCloudFoxBodyFrontSurface') && files.surface.includes('resolveCloudFoxEyeSurfaceAnchor') && files.belly.includes('createCloudFoxBellySurfaceMesh') && files.head.includes('getCloudFoxEyeBlinkFloor') && files.eye.includes('ExtrudeGeometry') && !files.belly.includes('ExtensionCloudFoxBodyShape') && files.bellyEditor.includes('宽度') && files.symbolEditor.includes('显示模式')],
 ]
 const activeChecks = checks.filter(([phase]) => phase <= requestedPhase)
 const failures = activeChecks.filter(([, , passed]) => !passed).map(([, name]) => name)
