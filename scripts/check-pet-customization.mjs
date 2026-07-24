@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * 文件职责 / File responsibility
- * 防止鼻嘴几何、显式椭圆肚皮、全部位颜色、扩展范围和 Studio 事务交互回退。
- * Prevents regressions in nose/mouth geometry, explicit ellipse belly, all-part colors, expanded ranges, and transactional Studio interactions.
+ * 防止鼻嘴、肚皮、颜色、扩展范围、Studio 搜索、经典对比、点击聚焦、方案库和事务历史回退。
+ * Prevents regressions in face parts, belly, colors, ranges, Studio search, classic comparison, clickable focus, schemes, and transactional history.
  */
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -13,6 +13,7 @@ const belly = read('apps/playground/app/components/studio/ExtensionCloudFoxBelly
 const bellyEditor = read('apps/playground/app/components/studio/StudioBellyPatchEditor.vue')
 const colors = read('apps/playground/app/components/studio/StudioPartColorEditor.vue')
 const studio = read('apps/playground/app/pages/studio.vue')
+const advanced = read('apps/playground/app/plugins/studio-advanced.client.ts')
 const store = read('apps/playground/app/stores/pet-appearance.ts')
 const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
 const bridge = read('apps/extension/domain/pet-part-customization.ts')
@@ -27,6 +28,10 @@ const checks = [
   ['all visible material channels are configurable', colorKeys.every(key => customization.includes(`${key}: string`)) && colors.includes('所有部位颜色') && store.includes('patchPartColor')],
   ['expanded ranges exceed the legacy safe range', customization.includes('bodyWidth: [.55, 1.7]') && customization.includes('headScale: [.68, 1.48]') && customization.includes('tailLength: [.5, 1.9]') && customization.includes('width: [.42, 1.72]')],
   ['Studio uses visual cards precise values and transactional sliders', studio.includes('option-grid') && studio.includes('type="number"') && studio.includes('store.beginTransaction') && studio.includes('store.endTransaction') && store.includes('transactionOpen')],
+  ['Studio supports parameter search and direct part focus', advanced.includes('SEARCH_ENTRIES') && advanced.includes('yk-studio-search-results') && advanced.includes('yk-studio-hotspots') && advanced.includes('selectSection')],
+  ['Studio classic comparison restores the exact temporary snapshot', advanced.includes('compareSnapshot') && advanced.includes('restoreComparison') && advanced.includes('createExtensionClassicAppearance') && advanced.includes('data-yk-studio-compare')],
+  ['Studio exposes local named schemes and recent history', advanced.includes('saveCustomScheme') && advanced.includes('applyCustomScheme') && advanced.includes('undoStack.length') && advanced.includes('redoStack.length')],
+  ['Studio keyboard shortcuts remain scoped and cleaned up', advanced.includes("event.key === '/'") && advanced.includes("event.key === 'Escape'") && advanced.includes("window.removeEventListener('keydown'") && !advanced.includes('setInterval(')],
   ['Studio draft and formal save semantics remain local', store.includes('appearance-draft:v3') && store.includes('localStorage.setItem') && !store.includes('fetch(')],
   ['extension permissions remain unchanged', manifest.includes("permissions: ['activeTab', 'contextMenus', 'scripting', 'storage', 'sidePanel', 'tts']") && !manifest.includes("'unlimitedStorage'")],
 ]
