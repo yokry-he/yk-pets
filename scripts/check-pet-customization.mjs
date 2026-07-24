@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * 文件职责 / File responsibility
- * 锁定独立头身、统一控制注册表、经典前爪挂点、真实表面肚皮、口鼻表面嘴型、可见眼睛、稳定工作台和本地编辑语义。
- * Locks independent head/body recipes, the unified control registry, classic paw anchors, real-surface belly and mouth geometry, visible eyes, stable workspace, and local editing semantics.
+ * 锁定独立头身、统一控制注册表、前后爪完整配置、真实表面肚皮与嘴型、可见眼睛、稳定工作台和本地编辑语义。
+ * Locks independent head/body, the control registry, complete front/hind paw controls, real-surface belly and mouth geometry, visible eyes, stable workspace, and local editing semantics.
  */
 import { existsSync, readFileSync } from 'node:fs'
 const url = path => new URL(`../${path}`, import.meta.url)
@@ -22,6 +22,7 @@ const eye = read('apps/playground/app/components/studio/ExtensionCloudFoxEyeShap
 const face = read('apps/playground/app/components/studio/ExtensionCloudFoxFaceCustomization.vue')
 const belly = read('apps/playground/app/components/studio/ExtensionCloudFoxBellyPatch.vue')
 const bellyEditor = read('apps/playground/app/components/studio/StudioBellyPatchEditor.vue')
+const hindEditor = read('apps/playground/app/components/studio/StudioHindPawEditor.vue')
 const colors = read('apps/playground/app/components/studio/StudioPartColorEditor.vue')
 const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const studio = read('apps/playground/app/pages/studio.vue')
@@ -35,7 +36,6 @@ const eyeMetricsBridge = read('apps/extension/domain/cloud-fox-eye-metrics.ts')
 const packageJson = read('package.json')
 const manifest = read('apps/extension/wxt.config.ts')
 const oldAdvancedPlugin = existsSync(url('apps/playground/app/plugins/studio-advanced.client.ts'))
-
 const bodyIds = ['sphere','ellipsoid','capsule','pear','bean','rounded-cube']
 const headIds = ['classic-round','wide-round','oval','capsule','bean','rounded-cube']
 const bellyIds = ['ellipse','egg','shield','teardrop','inverted-teardrop','bean','rounded-rectangle','heart','cloud','chest-fur']
@@ -49,9 +49,11 @@ const checks = [
   ['surface model samples bodies heads eyes and muzzle', surface.includes('sampleCloudFoxBodyFrontSurface') && surface.includes('sampleCloudFoxHeadFrontSurfaceAtLocalXY') && surface.includes('resolveCloudFoxEyeSurfaceAnchor') && surface.includes('resolveCloudFoxMuzzleSurfaceAnchor')],
   ['belly projects with front-facing winding', bellyIds.every(id => customization.includes(`id: '${id}'`)) && belly.includes('createCloudFoxBellySurfaceMesh') && surface.includes('indices.push(topLeft, topRight, bottomLeft') && belly.includes(':depth-write="true"') && !belly.includes('PlaneGeometry') && bellyEditor.includes('恢复椭圆默认')],
   ['eyes use sampled anchors and visibility floors', head.includes('resolveCloudFoxEyeSurfaceAnchor') && head.includes('getCloudFoxEyeBlinkFloor') && eyeMetrics.includes('blinkFloor') && eye.includes('ExtrudeGeometry') && eye.includes('TresOctahedronGeometry')],
-  ['mouths share muzzle surface and style-specific shallow geometry', face.includes('resolveCloudFoxMuzzleSurfaceAnchor') && face.includes("appearance.parts.mouth === 'smile'") && face.includes("appearance.parts.mouth === 'open'") && face.includes('TresCircleGeometry') && face.includes('TresTubeGeometry') && face.includes('animatedOpen') && !face.includes('mouth.value.scale.y')],
-  ['classic defaults restore ellipse belly and production paw anchor', defaults.includes("style: 'oval'") && defaults.includes('embedDepth: .06') && defaults.includes('forwardOffset: .06') && body.includes('classicPawX') && body.includes('scheme.model.frontPaw.offset')],
-  ['one control registry owns hard and recommended ranges', controls.includes('STUDIO_CONTROL_REGISTRY') && controls.includes('recommendedRange') && controls.includes('hardRange') && customization.includes("hard('proportions.bodyWidth')") && customization.includes("hard('frontPawDesign.rootHeight')")],
+  ['mouths share muzzle surface and style-specific shallow geometry', face.includes('resolveCloudFoxMuzzleSurfaceAnchor') && face.includes("appearance.parts.mouth === 'smile'") && face.includes("appearance.parts.mouth === 'open'") && face.includes('TresCircleGeometry') && face.includes('TresTubeGeometry') && face.includes('animatedOpen')],
+  ['classic front-paw defaults and anchors remain', defaults.includes('embedDepth: .06') && defaults.includes('forwardOffset: .06') && body.includes('classicPawX') && body.includes('scheme.model.frontPaw.offset')],
+  ['hind-paw defaults migrate and renderer consumes hind-specific geometry', customization.includes('createDefaultHindPawDesign') && customization.includes('normalizeHindPaw') && body.includes('hindPaw.value.haunchScale') && body.includes('hindFootRotation') && body.includes("hindPaw.style === 'boot'")],
+  ['one control registry owns front and hind paw ranges', controls.includes('STUDIO_CONTROL_REGISTRY') && controls.includes("'frontPawDesign.rootHeight'") && controls.includes("'hindPawDesign.pawScaleZ'") && customization.includes("hard('hindPawDesign.toeLift')")],
+  ['hind-paw workspace exposes mirror structure foot and side controls', hindEditor.includes('HIND_PAW_STYLES') && hindEditor.includes('hindPawDesign.mirror') && hindEditor.includes('haunchScale') && hindEditor.includes('toeOutwardAngle') && hindEditor.includes('rightOffsetZ')],
   ['numeric surface regression test remains in CI', packageJson.includes('test:cloud-fox-surface') && read('scripts/test-cloud-fox-surface-model.ts').includes('maximumOffsetError')],
   ['camera scale is independent of editor section', canvas.includes('fitRatio') && canvas.includes('cameraFactor') && !canvas.includes('focusZoom')],
   ['Studio remains scrollable and overlay-free', app.includes('overflow-y:auto!important') && app.includes('scrollbar-gutter:stable') && studio.includes("class: 'yk-pets-studio-page'") && app.includes('body.yk-pets-studio-page [data-nova-extension-root="overlay"]')],

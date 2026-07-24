@@ -1,7 +1,7 @@
-/**
+/*
  * 文件职责 / File responsibility
- * 管理可配置宠物配方、自动草稿、事务式撤销重做、全部位颜色、场景、预设和扩展同步保存。
- * Manages customizable pet recipes, automatic drafts, transactional undo/redo, all-part colors, scenes, presets, and extension-sync saves.
+ * 管理完整宠物配方、前后爪、自动草稿、事务式撤销重做、全部位颜色、场景、预设和扩展同步保存。
+ * Manages complete pet recipes, front/hind paws, automatic drafts, transactional undo/redo, all-part colors, scenes, presets, and extension-sync saves.
  */
 import { defineStore } from 'pinia'
 import {
@@ -23,13 +23,13 @@ import {
   auditFrontPawDesign,
   randomizeMultiSpeciesAppearance,
   switchPetSpecies,
-  type FrontPawDesignRecipe,
   type PetSpeciesId,
 } from '~/domain/pet-species-registry'
 import {
   createDefaultPetCustomization,
   normalizeCustomizableAppearance,
   type CustomizableAppearanceRecipe,
+  type HindPawDesignRecipe,
   type PetPartColorRecipe,
 } from '~/domain/pet-part-customization'
 import { getPetScenePreset, normalizePetScene, type PetScenePresetId, type PetSceneRecipe } from '~/domain/pet-scene'
@@ -72,6 +72,7 @@ const mergeCloudResult = (current: CustomizableAppearanceRecipe, result: PetStud
   speciesId: current.speciesId,
   speciesParts: current.speciesParts,
   frontPawDesign: current.frontPawDesign,
+  hindPawDesign: current.hindPawDesign,
   orbitDesign: current.orbitDesign,
   bellyPatchDesign: current.bellyPatchDesign,
   chestDisplay: current.chestDisplay,
@@ -152,8 +153,12 @@ export const usePetAppearanceStore = defineStore('pet-appearance', {
       this.recipe = normalizeCustomizableAppearance(applyPetAppearanceLocalPatch(this.recipe, { parts: patch }))
       this.markDirty()
     },
-    patchFrontPawDesign(patch: Partial<FrontPawDesignRecipe>) {
+    patchFrontPawDesign(patch: Partial<CustomizableAppearanceRecipe['frontPawDesign']>) {
       this.recipe = normalizeCustomizableAppearance(applyPetAppearanceLocalPatch(this.recipe, { frontPawDesign: patch }))
+      this.markDirty()
+    },
+    patchHindPawDesign(patch: Partial<HindPawDesignRecipe>) {
+      this.recipe = normalizeCustomizableAppearance(applyPetAppearanceLocalPatch(this.recipe, { hindPawDesign: patch }))
       this.markDirty()
     },
     patchEarDesign(patch: Partial<EarDesignRecipe>) {
@@ -247,11 +252,13 @@ export const usePetAppearanceStore = defineStore('pet-appearance', {
     },
     randomize() {
       this.checkpoint()
-      const previousColors = structuredClone(this.recipe.customization)
+      const previousCustomization = structuredClone(this.recipe.customization)
+      const previousHindPawDesign = structuredClone(this.recipe.hindPawDesign)
       const randomized = randomizeMultiSpeciesAppearance(this.recipe, this.locks)
       this.recipe = normalizeCustomizableAppearance({
         ...randomized,
-        customization: this.locks.colors ? previousColors : createDefaultPetCustomization(randomized),
+        hindPawDesign: previousHindPawDesign,
+        customization: this.locks.colors ? previousCustomization : createDefaultPetCustomization(randomized),
       })
       this.markDirty()
     },
@@ -262,7 +269,8 @@ export const usePetAppearanceStore = defineStore('pet-appearance', {
     },
     switchSpecies(id: PetSpeciesId) {
       this.checkpoint()
-      this.recipe = normalizeCustomizableAppearance(switchPetSpecies(this.recipe, id))
+      const hindPawDesign = structuredClone(this.recipe.hindPawDesign)
+      this.recipe = normalizeCustomizableAppearance({ ...switchPetSpecies(this.recipe, id), hindPawDesign })
       this.markDirty()
     },
     applyBuiltInPreset(id: string) {
@@ -282,13 +290,15 @@ export const usePetAppearanceStore = defineStore('pet-appearance', {
     },
     applyStyle(style: PetStyleId) {
       this.checkpoint()
-      const previous = structuredClone(this.recipe.customization)
+      const previousCustomization = structuredClone(this.recipe.customization)
+      const previousHindPawDesign = structuredClone(this.recipe.hindPawDesign)
       const next = applyStyleAcrossSpecies(this.recipe, style, this.applyScope)
       this.recipe = normalizeCustomizableAppearance({
         ...next,
+        hindPawDesign: previousHindPawDesign,
         customization: (this.applyScope === 'all' || this.applyScope === 'colors')
           ? createDefaultPetCustomization(next)
-          : previous,
+          : previousCustomization,
       })
       this.markDirty()
     },

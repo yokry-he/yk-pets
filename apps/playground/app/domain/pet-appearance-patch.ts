@@ -1,7 +1,7 @@
 /*
  * 文件职责 / File responsibility
- * 对完整可配置外观执行深层局部补丁；先归一化输入，并同步旧配方通道与新定制通道，保证颜色、肚皮、嘴巴和扩展前爪不会在归一化时丢失。
- * Applies deep local patches after normalization and synchronizes legacy recipe channels with new customization channels so colors, belly, mouth, and extended paws survive normalization.
+ * 对完整可配置外观执行深层局部补丁；同步旧配方与新定制通道，并保持前爪、后爪、肚皮、嘴巴和颜色的局部隔离。
+ * Applies deep local patches, synchronizes legacy and customization channels, and preserves isolation for front paws, hind paws, belly, mouth, and colors.
  */
 import type { EarDesignRecipe, TailDesignRecipe, TailSegmentRecipe } from './pet-studio-phase2'
 import type { BellyPatchDesignRecipe, ChestDisplayDesignRecipe, MultiSpeciesAppearanceRecipe } from './pet-species-registry'
@@ -9,6 +9,7 @@ import {
   normalizeCustomizableAppearance,
   type CustomizableAppearanceRecipe,
   type ExtendedFrontPawDesignRecipe,
+  type HindPawDesignRecipe,
   type PetBellyCustomizationRecipe,
   type PetBellyShape,
   type PetMouthCustomizationRecipe,
@@ -24,6 +25,7 @@ export interface PetAppearanceLocalPatch {
   bellyPatchDesign?: Partial<BellyPatchDesignRecipe>
   chestDisplay?: Partial<ChestDisplayDesignRecipe>
   frontPawDesign?: Partial<ExtendedFrontPawDesignRecipe>
+  hindPawDesign?: Partial<HindPawDesignRecipe>
   earDesign?: Partial<EarDesignRecipe>
   tailDesign?: Partial<Omit<TailDesignRecipe, 'segments' | 'tipGlow'>> & {
     segments?: TailSegmentRecipe[]
@@ -42,8 +44,7 @@ export interface PetAppearanceLocalPatch {
 
 const legacyBellyShape = (style: BellyPatchDesignRecipe['style'] | undefined): PetBellyShape | undefined => {
   if (!style) return undefined
-  if (style === 'oval') return 'ellipse'
-  return style
+  return style === 'oval' ? 'ellipse' : style
 }
 
 export function applyPetAppearanceLocalPatch(
@@ -98,6 +99,7 @@ export function applyPetAppearanceLocalPatch(
     bellyPatchDesign,
     chestDisplay: { ...normalizedCurrent.chestDisplay, ...patch.chestDisplay },
     frontPawDesign: { ...normalizedCurrent.frontPawDesign, ...patch.frontPawDesign },
+    hindPawDesign: { ...normalizedCurrent.hindPawDesign, ...patch.hindPawDesign },
     earDesign: { ...normalizedCurrent.earDesign, ...patch.earDesign },
     tailDesign: {
       ...normalizedCurrent.tailDesign,

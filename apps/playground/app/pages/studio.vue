@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  提供完整可滚动 Studio 工作台，将头部、身体、四肢、肚皮、尾巴、触角、颜色、发光和标志拆成可独立访问的原生 Vue 工作区。
-  Provides a complete scrollable Studio workspace with native Vue sections for head, body, limbs, belly, tail, antennae, colors, glow, and symbols.
+  提供完整可滚动 Studio 工作台，将头部、身体、前后爪、肚皮、尾巴、触角、颜色、发光和标志拆成可独立访问的原生 Vue 工作区。
+  Provides a complete scrollable Studio workspace with native Vue sections for head, body, front/hind paws, belly, tail, antennae, colors, glow, and symbols.
 -->
 <script setup lang="ts">
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
@@ -9,6 +9,7 @@ import StudioAntennaEditor from '~/components/studio/StudioAntennaEditor.vue'
 import StudioBellyPatchEditor from '~/components/studio/StudioBellyPatchEditor.vue'
 import StudioEarEditor from '~/components/studio/StudioEarEditor.vue'
 import StudioFrontPawEditor from '~/components/studio/StudioFrontPawEditor.vue'
+import StudioHindPawEditor from '~/components/studio/StudioHindPawEditor.vue'
 import StudioGlowEditor from '~/components/studio/StudioGlowEditor.vue'
 import StudioMouthEditor from '~/components/studio/StudioMouthEditor.vue'
 import StudioMotionToolbar from '~/components/studio/StudioMotionToolbar.vue'
@@ -53,7 +54,7 @@ let searchBlurTimer: ReturnType<typeof setTimeout> | undefined
 
 const tabs: Array<{ id: Tab; label: string; icon: string; hint: string }> = [
   { id:'identity',label:'身份',icon:'ID',hint:'名字与方案' }, { id:'face',label:'头部',icon:'◉',hint:'头型、耳眼鼻嘴' },
-  { id:'body',label:'身体',icon:'⬭',hint:'形状、宽高厚' }, { id:'limbs',label:'四肢',icon:'⌁',hint:'前爪与腿部' },
+  { id:'body',label:'身体',icon:'⬭',hint:'形状、宽高厚' }, { id:'limbs',label:'四肢',icon:'⌁',hint:'前爪与后爪' },
   { id:'belly',label:'肚皮',icon:'◒',hint:'形状与贴合' }, { id:'tail',label:'尾巴',icon:'≈',hint:'根部与分段' },
   { id:'antenna',label:'触角',icon:'⌃',hint:'结构与发光' }, { id:'colors',label:'颜色',icon:'◐',hint:'全部材质通道' },
   { id:'glow',label:'发光轨道',icon:'✦',hint:'光效与粒子' }, { id:'symbols',label:'标志',icon:'Z',hint:'胸口与后背' },
@@ -68,7 +69,7 @@ const searchEntries: readonly SearchEntry[] = [
   {label:'眼睛、耳朵与鼻子',tab:'face',keywords:'眼睛 eyes 星芒 水晶 月牙 耳朵 ears 鼻子 nose'},
   {label:'嘴巴与舌头',tab:'face',keywords:'嘴巴 mouth 经典 猫系 线条 张嘴 嘟嘴 舌头'},
   {label:'身体形状和比例',tab:'body',keywords:'身体 body 球体 椭圆 胶囊 梨形 豆形 方糖 宽高厚'},
-  {label:'四肢与前爪',tab:'limbs',keywords:'四肢 limb 前爪 paw 位置 镜像 左右'},
+  {label:'四肢、前爪与后爪',tab:'limbs',keywords:'四肢 limb 前爪 front paw 后爪 hind paw 后腿 脚掌 脚尖 镜像 左右'},
   {label:'肚皮形状与位置',tab:'belly',keywords:'肚皮 belly 椭圆 蛋形 盾牌 水滴 豆形 爱心 云朵 胸毛'},
   {label:'尾巴分段',tab:'tail',keywords:'尾巴 tail 分段 根部 尾尖'},
   {label:'触角',tab:'antenna',keywords:'触角 antenna 杆体 末端 长度 间距'},
@@ -81,7 +82,7 @@ const compareActive = computed(() => Boolean(compareSnapshot.value))
 const searchResults = computed(() => { const query=searchQuery.value.trim().toLowerCase(); return query ? searchEntries.filter(entry=>`${entry.label} ${entry.keywords}`.toLowerCase().includes(query)).slice(0,8) : [] })
 const showSearchResults = computed(() => searchFocused.value && Boolean(searchQuery.value.trim()))
 const previewFocus = computed<'full'|'head'|'body'|'tail'>(() => ['face','antenna'].includes(tab.value) ? 'head' : ['body','limbs','belly'].includes(tab.value) ? 'body' : tab.value==='tail' ? 'tail' : 'full')
-const focusLabel = computed(() => ({ identity:'全身与身份',face:'独立头型与表情',body:'身体轮廓',limbs:'四肢与前爪',belly:'肚皮贴合',tail:'尾巴分段',antenna:'触角结构',colors:'全部材质',glow:'发光与轨道',symbols:'胸背标志',audit:'四视角检查' })[tab.value])
+const focusLabel = computed(() => ({ identity:'全身与身份',face:'独立头型与表情',body:'身体轮廓',limbs:'前爪、后腿与后爪',belly:'肚皮贴合',tail:'尾巴分段',antenna:'触角结构',colors:'全部材质',glow:'发光与轨道',symbols:'胸背标志',audit:'四视角检查' })[tab.value])
 const changedGroupLabels = computed(() => changedGroups(compareActive.value ? JSON.parse(compareSnapshot.value) : recipe.value))
 const historyLabel = computed(() => `${store.draftSavedAt ? new Date(store.draftSavedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '尚无草稿'} · 撤销 ${store.undoStack.length} / 重做 ${store.redoStack.length}`)
 
@@ -111,7 +112,7 @@ function onKeydown(event:KeyboardEvent){const target=event.target as HTMLElement
 function eyeIcon(id:string){return id==='spark'?'✦':id==='diamond'?'◆':id==='visor'?'▰':id==='sleepy'?'⌒':id==='oval'?'⬭':'●'}
 function noseIcon(id:string){return id==='triangle'?'▲':id==='sensor'?'▰':id==='heart'?'♥':'●'}
 function shapeIcon(id:string){return id.includes('cube')?'▣':id==='capsule'?'▯':id==='pear'?'♟':id==='bean'?'◒':id.includes('oval')||id==='ellipsoid'?'⬭':'●'}
-function changedGroups(input:unknown){const current=normalizeCustomizableAppearance(input);const classic=normalizeCustomizableAppearance(createExtensionClassicAppearance());const groups:Array<[string,boolean]>=[['头部',JSON.stringify(current.parts)!==JSON.stringify(classic.parts)||JSON.stringify(current.customization.mouth)!==JSON.stringify(classic.customization.mouth)],['身体',current.parts.bodyShape!==classic.parts.bodyShape||current.proportions.bodyWidth!==classic.proportions.bodyWidth||current.proportions.bodyHeight!==classic.proportions.bodyHeight||current.proportions.bodyDepth!==classic.proportions.bodyDepth],['四肢',JSON.stringify(current.frontPawDesign)!==JSON.stringify(classic.frontPawDesign)],['颜色',JSON.stringify(current.customization.colors)!==JSON.stringify(classic.customization.colors)],['肚皮',JSON.stringify(current.customization.belly)!==JSON.stringify(classic.customization.belly)],['尾巴',JSON.stringify(current.tailDesign)!==JSON.stringify(classic.tailDesign)],['触角',JSON.stringify(current.antennaDesign)!==JSON.stringify(classic.antennaDesign)],['发光轨道',JSON.stringify(current.glow)!==JSON.stringify(classic.glow)||JSON.stringify(current.orbitDesign)!==JSON.stringify(classic.orbitDesign)],['标志',JSON.stringify(current.symbols)!==JSON.stringify(classic.symbols)]];return groups.filter(([,changed])=>changed).map(([label])=>label)}
+function changedGroups(input:unknown){const current=normalizeCustomizableAppearance(input);const classic=normalizeCustomizableAppearance(createExtensionClassicAppearance());const groups:Array<[string,boolean]>=[['头部',JSON.stringify(current.parts)!==JSON.stringify(classic.parts)||JSON.stringify(current.customization.mouth)!==JSON.stringify(classic.customization.mouth)],['身体',current.parts.bodyShape!==classic.parts.bodyShape||current.proportions.bodyWidth!==classic.proportions.bodyWidth||current.proportions.bodyHeight!==classic.proportions.bodyHeight||current.proportions.bodyDepth!==classic.proportions.bodyDepth],['四肢',JSON.stringify(current.frontPawDesign)!==JSON.stringify(classic.frontPawDesign)||JSON.stringify(current.hindPawDesign)!==JSON.stringify(classic.hindPawDesign)],['颜色',JSON.stringify(current.customization.colors)!==JSON.stringify(classic.customization.colors)],['肚皮',JSON.stringify(current.customization.belly)!==JSON.stringify(classic.customization.belly)],['尾巴',JSON.stringify(current.tailDesign)!==JSON.stringify(classic.tailDesign)],['触角',JSON.stringify(current.antennaDesign)!==JSON.stringify(classic.antennaDesign)],['发光轨道',JSON.stringify(current.glow)!==JSON.stringify(classic.glow)||JSON.stringify(current.orbitDesign)!==JSON.stringify(classic.orbitDesign)],['标志',JSON.stringify(current.symbols)!==JSON.stringify(classic.symbols)]];return groups.filter(([,changed])=>changed).map(([label])=>label)}
 onMounted(()=>{store.hydrate();window.addEventListener('keydown',onKeydown)})
 onBeforeUnmount(()=>{restoreComparison();if(timer)clearTimeout(timer);if(noticeTimer)clearTimeout(noticeTimer);if(searchBlurTimer)clearTimeout(searchBlurTimer);store.endTransaction();window.removeEventListener('keydown',onKeydown)})
 </script>
@@ -137,14 +138,14 @@ onBeforeUnmount(()=>{restoreComparison();if(timer)clearTimeout(timer);if(noticeT
           <template v-if="tab==='identity'"><section class="section-heading"><small>IDENTITY</small><h2>身份信息</h2><p>身份、方案名称与导出文件标识。</p></section><label>中文名字<input v-model="recipe.identity.nameZh" @focus="store.checkpoint" @input="store.markDirty"></label><label>英文名字<input v-model="recipe.identity.nameEn" @focus="store.checkpoint" @input="store.markDirty" @blur="syncName"></label><label>宠物 ID<input v-model="recipe.identity.petId" @focus="store.checkpoint" @input="store.markDirty"></label></template>
           <template v-else-if="tab==='face'"><section class="section-heading"><small>HEAD & FACE</small><h2>头部和表情</h2><p>头型独立于身体；左右侧视检查鼻嘴贴合。</p></section><section class="option-section"><h3>头部形状</h3><p>切换身体不会修改这里的选择。</p><div class="option-grid"><button v-for="item in CLOUD_FOX_HEAD_SHAPES" :key="item.id" :class="{active:recipe.parts.headShape===item.id}" @click="setPart('headShape',item.id)"><i>{{ shapeIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.description }}</small></button></div></section><StudioEarEditor /><section class="option-section"><h3>眼睛</h3><div class="option-grid"><button v-for="item in PARTS.eyes" :key="item.id" :class="{active:recipe.parts.eyes===item.id}" @click="setPart('eyes',item.id)"><i>{{ eyeIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.labelEn }}</small></button></div></section><section class="option-section"><h3>鼻子</h3><div class="option-grid"><button v-for="item in PARTS.noses" :key="item.id" :class="{active:recipe.parts.nose===item.id}" @click="setPart('nose',item.id)"><i>{{ noseIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.labelEn }}</small></button></div></section><StudioMouthEditor /><section class="sub-card"><h3>头部比例</h3><StudioNumericControl v-for="[path,key] in faceControls" :key="path" :path="path" :model-value="recipe.proportions[key]" @update:model-value="setProportion(key,$event)" /></section></template>
           <template v-else-if="tab==='body'"><section class="section-heading"><small>BODY</small><h2>身体</h2><p>身体只改变躯干轮廓，不再联动头型。</p></section><section class="option-section"><h3>身体形状</h3><div class="option-grid"><button v-for="item in CLOUD_FOX_BODY_SHAPES" :key="item.id" :class="{active:recipe.parts.bodyShape===item.id}" @click="setPart('bodyShape',item.id)"><i>{{ shapeIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.description }}</small></button></div></section><section class="sub-card"><h3>身体比例</h3><StudioNumericControl v-for="[path,key] in bodyControls" :key="path" :path="path" :model-value="recipe.proportions[key]" @update:model-value="setProportion(key,$event)" /></section></template>
-          <StudioFrontPawEditor v-else-if="tab==='limbs'" />
+          <template v-else-if="tab==='limbs'"><StudioFrontPawEditor /><StudioHindPawEditor /></template>
           <StudioBellyPatchEditor v-else-if="tab==='belly'" />
           <StudioTailEditor v-else-if="tab==='tail'" />
           <StudioAntennaEditor v-else-if="tab==='antenna'" />
           <StudioPartColorEditor v-else-if="tab==='colors'" />
           <StudioGlowEditor v-else-if="tab==='glow'" />
           <StudioSymbolEditor v-else-if="tab==='symbols'" />
-          <template v-else><section class="section-heading"><small>GEOMETRY AUDIT</small><h2>外观检查</h2><p>在四个视角检查头身、肚皮、四肢、尾巴和嘴巴连接。</p></section><article v-for="finding in store.findings" :key="finding.id" class="finding" :data-severity="finding.severity"><strong>{{ finding.severity==='warning'?'需要检查':finding.severity==='error'?'错误':'提示' }}</strong><p>{{ finding.message }}</p><code v-if="finding.path">{{ finding.path }}</code></article></template>
+          <template v-else><section class="section-heading"><small>GEOMETRY AUDIT</small><h2>外观检查</h2><p>在四个视角检查头身、肚皮、前后爪、尾巴和嘴巴连接。</p></section><article v-for="finding in store.findings" :key="finding.id" class="finding" :data-severity="finding.severity"><strong>{{ finding.severity==='warning'?'需要检查':finding.severity==='error'?'错误':'提示' }}</strong><p>{{ finding.message }}</p><code v-if="finding.path">{{ finding.path }}</code></article></template>
         </div>
         <details class="advanced-panel" :open="advancedOpen" @toggle="advancedOpen=($event.target as HTMLDetailsElement).open"><summary><span><small>LOCAL WORKSPACE</small><strong>方案与最近修改</strong></span><i>{{ advancedOpen?'收起':'展开' }}</i></summary><div class="advanced-content"><p>{{ historyLabel }}</p><div class="scheme-form"><input v-model="schemeName" maxlength="32" placeholder="本地方案名称" @keydown.enter="saveScheme"><button @click="saveScheme">保存</button></div><div class="change-groups"><span v-for="group in changedGroupLabels" :key="group">{{ group }}</span><small v-if="!changedGroupLabels.length">当前与经典外观一致</small></div><div class="scheme-list"><article v-for="scheme in store.customSchemes" :key="scheme.id"><div><strong>{{ scheme.name }}</strong><small>{{ new Date(scheme.createdAt).toLocaleString() }}</small></div><span><button @click="applyScheme(scheme.id)">应用</button><button class="danger" @click="removeScheme(scheme.id)">删除</button></span></article><p v-if="!store.customSchemes.length">还没有本地方案。</p></div></div></details>
       </aside>

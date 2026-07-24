@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 校验配方、场景、多物种、独立头身、真实表面采样、分区配置工作区、路径级局部编辑、完整动作与统一渲染能力持续存在。
- * Verifies recipes, scenes, multi-species support, independent surfaces, sectioned configuration workspaces, path-level patches, complete motions, and unified rendering.
+ * 校验配方、场景、多物种、独立头身、真实表面采样、前后爪工作区、路径级局部编辑、完整动作与统一渲染持续存在。
+ * Verifies recipes, scenes, species, independent surfaces, front/hind paw workspaces, path-level patches, complete motions, and unified rendering.
  */
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -36,7 +36,8 @@ const fireworksDomain = read('apps/playground/app/domain/production-cloud-fox-fi
 const headIntent = read('apps/playground/app/components/studio/ProductionCloudFoxHeadIntent.vue')
 const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
 const wxt = read('apps/extension/wxt.config.ts')
-const pawEditor = read('apps/playground/app/components/studio/StudioFrontPawEditor.vue')
+const frontEditor = read('apps/playground/app/components/studio/StudioFrontPawEditor.vue')
+const hindEditor = read('apps/playground/app/components/studio/StudioHindPawEditor.vue')
 const tailEditor = read('apps/playground/app/components/studio/StudioTailEditor.vue')
 const antennaEditor = read('apps/playground/app/components/studio/StudioAntennaEditor.vue')
 const mouthEditor = read('apps/playground/app/components/studio/StudioMouthEditor.vue')
@@ -56,11 +57,12 @@ const expectations = [
   ['planned species and motion fallback', registry.includes("'nebula-slime'") && registry.includes("'star-rabbit'") && registry.includes('resolveSpeciesBehavior') && speciesPage.includes('实际动作')],
   ['generic renderer dispatch remains', proceduralPet.includes('MoonCat') && proceduralPet.includes('ExtensionAlignedCloudFox') && !proceduralPet.includes('CustomizableCloudFox')],
   ['extension and Studio share the same composition', unifiedSource && core.includes('ExtensionCloudFoxBody')],
-  ['sampled body and production head retain complete limbs and local face', body.includes('frontPawDesign') && body.includes('<ExtensionCloudFoxBodyShape') && bodyShape.includes('normalized unit envelope') && head.includes('<ExtensionCloudFoxHeadShape') && headShape.includes('scheme.model.head.scale') && surface.includes('sampleCloudFoxBodyFrontSurface') && surface.includes('resolveCloudFoxEyeSurfaceAnchor') && belly.includes('createCloudFoxBellySurfaceMesh') && head.includes('getCloudFoxEyeBlinkFloor') && eye.includes('ExtrudeGeometry') && tail.includes('tipGlow.enabled')],
+  ['sampled body and production head retain complete limbs and local face', body.includes('frontPawDesign') && body.includes('hindPawDesign') && body.includes('<ExtensionCloudFoxBodyShape') && bodyShape.includes('normalized unit envelope') && head.includes('<ExtensionCloudFoxHeadShape') && headShape.includes('scheme.model.head.scale') && surface.includes('sampleCloudFoxBodyFrontSurface') && belly.includes('createCloudFoxBellySurfaceMesh') && head.includes('getCloudFoxEyeBlinkFloor') && eye.includes('ExtrudeGeometry') && tail.includes('tipGlow.enabled')],
   ['surface geometry is numerically regression tested', surfaceTest.includes('maximumOffsetError') && surfaceTest.includes('eye separation remains visible') && surfaceTest.includes('spark eye is not allowed to collapse')],
-  ['full action effects remain', effects.includes('thoughtBubbles') && effects.includes('starGroup') && effects.includes('cloud-nap') && effects.includes('sparkle-sneeze') && fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48') && headIntent.includes('createProductionFireworkBurstPlan') && limbMotion.includes('createCloudFoxFrontPawPose')],
-  ['limb tail antenna and mouth controls have independent workspaces', pawEditor.includes('恢复扩展最初位置') && pawEditor.includes('frontPawDesign.mirror') && tailEditor.includes('分段尾巴') && !tailEditor.includes('连续前爪连接') && antennaEditor.includes("'antennaDesign.spacing'") && antennaEditor.includes('StudioNumericControl') && mouthEditor.includes("'customization.mouth.defaultOpen'") && mouthEditor.includes('StudioNumericControl') && page.includes('<StudioFrontPawEditor') && page.includes('<StudioBellyPatchEditor') && page.includes('<StudioAntennaEditor') && page.includes('<StudioMouthEditor')],
-  ['local patch isolation remains', patchDomain.includes('applyPetAppearanceLocalPatch') && patchDomain.includes('frontPawDesign') && patchTest.includes('assertOnlyChanged') && patchTest.includes("['tailDesign', 'customization.colors.tailGlow']") && patchTest.includes("['frontPawDesign']") && patchTest.includes("['customization.mouth']")],
+  ['full action effects remain', effects.includes('thoughtBubbles') && effects.includes('starGroup') && effects.includes('cloud-nap') && effects.includes('sparkle-sneeze') && fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48') && headIntent.includes('createProductionFireworkBurstPlan') && limbMotion.includes('createCloudFoxFrontPawPose') && limbMotion.includes('createCloudFoxHindPawPose')],
+  ['front and hind paws have independent complete workspaces', frontEditor.includes('恢复扩展最初位置') && frontEditor.includes('frontPawDesign.mirror') && hindEditor.includes('HIND_PAW_STYLES') && hindEditor.includes('hindPawDesign.mirror') && hindEditor.includes('toeOutwardAngle') && page.includes('<StudioFrontPawEditor') && page.includes('<StudioHindPawEditor')],
+  ['tail antenna and mouth controls remain independent', tailEditor.includes('分段尾巴') && antennaEditor.includes("'antennaDesign.spacing'") && mouthEditor.includes("'customization.mouth.defaultOpen'")],
+  ['local patch isolation remains for both paw pairs', patchDomain.includes('hindPawDesign?: Partial<HindPawDesignRecipe>') && patchTest.includes("['frontPawDesign']") && patchTest.includes("['hindPawDesign']")],
 ]
 const failures = expectations.filter(([, ok]) => !ok).map(([name]) => name)
 if (failures.length) { console.error('Pet Studio evolution check failed:', failures.join(', ')); process.exit(1) }

@@ -52,12 +52,35 @@ export const STUDIO_CONTROL_REGISTRY = Object.freeze({
   'frontPawDesign.shoulderScale': control('frontPawDesign.shoulderScale', '肩部大小', 'limbs', 1, [.62, 1.72], [.35, 2.25], .01, 'ExtensionCloudFoxBody'),
   'frontPawDesign.wristScale': control('frontPawDesign.wristScale', '手腕粗细', 'limbs', 1, [.5, 1.62], [.35, 2.25], .01, 'ExtensionCloudFoxBody'),
   'frontPawDesign.palmScale': control('frontPawDesign.palmScale', '爪掌大小', 'limbs', 1, [.52, 1.9], [.35, 2.25], .01, 'ExtensionCloudFoxBody'),
-  'frontPawDesign.leftOffsetX': control('frontPawDesign.leftOffsetX', '左爪左右微调', 'limbs', 0, [-.24, .24], [-.65, .65], .01, 'ExtensionCloudFoxBody'),
-  'frontPawDesign.leftOffsetY': control('frontPawDesign.leftOffsetY', '左爪上下微调', 'limbs', 0, [-.24, .24], [-.65, .65], .01, 'ExtensionCloudFoxBody'),
-  'frontPawDesign.leftOffsetZ': control('frontPawDesign.leftOffsetZ', '左爪前后微调', 'limbs', 0, [-.18, .18], [-.45, .55], .01, 'ExtensionCloudFoxBody'),
-  'frontPawDesign.rightOffsetX': control('frontPawDesign.rightOffsetX', '右爪左右微调', 'limbs', 0, [-.24, .24], [-.65, .65], .01, 'ExtensionCloudFoxBody'),
-  'frontPawDesign.rightOffsetY': control('frontPawDesign.rightOffsetY', '右爪上下微调', 'limbs', 0, [-.24, .24], [-.65, .65], .01, 'ExtensionCloudFoxBody'),
-  'frontPawDesign.rightOffsetZ': control('frontPawDesign.rightOffsetZ', '右爪前后微调', 'limbs', 0, [-.18, .18], [-.45, .55], .01, 'ExtensionCloudFoxBody'),
+  'frontPawDesign.leftOffsetX': control('frontPawDesign.leftOffsetX', '左前爪左右微调', 'limbs', 0, [-.24, .24], [-.65, .65], .01, 'ExtensionCloudFoxBody'),
+  'frontPawDesign.leftOffsetY': control('frontPawDesign.leftOffsetY', '左前爪上下微调', 'limbs', 0, [-.24, .24], [-.65, .65], .01, 'ExtensionCloudFoxBody'),
+  'frontPawDesign.leftOffsetZ': control('frontPawDesign.leftOffsetZ', '左前爪前后微调', 'limbs', 0, [-.18, .18], [-.45, .55], .01, 'ExtensionCloudFoxBody'),
+  'frontPawDesign.rightOffsetX': control('frontPawDesign.rightOffsetX', '右前爪左右微调', 'limbs', 0, [-.24, .24], [-.65, .65], .01, 'ExtensionCloudFoxBody'),
+  'frontPawDesign.rightOffsetY': control('frontPawDesign.rightOffsetY', '右前爪上下微调', 'limbs', 0, [-.24, .24], [-.65, .65], .01, 'ExtensionCloudFoxBody'),
+  'frontPawDesign.rightOffsetZ': control('frontPawDesign.rightOffsetZ', '右前爪前后微调', 'limbs', 0, [-.18, .18], [-.45, .55], .01, 'ExtensionCloudFoxBody'),
+
+  'hindPawDesign.rootHeight': control('hindPawDesign.rootHeight', '后爪根部上下位置', 'limbs', 0, [-.24, .22], [-.55, .55], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.embedDepth': control('hindPawDesign.embedDepth', '后爪根部埋入身体', 'limbs', 0, [0, .22], [0, .45], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.forwardOffset': control('hindPawDesign.forwardOffset', '后爪根部前后位置', 'limbs', 0, [-.12, .22], [-.4, .5], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.lateralOffset': control('hindPawDesign.lateralOffset', '后爪根部左右位置', 'limbs', 0, [-.22, .22], [-.55, .55], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.outwardAngle': control('hindPawDesign.outwardAngle', '后腿外展角度', 'limbs', 0, [-.22, .42], [-1.1, 1.1], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.forwardAngle': control('hindPawDesign.forwardAngle', '后腿前后倾角', 'limbs', 0, [-.35, .35], [-1.1, 1.1], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.legLengthScale': control('hindPawDesign.legLengthScale', '后腿长度', 'limbs', 1, [.72, 1.35], [.35, 2], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.legThicknessScale': control('hindPawDesign.legThicknessScale', '后腿粗细', 'limbs', 1, [.72, 1.4], [.35, 2.1], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.haunchScale': control('hindPawDesign.haunchScale', '后腿臀部大小', 'limbs', 1, [.65, 1.5], [.3, 2.2], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.ankleScale': control('hindPawDesign.ankleScale', '后爪脚踝粗细', 'limbs', 1, [.65, 1.4], [.3, 2], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.pawScaleX': control('hindPawDesign.pawScaleX', '后脚掌宽度', 'limbs', 1, [.72, 1.45], [.35, 2.2], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.pawScaleY': control('hindPawDesign.pawScaleY', '后脚掌高度', 'limbs', 1, [.72, 1.35], [.35, 2], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.pawScaleZ': control('hindPawDesign.pawScaleZ', '后脚掌长度', 'limbs', 1, [.72, 1.55], [.35, 2.3], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.toeLift': control('hindPawDesign.toeLift', '脚尖上翘', 'limbs', 0, [-.3, .45], [-1, 1], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.toeOutwardAngle': control('hindPawDesign.toeOutwardAngle', '脚尖向外角度', 'limbs', 0, [-.25, .45], [-1, 1], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.heelDrop': control('hindPawDesign.heelDrop', '脚跟下沉', 'limbs', 0, [-.12, .18], [-.4, .4], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.leftOffsetX': control('hindPawDesign.leftOffsetX', '左后爪左右微调', 'limbs', 0, [-.2, .2], [-.55, .55], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.leftOffsetY': control('hindPawDesign.leftOffsetY', '左后爪上下微调', 'limbs', 0, [-.2, .2], [-.55, .55], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.leftOffsetZ': control('hindPawDesign.leftOffsetZ', '左后爪前后微调', 'limbs', 0, [-.18, .18], [-.45, .5], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.rightOffsetX': control('hindPawDesign.rightOffsetX', '右后爪左右微调', 'limbs', 0, [-.2, .2], [-.55, .55], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.rightOffsetY': control('hindPawDesign.rightOffsetY', '右后爪上下微调', 'limbs', 0, [-.2, .2], [-.55, .55], .01, 'ExtensionCloudFoxBody'),
+  'hindPawDesign.rightOffsetZ': control('hindPawDesign.rightOffsetZ', '右后爪前后微调', 'limbs', 0, [-.18, .18], [-.45, .5], .01, 'ExtensionCloudFoxBody'),
 
   'customization.belly.width': control('customization.belly.width', '肚皮宽度', 'belly', 1, [.65, 1.3], [.2, 2], .01, 'ExtensionCloudFoxBellyPatch'),
   'customization.belly.height': control('customization.belly.height', '肚皮高度', 'belly', 1, [.65, 1.25], [.2, 2], .01, 'ExtensionCloudFoxBellyPatch'),
@@ -95,15 +118,8 @@ export const STUDIO_CONTROL_REGISTRY = Object.freeze({
 } as const)
 
 export type StudioControlPath = keyof typeof STUDIO_CONTROL_REGISTRY
-
-export function getStudioControl(path: StudioControlPath): StudioNumericControlDefinition {
-  return STUDIO_CONTROL_REGISTRY[path]
-}
-
-export function getStudioHardRange(path: StudioControlPath): readonly [number, number] {
-  return STUDIO_CONTROL_REGISTRY[path].hardRange
-}
-
+export function getStudioControl(path: StudioControlPath): StudioNumericControlDefinition { return STUDIO_CONTROL_REGISTRY[path] }
+export function getStudioHardRange(path: StudioControlPath): readonly [number, number] { return STUDIO_CONTROL_REGISTRY[path].hardRange }
 export function isStudioValueOutsideRecommended(path: StudioControlPath, value: number) {
   const [minimum, maximum] = STUDIO_CONTROL_REGISTRY[path].recommendedRange
   return value < minimum || value > maximum
