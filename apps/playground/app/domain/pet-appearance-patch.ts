@@ -1,7 +1,7 @@
 /*
  * 文件职责 / File responsibility
- * 对完整可配置外观执行深层局部补丁；先归一化历史或新配方，再覆盖扩展前爪、嘴巴与肚皮，保证未指定部位保持不变。
- * Applies deep local patches to complete appearance recipes by normalizing legacy or current input first, then patching extended paws, mouth, and belly while preserving unspecified sections.
+ * 对完整可配置外观执行深层局部补丁；先归一化输入，并同步旧配方通道与新定制通道，保证颜色、肚皮、嘴巴和扩展前爪不会在归一化时丢失。
+ * Applies deep local patches after normalization and synchronizes legacy recipe channels with new customization channels so colors, belly, mouth, and extended paws survive normalization.
  */
 import type { EarDesignRecipe, TailDesignRecipe, TailSegmentRecipe } from './pet-studio-phase2'
 import type { BellyPatchDesignRecipe, ChestDisplayDesignRecipe, MultiSpeciesAppearanceRecipe } from './pet-species-registry'
@@ -10,6 +10,7 @@ import {
   type CustomizableAppearanceRecipe,
   type ExtendedFrontPawDesignRecipe,
   type PetBellyCustomizationRecipe,
+  type PetBellyShape,
   type PetMouthCustomizationRecipe,
   type PetPartColorRecipe,
 } from './pet-part-customization'
@@ -39,6 +40,12 @@ export interface PetAppearanceLocalPatch {
   }
 }
 
+const legacyBellyShape = (style: BellyPatchDesignRecipe['style'] | undefined): PetBellyShape | undefined => {
+  if (!style) return undefined
+  if (style === 'oval') return 'ellipse'
+  return style
+}
+
 export function applyPetAppearanceLocalPatch(
   current: MultiSpeciesAppearanceRecipe | CustomizableAppearanceRecipe,
   patch: PetAppearanceLocalPatch,
@@ -54,6 +61,32 @@ export function applyPetAppearanceLocalPatch(
         ...(!bellyPatch.mode && changesCustomGeometry ? { mode: 'custom' as const, visible: true } : {}),
       }
     : normalizedCurrent.bellyPatchDesign
+
+  const colors: PetPartColorRecipe = { ...normalizedCurrent.customization.colors }
+  if (patch.palette?.coatShadow) colors.body = patch.palette.coatShadow
+  if (patch.palette?.coat) colors.limbs = patch.palette.coat
+  if (patch.palette?.coatWarm) { colors.paws = patch.palette.coatWarm; colors.antennaRod = patch.palette.coatWarm }
+  if (patch.palette?.eye) colors.eyes = patch.palette.eye
+  if (patch.palette?.secondaryGlow) { colors.eyeHighlight = patch.palette.secondaryGlow; colors.energyCore = patch.palette.secondaryGlow }
+  if (patch.palette?.antennaGlow) colors.antennaTip = patch.palette.antennaGlow
+  if (patch.earDesign?.outerColor) colors.earOuter = patch.earDesign.outerColor
+  if (patch.earDesign?.innerColor) colors.earInner = patch.earDesign.innerColor
+  if (patch.earDesign?.tipColor) colors.earTip = patch.earDesign.tipColor
+  if (patch.tailDesign?.tipGlow?.color) colors.tailGlow = patch.tailDesign.tipGlow.color
+  Object.assign(colors, patch.customization?.colors)
+
+  const belly: PetBellyCustomizationRecipe = { ...normalizedCurrent.customization.belly }
+  if (bellyPatch) {
+    if (bellyPatch.visible !== undefined) belly.visible = bellyPatch.visible
+    if (bellyPatch.mode === 'none') belly.visible = false
+    if (bellyPatch.mode === 'custom') belly.visible = true
+    const shape = legacyBellyShape(bellyPatch.style)
+    if (shape) belly.shape = shape
+    if (bellyPatch.width !== undefined) belly.width = bellyPatch.width
+    if (bellyPatch.height !== undefined) belly.height = bellyPatch.height
+    if (bellyPatch.offsetY !== undefined) belly.offsetY = bellyPatch.offsetY
+  }
+  Object.assign(belly, patch.customization?.belly)
 
   return normalizeCustomizableAppearance({
     ...normalizedCurrent,
@@ -73,8 +106,8 @@ export function applyPetAppearanceLocalPatch(
       segments: patch.tailDesign?.segments ?? normalizedCurrent.tailDesign.segments,
     },
     customization: {
-      colors: { ...normalizedCurrent.customization.colors, ...patch.customization?.colors },
-      belly: { ...normalizedCurrent.customization.belly, ...patch.customization?.belly },
+      colors,
+      belly,
       mouth: { ...normalizedCurrent.customization.mouth, ...patch.customization?.mouth },
     },
     symbols: {
