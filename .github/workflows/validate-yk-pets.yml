@@ -21,8 +21,16 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Report checkout tree
-        run: echo "YK_PETS_TREE_SHA=$(git rev-parse 'HEAD^{tree}')"
+      - name: Capture checkout tree
+        run: git rev-parse 'HEAD^{tree}' > /tmp/yk-pets-tree-sha.txt
+
+      - name: Upload checkout tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: yk-pets-tree-sha
+          path: /tmp/yk-pets-tree-sha.txt
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Use Node.js 22
         uses: actions/setup-node@v4
