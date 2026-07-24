@@ -1,7 +1,7 @@
 /*
  * 文件职责 / File responsibility
- * 分别定义云狐身体与头部的几何、挂点、贴合面和边界；身体切换绝不再隐式改变头型。
- * Separately defines Cloud Fox body and head geometry, anchors, fitted surfaces, and bounds; changing the body never changes the head implicitly.
+ * 分别定义云狐身体与头部的几何、经典挂点倍率、贴合面和边界；身体切换绝不隐式改变头型。
+ * Separately defines Cloud Fox body/head geometry, classic-anchor multipliers, fitted surfaces, and bounds; body changes never alter the head implicitly.
  */
 import type { CloudFoxBodyShape, CloudFoxHeadShape } from './cloud-fox-appearance'
 
@@ -10,8 +10,11 @@ export interface CloudFoxBodyProfile {
   geometry: 'sphere' | 'ellipsoid' | 'capsule' | 'pear' | 'bean' | 'rounded-cube'
   scale: readonly [number, number, number]
   offset: readonly [number, number, number]
+  /** Multiplier over the production front-paw X anchor. */
   frontPawX: number
+  /** Additive Y offset over the production front-paw anchor. */
   frontPawY: number
+  /** Multiplier over the production front-paw Z anchor. */
   frontPawDepth: number
   hindPawX: number
   hindPawY: number
@@ -47,37 +50,37 @@ export interface CloudFoxHeadProfile {
 const BODY_PROFILES: Readonly<Record<CloudFoxBodyShape, CloudFoxBodyProfile>> = {
   sphere: {
     id: 'sphere', geometry: 'sphere', scale: [1.02, 1.02, 1.02], offset: [0, 0, 0],
-    frontPawX: .39, frontPawY: -.18, frontPawDepth: .79, hindPawX: .49, hindPawY: -.94, hindPawDepth: .12,
+    frontPawX: 1.02, frontPawY: .02, frontPawDepth: 1.02, hindPawX: .49, hindPawY: -.94, hindPawDepth: .12,
     bellyScale: [.88, .88], bellyOffset: [0, -.03], bellyDepth: .87, bellyCurvature: .22,
     chestDepth: .9, backDepth: -.9, tailOffset: [-.04, 0, -.02], boundsScale: [1.08, 1.06, 1.08],
   },
   ellipsoid: {
     id: 'ellipsoid', geometry: 'ellipsoid', scale: [1, 1, 1], offset: [0, 0, 0],
-    frontPawX: .39, frontPawY: -.2, frontPawDepth: .78, hindPawX: .49, hindPawY: -.94, hindPawDepth: .12,
+    frontPawX: 1, frontPawY: 0, frontPawDepth: 1, hindPawX: .49, hindPawY: -.94, hindPawDepth: .12,
     bellyScale: [1, 1], bellyOffset: [0, 0], bellyDepth: .83, bellyCurvature: .25,
     chestDepth: .88, backDepth: -.88, tailOffset: [0, 0, 0], boundsScale: [1, 1, 1],
   },
   capsule: {
     id: 'capsule', geometry: 'capsule', scale: [.88, 1.08, .94], offset: [0, -.01, 0],
-    frontPawX: .36, frontPawY: -.18, frontPawDepth: .8, hindPawX: .43, hindPawY: -.98, hindPawDepth: .11,
+    frontPawX: .9, frontPawY: .02, frontPawDepth: 1, hindPawX: .43, hindPawY: -.98, hindPawDepth: .11,
     bellyScale: [.8, 1.03], bellyOffset: [0, -.02], bellyDepth: .86, bellyCurvature: .17,
     chestDepth: .91, backDepth: -.91, tailOffset: [0, -.03, -.02], boundsScale: [1, 1.14, 1.05],
   },
   pear: {
     id: 'pear', geometry: 'pear', scale: [1.02, 1.06, 1], offset: [0, -.08, 0],
-    frontPawX: .4, frontPawY: -.23, frontPawDepth: .79, hindPawX: .54, hindPawY: -.98, hindPawDepth: .12,
+    frontPawX: 1.08, frontPawY: -.06, frontPawDepth: 1.02, hindPawX: .54, hindPawY: -.98, hindPawDepth: .12,
     bellyScale: [1.03, 1], bellyOffset: [0, -.1], bellyDepth: .87, bellyCurvature: .23,
     chestDepth: .92, backDepth: -.92, tailOffset: [0, -.08, -.03], boundsScale: [1.08, 1.08, 1.08],
   },
   bean: {
     id: 'bean', geometry: 'bean', scale: [1.02, 1.01, 1], offset: [-.02, -.02, 0],
-    frontPawX: .38, frontPawY: -.21, frontPawDepth: .79, hindPawX: .5, hindPawY: -.94, hindPawDepth: .12,
+    frontPawX: 1, frontPawY: -.02, frontPawDepth: 1.02, hindPawX: .5, hindPawY: -.94, hindPawDepth: .12,
     bellyScale: [.94, .94], bellyOffset: [-.04, -.04], bellyDepth: .87, bellyCurvature: .2,
     chestDepth: .91, backDepth: -.91, tailOffset: [-.06, -.02, -.02], boundsScale: [1.12, 1.05, 1.08],
   },
   'rounded-cube': {
     id: 'rounded-cube', geometry: 'rounded-cube', scale: [.98, .98, .96], offset: [0, -.02, 0],
-    frontPawX: .43, frontPawY: -.18, frontPawDepth: .86, hindPawX: .48, hindPawY: -.94, hindPawDepth: .14,
+    frontPawX: 1.06, frontPawY: .01, frontPawDepth: 1.05, hindPawX: .48, hindPawY: -.94, hindPawDepth: .14,
     bellyScale: [.88, .88], bellyOffset: [0, -.02], bellyDepth: .96, bellyCurvature: .06,
     chestDepth: .98, backDepth: -.98, tailOffset: [0, -.01, -.06], boundsScale: [1.08, 1.04, 1.08],
   },
@@ -116,15 +119,7 @@ const HEAD_PROFILES: Readonly<Record<CloudFoxHeadShape, CloudFoxHeadProfile>> = 
   },
 }
 
-export function getCloudFoxBodyProfile(shape: CloudFoxBodyShape): CloudFoxBodyProfile {
-  return BODY_PROFILES[shape] || BODY_PROFILES.ellipsoid
-}
-
-export function getCloudFoxHeadProfile(shape: CloudFoxHeadShape): CloudFoxHeadProfile {
-  return HEAD_PROFILES[shape] || HEAD_PROFILES['classic-round']
-}
-
+export function getCloudFoxBodyProfile(shape: CloudFoxBodyShape): CloudFoxBodyProfile { return BODY_PROFILES[shape] || BODY_PROFILES.ellipsoid }
+export function getCloudFoxHeadProfile(shape: CloudFoxHeadShape): CloudFoxHeadProfile { return HEAD_PROFILES[shape] || HEAD_PROFILES['classic-round'] }
 /** @deprecated compatibility alias for older gates; only returns the body profile. */
-export function getCloudFoxShapeProfile(shape: CloudFoxBodyShape): CloudFoxBodyProfile {
-  return getCloudFoxBodyProfile(shape)
-}
+export function getCloudFoxShapeProfile(shape: CloudFoxBodyShape): CloudFoxBodyProfile { return getCloudFoxBodyProfile(shape) }

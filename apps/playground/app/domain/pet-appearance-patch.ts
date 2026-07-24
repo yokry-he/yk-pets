@@ -1,48 +1,50 @@
-/**
+/*
  * 文件职责 / File responsibility
- * 对多物种外观配方执行深层局部补丁，保证未被指定的部位保持不变。
- * Applies deep local patches to multi-species appearance recipes while preserving every unspecified visual section.
+ * 对完整可配置外观执行深层局部补丁，覆盖扩展前爪、嘴巴与肚皮，同时保证未指定部位保持不变。
+ * Applies deep local patches to the complete customizable appearance, including extended paws, mouth, and belly, while preserving every unspecified section.
  */
 import type { EarDesignRecipe, TailDesignRecipe, TailSegmentRecipe } from './pet-studio-phase2'
+import type { BellyPatchDesignRecipe, ChestDisplayDesignRecipe } from './pet-species-registry'
 import {
-  normalizeMultiSpeciesAppearance,
-  type BellyPatchDesignRecipe,
-  type ChestDisplayDesignRecipe,
-  type FrontPawDesignRecipe,
-  type MultiSpeciesAppearanceRecipe,
-} from './pet-species-registry'
+  normalizeCustomizableAppearance,
+  type CustomizableAppearanceRecipe,
+  type ExtendedFrontPawDesignRecipe,
+  type PetBellyCustomizationRecipe,
+  type PetMouthCustomizationRecipe,
+  type PetPartColorRecipe,
+} from './pet-part-customization'
 
 export interface PetAppearanceLocalPatch {
-  parts?: Partial<MultiSpeciesAppearanceRecipe['parts']>
-  proportions?: Partial<MultiSpeciesAppearanceRecipe['proportions']>
-  palette?: Partial<MultiSpeciesAppearanceRecipe['palette']>
-  glow?: Partial<MultiSpeciesAppearanceRecipe['glow']>
-  antennaDesign?: Partial<MultiSpeciesAppearanceRecipe['antennaDesign']>
+  parts?: Partial<CustomizableAppearanceRecipe['parts']>
+  proportions?: Partial<CustomizableAppearanceRecipe['proportions']>
+  palette?: Partial<CustomizableAppearanceRecipe['palette']>
+  glow?: Partial<CustomizableAppearanceRecipe['glow']>
+  antennaDesign?: Partial<CustomizableAppearanceRecipe['antennaDesign']>
   bellyPatchDesign?: Partial<BellyPatchDesignRecipe>
   chestDisplay?: Partial<ChestDisplayDesignRecipe>
-  frontPawDesign?: Partial<FrontPawDesignRecipe>
+  frontPawDesign?: Partial<ExtendedFrontPawDesignRecipe>
   earDesign?: Partial<EarDesignRecipe>
   tailDesign?: Partial<Omit<TailDesignRecipe, 'segments' | 'tipGlow'>> & {
     segments?: TailSegmentRecipe[]
     tipGlow?: Partial<TailDesignRecipe['tipGlow']>
   }
+  customization?: {
+    colors?: Partial<PetPartColorRecipe>
+    belly?: Partial<PetBellyCustomizationRecipe>
+    mouth?: Partial<PetMouthCustomizationRecipe>
+  }
   symbols?: {
-    chest?: Partial<MultiSpeciesAppearanceRecipe['symbols']['chest']>
-    back?: Partial<MultiSpeciesAppearanceRecipe['symbols']['back']>
+    chest?: Partial<CustomizableAppearanceRecipe['symbols']['chest']>
+    back?: Partial<CustomizableAppearanceRecipe['symbols']['back']>
   }
 }
 
 export function applyPetAppearanceLocalPatch(
-  current: MultiSpeciesAppearanceRecipe,
+  current: CustomizableAppearanceRecipe,
   patch: PetAppearanceLocalPatch,
-): MultiSpeciesAppearanceRecipe {
+): CustomizableAppearanceRecipe {
   const bellyPatch = patch.bellyPatchDesign
-  const changesCustomGeometry = Boolean(bellyPatch) && [
-    bellyPatch?.style,
-    bellyPatch?.width,
-    bellyPatch?.height,
-    bellyPatch?.offsetY,
-  ].some(value => value !== undefined)
+  const changesCustomGeometry = Boolean(bellyPatch) && [bellyPatch?.style, bellyPatch?.width, bellyPatch?.height, bellyPatch?.offsetY].some(value => value !== undefined)
   const bellyPatchDesign = bellyPatch
     ? {
         ...current.bellyPatchDesign,
@@ -52,7 +54,7 @@ export function applyPetAppearanceLocalPatch(
       }
     : current.bellyPatchDesign
 
-  return normalizeMultiSpeciesAppearance({
+  return normalizeCustomizableAppearance({
     ...current,
     parts: { ...current.parts, ...patch.parts },
     proportions: { ...current.proportions, ...patch.proportions },
@@ -68,6 +70,11 @@ export function applyPetAppearanceLocalPatch(
       ...patch.tailDesign,
       tipGlow: { ...current.tailDesign.tipGlow, ...patch.tailDesign?.tipGlow },
       segments: patch.tailDesign?.segments ?? current.tailDesign.segments,
+    },
+    customization: {
+      colors: { ...current.customization.colors, ...patch.customization?.colors },
+      belly: { ...current.customization.belly, ...patch.customization?.belly },
+      mouth: { ...current.customization.mouth, ...patch.customization?.mouth },
     },
     symbols: {
       chest: { ...current.symbols.chest, ...patch.symbols?.chest },
