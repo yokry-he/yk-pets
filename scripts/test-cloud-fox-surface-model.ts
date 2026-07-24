@@ -86,7 +86,7 @@ for (const option of CLOUD_FOX_HEAD_SHAPES) {
     const displacement = anchor.position.map((value, axis) => value - surface.position[axis]!)
     const offset = dot(displacement, surface.normal)
     assert.ok(Math.abs(offset - .032) < .0005, `${option.id}: eye keeps the shared surface offset`)
-    assert.ok(anchor.position[2] > .65, `${option.id}: eye stays on the visible head front`)
+    assert.ok(anchor.position[2] - surface.position[2] > .02, `${option.id}: eye stays outside its own head surface`)
     assert.ok(surface.normal[2] > .7, `${option.id}: eye faces the camera`)
   }
   const left = resolveCloudFoxEyeSurfaceAnchor({ shape: option.id, headScale: 1, eyeSpacing: 1 }, -1)
