@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * 文件职责 / File responsibility
- * 锁定独立头身、统一控制注册表、前后爪、鼻嘴、独立颜色、扩展耳尾标志范围、真实表面肚皮和本地编辑语义。
- * Locks independent head/body, the control registry, front/hind paws, nose/mouth, independent colors, extended ear/tail/symbol ranges, real-surface belly, and local editing semantics.
+ * 锁定独立头身、统一控制注册表、前后爪、鼻嘴、独立颜色、扩展耳尾标志范围、真实表面肚皮、共享 Studio 壳和本地编辑语义。
+ * Locks independent head/body, the control registry, paws, face, independent colors, extended ranges, real-surface belly, the shared Studio shell, and local editing semantics.
  */
 import { existsSync, readFileSync } from 'node:fs'
 const url = path => new URL(`../${path}`, import.meta.url)
@@ -29,7 +29,8 @@ const symbolEditor = read('apps/playground/app/components/studio/StudioSymbolEdi
 const hindEditor = read('apps/playground/app/components/studio/StudioHindPawEditor.vue')
 const colors = read('apps/playground/app/components/studio/StudioPartColorEditor.vue')
 const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
-const studio = read('apps/playground/app/pages/studio.vue')
+const studio = read('apps/playground/app/components/studio/StudioAppearanceWorkspace.vue')
+const studioShell = read('apps/playground/app/layouts/studio.vue')
 const app = read('apps/playground/app/app.vue')
 const store = read('apps/playground/app/stores/pet-appearance.ts')
 const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
@@ -67,7 +68,7 @@ const checks = [
   ['colors remain independent through UI normalization and tests', colorKeys.every(key => customization.includes(`${key}:string`) || customization.includes(`${key}: string`)) && colors.includes('每个可见材质通道独立保存并同步') && !colors.includes('patchPartColor') && !customization.includes('colors.antennaRod = colors.paws') && !customization.includes('colors.energyCore = colors.eyeHighlight') && patchTest.includes('assert.notEqual(independentColors.customization.colors.paws')],
   ['numeric surface regression test remains in CI', packageJson.includes('test:cloud-fox-surface') && read('scripts/test-cloud-fox-surface-model.ts').includes('maximumOffsetError')],
   ['camera scale is independent of editor section', canvas.includes('fitRatio') && canvas.includes('cameraFactor') && !canvas.includes('focusZoom')],
-  ['Studio remains scrollable overlay-free native and local-only', app.includes('overflow-y:auto!important') && app.includes('scrollbar-gutter:stable') && studio.includes("class: 'yk-pets-studio-page'") && app.includes('body.yk-pets-studio-page [data-nova-extension-root="overlay"]') && !oldAdvancedPlugin && studio.includes('compareSnapshot') && !store.includes('fetch(')],
+  ['Studio remains scrollable overlay-free routed native and local-only', app.includes('overflow-y:auto!important') && app.includes('scrollbar-gutter:stable') && studio.includes("class: 'yk-pets-studio-page'") && studioShell.includes('STUDIO_WORKSPACES') && app.includes('body.yk-pets-studio-page [data-nova-extension-root="overlay"]') && !oldAdvancedPlugin && studio.includes('compareSnapshot') && !store.includes('fetch(')],
   ['Studio and extension share geometry domains with unchanged permissions', configured.includes('normalizeCustomizableAppearance') && customizationBridge.includes('pet-part-customization') && shapeBridge.includes('cloud-fox-shape-profile') && surfaceBridge.includes('cloud-fox-surface-model') && eyeMetricsBridge.includes('cloud-fox-eye-metrics') && manifest.includes("permissions: ['activeTab', 'contextMenus', 'scripting', 'storage', 'sidePanel', 'tts']") && !manifest.includes("'unlimitedStorage'")],
 ]
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
