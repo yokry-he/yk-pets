@@ -1,35 +1,49 @@
 #!/usr/bin/env node
 /**
  * 文件职责 / File responsibility
- * 防止鼻嘴层级、经典嘴、肚皮、颜色、扩展范围、Studio 原生高级交互、稳定布局和事务历史回退。
- * Prevents regressions in face hierarchy, classic mouth, belly, colors, ranges, native Studio interactions, stable layout, and transactional history.
+ * 防止 Studio 布局、唯一鼻嘴层级、经典嘴、独立眼睛、六种身体/头型、肚皮贴合、颜色、范围和本地高级交互回退。
+ * Prevents regressions in Studio layout, the sole face hierarchy, classic mouth, distinct eyes, six body/head shapes, belly placement, colors, ranges, and local advanced interactions.
  */
 import { existsSync, readFileSync } from 'node:fs'
 const url = path => new URL(`../${path}`, import.meta.url)
 const read = path => readFileSync(url(path), 'utf8')
 const customization = read('apps/playground/app/domain/pet-part-customization.ts')
+const shapeProfile = read('apps/playground/app/domain/cloud-fox-shape-profile.ts')
 const face = read('apps/playground/app/components/studio/ExtensionCloudFoxFaceCustomization.vue')
 const head = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
 const headIntent = read('apps/playground/app/components/studio/ProductionCloudFoxHeadIntent.vue')
+const gaze = read('apps/playground/app/components/studio/ExtensionCloudFoxGazeOverlay.vue')
+const bodyShape = read('apps/playground/app/components/studio/ExtensionCloudFoxBodyShape.vue')
 const belly = read('apps/playground/app/components/studio/ExtensionCloudFoxBellyPatch.vue')
 const bellyEditor = read('apps/playground/app/components/studio/StudioBellyPatchEditor.vue')
 const colors = read('apps/playground/app/components/studio/StudioPartColorEditor.vue')
+const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const studio = read('apps/playground/app/pages/studio.vue')
 const app = read('apps/playground/app/app.vue')
 const store = read('apps/playground/app/stores/pet-appearance.ts')
 const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
-const bridge = read('apps/extension/domain/pet-part-customization.ts')
+const customizationBridge = read('apps/extension/domain/pet-part-customization.ts')
+const shapeBridge = read('apps/extension/domain/cloud-fox-shape-profile.ts')
 const manifest = read('apps/extension/wxt.config.ts')
 const legacyAdvancedPluginExists = existsSync(url('apps/playground/app/plugins/studio-advanced.client.ts'))
 
 const bellyShapes = ['ellipse','egg','shield','teardrop','inverted-teardrop','bean','rounded-rectangle','heart','cloud','chest-fur']
+const bodyShapes = ['sphere','ellipsoid','capsule','pear','bean','rounded-cube']
+const bodyShapeCoverage = bodyShapes.every(shape => shape === 'rounded-cube'
+  ? bodyShape.includes('RoundedBoxGeometry')
+  : bodyShape.includes(`appearance.parts.bodyShape === '${shape}'`))
 const colorKeys = ['body','limbs','paws','muzzle','nose','mouth','tongue','cheeks','eyes','eyeHighlight','earOuter','earInner','earTip','antennaRod','antennaTip','belly','tailGlow','energyCore']
 const checks = [
-  ['customization normalizer is shared by Studio and extension', store.includes('normalizeCustomizableAppearance') && configured.includes('normalizeCustomizableAppearance') && bridge.includes('pet-part-customization')],
+  ['customization and shape profiles are shared by Studio and extension', store.includes('normalizeCustomizableAppearance') && configured.includes('normalizeCustomizableAppearance') && customizationBridge.includes('pet-part-customization') && shapeBridge.includes('cloud-fox-shape-profile')],
   ['nose and mouth selections render distinct geometry', face.includes("appearance.parts.nose === 'triangle'") && face.includes("appearance.parts.nose === 'sensor'") && face.includes("appearance.parts.mouth === 'open'") && face.includes("appearance.parts.mouth === 'cat'") && face.includes('TresTubeGeometry')],
   ['one animated head owns the sole face hierarchy', head.includes('<ExtensionCloudFoxFaceCustomization') && !headIntent.includes('ExtensionCloudFoxFaceCustomization') && !head.includes('ref="mouth"') && !head.includes(':position="vector(scheme.model.head.nosePosition)"') && !face.includes('ref="head"') && !face.includes('render-order')],
   ['classic smile restores the production Cloud Fox mouth and tongue', face.includes("appearance.parts.mouth === 'smile'") && face.includes('scheme.model.head.mouthScale') && face.includes('scheme.model.head.tonguePosition') && face.includes('scheme.model.head.tongueScale')],
   ['thin curve mouths replace side-facing torus overlays', face.includes('CatmullRomCurve3') && face.includes('smileLeft') && face.includes('catLeft') && !face.includes('TresTorusGeometry :args="[.16')],
+  ['spark and crystal diamond eyes use distinct geometry', head.includes("appearance.parts.eyes === 'spark'") && head.includes("appearance.parts.eyes === 'diamond'") && head.includes('TresOctahedronGeometry') && head.includes('Math.PI / 4') && !head.includes("['spark', 'diamond'].includes")],
+  ['six body choices have explicit outer silhouettes', bodyShapeCoverage && bodyShape.includes('capsuleHeight') && bodyShape.includes("bodyShape === 'pear'") && bodyShape.includes("bodyShape === 'bean'")],
+  ['rounded cube receives a matching rounded head', shapeProfile.includes("headShape: 'rounded-cube'") && head.includes("profile.headShape === 'rounded-cube'") && head.includes('RoundedBoxGeometry')],
+  ['shape profile drives head face belly gaze and camera bounds', head.includes('getCloudFoxShapeProfile') && face.includes('getCloudFoxShapeProfile') && belly.includes('getCloudFoxShapeProfile') && gaze.includes('getCloudFoxShapeProfile') && canvas.includes('profile.boundsScale')],
+  ['non-round eyes avoid circular gaze overlays', gaze.includes("['round', 'oval'].includes") && gaze.includes('supportsGazeOverlay')],
   ['belly exposes ten explicit shapes with ellipse default', bellyShapes.every(shape => customization.includes(`id: '${shape}'`)) && customization.includes("return 'ellipse'") && belly.includes('drawShape') && bellyEditor.includes('恢复椭圆默认')],
   ['all visible material channels are configurable', colorKeys.every(key => customization.includes(`${key}: string`)) && colors.includes('所有部位颜色') && store.includes('patchPartColor')],
   ['expanded ranges exceed the legacy safe range', customization.includes('bodyWidth: [.55, 1.7]') && customization.includes('headScale: [.68, 1.48]') && customization.includes('tailLength: [.5, 1.9]') && customization.includes('width: [.42, 1.72]')],

@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  装配通用宠物预览，并以 Chrome 扩展正式参数作为默认相机、灯光和星云背景方案。
-  Assembles the generic pet preview using the Chrome extension production parameters as the default camera, lighting, and nebula scene scheme.
+  装配通用宠物预览，并以正式相机灯光和共享 Shape Profile 自动适配六种身体轮廓的可视边界。
+  Assembles the generic pet preview with production camera/lighting and automatically fits six body silhouettes through the shared Shape Profile.
 -->
 <script setup lang="ts">
 import { TresCanvas } from '@tresjs/core'
@@ -10,6 +10,7 @@ import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cl
 import ProceduralPet from './ProceduralPet.vue'
 import PetSceneEffects from './PetSceneEffects.vue'
 import { calculatePetStudioVisualBounds } from '~/domain/pet-studio-phase2'
+import { getCloudFoxShapeProfile } from '~/domain/cloud-fox-shape-profile'
 import { createExtensionClassicAppearance, createExtensionClassicScene, isExtensionClassicScene } from '~/domain/extension-cloud-fox-default'
 import { createDefaultPetScene, getPetScenePreset, resolveSceneContrast, type PetSceneRecipe } from '~/domain/pet-scene'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
@@ -41,9 +42,27 @@ const clearColor = computed(() => activeScene.value.transparent ? '#000000' : ac
 const extensionScene = computed(() => isExtensionClassicScene(activeScene.value))
 const canvasDpr = computed<[number, number]>(() => [scheme.scene.camera.normalDpr[0], scheme.scene.camera.normalDpr[1]])
 
-// 相机始终读取当前局部尾巴和身体边界；默认配方仍精确落在扩展 normalPosition。 / Camera always reads current body and local tail bounds while the default recipe still lands exactly on the extension normalPosition.
-const petBounds = computed(() => calculatePetStudioVisualBounds(props.appearance as never))
-const referenceBounds = calculatePetStudioVisualBounds(createExtensionClassicAppearance() as never)
+const petBounds = computed(() => {
+  const base = calculatePetStudioVisualBounds(props.appearance as never)
+  const profile = getCloudFoxShapeProfile(props.appearance.parts.bodyShape)
+  return {
+    centerY: base.centerY + profile.headOffset[1] * .35,
+    width: base.width * profile.boundsScale[0],
+    height: base.height * profile.boundsScale[1],
+    depth: base.depth * profile.boundsScale[2],
+    radius: base.radius * Math.max(profile.boundsScale[0], profile.boundsScale[1], profile.boundsScale[2]),
+  }
+})
+const referenceAppearance = createExtensionClassicAppearance()
+const referenceProfile = getCloudFoxShapeProfile(referenceAppearance.parts.bodyShape)
+const referenceBase = calculatePetStudioVisualBounds(referenceAppearance as never)
+const referenceBounds = {
+  ...referenceBase,
+  width: referenceBase.width * referenceProfile.boundsScale[0],
+  height: referenceBase.height * referenceProfile.boundsScale[1],
+  depth: referenceBase.depth * referenceProfile.boundsScale[2],
+  radius: referenceBase.radius * Math.max(...referenceProfile.boundsScale),
+}
 const cameraFactor = computed(() => Math.max(.82, petBounds.value.radius / referenceBounds.radius))
 const cameraPosition = computed(() => {
   const base = scheme.scene.camera.normalPosition
@@ -63,22 +82,11 @@ const sceneStyle = computed(() => ({
 </script>
 
 <template>
-  <div
-    :class="['studio-canvas', `studio-canvas--${contrast}`, { 'studio-canvas--extension': extensionScene }]"
-    :style="sceneStyle"
-    :data-visual-scheme="scheme.id"
-  >
+  <div :class="['studio-canvas', `studio-canvas--${contrast}`, { 'studio-canvas--extension': extensionScene }]" :style="sceneStyle" :data-visual-scheme="scheme.id">
     <div v-if="!activeScene.transparent" class="scene-surface" />
     <div v-if="!activeScene.transparent" class="scene-gradient" />
     <div v-if="extensionScene" class="extension-nebula" />
-    <TresCanvas
-      :clear-color="clearColor"
-      :clear-alpha="activeScene.transparent ? 0 : 1"
-      :dpr="canvasDpr"
-      alpha
-      antialias
-      shadows
-    >
+    <TresCanvas :clear-color="clearColor" :clear-alpha="activeScene.transparent ? 0 : 1" :dpr="canvasDpr" alpha antialias shadows>
       <TresPerspectiveCamera :position="cameraPosition" :fov="scheme.scene.camera.normalFov" />
       <TresAmbientLight :intensity="contrast === 'light' ? 1.7 : scheme.scene.lights.ambientIntensity" />
       <TresDirectionalLight :position="vec3(scheme.scene.lights.directionalPosition)" :intensity="contrast === 'light' ? 2.7 : scheme.scene.lights.directionalIntensity" cast-shadow />
@@ -88,10 +96,7 @@ const sceneStyle = computed(() => ({
       <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" />
     </TresCanvas>
     <div v-if="extensionScene" class="extension-glow" />
-    <div class="label">
-      <strong>{{ appearance.identity.nameZh }} · {{ appearance.identity.nameEn }}</strong>
-      <span>{{ scheme.label }} · {{ activeScene.presetId }} · 宠物包围盒 {{ petBounds.width.toFixed(1) }} × {{ petBounds.height.toFixed(1) }}</span>
-    </div>
+    <div class="label"><strong>{{ appearance.identity.nameZh }} · {{ appearance.identity.nameEn }}</strong><span>{{ scheme.label }} · {{ activeScene.presetId }} · 宠物包围盒 {{ petBounds.width.toFixed(1) }} × {{ petBounds.height.toFixed(1) }}</span></div>
   </div>
 </template>
 
