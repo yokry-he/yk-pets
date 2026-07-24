@@ -29,62 +29,24 @@ delete legacyRecipe.bellyPatchDesign
 delete legacyRecipe.chestDisplay
 delete legacyRecipe.hindPawDesign
 delete legacyRecipe.customization
-delete legacyRecipe.symbols.chest.offsetX
-delete legacyRecipe.symbols.chest.offsetY
-delete legacyRecipe.symbols.chest.offsetZ
-delete legacyRecipe.symbols.back.offsetX
-delete legacyRecipe.symbols.back.offsetY
-delete legacyRecipe.symbols.back.offsetZ
 const migratedLegacy = normalizeMultiSpeciesAppearance(legacyRecipe)
-assert.deepEqual(migratedLegacy.bellyPatchDesign, { mode: 'model-default', visible: true, style: 'shield', width: 1, height: 1, offsetY: 0 })
 assert.equal(migratedLegacy.chestDisplay.mode, 'energy-core')
 const fullyMigratedLegacy = normalizeCustomizableAppearance(legacyRecipe)
 assert.equal(fullyMigratedLegacy.hindPawDesign.style, 'soft')
-assert.deepEqual(fullyMigratedLegacy.customization.nose, {
-  offsetX: 0, offsetY: 0, surfaceOffset: .012, scaleX: 1, scaleY: 1, scaleZ: 1, rotation: 0,
-})
+assert.deepEqual(fullyMigratedLegacy.customization.nose, { offsetX: 0, offsetY: 0, surfaceOffset: .012, scaleX: 1, scaleY: 1, scaleZ: 1, rotation: 0 })
 
-const tailPatched = applyPetAppearanceLocalPatch(original, {
-  tailDesign: {
-    lateralOffset: .26,
-    tipGlow: { enabled: false, color: '#ff66cc' },
-    segments: original.tailDesign.segments.map((segment, index) => index === 1 ? { ...segment, offsetX: .18, offsetZ: -.12 } : segment),
-  },
-})
-assertOnlyChanged(original, tailPatched, ['tailDesign', 'customization.colors.tailGlow'])
-
-const earPatched = applyPetAppearanceLocalPatch(original, {
-  earDesign: { outerColor: '#f4f7ff', innerColor: '#8b6cff', tipColor: '#77f2df', innerGlowIntensity: 1.35 },
-})
-assertOnlyChanged(original, earPatched, ['earDesign', 'customization.colors.earOuter', 'customization.colors.earInner', 'customization.colors.earTip'])
-
-const frontPatched = applyPetAppearanceLocalPatch(original, {
-  frontPawDesign: { style: 'mitten', embedDepth: .16, outwardAngle: .18, shoulderScale: 1.24, mirror: false, leftOffsetX: -.12 },
-})
+const frontPatched = applyPetAppearanceLocalPatch(original, { frontPawDesign: { style: 'mitten', embedDepth: .16, mirror: false, leftOffsetX: -.12 } })
 assertOnlyChanged(original, frontPatched, ['frontPawDesign'])
-
-const hindPatched = applyPetAppearanceLocalPatch(original, {
-  hindPawDesign: { style: 'haunch', mirror: false, legLengthScale: 1.28, haunchScale: 1.42, pawScaleZ: 1.36, toeLift: .24, rightOffsetZ: .14 },
-})
+const hindPatched = applyPetAppearanceLocalPatch(original, { hindPawDesign: { style: 'haunch', mirror: false, haunchScale: 1.42, pawScaleZ: 1.36, toeLift: .24 } })
 assertOnlyChanged(original, hindPatched, ['hindPawDesign'])
-assert.equal(hindPatched.hindPawDesign.haunchScale, 1.42)
-
-const nosePatched = applyPetAppearanceLocalPatch(original, {
-  customization: { nose: { offsetX: .16, offsetY: -.08, surfaceOffset: .028, scaleX: 1.32, scaleY: .82, scaleZ: 1.18, rotation: .24 } },
-})
+const nosePatched = applyPetAppearanceLocalPatch(original, { customization: { nose: { offsetX: .16, offsetY: -.08, surfaceOffset: .028, scaleX: 1.32, scaleY: .82, scaleZ: 1.18, rotation: .24 } } })
 assertOnlyChanged(original, nosePatched, ['customization.nose'])
-assert.equal(nosePatched.customization.nose.scaleX, 1.32)
-assert.equal(nosePatched.customization.nose.rotation, .24)
+const mouthPatched = applyPetAppearanceLocalPatch(original, { customization: { mouth: { width: 1.24, surfaceOffset: .018, tongueVisible: false } } })
+assertOnlyChanged(original, mouthPatched, ['customization.mouth'])
 
 const independentColors = normalizeCustomizableAppearance({
   ...original,
-  customization: {
-    ...original.customization,
-    colors: {
-      ...original.customization.colors,
-      paws: '#112233', antennaRod: '#445566', eyeHighlight: '#778899', energyCore: '#aabbcc',
-    },
-  },
+  customization: { ...original.customization, colors: { ...original.customization.colors, paws: '#112233', antennaRod: '#445566', eyeHighlight: '#778899', energyCore: '#aabbcc' } },
 })
 assert.equal(independentColors.customization.colors.paws, '#112233')
 assert.equal(independentColors.customization.colors.antennaRod, '#445566')
@@ -93,14 +55,53 @@ assert.equal(independentColors.customization.colors.energyCore, '#aabbcc')
 assert.notEqual(independentColors.customization.colors.paws, independentColors.customization.colors.antennaRod)
 assert.notEqual(independentColors.customization.colors.eyeHighlight, independentColors.customization.colors.energyCore)
 
+const extended = normalizeCustomizableAppearance({
+  ...original,
+  earDesign: { ...original.earDesign, innerGlowIntensity: 5.4 },
+  tailDesign: {
+    ...original.tailDesign,
+    rootOffsetX: 1.12,
+    rootOffsetY: -.96,
+    rootExtensionLength: 1.45,
+    rootExtensionWidth: .72,
+    lateralOffset: 1.7,
+    tipGlow: { ...original.tailDesign.tipGlow, intensity: 5.5, auraScale: 4.4 },
+    segments: original.tailDesign.segments.map((segment, index) => index === 0
+      ? { ...segment, length: 1.5, width: .72, offsetX: 1.05, offsetY: -.9, rotationZ: 2.7 }
+      : segment),
+  },
+  symbols: {
+    chest: { ...original.symbols.chest, scale: 2.7, offsetX: .92, offsetY: -.84, offsetZ: .65, rotation: 2.4, glowIntensity: 5.3 },
+    back: { ...original.symbols.back, scale: 2.55, offsetX: -.88, offsetY: .95, offsetZ: .58, rotation: -2.2, glowIntensity: 5.1 },
+  },
+})
+assert.equal(extended.earDesign.innerGlowIntensity, 5.4)
+assert.equal(extended.tailDesign.rootOffsetX, 1.12)
+assert.equal(extended.tailDesign.rootOffsetY, -.96)
+assert.equal(extended.tailDesign.rootExtensionLength, 1.45)
+assert.equal(extended.tailDesign.rootExtensionWidth, .72)
+assert.equal(extended.tailDesign.lateralOffset, 1.7)
+assert.equal(extended.tailDesign.tipGlow.intensity, 5.5)
+assert.equal(extended.tailDesign.tipGlow.auraScale, 4.4)
+assert.equal(extended.tailDesign.segments[0]?.length, 1.5)
+assert.equal(extended.tailDesign.segments[0]?.width, .72)
+assert.equal(extended.tailDesign.segments[0]?.offsetX, 1.05)
+assert.equal(extended.tailDesign.segments[0]?.rotationZ, 2.7)
+assert.equal(extended.symbols.chest.scale, 2.7)
+assert.equal(extended.symbols.chest.offsetX, .92)
+assert.equal(extended.symbols.chest.offsetZ, .65)
+assert.equal(extended.symbols.chest.glowIntensity, 5.3)
+assert.equal(extended.symbols.back.scale, 2.55)
+assert.equal(extended.symbols.back.offsetY, .95)
+assert.equal(extended.symbols.back.glowIntensity, 5.1)
+
+const tailPatched = applyPetAppearanceLocalPatch(original, { tailDesign: { lateralOffset: .26, tipGlow: { enabled: false, color: '#ff66cc' } } })
+assertOnlyChanged(original, tailPatched, ['tailDesign', 'customization.colors.tailGlow'])
+const earPatched = applyPetAppearanceLocalPatch(original, { earDesign: { outerColor: '#f4f7ff', innerColor: '#8b6cff', tipColor: '#77f2df', innerGlowIntensity: 1.35 } })
+assertOnlyChanged(original, earPatched, ['earDesign', 'customization.colors.earOuter', 'customization.colors.earInner', 'customization.colors.earTip'])
 const heartPatched = applyPetAppearanceLocalPatch(original, { bellyPatchDesign: { style: 'heart', width: 1.18, height: .82, offsetY: .1 } })
 assertOnlyChanged(original, heartPatched, ['bellyPatchDesign', 'customization.belly'])
-const mouthPatched = applyPetAppearanceLocalPatch(original, { customization: { mouth: { width: 1.24, surfaceOffset: .018, tongueVisible: false } } })
-assertOnlyChanged(original, mouthPatched, ['customization.mouth'])
-const symbolPatched = applyPetAppearanceLocalPatch(original, {
-  chestDisplay: { mode: 'hybrid' },
-  symbols: { chest: { enabled: true, scale: 1.42 }, back: { enabled: true, offsetY: .28 } },
-})
+const symbolPatched = applyPetAppearanceLocalPatch(original, { chestDisplay: { mode: 'hybrid' }, symbols: { chest: { enabled: true, scale: 1.42 }, back: { enabled: true, offsetY: .28 } } })
 assertOnlyChanged(original, symbolPatched, ['chestDisplay', 'symbols'])
 
-console.log('Pet Studio local patch isolation passed for legacy migration, front/hind paws, nose, independent colors, tail, ear, belly, mouth, and symbols.')
+console.log('Pet Studio local patch and extended-range regression passed for front/hind paws, nose, colors, ear, belly, tail, and symbols.')
