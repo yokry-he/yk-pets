@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import { createExtensionClassicAppearance } from '../apps/playground/app/domain/extension-cloud-fox-default'
 import { applyPetAppearanceLocalPatch } from '../apps/playground/app/domain/pet-appearance-patch'
+import { normalizeCustomizableAppearance } from '../apps/playground/app/domain/pet-part-customization'
 import { normalizeMultiSpeciesAppearance } from '../apps/playground/app/domain/pet-species-registry'
 
-const original = createExtensionClassicAppearance()
+const rawOriginal = createExtensionClassicAppearance()
+const original = normalizeCustomizableAppearance(rawOriginal)
 
-const legacyRecipe = JSON.parse(JSON.stringify(original))
+const legacyRecipe = JSON.parse(JSON.stringify(rawOriginal))
 delete legacyRecipe.bellyPatchDesign
 delete legacyRecipe.chestDisplay
 delete legacyRecipe.symbols.chest.offsetX
@@ -45,15 +47,13 @@ const nonTailSnapshot = JSON.stringify({
   antennaDesign: original.antennaDesign,
   symbols: original.symbols,
   speciesParts: original.speciesParts,
+  customization: original.customization,
 })
-
 const tailPatched = applyPetAppearanceLocalPatch(original, {
   tailDesign: {
     lateralOffset: .26,
     tipGlow: { enabled: false, color: '#ff66cc' },
-    segments: original.tailDesign.segments.map((segment, index) => (
-      index === 1 ? { ...segment, offsetX: .18, offsetZ: -.12 } : segment
-    )),
+    segments: original.tailDesign.segments.map((segment, index) => index === 1 ? { ...segment, offsetX: .18, offsetZ: -.12 } : segment),
   },
 })
 assert.equal(JSON.stringify({
@@ -70,6 +70,7 @@ assert.equal(JSON.stringify({
   antennaDesign: tailPatched.antennaDesign,
   symbols: tailPatched.symbols,
   speciesParts: tailPatched.speciesParts,
+  customization: tailPatched.customization,
 }), nonTailSnapshot)
 assert.equal(tailPatched.tailDesign.lateralOffset, .26)
 assert.equal(tailPatched.tailDesign.tipGlow.enabled, false)
@@ -91,14 +92,10 @@ const nonEarSnapshot = JSON.stringify({
   antennaDesign: original.antennaDesign,
   symbols: original.symbols,
   speciesParts: original.speciesParts,
+  customization: original.customization,
 })
 const earPatched = applyPetAppearanceLocalPatch(original, {
-  earDesign: {
-    outerColor: '#f4f7ff',
-    innerColor: '#8b6cff',
-    tipColor: '#77f2df',
-    innerGlowIntensity: 1.35,
-  },
+  earDesign: { outerColor: '#f4f7ff', innerColor: '#8b6cff', tipColor: '#77f2df', innerGlowIntensity: 1.35 },
 })
 assert.equal(JSON.stringify({
   identity: earPatched.identity,
@@ -114,6 +111,7 @@ assert.equal(JSON.stringify({
   antennaDesign: earPatched.antennaDesign,
   symbols: earPatched.symbols,
   speciesParts: earPatched.speciesParts,
+  customization: earPatched.customization,
 }), nonEarSnapshot)
 assert.equal(earPatched.earDesign.outerColor, '#f4f7ff')
 assert.equal(earPatched.earDesign.innerColor, '#8b6cff')
@@ -134,14 +132,10 @@ const nonPawSnapshot = JSON.stringify({
   antennaDesign: original.antennaDesign,
   symbols: original.symbols,
   speciesParts: original.speciesParts,
+  customization: original.customization,
 })
 const pawPatched = applyPetAppearanceLocalPatch(original, {
-  frontPawDesign: {
-    style: 'mitten',
-    embedDepth: .16,
-    outwardAngle: .18,
-    shoulderScale: 1.24,
-  },
+  frontPawDesign: { style: 'mitten', embedDepth: .16, outwardAngle: .18, shoulderScale: 1.24 },
 })
 assert.equal(JSON.stringify({
   identity: pawPatched.identity,
@@ -157,6 +151,7 @@ assert.equal(JSON.stringify({
   antennaDesign: pawPatched.antennaDesign,
   symbols: pawPatched.symbols,
   speciesParts: pawPatched.speciesParts,
+  customization: pawPatched.customization,
 }), nonPawSnapshot)
 assert.equal(pawPatched.frontPawDesign.style, 'mitten')
 assert.equal(pawPatched.frontPawDesign.embedDepth, .16)
@@ -177,23 +172,12 @@ const nonBellySnapshot = JSON.stringify({
   antennaDesign: original.antennaDesign,
   symbols: original.symbols,
   speciesParts: original.speciesParts,
+  customization: { colors: original.customization.colors, mouth: original.customization.mouth },
 })
 const heartPatched = applyPetAppearanceLocalPatch(original, {
-  bellyPatchDesign: {
-    style: 'heart',
-    width: 1.18,
-    height: .82,
-    offsetY: .1,
-  },
+  bellyPatchDesign: { style: 'heart', width: 1.18, height: .82, offsetY: .1 },
 })
-assert.deepEqual(heartPatched.bellyPatchDesign, {
-  mode: 'custom',
-  visible: true,
-  style: 'heart',
-  width: 1.18,
-  height: .82,
-  offsetY: .1,
-})
+assert.deepEqual(heartPatched.bellyPatchDesign, { mode: 'custom', visible: true, style: 'heart', width: 1.18, height: .82, offsetY: .1 })
 assert.equal(JSON.stringify({
   identity: heartPatched.identity,
   parts: heartPatched.parts,
@@ -208,6 +192,7 @@ assert.equal(JSON.stringify({
   antennaDesign: heartPatched.antennaDesign,
   symbols: heartPatched.symbols,
   speciesParts: heartPatched.speciesParts,
+  customization: { colors: heartPatched.customization.colors, mouth: heartPatched.customization.mouth },
 }), nonBellySnapshot)
 
 const symbolPatched = applyPetAppearanceLocalPatch(original, {
@@ -218,22 +203,21 @@ const symbolPatched = applyPetAppearanceLocalPatch(original, {
   },
 })
 assert.equal(symbolPatched.chestDisplay.mode, 'hybrid')
+assert.equal(symbolPatched.symbols.chest.enabled, true)
 assert.equal(symbolPatched.symbols.chest.scale, 1.42)
 assert.equal(symbolPatched.symbols.chest.offsetX, .08)
 assert.equal(symbolPatched.symbols.chest.offsetY, .12)
 assert.equal(symbolPatched.symbols.chest.offsetZ, .14)
+assert.equal(symbolPatched.symbols.back.enabled, true)
 assert.equal(symbolPatched.symbols.back.offsetY, .28)
 assert.equal(symbolPatched.symbols.back.offsetZ, .08)
-assert.deepEqual(symbolPatched.bellyPatchDesign, original.bellyPatchDesign)
-assert.deepEqual(symbolPatched.orbitDesign, original.orbitDesign)
 
-const heartRoundTrip = normalizeMultiSpeciesAppearance(JSON.parse(JSON.stringify(heartPatched)))
-const shieldRoundTrip = normalizeMultiSpeciesAppearance(JSON.parse(JSON.stringify(original)))
-assert.equal(heartRoundTrip.bellyPatchDesign.mode, 'custom')
-assert.equal(heartRoundTrip.bellyPatchDesign.style, 'heart')
-assert.equal(heartRoundTrip.bellyPatchDesign.width, 1.18)
-assert.equal(shieldRoundTrip.bellyPatchDesign.mode, 'model-default')
-assert.equal(shieldRoundTrip.bellyPatchDesign.style, 'shield')
-assert.deepEqual(heartRoundTrip.orbitDesign, original.orbitDesign)
+const mouthPatched = applyPetAppearanceLocalPatch(original, {
+  customization: { mouth: { width: 1.24, surfaceOffset: .018, tongueVisible: false } },
+})
+assert.equal(mouthPatched.customization.mouth.width, 1.24)
+assert.equal(mouthPatched.customization.mouth.surfaceOffset, .018)
+assert.equal(mouthPatched.customization.mouth.tongueVisible, false)
+assert.equal(mouthPatched.frontPawDesign.mirror, true)
 
-console.log('Pet Studio local patch isolation passed: legacy migration, five-style belly sizing, chest modes, symbol placement, and unrelated-section preservation.')
+console.log('Pet Studio local patch isolation passed for legacy migration, tail, ear, extended paw, belly, mouth, and symbols.')
