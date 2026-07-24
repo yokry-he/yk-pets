@@ -1,11 +1,11 @@
 /**
  * 文件职责 / File responsibility
- * 集中注册宠物动作元数据，供菜单、调度和动画时长共享。
- * Central motion metadata registry shared by menus, scheduling, and animation timing.
+ * 集中注册宠物动作元数据，供菜单、调度、音频和统一 Studio/扩展动作运行时共享。
+ * Centrally registers pet motion metadata shared by menus, scheduling, audio, and the unified Studio/extension motion runtime.
  */
 import type { NovaPetBehavior } from '@nova/shared/messages'
 
-// 动作分类决定菜单、道具、闲时频率和减少动态效果策略。 / Motion categories drive menu, prop, idle frequency, and reduced-motion behavior.
+// 动作分类决定菜单、道具、闲时频率和减少动态效果策略。 / Motion categories drive menus, props, idle frequency, and reduced-motion behavior.
 export type PetMotionKind = 'body' | 'prop' | 'scene'
 export type PetMotionCategory = 'social' | 'active' | 'calm' | 'life' | 'special'
 export type PetPropKind = 'ball' | 'food-bowl' | null
@@ -30,8 +30,8 @@ export interface PetMotionDefinition {
 }
 
 /**
- * 动作注册表是菜单与动画时长的单一事实来源；新增动作时必须同步共享协议和 CloudFox 行为。
- * The registry is the single source of truth for menus and timing; new motions must also update shared behavior contracts and CloudFox.
+ * 动作注册表是菜单、闲时调度与用户反馈时长的单一事实来源；统一渲染核心不会改变既有扩展动作节奏。
+ * The registry is the single source for menu, idle scheduling, and feedback timing; the unified renderer does not change established extension motion pacing.
  */
 export const PET_MOTIONS: readonly PetMotionDefinition[] = [
   { id: 'wave', behavior: 'greeting', label: '招手', description: '爪端朝上，以手腕为轴向你挥手', icon: '◡', duration: 2400, kind: 'body', category: 'social', prop: null, intensity: 'normal', idleEligible: true, idleTier: 'normal', interruptible: true, order: 10 },

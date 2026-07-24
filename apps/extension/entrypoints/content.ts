@@ -21,6 +21,7 @@ import type {
   NovaPetVisualState,
   NovaRuntimeMessage,
 } from '@nova/shared/messages'
+import { PET_MEMORY_STORAGE_KEY, memoryMatchesPage, normalizePetMemoryStore } from '@nova/shared/pet-memory'
 import overlayStyles from './content/nova-pet-overlay.css?inline'
 
 // 页面审计使用的跨观察器状态。 / Cross-observer state used by the page audit.
@@ -54,6 +55,8 @@ export default defineContentScript({
     let latestReport: AuditReport | null = null
     let currentIssueIndex = 0
     let previewIssueId: string | null = null
+    let memoryRefreshTimer: number | null = null
+    let auditRunning = false
 
     // 宠物动作路由：轻量反馈留在页面，复杂结果通过 Runtime 进入 Side Panel。 / Pet action router: keep lightweight feedback in-page and send complex results to the Side Panel.
     const overlay = createNovaOverlay(async (action) => {
@@ -78,7 +81,7 @@ export default defineContentScript({
       }
 
       const issue = getCurrentIssue()
-      const isNavigationAction = action === 'open-report' || action === 'network-lab' || action === 'connect-agent'
+      const isNavigationAction = action === 'open-report' || action === 'open-memory' || action === 'network-lab' || action === 'connect-agent'
       overlay.patch({
         behavior: isNavigationAction ? 'greeting' : 'thinking',
         speech: getDelegatedActionSpeech(action),
@@ -107,6 +110,33 @@ export default defineContentScript({
 
     setupPerformanceObservers(performanceState)
 
+    async function refreshPageMemoryCount() {
+      const stored = await chrome.storage.local.get(PET_MEMORY_STORAGE_KEY)
+      const store = normalizePetMemoryStore(stored[PET_MEMORY_STORAGE_KEY])
+      const memoryCount = store.cards.filter(card => memoryMatchesPage(card, location.href)).length
+      overlay.patch({ memoryCount })
+    }
+
+    function schedulePageMemoryRefresh() {
+      if (memoryRefreshTimer !== null) return
+      memoryRefreshTimer = window.setTimeout(() => {
+        memoryRefreshTimer = null
+        refreshPageMemoryCount().catch(() => undefined)
+      }, 80)
+    }
+
+    function onMemoryStorageChanged(changes: Record<string, chrome.storage.StorageChange>, areaName: string) {
+      if (areaName !== 'local' || !changes[PET_MEMORY_STORAGE_KEY]) return
+      schedulePageMemoryRefresh()
+    }
+
+    chrome.storage.onChanged.addListener(onMemoryStorageChanged)
+    refreshPageMemoryCount().catch(() => undefined)
+    window.addEventListener('pagehide', () => {
+      if (memoryRefreshTimer !== null) window.clearTimeout(memoryRefreshTimer)
+      chrome.storage.onChanged.removeListener(onMemoryStorageChanged)
+    }, { once: true })
+
     async function runAuditAndPublish(requestedCategories?: AuditCategory[], requestedRuleCodes?: AuditIssueCode[]) {
       const enabledRuleCodes = await resolveEnabledAuditRules(requestedRuleCodes, requestedCategories)
       if (!enabledRuleCodes.length) {
@@ -114,6 +144,8 @@ export default defineContentScript({
         throw new Error('至少选择一条审计规则后才能开始页面审计。')
       }
       const enabledCategories = categoriesForRules(enabledRuleCodes)
+      if (auditRunning) throw new Error('页面审计正在进行，请稍候。')
+      auditRunning = true
       overlay.patch({
         behavior: 'thinking',
         speech: `我正在执行你选择的 ${enabledRuleCodes.length} 条页面检查。`,
@@ -135,6 +167,9 @@ export default defineContentScript({
           busy: false,
         })
         throw error
+      }
+      finally {
+        auditRunning = false
       }
     }
 
@@ -283,6 +318,16 @@ export default defineContentScript({
         return false
       }
 
+      if (message.type === 'YK_PET_MEMORY_GET_CONTEXT') {
+        sendResponse({
+          ok: true,
+          pageUrl: location.href,
+          pageTitle: document.title || location.hostname,
+          selection: document.getSelection()?.toString().trim().slice(0, 4_000) || undefined,
+        })
+        return false
+      }
+
       return false
     })
   },
@@ -291,6 +336,7 @@ export default defineContentScript({
 function getDelegatedActionSpeech(action: NovaPetAction) {
   const messages: Partial<Record<NovaPetAction, string>> = {
     'open-report': '我把详细报告打开给你。',
+    'open-memory': '正在打开宠物记忆，之前保存的网页上下文都在那里。',
     'network-lab': '正在打开网络实验室，你可以一键开启拦截与 Mock。',
     'connect-agent': '正在打开本地 Agent 连接设置。',
     'generate-patch': '我会去项目源码里定位当前问题并生成补丁。',
@@ -341,6 +387,15 @@ function setupPerformanceObservers(state: PerformanceState) {
   }
 }
 
+const MAX_AUDIT_ELEMENTS_PER_RULE = 160
+
+function yieldToMain() {
+  return new Promise<void>((resolve) => {
+    if (document.visibilityState === 'visible') window.requestAnimationFrame(() => resolve())
+    else window.setTimeout(resolve, 0)
+  })
+}
+
 // 审计流水线：DOM 规则与性能规则合并后统一评分和排序。 / Audit pipeline: merge DOM and performance findings before scoring and ordering.
 async function runAudit(performanceState: PerformanceState, enabledRuleCodes: AuditIssueCode[]): Promise<AuditReport> {
   if (document.readyState === 'loading') {
@@ -350,10 +405,15 @@ async function runAudit(performanceState: PerformanceState, enabledRuleCodes: Au
   const enabled = new Set(enabledRuleCodes)
   const issues: AuditIssue[] = []
   auditImages(issues, enabled)
+  await yieldToMain()
   auditFormControls(issues, enabled)
+  await yieldToMain()
   auditInteractiveNames(issues, enabled)
+  await yieldToMain()
   auditDocumentStructure(issues, enabled)
+  await yieldToMain()
   auditBestPractices(issues, enabled)
+  await yieldToMain()
   const metrics = collectMetrics(performanceState)
   auditPerformance(issues, metrics, enabled)
   const enabledCategories = categoriesForRules(enabledRuleCodes)
@@ -375,7 +435,7 @@ async function runAudit(performanceState: PerformanceState, enabledRuleCodes: Au
 }
 
 function auditImages(issues: AuditIssue[], enabled: ReadonlySet<AuditIssueCode>) {
-  for (const image of [...document.images].slice(0, 250)) {
+  for (const image of [...document.images].slice(0, MAX_AUDIT_ELEMENTS_PER_RULE)) {
     if (image.closest('[data-nova-extension-root]')) continue
     const selector = buildSelector(image)
     const src = image.currentSrc || image.src || image.getAttribute('src') || ''
@@ -441,7 +501,7 @@ function auditImages(issues: AuditIssue[], enabled: ReadonlySet<AuditIssueCode>)
 function auditFormControls(issues: AuditIssue[], enabled: ReadonlySet<AuditIssueCode>) {
   if (!enabled.has('form-label-missing')) return
   const controls = document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')
-  for (const control of [...controls].slice(0, 250)) {
+  for (const control of [...controls].slice(0, MAX_AUDIT_ELEMENTS_PER_RULE)) {
     if (control instanceof HTMLInputElement && ['hidden', 'submit', 'button', 'image', 'reset'].includes(control.type)) continue
     if (!isElementVisible(control) || hasAccessibleName(control)) continue
 
@@ -472,7 +532,7 @@ function auditFormControls(issues: AuditIssue[], enabled: ReadonlySet<AuditIssue
 function auditInteractiveNames(issues: AuditIssue[], enabled: ReadonlySet<AuditIssueCode>) {
   if (enabled.has('button-name-missing')) {
     const buttons = document.querySelectorAll<HTMLElement>('button, [role="button"]')
-    for (const button of [...buttons].slice(0, 250)) {
+    for (const button of [...buttons].slice(0, MAX_AUDIT_ELEMENTS_PER_RULE)) {
       if (!isElementVisible(button) || hasAccessibleName(button)) continue
       issues.push(createIssue({
       code: 'button-name-missing',
@@ -491,7 +551,7 @@ function auditInteractiveNames(issues: AuditIssue[], enabled: ReadonlySet<AuditI
 
   if (enabled.has('link-name-missing')) {
     const links = document.querySelectorAll<HTMLAnchorElement>('a[href]')
-    for (const link of [...links].slice(0, 250)) {
+    for (const link of [...links].slice(0, MAX_AUDIT_ELEMENTS_PER_RULE)) {
       if (!isElementVisible(link) || hasAccessibleName(link)) continue
       issues.push(createIssue({
       code: 'link-name-missing',
@@ -951,14 +1011,28 @@ function createHighlightLayer() {
   }
 
   const viewport = window.visualViewport
-  window.addEventListener('scroll', update, true)
-  window.addEventListener('resize', update)
-  viewport?.addEventListener('resize', update)
-  viewport?.addEventListener('scroll', update)
+  let highlightTracking = false
+  const startHighlightTracking = () => {
+    if (highlightTracking) return
+    highlightTracking = true
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    viewport?.addEventListener('resize', update)
+    viewport?.addEventListener('scroll', update)
+  }
+  const stopHighlightTracking = () => {
+    if (!highlightTracking) return
+    highlightTracking = false
+    window.removeEventListener('scroll', update, true)
+    window.removeEventListener('resize', update)
+    viewport?.removeEventListener('resize', update)
+    viewport?.removeEventListener('scroll', update)
+  }
 
   mountWhenReady(host)
   return {
     show(element: HTMLElement, title: string) {
+      startHighlightTracking()
       if (target !== element) {
         resizeObserver.disconnect()
         resizeObserver.observe(element)
@@ -972,6 +1046,7 @@ function createHighlightLayer() {
     },
     hide() {
       resizeObserver.disconnect()
+      stopHighlightTracking()
       target = null
       host.hidden = true
     },
@@ -1008,6 +1083,7 @@ function createNovaOverlay(onAction: (action: NovaPetAction) => void | Promise<v
     previewActive: false,
     busy: false,
     agentConnected: false,
+    memoryCount: 0,
   }
   let liveState: NovaPetVisualState | null = null
 

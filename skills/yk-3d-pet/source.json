@@ -1,0 +1,26 @@
+{
+  "name": "yk-3d-pet",
+  "repository": "https://github.com/yokry-he/yk-3d-pet",
+  "version": "0.1.0",
+  "commit": "3303319cbf8f3b48cf91d06138f56ee112ce3c70",
+  "defaultPreset": "yk-pets",
+  "validatedWorkflowRun": 29917816912,
+  "validationPlatforms": ["ubuntu-latest", "windows-latest", "macos-latest"],
+  "distributionState": "github-released",
+  "githubRelease": {
+    "tag": "v0.1.0",
+    "url": "https://github.com/yokry-he/yk-3d-pet/releases/tag/v0.1.0",
+    "publishedAt": "2026-07-22T17:22:56Z",
+    "verificationWorkflowRun": 29942474112,
+    "tarball": {
+      "name": "yk-3d-pet-0.1.0.tgz",
+      "size": 26738,
+      "sha256": "bbaa905a0f07fa3786671f332a29920e0b77ad18b856de053cf971448f8cd09a"
+    },
+    "checksum": {
+      "name": "yk-3d-pet-0.1.0.tgz.sha256",
+      "size": 86
+    }
+  },
+  "npmPublished": false
+}

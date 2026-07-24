@@ -69,6 +69,7 @@ interface ModeDefinition {
 
 // 菜单注册表与固定六槽位布局。 / Menu registries and fixed six-slot layout.
 const PAGE_SIZE = 6
+const POINTER_UPDATE_INTERVAL_MS = 34
 const MENU_MODE_STORAGE_KEY = 'nova:pet-menu-mode'
 const PET_VOICE_STORAGE_KEY = 'nova:pet:voice-preset'
 const ORBIT_SLOTS = [
@@ -124,6 +125,10 @@ const localBehavior = ref<NovaPetBehavior | null>(null)
 const localSpeech = ref('')
 const localNoticeTitle = ref('')
 const pointer = ref({ x: 0, y: 0 })
+let pointerUpdateTimer: number | null = null
+let pendingPointer = { x: 0, y: 0 }
+let lastPointerUpdateAt = 0
+let avatarBounds: DOMRect | null = null
 const offset = ref({ right: 18, bottom: 18 })
 const pulseNonce = ref(0)
 const motionNonce = ref(0)
@@ -195,6 +200,15 @@ const featureItems = computed<ActionMenuItem[]>(() => [
     label: props.state.issueCount ? '重新审计' : '页面审计',
     description: '检查当前页面的性能、结构和无障碍问题',
     disabled: () => props.state.busy,
+  },
+  {
+    id: 'memory',
+    kind: 'action',
+    mode: 'features',
+    action: 'open-memory',
+    icon: '✎',
+    label: '宠物记忆',
+    description: '记录当前网页、选中文字和稍后要处理的任务',
   },
   {
     id: 'report',
@@ -334,7 +348,7 @@ function runAction(action: NovaPetAction) {
   hideTooltip()
   emit('action', action)
   playBehavior(action === 'audit' || action === 'generate-patch' || action === 'run-checks' ? 'thinking' : 'greeting', 900, false, 'ui')
-  if (action === 'open-report' || isAgentAction(action)) closeMenu()
+  if (action === 'open-report' || action === 'open-memory' || isAgentAction(action)) closeMenu()
 }
 
 function isAgentAction(action: NovaPetAction) {
@@ -560,12 +574,6 @@ function loadMotionVoiceBuffer(context: AudioContext, asset: string) {
   return request
 }
 
-function preloadMotionVoices() {
-  for (const asset of new Set(Object.values(motionVoiceAssets).filter((value): value is string => Boolean(value)))) {
-    loadMotionVoiceData(asset).catch(error => console.warn('[NOVA motion voice preload]', asset, error))
-  }
-}
-
 async function restorePetVoicePreset() {
   const stored = await chrome.storage.local.get(PET_VOICE_STORAGE_KEY)
   petVoicePreset.value = normalizePetVoicePreset(stored[PET_VOICE_STORAGE_KEY])
@@ -688,14 +696,32 @@ function onDocumentKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && menuOpen.value) closeMenu()
 }
 
-function onPointerMove(event: PointerEvent) {
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  pointer.value = {
-    x: Math.max(-1, Math.min(1, ((event.clientX - rect.left) / rect.width) * 2 - 1)),
-    y: Math.max(-1, Math.min(1, ((event.clientY - rect.top) / rect.height) * 2 - 1)),
-  }
+function flushPointerUpdate() {
+  pointerUpdateTimer = null
+  lastPointerUpdateAt = performance.now()
+  const current = pointer.value
+  if (Math.abs(current.x - pendingPointer.x) < .005 && Math.abs(current.y - pendingPointer.y) < .005) return
+  pointer.value = pendingPointer
+}
 
+function schedulePointerUpdate(nextPointer: { x: number; y: number }) {
+  pendingPointer = nextPointer
+  if (pointerUpdateTimer !== null) return
+  const delay = Math.max(0, POINTER_UPDATE_INTERVAL_MS - (performance.now() - lastPointerUpdateAt))
+  pointerUpdateTimer = window.setTimeout(flushPointerUpdate, delay)
+}
+
+function onPointerMove(event: PointerEvent) {
   const drag = dragState.value
+  if (!drag) {
+    const rect = avatarBounds || (event.currentTarget as HTMLElement).getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      schedulePointerUpdate({
+        x: Math.max(-1, Math.min(1, ((event.clientX - rect.left) / rect.width) * 2 - 1)),
+        y: Math.max(-1, Math.min(1, ((event.clientY - rect.top) / rect.height) * 2 - 1)),
+      })
+    }
+  }
   if (!drag || drag.pointerId !== event.pointerId) return
   const deltaX = event.clientX - drag.startX
   const deltaY = event.clientY - drag.startY
@@ -713,6 +739,7 @@ function onPointerDown(event: PointerEvent) {
   if (event.button !== 0) return
   markInteraction()
   const target = event.currentTarget as HTMLElement
+  avatarBounds = target.getBoundingClientRect()
   target.setPointerCapture(event.pointerId)
   dragState.value = {
     pointerId: event.pointerId,
@@ -735,11 +762,16 @@ function onPointerUp(event: PointerEvent) {
 function onPointerLeave() {
   avatarHovered = false
   hoverGreetingPlayed = false
+  avatarBounds = null
+  if (pointerUpdateTimer !== null) window.clearTimeout(pointerUpdateTimer)
+  pointerUpdateTimer = null
+  pendingPointer = { x: 0, y: 0 }
   if (!dragState.value) pointer.value = { x: 0, y: 0 }
 }
 
-function onAvatarEnter() {
+function onAvatarEnter(event: MouseEvent) {
   avatarHovered = true
+  avatarBounds = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect() || null
   // 悬停只更新视线意图，不再触发任何行为状态，因此无法打断或排队动作。 / Hover only updates gaze intent and never starts a behavior, so it cannot interrupt or queue motions.
 }
 
@@ -1014,7 +1046,6 @@ onMounted(() => {
   chrome.storage.onChanged.addListener(onPetVoiceStorageChanged)
   restoreMenuMode().catch(() => undefined)
   restorePetVoicePreset().catch(error => console.warn('[NOVA voice preset]', error))
-  preloadMotionVoices()
   scheduleIdleCarousel()
   scheduleRareIdleCarousel()
   scheduleHighIdleCarousel()
@@ -1023,6 +1054,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (behaviorTimer) window.clearTimeout(behaviorTimer)
+  if (pointerUpdateTimer !== null) window.clearTimeout(pointerUpdateTimer)
+  pointerUpdateTimer = null
   clearNoticeTimer()
   stopMotionVoice()
   motionVoiceContext?.close().catch(() => undefined)
@@ -1196,6 +1229,7 @@ onBeforeUnmount(() => {
         :pointer="avatarPointer"
         :motion-key="motionNonce"
       />
+      <span v-if="state.memoryCount" class="nova-pet-memory-badge" :title="`当前页面有 ${state.memoryCount} 条宠物记忆`">✎ {{ state.memoryCount > 99 ? '99+' : state.memoryCount }}</span>
       <span v-if="state.issueCount" class="nova-pet-badge">{{ state.issueCount > 99 ? '99+' : state.issueCount }}</span>
       <span v-if="state.busy" class="nova-pet-busy" />
     </button>

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 const files = {
   overlay: readFileSync(new URL('../apps/extension/entrypoints/content/NovaPetOverlay.vue', import.meta.url), 'utf8'),
-  avatar: readFileSync(new URL('../apps/extension/components/avatar/AvatarCanvas.vue', import.meta.url), 'utf8'),
+  avatar: readFileSync(new URL('../apps/extension/components/avatar/ProductionAvatarCanvas.vue', import.meta.url), 'utf8'),
   styles: readFileSync(new URL('../apps/extension/entrypoints/content/nova-pet-overlay.css', import.meta.url), 'utf8'),
   content: readFileSync(new URL('../apps/extension/entrypoints/content.ts', import.meta.url), 'utf8'),
 }

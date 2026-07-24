@@ -1,8 +1,7 @@
-
 /**
  * 文件职责 / File responsibility
- * 校验核心中英文文档、源码职责头和手写代码中的双语注释。
- * Validates core Chinese/English documents, source responsibility headers, and bilingual comments in handwritten code.
+ * 校验核心中英文文档、完整用户指南、源码职责声明和手写代码中的双语注释。
+ * Validates core Chinese/English documents, complete user guides, source responsibility declarations, and bilingual comments in handwritten code.
  */
 import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -43,6 +42,32 @@ const requiredDocuments = [
   'apps/playground/README.zh-CN.md',
   'apps/playground/README.en.md',
 ]
+const completeUserGuideRequirements = [
+  {
+    path: 'docs/zh-CN/USER-GUIDE.md',
+    tokens: [
+      '安装和加载浏览器扩展',
+      '页面审计完整流程',
+      'Network Lab 与 Mock',
+      '连接 YK-PETS Local Agent',
+      '宠物工坊完整使用说明',
+      '将工坊外观同步到浏览器扩展',
+      '完整人工验收清单',
+    ],
+  },
+  {
+    path: 'docs/en/USER-GUIDE.md',
+    tokens: [
+      'Build and load the browser extension',
+      'Complete page-audit workflow',
+      'Network Lab and mocking',
+      'Connect the YK-PETS Local Agent',
+      'Complete Pet Studio guide',
+      'Synchronize a Studio appearance to the extension',
+      'Complete manual acceptance checklist',
+    ],
+  },
+]
 const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.vue', '.css'])
 const ignoredDirectories = new Set([
   'node_modules',
@@ -54,6 +79,13 @@ const ignoredDirectories = new Set([
   'coverage',
 ])
 const failures = []
+let responsibilityRegistry = {}
+try {
+  responsibilityRegistry = JSON.parse(await readFile(path.join(root, 'docs/source-responsibilities.json'), 'utf8'))
+}
+catch {
+  failures.push('缺少源码职责登记表 / Missing source responsibility registry: docs/source-responsibilities.json')
+}
 
 // 文档必须存在并包含实际内容，避免残留空壳入口。 / Documents must exist and contain real content rather than placeholder shells.
 for (const relativePath of requiredDocuments) {
@@ -67,7 +99,26 @@ for (const relativePath of requiredDocuments) {
   }
 }
 
-// 产品源码必须声明文件职责。 / Product source files must declare their responsibility.
+// 完整使用手册必须覆盖安装、核心工作区、宠物工坊、同步和人工验收。 / Complete user guides must cover installation, core workspaces, Pet Studio, synchronization, and manual acceptance.
+for (const requirement of completeUserGuideRequirements) {
+  try {
+    const content = await readFile(path.join(root, requirement.path), 'utf8')
+    for (const token of requirement.tokens) {
+      if (!content.includes(token)) failures.push(`完整使用手册缺少章节 / Complete user guide is missing a section: ${requirement.path} -> ${token}`)
+    }
+  }
+  catch {
+    // 文档缺失已由 requiredDocuments 检查报告。 / Missing documents are already reported by requiredDocuments.
+  }
+}
+
+// 集中登记的职责必须同时包含中英文内容。 / Centrally registered responsibilities must contain both Chinese and English content.
+for (const [relativePath, entry] of Object.entries(responsibilityRegistry)) {
+  const combined = `${entry?.zh || ''} ${entry?.en || ''}`
+  if (!isBilingual(combined)) failures.push(`源码职责登记不是中英双语 / Source responsibility entry is not bilingual: ${relativePath}`)
+}
+
+// 产品源码必须在文件头或集中登记表中声明职责。 / Product source files must declare responsibility in the header or central registry.
 for (const directory of ['apps', 'packages']) {
   const absoluteDirectory = path.join(root, directory)
   for (const file of await collectSourceFiles(absoluteDirectory)) {
@@ -91,9 +142,11 @@ else {
 async function validateSourceFile(file, requireHeader) {
   const relativePath = path.relative(root, file)
   const content = await readFile(file, 'utf8')
+  const hasInlineResponsibility = content.slice(0, 900).includes('文件职责 / File responsibility')
+  const hasRegisteredResponsibility = Boolean(responsibilityRegistry[relativePath])
 
-  if (requireHeader && !content.slice(0, 900).includes('文件职责 / File responsibility')) {
-    failures.push(`缺少双语文件职责注释 / Missing bilingual file responsibility header: ${relativePath}`)
+  if (requireHeader && !hasInlineResponsibility && !hasRegisteredResponsibility) {
+    failures.push(`缺少双语文件职责声明 / Missing bilingual file responsibility declaration: ${relativePath}`)
   }
 
   const lines = content.split(/\r?\n/)

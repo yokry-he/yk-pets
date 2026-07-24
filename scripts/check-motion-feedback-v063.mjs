@@ -21,7 +21,8 @@ const retainedBehaviors = [
   'fireworks-show', 'curious-scan', 'antenna-charge', 'tail-glow',
 ]
 const durationTokens = [2400, 2400, 2800, 5000, 7000, 8000, 4300, 5000, 7000, 6200, 4500, 8200, 18000, 3900, 12000, 4000, 5200, 5200]
-const hoverHandler = overlay.slice(overlay.indexOf('function onAvatarEnter()'), overlay.indexOf('function behaviorPriority'))
+const hoverHandlerStart = overlay.indexOf('function onAvatarEnter(')
+const hoverHandler = overlay.slice(hoverHandlerStart, overlay.indexOf('function behaviorPriority'))
 const hoverCss = overlayCss.slice(overlayCss.indexOf('.nova-pet-avatar:hover'), overlayCss.indexOf('.nova-pet-avatar:active'))
 const hasVoiceAsset = behavior => overlay.includes(`${behavior}: '${behavior}.mp3'`) || overlay.includes(`'${behavior}': '${behavior}.mp3'`)
 
@@ -35,7 +36,7 @@ const checks = [
   ['草稿必须具备完整规则结构', ['draft.rule.name', 'draft.rule.scopeOrigin', 'draft.rule.match.urlPattern', 'draft.rule.match.methods', 'draft.rule.action.type'].every(token => draftRepository.includes(token))],
   ['重复点击当前动作不重启', overlay.includes('activeBehaviorRequest === item.behavior') && overlay.includes('activeBehaviorRequest = request.behavior')],
   ['手动新动作经 240ms 中性过渡后打断', overlay.includes("source === 'manual'") && overlay.includes('interruptBehavior(request)') && overlay.includes('}, 240)')],
-  ['悬停处理器不启动动作', hoverHandler.includes('avatarHovered = true') && !hoverHandler.includes('playBehavior')],
+  ['悬停处理器不启动动作', hoverHandlerStart >= 0 && hoverHandler.includes('avatarHovered = true') && hoverHandler.includes('avatarBounds =') && !hoverHandler.includes('playBehavior')],
   ['进行中动作隔离鼠标视线', overlay.includes(':pointer="avatarPointer"') && overlay.includes("behavior.value === 'idle' || behavior.value === 'listening'")],
   ['悬停样式不再缩放或位移宠物', hoverCss.includes('filter:') && !hoverCss.includes('transform:')],
   ['所有保留动作都有延长后的时长', retainedBehaviors.every((behavior, index) => registry.includes(`behavior: '${behavior}'`) && registry.includes(`duration: ${durationTokens[index]}`))],

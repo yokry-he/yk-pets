@@ -1,0 +1,18 @@
+{
+  "name": "@yk-pets/pet-core",
+  "version": "0.1.0",
+  "description": "Framework-neutral species, recipe, renderer, registry, and Studio-to-extension sync contracts for YK-PETS.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

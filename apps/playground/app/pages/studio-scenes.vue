@@ -1,0 +1,21 @@
+<script setup lang="ts">
+import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
+import { PET_SCENE_PRESETS, type PetSceneContrastMode } from '~/domain/pet-scene'
+import type { CloudFoxStudioBehavior } from '~/domain/pet-studio-phase4'
+import { usePetAppearanceStore } from '~/stores/pet-appearance'
+const store=usePetAppearanceStore(), behavior=ref<CloudFoxStudioBehavior>('idle')
+const motions:Array<[CloudFoxStudioBehavior,string]>=[['idle','待机'],['greeting','招手'],['jumping','跳跃'],['stretching','伸展'],['spinning','转圈'],['resting','趴下']]
+const contrast:Array<[PetSceneContrastMode,string]>=[['auto','跟随网页'],['light','浅色网页'],['dark','深色网页']]
+onMounted(()=>store.hydrate())
+</script>
+<template>
+<main class="page"><header><div><NuxtLink to="/studio">← 返回宠物工坊</NuxtLink><small>SCENE STUDIO</small><h1>场景与背景</h1><p>场景特效独立渲染，不参与宠物相机包围盒计算。</p></div><button @click="store.save">保存场景</button></header>
+<div class="layout"><section><CloudFoxStudioCanvas :appearance="store.recipe" :behavior="behavior" view="front" background="dark" :scene="store.scene"/><div class="motions"><button v-for="[id,label] in motions" :key="id" :class="{active:behavior===id}" @click="behavior=id">{{label}}</button></div></section><aside>
+<h2>场景预设</h2><button v-for="preset in PET_SCENE_PRESETS" :key="preset.id" :class="{active:store.scene.presetId===preset.id}" @click="store.applyScenePreset(preset.id)"><strong>{{preset.label}}</strong><small>{{preset.labelEn}}</small></button>
+<h2>网页对比</h2><label>模式<select v-model="store.scene.contrastMode" @change="store.markDirty"><option v-for="[id,label] in contrast" :key="id" :value="id">{{label}}</option></select></label>
+<label class="check"><input v-model="store.scene.actionLinked" type="checkbox" @change="store.markDirty">动作联动</label><label class="check"><input v-model="store.scene.halo.enabled" type="checkbox" @change="store.markDirty">光晕</label><label>光晕强度 {{store.scene.halo.intensity.toFixed(2)}}<input v-model.number="store.scene.halo.intensity" type="range" min="0" max="4" step=".05" @input="store.markDirty"></label><label class="check"><input v-model="store.scene.particles.enabled" type="checkbox" @change="store.markDirty">粒子</label><label>粒子数量 {{store.scene.particles.count}}<input v-model.number="store.scene.particles.count" type="range" min="0" max="120" step="1" @input="store.markDirty"></label><label class="check"><input v-model="store.scene.groundShadow.enabled" type="checkbox" @change="store.markDirty">地面阴影</label><label>阴影透明度 {{store.scene.groundShadow.opacity.toFixed(2)}}<input v-model.number="store.scene.groundShadow.opacity" type="range" min="0" max=".8" step=".02" @input="store.markDirty"></label>
+</aside></div></main>
+</template>
+<style scoped>
+:global(body){margin:0;background:#070912}:global(*){box-sizing:border-box}.page{min-height:100vh;padding:28px;color:#f4f6ff;background:#070912;font-family:Inter,system-ui}.page>header{display:flex;justify-content:space-between;align-items:end;max-width:1500px;margin:auto auto 20px}.page a{color:#8fe9dd}.page small{display:block;margin-top:13px;color:#8d86ff}.page h1{margin:5px 0;font-size:50px}.page p{margin:0;color:#aeb7d8}.page button{border:1px solid #ffffff22;border-radius:10px;padding:9px 12px;color:#fff;background:#ffffff0d;cursor:pointer}.layout{display:grid;grid-template-columns:minmax(520px,1fr) 350px;gap:15px;max-width:1500px;margin:auto}.motions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.active{border-color:#7066ff!important;background:#7066ff44!important}aside{display:flex;flex-direction:column;gap:10px;align-self:start;max-height:calc(100vh - 100px);overflow:auto;padding:16px;border:1px solid #ffffff18;border-radius:18px;background:#0e111ecc}aside h2{margin:5px 0}aside>button{display:flex;justify-content:space-between;align-items:center}aside>button small{margin:0;color:#8f99bd}aside label{display:flex;flex-direction:column;gap:5px;color:#bbc2dc}aside select{min-height:39px;border:1px solid #ffffff22;border-radius:9px;padding:7px;color:#fff;background:#111526}.check{flex-direction:row!important}input[type=range]{width:100%}@media(max-width:900px){.layout{grid-template-columns:1fr}.page>header{align-items:start;flex-direction:column}}
+</style>

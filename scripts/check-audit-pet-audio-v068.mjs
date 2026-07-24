@@ -31,7 +31,7 @@ const checks = [
   ['图片固有尺寸可单独跳过', content.includes("enabled.has('image-dimensions-missing')") && content.includes('resolveEnabledAuditRules')],
   ['报告区区分已检查和未检查规则', sidePanel.includes('reportRuleCodes') && sidePanel.includes("? '已检查' : '未检查'")],
   ['动作思考气泡已彻底移除', !overlay.includes('motionBubble') && !overlay.includes('nova-pet-motion-thought') && !overlayCss.includes('.nova-pet-motion-thought')],
-  ['内置语音通过 Web Audio 预加载解码', overlay.includes('preloadMotionVoices') && overlay.includes('decodeAudioData') && overlay.includes('createBufferSource') && overlay.includes("console.warn('[NOVA motion voice]'")],
+  ['内置语音首次播放时按需加载、缓存并解码', !overlay.includes('preloadMotionVoices()') && overlay.includes('loadMotionVoiceData(asset)') && overlay.includes('motionVoiceData.set(asset, request)') && overlay.includes('motionVoiceBuffers.set(asset, request)') && overlay.includes('decodeAudioData') && overlay.includes('createBufferSource')],
   ['语音不回退到提示音', !overlay.includes('createOscillator') && !overlay.includes('playMotionSound')],
   ['尾尖使用不透明亮核和加法光晕', cloudFox.includes('AdditiveBlending') && cloudFox.includes('<TresMeshBasicMaterial\n              :color="tailTipBase"') && cloudFox.includes(':tone-mapped="false"') && cloudFox.includes(':depth-write="false"')],
   ['动作期间尾尖保持多色闪烁', cloudFox.includes('tailFlashColor.setHSL') && cloudFox.includes('elapsed * 11')],
