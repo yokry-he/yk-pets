@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 校验宠物工坊配方、场景、多物种、局部编辑、完整动作与统一云狐渲染能力持续存在。
- * Verifies that Pet Studio recipe, scene, multi-species, local editing, complete motions, and unified Cloud Fox rendering remain available.
+ * 校验宠物工坊配方、场景、多物种、局部编辑、完整动作、共享形状边界与统一云狐渲染能力持续存在。
+ * Verifies that Pet Studio recipe, scene, multi-species, local editing, complete motions, shared shape bounds, and unified Cloud Fox rendering remain available.
  */
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -10,6 +10,7 @@ const domain = read('apps/playground/app/domain/pet-studio-phase3.ts')
 const phase4 = read('apps/playground/app/domain/pet-studio-phase4.ts')
 const registry = read('apps/playground/app/domain/pet-species-registry.ts')
 const scene = read('apps/playground/app/domain/pet-scene.ts')
+const shapeProfile = read('apps/playground/app/domain/cloud-fox-shape-profile.ts')
 const store = read('apps/playground/app/stores/pet-appearance.ts')
 const page = read('apps/playground/app/pages/studio.vue')
 const presetsPage = read('apps/playground/app/pages/studio-presets.vue')
@@ -32,14 +33,14 @@ const pawEditor = read('apps/playground/app/components/studio/StudioTailEditor.v
 const patchDomain = read('apps/playground/app/domain/pet-appearance-patch.ts')
 const patchTest = read('scripts/test-pet-studio-local-patches.ts')
 const unifiedSource = configured.includes("from 'yk-pets-unified-cloud-fox'")
-  && wxt.includes("../playground/app/components/studio/ExtensionAlignedCloudFox.vue")
+  && wxt.includes('../playground/app/components/studio/ExtensionAlignedCloudFox.vue')
 const expectations = [
   ['schema v2 and legacy migration', domain.includes('PET_STUDIO_SCHEMA_VERSION = 2') && domain.includes('normalizePetStudioAppearanceV2')],
   ['independent symbols and derived colors', domain.includes('chest: SymbolChannelRecipe') && domain.includes('back: SymbolChannelRecipe') && ['highlight','shade','halo'].every(key => domain.includes(key))],
   ['undo redo and geometry audit', store.includes('undoStack') && store.includes('redoStack') && page.includes('自动边界和穿模检查')],
   ['presets styles locks and user schemes', ['云灵经典','糯米可爱','霓虹机械','极光水晶','森林精灵','暗夜星云'].every(name => phase4.includes(name)) && presetsPage.includes('随机生成锁定') && store.includes('saveCustomScheme')],
   ['scene recipes effects and web contrast', scene.includes('interface PetSceneRecipe') && ['halo','particles','groundShadow'].every(name => sceneComponent.includes(name)) && scenePage.includes('跟随网页')],
-  ['scene excluded from camera bounds', canvas.includes('current body and local tail bounds')],
+  ['body tail and shape profiles drive camera bounds independently of scene effects', canvas.includes('calculatePetStudioVisualBounds') && canvas.includes('profile.boundsScale') && shapeProfile.includes('boundsScale')],
   ['species registry and active Moon Cat', registry.includes('PET_SPECIES_REGISTRY') && registry.includes("'moon-cat'") && moonCat.includes('foreheadMark') && moonCat.includes('whiskers')],
   ['planned species and motion fallback', registry.includes("'nebula-slime'") && registry.includes("'star-rabbit'") && registry.includes('resolveSpeciesBehavior') && speciesPage.includes('实际动作')],
   ['generic renderer dispatch remains', proceduralPet.includes('MoonCat') && proceduralPet.includes('ExtensionAlignedCloudFox') && !proceduralPet.includes('CustomizableCloudFox')],
