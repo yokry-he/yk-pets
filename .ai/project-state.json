@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "lastReviewedDate": "2026-07-25",
+  "repository": "yokry-he/yk-pets",
+  "developmentBranch": "agent/cloud-fox-studio-v0610",
+  "pullRequest": 7,
+  "baseBranch": "agent/yk-pets-rebrand-v0610",
+  "mergeAllowed": false,
+  "liveVerificationRequired": true,
+  "architecture": {
+    "studioRoutes": [
+      "/studio/appearance",
+      "/studio/motion",
+      "/studio/props",
+      "/studio/library"
+    ],
+    "canonicalRenderer": "apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue",
+    "canonicalPreview": "apps/playground/app/components/studio/CloudFoxStudioCanvas.vue",
+    "appearanceMotionPropAssetsAreIndependent": true,
+    "sharedSessionIsLocalOnly": true,
+    "duplicateRendererForbidden": true
+  },
+  "completed": [
+    "complete-appearance-studio-migration",
+    "shared-studio-shell-and-routes",
+    "local-studio-session-store",
+    "motion-asset-metadata-foundation",
+    "prop-asset-metadata-foundation",
+    "shared-asset-library-foundation",
+    "front-and-hind-paw-customization",
+    "real-surface-belly-eyes-and-muzzle",
+    "unified-configuration-registry",
+    "bilingual-workspace-documentation"
+  ],
+  "notCompleted": [
+    "motion-semantic-rig",
+    "motion-keyframe-writing",
+    "motion-track-interpolation",
+    "motion-curve-editor",
+    "custom-motion-playback-runtime",
+    "motion-prop-event-tracks",
+    "prop-geometry-editor",
+    "prop-material-editor",
+    "prop-grip-and-emitter-manipulators",
+    "browser-screenshot-baselines",
+    "real-chrome-side-panel-manual-acceptance",
+    "real-gpu-webgl-manual-acceptance"
+  ],
+  "nextPhase": "motion-semantic-rig-and-keyframe-domain",
+  "mandatoryDevelopmentPolicy": {
+    "sameBranchOnly": true,
+    "fullCiForEveryIndependentBatch": true,
+    "updatePullRequestOnlyAfterGreen": true,
+    "mergeOnlyWithExplicitUserRequest": true,
+    "updateAiPackageForEveryFeatureCommit": true,
+    "featureSourceRoots": ["apps/", "packages/"],
+    "requiredMachineStateFile": ".ai/project-state.json",
+    "requiredContextChoices": [
+      ".ai/session-start.md",
+      ".ai/visual-cases.json",
+      "docs/zh-CN/AI-DEVELOPMENT-HANDOFF.md",
+      "docs/en/AI-DEVELOPMENT-HANDOFF.md",
+      "docs/zh-CN/KNOWN-ISSUES.md",
+      "docs/en/KNOWN-ISSUES.md",
+      "docs/zh-CN/AI-DEVELOPMENT-ROADMAP.md",
+      "docs/en/AI-DEVELOPMENT-ROADMAP.md",
+      "docs/zh-CN/adr/",
+      "docs/en/adr/"
+    ]
+  },
+  "trustOrder": [
+    "actual-code-and-runtime-results",
+    "latest-complete-ci",
+    "project-state-json",
+    "accepted-adrs-and-handoff-docs",
+    "pull-request-description",
+    "old-chat-history"
+  ]
+}

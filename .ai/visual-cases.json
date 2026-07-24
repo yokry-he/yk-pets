@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "classic-default-front",
+      "route": "/studio-visual-audit?body=ellipsoid&head=classic-round&eyes=round&belly=ellipse&view=front",
+      "automatedChecks": [
+        "belly-front-facing-winding",
+        "belly-surface-offset",
+        "eye-surface-exposure"
+      ],
+      "manualChecks": [
+        "belly-visible",
+        "front-paws-at-classic-anchor",
+        "hind-paws-balanced",
+        "mouth-not-floating"
+      ]
+    },
+    {
+      "id": "classic-default-left",
+      "route": "/studio-visual-audit?body=ellipsoid&head=classic-round&eyes=round&belly=ellipse&view=left",
+      "automatedChecks": [
+        "belly-curves-with-body",
+        "muzzle-anchor-follows-head-surface"
+      ],
+      "manualChecks": [
+        "belly-not-flat-or-floating",
+        "nose-and-mouth-not-detached",
+        "paws-occlude-belly-naturally"
+      ]
+    },
+    {
+      "id": "spark-eye-left",
+      "route": "/studio-visual-audit?body=ellipsoid&head=classic-round&eyes=spark&belly=ellipse&view=left",
+      "automatedChecks": [
+        "spark-minimum-projected-size",
+        "spark-blink-floor",
+        "eye-outside-head-surface"
+      ],
+      "manualChecks": [
+        "spark-shape-readable",
+        "outline-visible",
+        "eye-not-buried-in-head"
+      ]
+    },
+    {
+      "id": "rounded-cube-belly-front",
+      "route": "/studio-visual-audit?body=rounded-cube&head=rounded-cube&eyes=diamond&belly=rounded-rectangle&view=front",
+      "automatedChecks": [
+        "belly-coplanar-with-flat-front",
+        "triangle-normal-direction"
+      ],
+      "manualChecks": [
+        "belly-visible-on-flat-front",
+        "diamond-eyes-readable",
+        "no-z-fighting"
+      ]
+    },
+    {
+      "id": "asymmetric-paws-manual",
+      "route": "/studio/appearance",
+      "recipeOverrides": {
+        "frontPawDesign.mirror": false,
+        "frontPawDesign.leftOffsetY": 0.2,
+        "frontPawDesign.rightOffsetY": -0.16,
+        "hindPawDesign.mirror": false,
+        "hindPawDesign.leftOffsetX": -0.18,
+        "hindPawDesign.rightOffsetX": 0.16
+      },
+      "automatedChecks": [
+        "front-and-hind-paw-values-survive-normalization"
+      ],
+      "manualChecks": [
+        "left-and-right-paws-are-visibly-independent",
+        "no-unintended-mirroring",
+        "no-paw-detachment"
+      ]
+    }
+  ]
+}

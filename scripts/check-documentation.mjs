@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 校验核心中英文文档、完整用户指南、源码职责声明和手写代码中的双语注释。
- * Validates core Chinese/English documents, complete user guides, source responsibility declarations, and bilingual comments in handwritten code.
+ * 校验核心中英文文档、AI 交接文档、完整用户指南、源码职责声明和手写代码中的双语注释。
+ * Validates core bilingual docs, AI handoff docs, complete user guides, source responsibilities, and bilingual comments in handwritten code.
  */
 import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -29,6 +29,9 @@ const pairedDocuments = [
   'TAIL-DESIGN',
   'MOTION-CONTROLS',
   'NOTICES-AND-MOTION-RUNTIME',
+  'AI-DEVELOPMENT-HANDOFF',
+  'KNOWN-ISSUES',
+  'AI-DEVELOPMENT-ROADMAP',
 ]
 const requiredDocuments = [
   'README.md',
