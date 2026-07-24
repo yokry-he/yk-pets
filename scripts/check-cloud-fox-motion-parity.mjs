@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 校验 Chrome 扩展和 Studio 共用完整三十动作组件，并锁定正式烟花和独立肢体姿态领域逻辑。
- * Verifies that Chrome extension and Studio share the complete thirty-motion component while locking production fireworks and independent limb-pose domain logic.
+ * 校验 Chrome 扩展和 Studio 共用完整三十动作组件，并锁定正式烟花、可重复触发和独立肢体姿态领域逻辑。
+ * Verifies that Chrome extension and Studio share all thirty motions while locking fireworks, repeat triggering, and independent limb-pose logic.
  */
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -31,7 +31,7 @@ const motionIds = [
 const checks = [
   ['exactly thirty motions remain and paw tap stays removed', motionIds.length === 30 && motionIds.every(id => catalog.includes(`id: '${id}'`)) && !catalog.includes("id: 'paw-tap'")],
   ['Studio and extension use one motion component', unifiedSource && core.includes('ExtensionCloudFoxBody')],
-  ['same-motion replay reaches every canonical consumer', page.includes('motionKey.value += 1') && (core.match(/:motion-key="effectiveMotionKey"/g)?.length || 0) >= 7],
+  ['same-motion replay reaches every canonical consumer', /motionKey\.value\s*\+=\s*1/.test(page) && (core.match(/:motion-key="effectiveMotionKey"/g)?.length || 0) >= 7],
   ['single grouped motion dropdown remains', toolbar.includes('<select') && toolbar.includes('<optgroup') && toolbar.includes('EXTENSION_CLOUD_FOX_MOTIONS.length')],
   ['shared frame drives body head tail effects and limb domain', [core, body, head, tail, effects].every(source => source.includes('createExtensionCloudFoxMotionFrame')) && runtime.includes('createExtensionCloudFoxMotionFrame') && limbMotion.includes('MotionFrame')],
   ['front and hind poses live outside the body renderer', body.includes('createCloudFoxFrontPawPose') && body.includes('createCloudFoxHindPawPose') && limbMotion.includes('createCloudFoxFrontPawPose') && limbMotion.includes('createCloudFoxHindPawPose') && limbBridge.includes('cloud-fox-limb-motion')],
@@ -43,9 +43,5 @@ const checks = [
   ['four Studio views remain in canonical component', core.includes("front: 0, left: Math.PI / 2, back: Math.PI, right: -Math.PI / 2")],
 ]
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
-if (failures.length) {
-  console.error('Cloud Fox motion parity check failed:')
-  for (const failure of failures) console.error(`- ${failure}`)
-  process.exit(1)
-}
+if (failures.length) { console.error('Cloud Fox motion parity check failed:'); for (const failure of failures) console.error(`- ${failure}`); process.exit(1) }
 console.log(`Cloud Fox motion parity passed: ${checks.length} checks, ${motionIds.length} motions.`)
