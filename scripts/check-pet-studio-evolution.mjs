@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 校验配方、场景、多物种、独立头身、真实表面采样、前后爪工作区、路径级局部编辑、完整动作与统一渲染持续存在。
- * Verifies recipes, scenes, species, independent surfaces, front/hind paw workspaces, path-level patches, complete motions, and unified rendering.
+ * 校验配方、场景、多物种、独立头身、真实表面、前后爪工作区、共享 Studio 壳、局部编辑、完整动作与统一渲染持续存在。
+ * Verifies recipes, scenes, species, independent surfaces, paw workspaces, the shared Studio shell, local patches, complete motions, and unified rendering.
  */
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -15,7 +15,9 @@ const profiles = read('apps/playground/app/domain/cloud-fox-shape-profile.ts')
 const surface = read('apps/playground/app/domain/cloud-fox-surface-model.ts')
 const limbMotion = read('apps/playground/app/domain/cloud-fox-limb-motion.ts')
 const store = read('apps/playground/app/stores/pet-appearance.ts')
-const page = read('apps/playground/app/pages/studio.vue')
+const page = read('apps/playground/app/components/studio/StudioAppearanceWorkspace.vue')
+const shell = read('apps/playground/app/layouts/studio.vue')
+const workspaceDomain = read('apps/playground/app/domain/studio-workspace.ts')
 const presetsPage = read('apps/playground/app/pages/studio-presets.vue')
 const scenePage = read('apps/playground/app/pages/studio-scenes.vue')
 const speciesPage = read('apps/playground/app/pages/studio-species.vue')
@@ -48,6 +50,7 @@ const unifiedSource = configured.includes("from 'yk-pets-unified-cloud-fox'") &&
 const expectations = [
   ['schema v2 and legacy migration', domain.includes('PET_STUDIO_SCHEMA_VERSION = 2') && domain.includes('normalizePetStudioAppearanceV2') && appearance.includes('normalizeCloudFoxAppearance')],
   ['independent body and head recipe choices', appearance.includes('headShape: CloudFoxHeadShape') && profiles.includes('getCloudFoxBodyProfile') && profiles.includes('getCloudFoxHeadProfile') && page.includes('切换身体不会修改这里的选择')],
+  ['shared Studio shell and routed workspaces remain', shell.includes('STUDIO_WORKSPACES') && ['/studio/appearance','/studio/motion','/studio/props','/studio/library'].every(path => workspaceDomain.includes(`path: '${path}'`))],
   ['independent symbols and derived colors', domain.includes('chest: SymbolChannelRecipe') && domain.includes('back: SymbolChannelRecipe') && ['highlight','shade','halo'].every(key => domain.includes(key))],
   ['undo redo and geometry audit', store.includes('undoStack') && store.includes('redoStack') && page.includes('外观检查')],
   ['presets styles locks and user schemes', ['云灵经典','糯米可爱','霓虹机械','极光水晶','森林精灵','暗夜星云'].every(name => phase4.includes(name)) && presetsPage.includes('随机生成锁定') && store.includes('saveCustomScheme')],
