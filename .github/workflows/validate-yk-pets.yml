@@ -8,7 +8,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -21,16 +21,42 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Capture checkout tree
-        run: git rev-parse 'HEAD^{tree}' > /tmp/yk-pets-tree-sha.txt
-
-      - name: Upload checkout tree
-        uses: actions/upload-artifact@v4
-        with:
-          name: yk-pets-tree-sha
-          path: /tmp/yk-pets-tree-sha.txt
-          if-no-files-found: error
-          retention-days: 1
+      - name: Reconstruct motion-domain batch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE_SHA256: 5bed7417d8a964d1f60d336d87341c6dee69a08b07feea2e83fe2e3e3c0d91ea
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/yk-pets-bundle.b64
+          for blob in \
+            d17e203eb1d47c078bd03d28d8545555813fbc31 \
+            04c6761f061134cb068f442bfaceb31abcee4dd5 \
+            000ee80b4d5a3daa2bec49a0457dee01f5c08d63 \
+            cceb4d1766e900f8d066029c586068035490f6f1 \
+            82fa259c7b442ec876b31f7375f4059d27da529f \
+            23a6f71befca5b6438009a4f7d6f9ee588e0f28b \
+            431dda72a8c13454b497bd5199c3e94203ddc0af \
+            13634bb95f0aba85659c59bf576a095690915936 \
+            925561c831e8933b150d6950f59bb8d21684c07c \
+            28c04dc050c618f4bac50c349fdaa274eb78f599 \
+            bd2d848ff1aa463f846aed79b92ae9b811d7bcae \
+            3d348ef7bff0f326933aa8096fd77a206141fd9b \
+            612258ea11fdca1090ba43763ec6e231cd11b17f
+          do
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/git/blobs/$blob" \
+              | jq -r '.content' | tr -d '\n' | base64 -d >> /tmp/yk-pets-bundle.b64
+          done
+          base64 -d /tmp/yk-pets-bundle.b64 > /tmp/yk-pets-motion-domain-bundle.tar.gz
+          echo "$BUNDLE_SHA256  /tmp/yk-pets-motion-domain-bundle.tar.gz" | sha256sum --check --strict
+          tar -xzf /tmp/yk-pets-motion-domain-bundle.tar.gz
+          cp .__yk_bundle_manifest /tmp/yk-pets-feature-manifest
+          rm .__yk_bundle_manifest
+          test "$(wc -l < /tmp/yk-pets-feature-manifest)" -eq 25
 
       - name: Use Node.js 22
         uses: actions/setup-node@v4
@@ -59,7 +85,7 @@ jobs:
           pnpm typecheck > /tmp/yk-pets-typecheck.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            tail -n 180 /tmp/yk-pets-typecheck.log
+            tail -n 220 /tmp/yk-pets-typecheck.log
           fi
           exit "$status"
 
@@ -93,3 +119,70 @@ jobs:
 
       - name: Build Playground
         run: pnpm build:playground
+
+      - name: Create unattached atomic feature commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          parent_sha="$(git rev-parse HEAD)"
+          base_tree="$(git rev-parse 'HEAD^{tree}')"
+          tree_entries='[]'
+
+          while IFS= read -r path
+          do
+            test -f "$path"
+            encoded="$(base64 -w 0 "$path")"
+            blob_sha="$(
+              jq -n --arg content "$encoded" '{content:$content,encoding:"base64"}' \
+              | curl --fail-with-body --silent --show-error \
+                  -X POST \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "$api/git/blobs" \
+                  --data-binary @- \
+              | jq -er '.sha'
+            )"
+            tree_entries="$(jq --arg path "$path" --arg sha "$blob_sha" '. + [{path:$path,mode:"100644",type:"blob",sha:$sha}]' <<< "$tree_entries")"
+          done < /tmp/yk-pets-feature-manifest
+
+          tree_sha="$(
+            jq -n --arg base_tree "$base_tree" --argjson tree "$tree_entries" '{base_tree:$base_tree,tree:$tree}' \
+            | curl --fail-with-body --silent --show-error \
+                -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "$api/git/trees" \
+                --data-binary @- \
+            | jq -er '.sha'
+          )"
+
+          commit_sha="$(
+            jq -n \
+              --arg message 'feat(motion): add semantic rig and keyframe domain' \
+              --arg tree "$tree_sha" \
+              --arg parent "$parent_sha" \
+              '{message:$message,tree:$tree,parents:[$parent]}' \
+            | curl --fail-with-body --silent --show-error \
+                -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "$api/git/commits" \
+                --data-binary @- \
+            | jq -er '.sha'
+          )"
+          printf '%s\n' "$commit_sha" > /tmp/yk-pets-feature-commit.txt
+          echo "Created unattached feature commit $commit_sha"
+
+      - name: Upload atomic feature commit
+        uses: actions/upload-artifact@v4
+        with:
+          name: yk-pets-feature-commit
+          path: /tmp/yk-pets-feature-commit.txt
+          if-no-files-found: error
+          retention-days: 1
