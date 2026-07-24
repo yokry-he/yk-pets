@@ -39,6 +39,7 @@ for (const option of CLOUD_FOX_BODY_SHAPES) {
   let maximumY = Number.NEGATIVE_INFINITY
   let minimumZ = Number.POSITIVE_INFINITY
   let maximumZ = Number.NEGATIVE_INFINITY
+  let minimumNormalZ = Number.POSITIVE_INFINITY
   let maximumOffsetError = 0
   for (let index = 0; index < vertexCount; index += 1) {
     const position = mesh.positions.slice(index * 3, index * 3 + 3)
@@ -55,6 +56,7 @@ for (const option of CLOUD_FOX_BODY_SHAPES) {
     maximumY = Math.max(maximumY, position[1]!)
     minimumZ = Math.min(minimumZ, position[2]!)
     maximumZ = Math.max(maximumZ, position[2]!)
+    minimumNormalZ = Math.min(minimumNormalZ, surface.normal[2])
     assert.ok(Math.abs(length(normal) - 1) < .002, `${option.id}: unit surface normal`)
     assert.ok(surface.normal[2] > .25, `${option.id}: front-facing normal`)
   }
@@ -66,7 +68,12 @@ for (const option of CLOUD_FOX_BODY_SHAPES) {
   assert.ok(minimumZ > .25, `${option.id}: belly remains on the front half of the torso`)
   assert.ok(projectedWidth > 70 && projectedWidth < viewportWidth * .46, `${option.id}: belly width remains visible without covering the torso`)
   assert.ok(projectedHeight > 105 && projectedHeight < viewportHeight * .56, `${option.id}: belly height remains visible without reaching neck and feet`)
-  assert.ok(depthVariation > (option.id === 'rounded-cube' ? .008 : .035), `${option.id}: side view is curved rather than a floating flat panel`)
+  if (option.id === 'rounded-cube') {
+    assert.ok(depthVariation < .02 && minimumNormalZ > .94, 'rounded-cube: belly stays flush with the intentionally flat front panel')
+  }
+  else {
+    assert.ok(depthVariation > .035, `${option.id}: side view is curved rather than a floating flat panel`)
+  }
 }
 
 for (const option of CLOUD_FOX_HEAD_SHAPES) {
