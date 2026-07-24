@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  管理唯一头部动作根节点，并组合独立头型、眼睛、耳朵、触角与唯一 FaceRoot；身体变化不会改变头型。
-  Owns the sole animated head root and composes an independent head shell, eyes, ears, antennae, and FaceRoot; body changes never alter the head shape.
+  管理唯一头部动作根节点，并以真实头部表面采样挂载眼睛、独立头型、耳朵、触角与唯一 FaceRoot。
+  Owns the sole animated head root and mounts eyes through real head-surface sampling alongside the independent shell, ears, antennae, and FaceRoot.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
@@ -13,7 +13,9 @@ import ExtensionCloudFoxHeadShape from './ExtensionCloudFoxHeadShape.vue'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import { createExtensionCloudFoxMotionFrame, mix, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
+import { getCloudFoxEyeBlinkFloor } from '~/domain/cloud-fox-eye-metrics'
 import { getCloudFoxHeadProfile } from '~/domain/cloud-fox-shape-profile'
+import { resolveCloudFoxEyeSurfaceAnchor, sampleCloudFoxHeadFrontSurfaceAtLocalXY } from '~/domain/cloud-fox-surface-model'
 import { resolvePetCustomization } from '~/domain/pet-part-customization'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 
@@ -29,6 +31,7 @@ const damp = (current: number, target: number, speed: number, delta: number) => 
 const profile = computed(() => getCloudFoxHeadProfile(props.appearance.parts.headShape))
 const colors = computed(() => resolvePetCustomization(props.appearance).colors)
 const headScale = computed(() => props.appearance.proportions.headScale)
+const eyeBlinkFloor = computed(() => getCloudFoxEyeBlinkFloor(props.appearance.parts.eyes))
 const head = shallowRef<Group>()
 const leftEye = shallowRef<Group>()
 const rightEye = shallowRef<Group>()
@@ -45,7 +48,6 @@ const headPosition = computed(() => vector([
 ]))
 const eyeX = computed(() => scheme.model.head.eyeOffset[0] * props.appearance.proportions.eyeSpacing * profile.value.eyeX * headScale.value)
 const eyeY = computed(() => (scheme.model.head.eyeOffset[1] + profile.value.eyeY) * headScale.value)
-const eyeZ = computed(() => (scheme.model.head.eyeOffset[2] + profile.value.eyeZ) * headScale.value)
 const earX = computed(() => scheme.model.head.earOffset[0] * props.appearance.proportions.earScale * profile.value.earX * headScale.value)
 const earY = computed(() => (scheme.model.head.earOffset[1] + profile.value.earY) * headScale.value)
 const earZ = computed(() => scheme.model.head.earOffset[2] * headScale.value)
@@ -69,7 +71,31 @@ const muzzleScale = computed(() => vector([
   scheme.model.head.muzzleScale[2] * profile.value.muzzleScale[2] * headScale.value,
 ]))
 const visorScale = computed(() => vector([.72 * profile.value.eyeX * headScale.value, .16 * headScale.value, .08 * headScale.value]))
+const visorSurface = computed(() => {
+  const sample = sampleCloudFoxHeadFrontSurfaceAtLocalXY({ shape: props.appearance.parts.headShape, headScale: headScale.value }, 0, eyeY.value)
+  return {
+    position: vector([
+      sample.position[0] + sample.normal[0] * .025 * headScale.value,
+      sample.position[1] + sample.normal[1] * .025 * headScale.value,
+      sample.position[2] + sample.normal[2] * .025 * headScale.value,
+    ]),
+    rotation: rotation([
+      -Math.atan2(sample.normal[1], Math.hypot(sample.normal[0], sample.normal[2])),
+      Math.atan2(sample.normal[0], sample.normal[2]),
+      0,
+    ]),
+  }
+})
 
+function eyeSurface(side: number) {
+  return resolveCloudFoxEyeSurfaceAnchor({
+    shape: props.appearance.parts.headShape,
+    headScale: headScale.value,
+    eyeSpacing: props.appearance.proportions.eyeSpacing,
+  }, side < 0 ? -1 : 1)
+}
+function eyePosition(side: number) { return vector(eyeSurface(side).position) }
+function eyeRotation(side: number) { return rotation(eyeSurface(side).rotation) }
 function setEyeRef(node: unknown, side: number) {
   if (side < 0) leftEye.value = node as Group | undefined
   else rightEye.value = node as Group | undefined
@@ -144,7 +170,9 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   const scanOffset = state === 'curious-scan' ? Math.sin(frame.curiousProgress * Math.PI * 3) * .035 * frame.curiousPose : state === 'star-juggle' ? Math.sin(frame.juggleProgress * Math.PI * 6) * .028 : 0
   const updateEye = (group: Group | undefined, side: -1 | 1) => {
     if (!group) return
-    group.scale.y = damp(group.scale.y, state === 'confused' && side < 0 ? baseEyeY * .72 : baseEyeY, 12, delta)
+    const expressionScale = state === 'confused' && side < 0 ? baseEyeY * .72 : baseEyeY
+    const visibleScale = props.appearance.parts.eyes === 'sleepy' ? 1 : Math.max(eyeBlinkFloor.value, expressionScale)
+    group.scale.y = damp(group.scale.y, visibleScale, 12, delta)
     group.scale.x = damp(group.scale.x, state === 'excited' ? 1.14 : 1, 10, delta)
     group.position.x = damp(group.position.x, side * eyeX.value + scanOffset, 9, delta)
     group.position.y = damp(group.position.y, eyeY.value, 9, delta)
@@ -232,11 +260,11 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     </TresMesh>
 
     <template v-if="appearance.parts.eyes !== 'visor'">
-      <TresGroup v-for="side in [-1, 1]" :key="`eye-${side}`" :ref="node => setEyeRef(node, side)" :position="vector([side * eyeX, eyeY, eyeZ])">
+      <TresGroup v-for="side in [-1, 1]" :key="`eye-${side}`" :ref="node => setEyeRef(node, side)" :position="eyePosition(side)" :rotation="eyeRotation(side)">
         <ExtensionCloudFoxEyeShape :style="appearance.parts.eyes" :color="colors.eyes" :highlight-color="colors.eyeHighlight" :side="side" :eye-scale="appearance.proportions.eyeScale * headScale" />
       </TresGroup>
     </template>
-    <TresMesh v-else :position="vector([0, eyeY, eyeZ])" :scale="visorScale">
+    <TresMesh v-else :position="visorSurface.position" :rotation="visorSurface.rotation" :scale="visorScale">
       <TresBoxGeometry /><TresMeshStandardMaterial :color="colors.eyes" :emissive="colors.eyeHighlight" :emissive-intensity=".42" :roughness=".16" />
     </TresMesh>
 

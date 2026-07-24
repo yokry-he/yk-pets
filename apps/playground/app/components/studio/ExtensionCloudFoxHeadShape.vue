@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  只负责渲染独立头型的单一连续外壳，不承载眼耳鼻嘴或动作逻辑。
-  Renders one continuous independently selectable head shell and owns no eye, ear, face, or motion logic.
+  只负责渲染独立头型的单一连续外壳，并恢复正式生产头部三轴比例以匹配共享表面采样。
+  Renders one continuous independently selectable head shell and restores the production three-axis head proportions used by shared surface sampling.
 -->
 <script setup lang="ts">
 import { BufferAttribute, LatheGeometry, SphereGeometry, Vector2, Vector3 } from 'three'
@@ -15,7 +15,6 @@ const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe }>()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const profile = computed(() => getCloudFoxHeadProfile(props.appearance.parts.headShape))
 const colors = computed(() => resolvePetCustomization(props.appearance).colors)
-const baseRadius = scheme.model.head.radius
 
 function createBeanGeometry() {
   const geometry = new SphereGeometry(1, 64, 48)
@@ -35,17 +34,11 @@ function createBeanGeometry() {
 
 const sphereGeometry = new SphereGeometry(1, 64, 48)
 const capsuleGeometry = new LatheGeometry([
-  new Vector2(.08, -1),
-  new Vector2(.42, -.92),
-  new Vector2(.72, -.68),
-  new Vector2(.78, -.38),
-  new Vector2(.78, .38),
-  new Vector2(.72, .68),
-  new Vector2(.42, .92),
-  new Vector2(.08, 1),
+  new Vector2(.08, -1), new Vector2(.42, -.92), new Vector2(.72, -.68), new Vector2(.78, -.38),
+  new Vector2(.78, .38), new Vector2(.72, .68), new Vector2(.42, .92), new Vector2(.08, 1),
 ], 64)
 const beanGeometry = createBeanGeometry()
-const roundedGeometry = new RoundedBoxGeometry(1.78, 1.58, 1.52, 7, .3)
+const roundedGeometry = new RoundedBoxGeometry(2, 2, 2, 7, .32)
 const geometry = computed(() => {
   if (profile.value.geometry === 'capsule') return capsuleGeometry
   if (profile.value.geometry === 'bean') return beanGeometry
@@ -53,12 +46,14 @@ const geometry = computed(() => {
   return sphereGeometry
 })
 const scale = computed(() => {
+  const base = scheme.model.head.scale
   const shape = profile.value.scale
+  const radius = scheme.model.head.radius
   const headScale = props.appearance.proportions.headScale
   return new Vector3(
-    baseRadius * shape[0] * headScale,
-    baseRadius * shape[1] * headScale,
-    baseRadius * shape[2] * headScale,
+    base[0] * radius * shape[0] * headScale,
+    base[1] * radius * shape[1] * headScale,
+    base[2] * radius * shape[2] * headScale,
   )
 })
 

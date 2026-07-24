@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  以单一连续网格渲染六种身体轮廓；它是正式模型唯一身体表面，不再作为旧身体外层覆盖物。
-  Renders six body silhouettes as one continuous mesh and is the sole production torso surface rather than an overlay around a legacy body.
+  以单一连续网格渲染六种身体轮廓；所有几何均使用统一单位包围盒，供共享表面采样精确匹配。
+  Renders six body silhouettes as one continuous mesh; every geometry uses a normalized unit envelope so shared surface sampling matches it exactly.
 -->
 <script setup lang="ts">
 import { BufferAttribute, LatheGeometry, SphereGeometry, Vector2, Vector3 } from 'three'
@@ -34,27 +34,15 @@ function createBeanGeometry() {
 
 const sphereGeometry = new SphereGeometry(1, 72, 52)
 const capsuleGeometry = new LatheGeometry([
-  new Vector2(.06, -1),
-  new Vector2(.42, -.94),
-  new Vector2(.7, -.72),
-  new Vector2(.76, -.46),
-  new Vector2(.76, .46),
-  new Vector2(.7, .72),
-  new Vector2(.42, .94),
-  new Vector2(.06, 1),
+  new Vector2(.06, -1), new Vector2(.42, -.94), new Vector2(.7, -.72), new Vector2(.76, -.46),
+  new Vector2(.76, .46), new Vector2(.7, .72), new Vector2(.42, .94), new Vector2(.06, 1),
 ], 72)
 const pearGeometry = new LatheGeometry([
-  new Vector2(.18, -1),
-  new Vector2(.62, -.86),
-  new Vector2(.92, -.52),
-  new Vector2(1, -.12),
-  new Vector2(.9, .28),
-  new Vector2(.66, .68),
-  new Vector2(.3, .96),
-  new Vector2(.08, 1.03),
+  new Vector2(.18, -1), new Vector2(.62, -.86), new Vector2(.92, -.52), new Vector2(1, -.12),
+  new Vector2(.9, .28), new Vector2(.66, .68), new Vector2(.3, .96), new Vector2(.08, 1.03),
 ], 72)
 const beanGeometry = createBeanGeometry()
-const roundedGeometry = new RoundedBoxGeometry(2, 2.08, 1.86, 8, .34)
+const roundedGeometry = new RoundedBoxGeometry(2, 2, 2, 8, .34)
 const geometry = computed(() => {
   if (profile.value.geometry === 'capsule') return capsuleGeometry
   if (profile.value.geometry === 'pear') return pearGeometry
@@ -74,11 +62,10 @@ const scale = computed(() => {
   const body = scheme.model.body.scale
   const shape = profile.value.scale
   const radius = scheme.model.body.radius
-  const geometryCompensation = profile.value.geometry === 'rounded-cube' ? .54 : 1
   return new Vector3(
-    body[0] * radius * props.appearance.proportions.bodyWidth * shape[0] * geometryCompensation,
-    body[1] * radius * props.appearance.proportions.bodyHeight * shape[1] * geometryCompensation,
-    body[2] * radius * props.appearance.proportions.bodyDepth * shape[2] * geometryCompensation,
+    body[0] * radius * props.appearance.proportions.bodyWidth * shape[0],
+    body[1] * radius * props.appearance.proportions.bodyHeight * shape[1],
+    body[2] * radius * props.appearance.proportions.bodyDepth * shape[2],
   )
 })
 
