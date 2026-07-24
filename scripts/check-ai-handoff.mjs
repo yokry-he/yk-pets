@@ -28,6 +28,8 @@ const requiredFiles = [
   'docs/en/adr/0002-motion-asset-model.md',
   'docs/zh-CN/adr/0003-prop-asset-model.md',
   'docs/en/adr/0003-prop-asset-model.md',
+  'docs/zh-CN/adr/0004-motion-keyframe-domain.md',
+  'docs/en/adr/0004-motion-keyframe-domain.md',
 ]
 const contextPaths = new Set([
   '.ai/session-start.md',
@@ -65,14 +67,21 @@ if (state) {
   const routes = state.architecture?.studioRoutes || []
   for (const route of ['/studio/appearance', '/studio/motion', '/studio/props', '/studio/library']) expect(routes.includes(route), `project-state 缺少路由 / Missing route in project-state: ${route}`)
   expect(state.architecture?.canonicalRenderer === 'apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue', '唯一渲染器路径错误 / Canonical renderer path is incorrect')
+  expect(state.architecture?.motionRig === 'cloud-fox-semantic-rig/v1', '动作 Rig 版本错误 / Motion Rig version is incorrect')
+  expect(state.architecture?.motionAssetSchemaVersion === 2, '动作资产 schema 必须为 2 / Motion asset schema must be 2')
+  expect(state.architecture?.customMotionRendererWiringComplete === false, '正式自定义动作渲染接入必须保持未完成 / Production custom-motion renderer wiring must remain incomplete')
   expect(state.mandatoryDevelopmentPolicy?.updateAiPackageForEveryFeatureCommit === true, '必须启用每个功能提交更新 AI 包 / Per-feature-commit AI update policy must be enabled')
-  expect((state.notCompleted || []).includes('motion-keyframe-writing'), '必须标记关键帧写入尚未完成 / Keyframe writing must remain marked incomplete')
+  expect((state.completed || []).includes('motion-semantic-rig'), '必须标记语义 Rig 领域已完成 / Semantic Rig domain must be marked complete')
+  expect((state.completed || []).includes('motion-domain-evaluator'), '必须标记无 UI 动作求值器已完成 / UI-free motion evaluator must be marked complete')
+  expect((state.notCompleted || []).includes('motion-keyframe-writing'), '必须标记时间轴关键帧写入尚未完成 / Timeline keyframe writing must remain marked incomplete')
+  expect((state.notCompleted || []).includes('custom-motion-playback-runtime'), '必须标记正式自定义动作播放尚未完成 / Production custom-motion playback must remain incomplete')
   expect((state.notCompleted || []).includes('prop-geometry-editor'), '必须标记道具几何编辑器尚未完成 / Prop geometry editor must remain marked incomplete')
-  expect(state.nextPhase === 'motion-semantic-rig-and-keyframe-domain', '下一阶段必须是语义 Rig 与关键帧领域 / Next phase must be the semantic Rig and keyframe domain')
+  expect(state.nextPhase === 'motion-timeline-authoring-and-preview-adapter', '下一阶段必须是时间轴编辑与正式预览适配 / Next phase must be timeline authoring and preview adaptation')
 }
 
 for (const routeFile of ['appearance.vue', 'motion.vue', 'props.vue', 'library.vue']) expect(existsSync(path.join(root, 'apps/playground/app/pages/studio', routeFile)), `缺少 Studio 路由文件 / Missing Studio route file: ${routeFile}`)
 expect(existsSync(path.join(root, 'apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue')), '缺少唯一正式云狐渲染器 / Missing canonical Cloud Fox renderer')
+expect(existsSync(path.join(root, 'packages/pet-core/src/motion/motion-evaluator.ts')), '缺少动作领域求值器 / Missing motion-domain evaluator')
 
 if (visualCases) {
   expect(visualCases.schemaVersion === 1, 'visual-cases schemaVersion 必须为 1 / visual-cases schemaVersion must be 1')
@@ -99,11 +108,14 @@ const packageJson = safeRead('package.json')
 
 expect(sessionStart.includes('同一个提交') && sessionStart.includes('scripts/check-ai-handoff.mjs'), '启动协议必须声明同提交更新和强制门禁 / Session protocol must require same-commit updates and name the gate')
 expect(sessionStart.includes('实际代码和运行结果') && sessionStart.includes('旧聊天记录'), '启动协议必须包含可信度顺序 / Session protocol must include the trust order')
-expect(handoffZh.includes('明确尚未完成') && handoffZh.includes('关键帧写入'), '中文交接必须明确关键帧尚未完成 / Chinese handoff must mark keyframes incomplete')
-expect(handoffEn.includes('Explicitly not implemented') && handoffEn.includes('writing, moving, copying, or deleting keyframes'), 'English handoff must mark keyframes incomplete')
+expect(handoffZh.includes('动作语义 Rig 与关键帧领域') && handoffZh.includes('时间轴中的关键帧写入'), '中文交接必须区分已完成领域与未完成时间轴 / Chinese handoff must distinguish the completed domain from the incomplete timeline')
+expect(handoffEn.includes('Semantic Rig and keyframe domain') && handoffEn.includes('writing, moving, copying, deleting, or multi-selecting keyframes'), 'English handoff must distinguish the completed domain from the incomplete timeline')
 expect(knownZh.includes('HANDOFF-001') && knownEn.includes('HANDOFF-001'), '中英文已知问题必须记录强制 AI 更新 / Known issues must record mandatory AI updates')
-expect(roadmapZh.includes('阶段 A：语义 Rig 与关键帧领域') && roadmapEn.includes('Phase A: Semantic Rig and keyframe domain'), '中英文路线图必须以语义 Rig 为下一阶段 / Roadmaps must begin with the semantic Rig phase')
+expect(knownZh.includes('MOTION-004') && knownEn.includes('MOTION-004'), '中英文已知问题必须记录旧数据浏览器验收 / Known issues must record legacy-data browser acceptance')
+expect(roadmapZh.includes('阶段 A：语义 Rig 与关键帧领域') && roadmapEn.includes('Phase A: Semantic Rig and keyframe domain'), '中英文路线图必须保留语义 Rig 阶段记录 / Roadmaps must retain the semantic Rig phase record')
+expect(roadmapZh.includes('状态：Next') && roadmapEn.includes('Status: Next'), '中英文路线图必须标记下一阶段 / Roadmaps must mark the next phase')
 expect(packageJson.includes('"check:ai-handoff"') && packageJson.includes('node scripts/check-ai-handoff.mjs'), 'package.json 必须运行 AI 交接门禁 / package.json must run the AI handoff gate')
+expect(packageJson.includes('"check:motion-semantic-rig"') && packageJson.includes('node scripts/check-motion-semantic-rig.mjs'), 'package.json 必须运行动作领域门禁 / package.json must run the motion-domain gate')
 
 for (const adrPath of requiredFiles.filter(item => item.includes('/adr/'))) {
   const content = safeRead(adrPath)

@@ -1,7 +1,7 @@
 {
   "name": "@yk-pets/pet-core",
   "version": "0.1.0",
-  "description": "Framework-neutral species, recipe, renderer, registry, and Studio-to-extension sync contracts for YK-PETS.",
+  "description": "Framework-neutral species, recipe, renderer, registry, Studio-to-extension sync, and motion-domain contracts for YK-PETS.",
   "private": true,
   "type": "module",
   "exports": {
@@ -10,7 +10,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --experimental-strip-types --test test/*.test.ts"
+    "test": "node --import ./test/register-ts-loader.mjs --experimental-strip-types --test test/*.test.ts"
   },
   "devDependencies": {
     "typescript": "5.9.3"

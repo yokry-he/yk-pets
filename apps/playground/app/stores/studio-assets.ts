@@ -1,10 +1,17 @@
 /*
  * 文件职责 / File responsibility
- * 管理共享 Studio 资产库中的自定义动作与道具元数据，并提供本地创建、更新、删除和持久化能力。
- * Manages custom motion and prop metadata in the shared Studio asset library with local create, update, delete, and persistence operations.
+ * 管理共享 Studio 资产库中的版本化动作与道具元数据，并迁移旧本地动作后持久化到 v2 存储。
+ * Manages versioned motion and prop metadata in the shared Studio asset library, migrating legacy local motions into v2 storage.
  */
+import {
+  createStudioMotionAsset,
+  normalizeDisplayFps,
+  normalizeMotionAsset,
+  normalizeMotionAssetCollection,
+} from '@yk-pets/pet-core'
 import { defineStore } from 'pinia'
 import {
+  STUDIO_ASSET_LEGACY_STORAGE_KEY,
   STUDIO_ASSET_STORAGE_KEY,
   createStudioAssetId,
   type StudioMotionAssetMetadata,
@@ -29,43 +36,51 @@ export const useStudioAssetStore = defineStore('studio-assets', {
     hydrate() {
       if (!import.meta.client || this.hydrated) return
       try {
-        const stored = JSON.parse(localStorage.getItem(STUDIO_ASSET_STORAGE_KEY) || '{}') as Partial<StudioAssetState>
-        this.motions = Array.isArray(stored.motions) ? stored.motions : []
+        const current = localStorage.getItem(STUDIO_ASSET_STORAGE_KEY)
+        const legacy = current ? null : localStorage.getItem(STUDIO_ASSET_LEGACY_STORAGE_KEY)
+        const stored = JSON.parse(current || legacy || '{}') as Partial<StudioAssetState>
+        this.motions = normalizeMotionAssetCollection(stored.motions)
         this.props = Array.isArray(stored.props) ? stored.props : []
+        this.hydrated = true
+        if (!current && legacy) this.persist()
       }
       catch {
         this.motions = []
         this.props = []
+        this.hydrated = true
       }
-      this.hydrated = true
     },
     persist() {
       if (!import.meta.client) return
       localStorage.setItem(STUDIO_ASSET_STORAGE_KEY, JSON.stringify({ motions: this.motions, props: this.props }))
     },
-    createMotion(input: Partial<Pick<StudioMotionAssetMetadata, 'nameZh' | 'nameEn' | 'durationMs' | 'loopMode' | 'appearanceId'>> = {}) {
+    createMotion(input: Partial<Pick<StudioMotionAssetMetadata, 'nameZh' | 'nameEn' | 'durationMs' | 'displayFps' | 'loopMode' | 'authoringAppearanceId'>> = {}) {
       const now = Date.now()
-      const motion: StudioMotionAssetMetadata = {
+      const motion = createStudioMotionAsset({
         id: createStudioAssetId('motion'),
         nameZh: input.nameZh || `新动作 ${this.motions.length + 1}`,
         nameEn: input.nameEn || `Motion ${this.motions.length + 1}`,
         durationMs: input.durationMs ?? 1200,
+        displayFps: input.displayFps ?? 30,
         loopMode: input.loopMode || 'once',
-        appearanceId: input.appearanceId || 'active-appearance',
+        authoringAppearanceId: input.authoringAppearanceId || 'active-appearance',
         propIds: [],
+        tracks: [],
         createdAt: now,
         updatedAt: now,
-      }
+      })
       this.motions.unshift(motion)
       this.persist()
       return motion
     },
-    updateMotion(id: string, patch: Partial<Pick<StudioMotionAssetMetadata, 'nameZh' | 'nameEn' | 'durationMs' | 'loopMode' | 'propIds'>>) {
+    updateMotion(id: string, patch: Partial<Pick<StudioMotionAssetMetadata, 'nameZh' | 'nameEn' | 'durationMs' | 'displayFps' | 'loopMode' | 'propIds'>>) {
       const motion = this.motions.find(item => item.id === id)
       if (!motion) return
       Object.assign(motion, patch, { updatedAt: Date.now() })
       motion.durationMs = Math.max(100, Math.min(60000, motion.durationMs))
+      motion.displayFps = normalizeDisplayFps(motion.displayFps)
       motion.loopMode = (['once', 'loop', 'ping-pong'] as StudioMotionLoopMode[]).includes(motion.loopMode) ? motion.loopMode : 'once'
+      Object.assign(motion, normalizeMotionAsset(motion).asset)
       this.persist()
     },
     deleteMotion(id: string) {

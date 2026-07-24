@@ -16,9 +16,14 @@
     ],
     "canonicalRenderer": "apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue",
     "canonicalPreview": "apps/playground/app/components/studio/CloudFoxStudioCanvas.vue",
+    "motionRig": "cloud-fox-semantic-rig/v1",
+    "motionAssetSchemaVersion": 2,
+    "motionTimeStorageUnit": "milliseconds",
+    "motionDisplayGridUnit": "fps-metadata",
     "appearanceMotionPropAssetsAreIndependent": true,
     "sharedSessionIsLocalOnly": true,
-    "duplicateRendererForbidden": true
+    "duplicateRendererForbidden": true,
+    "customMotionRendererWiringComplete": false
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -30,14 +35,21 @@
     "front-and-hind-paw-customization",
     "real-surface-belly-eyes-and-muzzle",
     "unified-configuration-registry",
-    "bilingual-workspace-documentation"
+    "bilingual-workspace-documentation",
+    "motion-semantic-rig",
+    "motion-keyframe-domain",
+    "motion-millisecond-time-and-fps-grid",
+    "motion-basic-step-linear-interpolation",
+    "motion-domain-evaluator",
+    "motion-asset-v2-migration"
   ],
   "notCompleted": [
-    "motion-semantic-rig",
     "motion-keyframe-writing",
-    "motion-track-interpolation",
+    "motion-timeline-editing",
+    "motion-smooth-and-bezier-interpolation",
     "motion-curve-editor",
     "custom-motion-playback-runtime",
+    "motion-renderer-pose-adapter",
     "motion-prop-event-tracks",
     "prop-geometry-editor",
     "prop-material-editor",
@@ -46,7 +58,25 @@
     "real-chrome-side-panel-manual-acceptance",
     "real-gpu-webgl-manual-acceptance"
   ],
-  "nextPhase": "motion-semantic-rig-and-keyframe-domain",
+  "nextPhase": "motion-timeline-authoring-and-preview-adapter",
+  "latestCompletedBatch": {
+    "id": "motion-semantic-rig-and-keyframe-domain",
+    "domainPackage": "@yk-pets/pet-core",
+    "storageMigration": "yk-pets:studio:assets:v1 -> yk-pets:studio:assets:v2",
+    "rendererModified": false,
+    "visualCasesModified": false,
+    "automatedCoverage": [
+      "rig-channel-uniqueness",
+      "millisecond-and-fps-conversion",
+      "once-loop-ping-pong-time-resolution",
+      "legacy-motion-migration",
+      "track-and-keyframe-normalization",
+      "duplicate-time-last-write-wins",
+      "step-and-linear-interpolation",
+      "deterministic-ui-free-pose-evaluation",
+      "json-round-trip"
+    ]
+  },
   "mandatoryDevelopmentPolicy": {
     "sameBranchOnly": true,
     "fullCiForEveryIndependentBatch": true,

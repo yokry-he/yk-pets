@@ -4,26 +4,44 @@ This roadmap restores development order in a new session and does not replace li
 
 ## Phase A: Semantic Rig and keyframe domain
 
-Goal: establish motion data that is independent from concrete Three.js meshes.
+- Status: domain implementation complete, pending full CI and manual browser migration acceptance
+- Goal: establish motion data that is independent from concrete Three.js meshes.
 
-- Define semantic channels for the pet root, body, head, front and hind paws, ears, eyes, mouth, tail, and antennae.
-- Store time in milliseconds while allowing the UI to display an FPS grid.
-- Define keyframes, tracks, interpolation, looping, and normalization.
-- Store pose offsets relative to appearance defaults and mount points.
-- Add domain tests, legacy migration, and range validation.
+Completed:
 
-Completion criterion: without a UI, code can create a motion asset, insert keyframes, and evaluate a complete pose at any time.
+- Stable semantic channels for the root, body, head, front and hind paws, ears, eyes, mouth, tail, and antennae.
+- Millisecond persistence with FPS used only as display and snapping metadata.
+- Schema v2 motion, track, keyframe, loop, and normalization contracts.
+- Pose offsets relative to base appearance mounts and scale.
+- Duplicate-track merging, keyframe sorting, last-input-wins duplicate times, and range clamping.
+- `step` and `linear` interpolation.
+- `once`, `loop`, and `ping-pong` time evaluation.
+- A complete UI-free semantic-pose evaluator.
+- v1-to-v2 local asset migration.
+- Deterministic domain tests and architecture gates.
+
+Completion criterion: without a UI, code can create a motion asset, insert keyframes, and evaluate a complete pose at any time. Domain tests now cover this criterion.
+
+Manual acceptance still required: migration, refresh restoration, and rollback with real legacy v1 browser data.
 
 ## Phase B: Timeline editing and production preview
 
-- Playhead and playback controls;
-- auto-key and manual pose capture;
-- add, delete, copy, move, and multi-select keyframes;
-- linear, smooth, hold, and Bézier interpolation;
-- duration scaling and loop-seam checks;
-- connect evaluated poses to the sole production Cloud Fox preview.
+- Status: Next
 
-Completion criterion: a user can create, save, refresh, restore, and play a complete custom motion without prop events.
+Recommended order:
+
+1. Establish a motion-editing draft with independent undo and redo.
+2. Add a playhead and basic playback controls.
+3. Add, delete, copy, move, and multi-select keyframes.
+4. Reuse domain normalization for duplicate times, ranges, and duration changes.
+5. Pass one `EvaluatedCloudFoxPose` per frame into the sole production preview.
+6. Build semantic adapters for the root, body, head, front and hind paws, ears, eyes and mouth, tail, and antennae.
+7. Keep breathing, blinking, and gaze on unauthored channels while applying semantic override or additive blending on authored channels.
+8. Complete save, refresh restoration, and custom playback without prop events.
+
+This phase uses only `step` and `linear`. Smooth, Bézier, and curve editing stay in the advanced phase.
+
+Completion criterion: a user can create, save, refresh, restore, and play a complete custom motion without prop events, without copying the renderer or adding another long-running WebGL scene.
 
 ## Phase C: Prop event tracks
 
@@ -47,14 +65,15 @@ Completion criterion: users can create local parameterized props without remote 
 
 ## Phase E: Advanced animation tools
 
-- Curve editor;
-- onion skinning;
-- motion paths;
-- left/right mirroring and pose presets;
-- motion layers and interruption policy;
-- optional IK assistance;
-- audio tracks;
-- local GLB prop import only after security and performance review.
+- Smooth and Bézier interpolation.
+- Curve editor.
+- Onion skinning.
+- Motion paths.
+- Left/right mirroring and pose presets.
+- Motion layers and interruption policy.
+- Optional IK assistance.
+- Audio tracks.
+- Local GLB prop import only after security and performance review.
 
 ## Mandatory process for every phase
 

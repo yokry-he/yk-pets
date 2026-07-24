@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 提供与框架无关的宠物物种、配方信封、渲染器注册和 Studio 到扩展同步协议。
- * Provides framework-neutral pet species, recipe envelopes, renderer registration, and Studio-to-extension sync contracts.
+ * 提供与框架无关的宠物物种、配方信封、渲染器注册、Studio 同步和动作领域协议。
+ * Provides framework-neutral species, recipe envelopes, renderer registration, Studio sync, and motion-domain contracts.
  */
 
 export type PetRecord = Record<string, unknown>
@@ -166,3 +166,8 @@ export function isPetRecipeSyncResult(input: unknown): input is PetRecipeSyncRes
     && typeof input.requestId === 'string'
     && typeof input.ok === 'boolean'
 }
+
+export * from './motion/cloud-fox-rig'
+export * from './motion/motion-time'
+export * from './motion/motion-asset'
+export * from './motion/motion-evaluator'

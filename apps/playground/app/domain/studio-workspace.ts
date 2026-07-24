@@ -1,10 +1,12 @@
 /*
  * 文件职责 / File responsibility
- * 定义统一 Studio 壳的工作区、共享会话上下文以及动作和道具资产元数据契约。
- * Defines workspace navigation, shared session context, and motion/prop asset metadata contracts for the unified Studio shell.
+ * 定义统一 Studio 壳的工作区、共享会话上下文、版本化动作资产和道具元数据契约。
+ * Defines workspace navigation, shared session context, versioned motion assets, and prop metadata contracts for the unified Studio shell.
  */
+import type { StudioMotionAssetV2 } from '@yk-pets/pet-core'
+export type { StudioMotionLoopMode } from '@yk-pets/pet-core'
+
 export type StudioWorkspaceId = 'appearance' | 'motion' | 'props' | 'library'
-export type StudioMotionLoopMode = 'once' | 'loop' | 'ping-pong'
 export type StudioPropKind = 'composite' | 'effect'
 
 export interface StudioWorkspaceDefinition {
@@ -15,17 +17,7 @@ export interface StudioWorkspaceDefinition {
   path: string
 }
 
-export interface StudioMotionAssetMetadata {
-  id: string
-  nameZh: string
-  nameEn: string
-  durationMs: number
-  loopMode: StudioMotionLoopMode
-  appearanceId: string
-  propIds: string[]
-  createdAt: number
-  updatedAt: number
-}
+export type StudioMotionAssetMetadata = StudioMotionAssetV2
 
 export interface StudioPropAssetMetadata {
   id: string
@@ -46,7 +38,8 @@ export const STUDIO_WORKSPACES: readonly StudioWorkspaceDefinition[] = Object.fr
 ])
 
 export const STUDIO_SESSION_STORAGE_KEY = 'yk-pets:studio:session:v1'
-export const STUDIO_ASSET_STORAGE_KEY = 'yk-pets:studio:assets:v1'
+export const STUDIO_ASSET_STORAGE_KEY = 'yk-pets:studio:assets:v2'
+export const STUDIO_ASSET_LEGACY_STORAGE_KEY = 'yk-pets:studio:assets:v1'
 
 export function createStudioAssetId(prefix: 'motion' | 'prop') {
   const random = Math.random().toString(36).slice(2, 8)

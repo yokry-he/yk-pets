@@ -1,9 +1,10 @@
 <!--
   文件职责 / File responsibility
-  提供动作工坊的资产选择、当前宠物预览、动作元数据和时间轴基础结构，为后续关键帧轨道编辑提供稳定入口。
-  Provides motion asset selection, current-pet preview, motion metadata, and timeline foundations for subsequent keyframe-track editing.
+  提供动作工坊的资产选择、当前宠物预览、版本化动作元数据和只读语义 Rig 轨道概览。
+  Provides Motion Studio asset selection, current-pet preview, versioned motion metadata, and a read-only semantic Rig track overview.
 -->
 <script setup lang="ts">
+import { CLOUD_FOX_RIG_TRACK_GROUPS } from '@yk-pets/pet-core'
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 import { useStudioAssetStore } from '~/stores/studio-assets'
@@ -17,14 +18,14 @@ const assets = useStudioAssetStore()
 const session = useStudioSessionStore()
 const selected = computed(() => assets.motions.find(item => item.id === session.selectedMotionId))
 const availableProps = computed(() => assets.props.filter(item => selected.value?.propIds.includes(item.id)))
-const tracks = ['宠物根节点', '身体', '头部与表情', '左前爪', '右前爪', '左后爪', '右后爪', '尾巴', '道具事件']
+const tracks = CLOUD_FOX_RIG_TRACK_GROUPS
 
 function selectMotion(id: string) {
   session.selectMotion(id)
   navigateTo({ path: '/studio/motion', query: { motion: id } }, { replace: true })
 }
 function createMotion() {
-  const motion = assets.createMotion({ appearanceId: session.selectedAppearanceId })
+  const motion = assets.createMotion({ authoringAppearanceId: session.selectedAppearanceId })
   selectMotion(motion.id)
 }
 function patchName(field: 'nameZh' | 'nameEn', event: Event) {
@@ -34,6 +35,10 @@ function patchName(field: 'nameZh' | 'nameEn', event: Event) {
 function patchDuration(event: Event) {
   if (!selected.value) return
   assets.updateMotion(selected.value.id, { durationMs: Number((event.target as HTMLInputElement).value) })
+}
+function patchDisplayFps(event: Event) {
+  if (!selected.value) return
+  assets.updateMotion(selected.value.id, { displayFps: Number((event.target as HTMLInputElement).value) })
 }
 function patchLoop(event: Event) {
   if (!selected.value) return
@@ -60,7 +65,7 @@ onMounted(() => {
   <section class="motion-workspace">
     <aside class="asset-panel">
       <header><div><small>MOTION ASSETS</small><h1>动作工坊</h1></div><button @click="createMotion">新建动作</button></header>
-      <p>动作资产独立于外观，保存相对姿态、时间和道具依赖。</p>
+      <p>动作资产使用稳定语义 Rig 和相对姿态领域合同；关键帧写入与正式播放仍未开放。</p>
       <button
         v-for="motion in assets.motions"
         :key="motion.id"
@@ -68,9 +73,9 @@ onMounted(() => {
         :class="{ active: motion.id === session.selectedMotionId }"
         @click="selectMotion(motion.id)"
       >
-        <strong>{{ motion.nameZh }}</strong><small>{{ motion.nameEn }} · {{ motion.durationMs }} ms</small>
+        <strong>{{ motion.nameZh }}</strong><small>{{ motion.nameEn }} · {{ motion.durationMs }} ms · {{ motion.displayFps }} FPS</small>
       </button>
-      <div v-if="!assets.motions.length" class="empty">尚无自定义动作。新建后会获得稳定资产 ID。</div>
+      <div v-if="!assets.motions.length" class="empty">尚无自定义动作。新建后会获得稳定资产 ID 和空的 v2 语义轨道集合。</div>
     </aside>
 
     <div class="editor-area">
@@ -87,10 +92,10 @@ onMounted(() => {
         </ClientOnly>
       </div>
       <section class="timeline" :data-ready="Boolean(selected)">
-        <header><div><strong>时间轴基础</strong><small>下一批将在这些语义轨道上加入关键帧、插值和事件。</small></div><span>{{ selected?.durationMs || 0 }} ms</span></header>
+        <header><div><strong>语义 Rig 轨道概览</strong><small>时间轴基础已升级为领域合同概览；关键帧编辑、播放和道具事件将在后续阶段接入。</small></div><span>{{ selected?.durationMs || 0 }} ms · {{ selected?.displayFps || 30 }} FPS</span></header>
         <div class="timeline-body">
-          <div class="track-labels"><span v-for="track in tracks" :key="track">{{ track }}</span></div>
-          <div class="track-lanes"><div class="ruler"><i v-for="tick in 11" :key="tick" :style="{left:`${(tick-1)*10}%`}"><small>{{ Math.round((selected?.durationMs || 0)*(tick-1)/10) }}</small></i></div><div v-for="track in tracks" :key="track" class="lane" /></div>
+          <div class="track-labels"><span v-for="track in tracks" :key="track.id">{{ track.labelZh }}</span></div>
+          <div class="track-lanes"><div class="ruler"><i v-for="tick in 11" :key="tick" :style="{left:`${(tick-1)*10}%`}"><small>{{ Math.round((selected?.durationMs || 0)*(tick-1)/10) }}</small></i></div><div v-for="track in tracks" :key="track.id" class="lane" /></div>
         </div>
       </section>
     </div>
@@ -101,11 +106,13 @@ onMounted(() => {
         <label>中文名称<input :value="selected.nameZh" @change="patchName('nameZh',$event)"></label>
         <label>英文名称<input :value="selected.nameEn" @change="patchName('nameEn',$event)"></label>
         <label>总时长（毫秒）<input :value="selected.durationMs" type="number" min="100" max="60000" step="50" @change="patchDuration"></label>
+        <label>显示网格（FPS）<input :value="selected.displayFps" type="number" min="1" max="240" step="1" @change="patchDisplayFps"></label>
         <label>循环模式<select :value="selected.loopMode" @change="patchLoop"><option value="once">播放一次</option><option value="loop">循环</option><option value="ping-pong">往返循环</option></select></label>
-        <section class="dependency-card"><h3>道具依赖</h3><p v-if="!availableProps.length">当前动作尚未引用道具。</p><NuxtLink v-for="prop in availableProps" :key="prop.id" :to="`/studio/props?prop=${prop.id}`">{{ prop.nameZh }}</NuxtLink></section>
+        <section class="dependency-card"><h3>道具依赖</h3><p v-if="!availableProps.length">当前动作尚未引用道具；事件轨道尚未实现。</p><NuxtLink v-for="prop in availableProps" :key="prop.id" :to="`/studio/props?prop=${prop.id}`">{{ prop.nameZh }}</NuxtLink></section>
+        <code>{{ selected.rigId }}</code>
         <code>{{ selected.id }}</code>
       </template>
-      <div v-else class="empty">创建动作后可设置名称、总时长和循环方式。</div>
+      <div v-else class="empty">创建动作后可设置名称、总时长、FPS 显示网格和循环方式。</div>
     </aside>
   </section>
 </template>
