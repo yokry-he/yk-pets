@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * 文件职责 / File responsibility
- * 锁定统一 Studio 壳、四个独立路由、共享会话与资产库，并防止外观工坊迁移时丢失现有能力。
- * Locks the unified Studio shell, four routed workspaces, shared session and asset library, and prevents appearance capability loss during migration.
+ * 锁定统一 Studio 壳、四个独立路由、共享会话、资产库、双语文档，并防止外观工坊迁移时丢失现有能力。
+ * Locks the Studio shell, four routed workspaces, shared session, asset library, bilingual docs, and appearance capability preservation.
  */
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -17,6 +17,10 @@ const motionPage = read('apps/playground/app/pages/studio/motion.vue')
 const propPage = read('apps/playground/app/pages/studio/props.vue')
 const libraryPage = read('apps/playground/app/pages/studio/library.vue')
 const manifest = read('apps/extension/wxt.config.ts')
+const docsZh = read('docs/zh-CN/STUDIO-WORKSPACES.md')
+const docsEn = read('docs/en/STUDIO-WORKSPACES.md')
+const acceptanceZh = read('docs/zh-CN/STUDIO-WORKSPACES-ACCEPTANCE.md')
+const acceptanceEn = read('docs/en/STUDIO-WORKSPACES-ACCEPTANCE.md')
 
 const routes = ['/studio/appearance', '/studio/motion', '/studio/props', '/studio/library']
 const checks = [
@@ -30,6 +34,8 @@ const checks = [
   ['motion workspace has asset metadata preview timeline and prop dependencies', motionPage.includes("layout: 'studio'") && motionPage.includes('CloudFoxStudioCanvas') && motionPage.includes('durationMs') && motionPage.includes('loopMode') && motionPage.includes('时间轴基础') && motionPage.includes('道具依赖')],
   ['prop workspace has asset metadata anchors hierarchy and motion jump', propPage.includes("layout: 'studio'") && propPage.includes('defaultAnchor') && propPage.includes('anchorIds') && propPage.includes('道具组件层级') && propPage.includes('/studio/motion?prop=')],
   ['asset library links appearance motions and props', libraryPage.includes("layout: 'studio'") && libraryPage.includes('EXTENSION_CLOUD_FOX_MOTIONS.length') && libraryPage.includes('editMotion') && libraryPage.includes('editProp')],
+  ['bilingual architecture docs distinguish foundations from finished editors', routes.every(path => docsZh.includes(path) && docsEn.includes(path)) && docsZh.includes('尚未完成') && docsEn.includes('Not complete yet')],
+  ['bilingual manual acceptance covers routes persistence and no fake capability claims', acceptanceZh.includes('刷新任一工作区') && acceptanceZh.includes('不得误导用户已经可以写入关键帧') && acceptanceEn.includes('Refresh any workspace') && acceptanceEn.includes('must not imply that custom keyframes can already be written')],
   ['new shell adds no upload polling websocket or Chrome permission', [domain, session, assets, layout, motionPage, propPage, libraryPage].every(source => !source.includes('fetch(') && !source.includes('WebSocket') && !source.includes('setInterval(')) && manifest.includes("permissions: ['activeTab', 'contextMenus', 'scripting', 'storage', 'sidePanel', 'tts']")],
 ]
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
