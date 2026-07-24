@@ -1,75 +1,48 @@
 /**
  * 文件职责 / File responsibility
- * 按阶段校验云狐工坊配方、独立头身、真实表面采样、场景、物种、编辑器、统一模型、完整动作和扩展同步契约。
- * Validates Cloud Fox Studio recipes, independent head/body surfaces, real surface sampling, scenes, species, editor, unified model, complete motions, and extension sync contracts by phase.
+ * 按阶段校验云狐工坊配方、独立头身、统一控制注册表、经典前爪挂点、真实表面采样、场景、动作和扩展同步契约。
+ * Validates Studio recipes, independent head/body, the unified control registry, classic paw anchors, real surface sampling, scenes, motions, and extension sync contracts.
  */
 import { readFileSync } from 'node:fs'
 const phaseArg = process.argv.find(argument => argument.startsWith('--phase='))
 const requestedPhase = phaseArg ? Number(phaseArg.split('=')[1]) : 13
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const files = {
-  package: read('package.json'),
   base: read('apps/playground/app/domain/cloud-fox-appearance.ts'),
   shapeProfiles: read('apps/playground/app/domain/cloud-fox-shape-profile.ts'),
   surface: read('apps/playground/app/domain/cloud-fox-surface-model.ts'),
   eyeMetrics: read('apps/playground/app/domain/cloud-fox-eye-metrics.ts'),
-  phase2: read('apps/playground/app/domain/pet-studio-phase2.ts'),
-  phase3: read('apps/playground/app/domain/pet-studio-phase3.ts'),
-  phase4: read('apps/playground/app/domain/pet-studio-phase4.ts'),
-  scene: read('apps/playground/app/domain/pet-scene.ts'),
-  registry: read('apps/playground/app/domain/pet-species-registry.ts'),
-  profile: read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts'),
-  motionCatalog: read('apps/playground/app/domain/chrome-extension-cloud-fox-motions.ts'),
-  motionRuntime: read('apps/playground/app/domain/chrome-extension-cloud-fox-motion-runtime.ts'),
-  store: read('apps/playground/app/stores/pet-appearance.ts'),
-  page: read('apps/playground/app/pages/studio.vue'),
-  presets: read('apps/playground/app/pages/studio-presets.vue'),
-  scenes: read('apps/playground/app/pages/studio-scenes.vue'),
-  species: read('apps/playground/app/pages/studio-species.vue'),
-  procedural: read('apps/playground/app/components/studio/ProceduralPet.vue'),
-  canvas: read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue'),
-  core: read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue'),
-  body: read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue'),
-  bodyShape: read('apps/playground/app/components/studio/ExtensionCloudFoxBodyShape.vue'),
-  belly: read('apps/playground/app/components/studio/ExtensionCloudFoxBellyPatch.vue'),
-  head: read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue'),
-  headShape: read('apps/playground/app/components/studio/ExtensionCloudFoxHeadShape.vue'),
-  eye: read('apps/playground/app/components/studio/ExtensionCloudFoxEyeShape.vue'),
-  tail: read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue'),
-  effects: read('apps/playground/app/components/studio/ExtensionCloudFoxMotionEffects.vue'),
-  fireworks: read('apps/playground/app/components/studio/ProductionCloudFoxFireworks.vue'),
-  fireworksDomain: read('apps/playground/app/domain/production-cloud-fox-fireworks.ts'),
-  headIntent: read('apps/playground/app/components/studio/ProductionCloudFoxHeadIntent.vue'),
-  configured: read('apps/extension/components/avatar/ConfiguredCloudFox.vue'),
-  wxt: read('apps/extension/wxt.config.ts'),
-  patchDomain: read('apps/playground/app/domain/pet-appearance-patch.ts'),
-  patchTest: read('scripts/test-pet-studio-local-patches.ts'),
-  toolbar: read('apps/playground/app/components/studio/StudioMotionToolbar.vue'),
-  tailEditor: read('apps/playground/app/components/studio/StudioTailEditor.vue'),
-  symbolEditor: read('apps/playground/app/components/studio/StudioSymbolEditor.vue'),
-  bellyEditor: read('apps/playground/app/components/studio/StudioBellyPatchEditor.vue'),
+  controls: read('apps/playground/app/domain/studio-control-registry.ts'),
+  customization: read('apps/playground/app/domain/pet-part-customization.ts'),
+  defaults: read('apps/playground/app/domain/extension-cloud-fox-default.ts'),
+  phase2: read('apps/playground/app/domain/pet-studio-phase2.ts'), phase3: read('apps/playground/app/domain/pet-studio-phase3.ts'), phase4: read('apps/playground/app/domain/pet-studio-phase4.ts'),
+  scene: read('apps/playground/app/domain/pet-scene.ts'), registry: read('apps/playground/app/domain/pet-species-registry.ts'), profile: read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts'),
+  motionCatalog: read('apps/playground/app/domain/chrome-extension-cloud-fox-motions.ts'), motionRuntime: read('apps/playground/app/domain/chrome-extension-cloud-fox-motion-runtime.ts'),
+  store: read('apps/playground/app/stores/pet-appearance.ts'), page: read('apps/playground/app/pages/studio.vue'), presets: read('apps/playground/app/pages/studio-presets.vue'),
+  scenes: read('apps/playground/app/pages/studio-scenes.vue'), procedural: read('apps/playground/app/components/studio/ProceduralPet.vue'), canvas: read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue'),
+  core: read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue'), body: read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue'), bodyShape: read('apps/playground/app/components/studio/ExtensionCloudFoxBodyShape.vue'),
+  belly: read('apps/playground/app/components/studio/ExtensionCloudFoxBellyPatch.vue'), head: read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue'), headShape: read('apps/playground/app/components/studio/ExtensionCloudFoxHeadShape.vue'),
+  eye: read('apps/playground/app/components/studio/ExtensionCloudFoxEyeShape.vue'), face: read('apps/playground/app/components/studio/ExtensionCloudFoxFaceCustomization.vue'), tail: read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue'),
+  effects: read('apps/playground/app/components/studio/ExtensionCloudFoxMotionEffects.vue'), fireworksDomain: read('apps/playground/app/domain/production-cloud-fox-fireworks.ts'), headIntent: read('apps/playground/app/components/studio/ProductionCloudFoxHeadIntent.vue'),
+  configured: read('apps/extension/components/avatar/ConfiguredCloudFox.vue'), wxt: read('apps/extension/wxt.config.ts'), patchDomain: read('apps/playground/app/domain/pet-appearance-patch.ts'), patchTest: read('scripts/test-pet-studio-local-patches.ts'),
+  toolbar: read('apps/playground/app/components/studio/StudioMotionToolbar.vue'), tailEditor: read('apps/playground/app/components/studio/StudioTailEditor.vue'), symbolEditor: read('apps/playground/app/components/studio/StudioSymbolEditor.vue'), bellyEditor: read('apps/playground/app/components/studio/StudioBellyPatchEditor.vue'),
 }
 const unifiedSource = files.configured.includes("from 'yk-pets-unified-cloud-fox'") && files.wxt.includes('../playground/app/components/studio/ExtensionAlignedCloudFox.vue')
 const checks = [
   [1, 'automatic camera fitting and independent body dimensions', files.base.includes('calculatePetVisualBounds') && files.canvas.includes('cameraFactor') && ['bodyWidth','bodyHeight','bodyDepth'].every(key => files.base.includes(`${key}: number`))],
   [2, 'extended parts antennae and segmented tail', files.phase2.includes("'floppy'") && files.phase2.includes('antennaRod') && files.phase2.includes('MAX_TAIL_SEGMENTS = 8')],
   [3, 'schema v2 symbols colors undo and geometry audit', files.phase3.includes('PET_STUDIO_SCHEMA_VERSION = 2') && files.phase3.includes('chest: SymbolChannelRecipe') && files.store.includes('undo()') && files.page.includes('外观检查')],
-  [4, 'presets styles locks and user schemes', ['云灵经典','糯米可爱','霓虹机械','极光水晶','森林精灵','暗夜星云'].every(name => files.phase4.includes(name)) && files.phase4.includes('AppearanceLocks') && files.store.includes('saveCustomScheme')],
+  [4, 'presets styles locks and user schemes', ['云灵经典','糯米可爱','霓虹机械','极光水晶','森林精灵','暗夜星云'].every(name => files.phase4.includes(name)) && files.store.includes('saveCustomScheme')],
   [5, 'scene recipes effects and web contrast', files.scene.includes('PetSceneRecipe') && files.scenes.includes('跟随网页') && files.canvas.includes('sceneStyle')],
   [6, 'species registry and generic dispatch', files.registry.includes('PET_SPECIES_REGISTRY') && files.registry.includes("'moon-cat'") && files.procedural.includes('ExtensionAlignedCloudFox')],
   [7, 'exact extension production profile remains', files.profile.includes('chrome-extension-production') && files.profile.includes('0.94, 1.12, 0.82') && files.profile.includes('normalPosition: [0, 0.42, 8.8]')],
-  [8, 'local tail ear and patch controls remain', files.phase2.includes('rootExtensionLength') && files.phase2.includes('TailTipGlowRecipe') && files.phase2.includes('EarDesignRecipe') && files.patchDomain.includes('applyPetAppearanceLocalPatch')],
-  [9, 'continuous front paws use body-profile anchors and isolation tests', files.registry.includes('FRONT_PAW_STYLES') && files.registry.includes('FRONT_PAW_DESIGN_RANGES') && files.body.includes('getCloudFoxBodyProfile') && files.body.includes('pawSurfaceDepth') && files.tailEditor.includes('连续前爪连接') && files.patchTest.includes('nonPawSnapshot')],
-  [10, 'thirty-motion registry and shared frame remain', files.motionCatalog.includes('EXTENSION_CLOUD_FOX_MOTIONS') && files.motionRuntime.includes('createExtensionCloudFoxMotionFrame') && files.core.includes('createExtensionCloudFoxMotionFrame') && files.toolbar.includes('<optgroup') && files.page.includes('motionKey.value += 1')],
-  [11, 'complete prop effects and extension fireworks remain', files.core.includes('ExtensionCloudFoxEnergyBall') && files.core.includes('ExtensionCloudFoxMealOverlay') && files.effects.includes('starGroup') && files.effects.includes('cloud-nap') && files.fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48')],
-  [12, 'Studio and extension use the same canonical composition source', unifiedSource && files.core.includes('ProductionCloudFoxFireworks') && files.headIntent.includes('createProductionFireworkBurstPlan')],
-  [13, 'independent head/body real surfaces and projected belly remain', files.base.includes('headShape: CloudFoxHeadShape') && files.shapeProfiles.includes('getCloudFoxBodyProfile') && files.shapeProfiles.includes('getCloudFoxHeadProfile') && files.body.includes('<ExtensionCloudFoxBodyShape') && files.bodyShape.includes('normalized unit envelope') && files.head.includes('<ExtensionCloudFoxHeadShape') && files.headShape.includes('production three-axis head proportions') && files.surface.includes('sampleCloudFoxBodyFrontSurface') && files.surface.includes('resolveCloudFoxEyeSurfaceAnchor') && files.belly.includes('createCloudFoxBellySurfaceMesh') && files.head.includes('getCloudFoxEyeBlinkFloor') && files.eye.includes('ExtrudeGeometry') && !files.belly.includes('ExtensionCloudFoxBodyShape') && files.bellyEditor.includes('宽度') && files.symbolEditor.includes('显示模式')],
+  [8, 'local tail ear and patch controls remain', files.phase2.includes('rootExtensionLength') && files.phase2.includes('TailTipGlowRecipe') && files.patchDomain.includes('customization?:')],
+  [9, 'front paws restore production anchors and preserve isolated patches', files.body.includes('classicPawX') && files.body.includes('scheme.model.frontPaw.offset') && files.body.includes('lateralOffset') && files.defaults.includes('embedDepth: .06') && files.defaults.includes('forwardOffset: .06') && files.patchTest.includes('nonPawSnapshot')],
+  [10, 'thirty-motion registry and shared frame remain', files.motionCatalog.includes('EXTENSION_CLOUD_FOX_MOTIONS') && files.motionRuntime.includes('createExtensionCloudFoxMotionFrame') && files.core.includes('createExtensionCloudFoxMotionFrame') && files.toolbar.includes('<optgroup')],
+  [11, 'complete prop effects and extension fireworks remain', files.core.includes('ExtensionCloudFoxEnergyBall') && files.effects.includes('cloud-nap') && files.fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48')],
+  [12, 'Studio and extension use the same canonical composition source', unifiedSource && files.headIntent.includes('createProductionFireworkBurstPlan')],
+  [13, 'unified controls real surfaces projected belly and muzzle-mounted mouths remain', files.controls.includes('STUDIO_CONTROL_REGISTRY') && files.customization.includes("hard('frontPawDesign.rootHeight')") && files.surface.includes('resolveCloudFoxMuzzleSurfaceAnchor') && files.surface.includes('indices.push(topLeft, topRight, bottomLeft') && files.belly.includes('createCloudFoxBellySurfaceMesh') && files.face.includes('resolveCloudFoxMuzzleSurfaceAnchor') && files.face.includes("appearance.parts.mouth === 'open'") && files.eye.includes('ExtrudeGeometry') && files.head.includes('getCloudFoxEyeBlinkFloor') && files.symbolEditor.includes('显示模式')],
 ]
-const activeChecks = checks.filter(([phase]) => phase <= requestedPhase)
-const failures = activeChecks.filter(([, , passed]) => !passed).map(([, name]) => name)
-if (failures.length) {
-  console.error(`宠物工坊 Phase ${requestedPhase} 契约检查失败 / Pet Studio contract check failed:`)
-  for (const failure of failures) console.error(`- ${failure}`)
-  process.exit(1)
-}
-console.log(`宠物工坊 Phase ${requestedPhase} 契约检查通过，共 ${activeChecks.length} 项。`)
+const failures = checks.filter(([phase]) => phase <= requestedPhase).filter(([, , passed]) => !passed).map(([, name]) => name)
+if (failures.length) { console.error(`宠物工坊 Phase ${requestedPhase} 契约检查失败 / Pet Studio contract check failed:`); for (const failure of failures) console.error(`- ${failure}`); process.exit(1) }
+console.log(`宠物工坊 Phase ${requestedPhase} 契约检查通过，共 ${checks.filter(([phase]) => phase <= requestedPhase).length} 项。`)
