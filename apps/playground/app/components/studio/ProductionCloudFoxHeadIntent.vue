@@ -1,14 +1,13 @@
 <!--
   文件职责 / File responsibility
-  在不复制头部模型的前提下叠加网页追视、烟花追踪和可配置鼻嘴，并保持统一头部动作坐标。
-  Adds page gaze, fireworks tracking, and configurable nose/mouth parts without duplicating the head model while preserving one animated head space.
+  在不复制头部模型的前提下，为唯一云狐头部叠加网页指针追视和 Chrome 正式烟花抬头追踪。
+  Adds page-pointer gaze and production Chrome fireworks head tracking around the sole Cloud Fox head model without duplicating it.
 -->
 <script setup lang="ts">
 import { shallowRef } from 'vue'
 import { useLoop } from '@tresjs/core'
 import { Vector3 } from 'three'
 import type { Group } from 'three'
-import ExtensionCloudFoxFaceCustomization from './ExtensionCloudFoxFaceCustomization.vue'
 import ExtensionCloudFoxGazeOverlay from './ExtensionCloudFoxGazeOverlay.vue'
 import ExtensionCloudFoxHead from './ExtensionCloudFoxHead.vue'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
@@ -72,7 +71,6 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   <TresGroup ref="headPivot" :position="vector(scheme.model.head.position)">
     <TresGroup :position="inverseHeadPosition">
       <ExtensionCloudFoxHead :appearance="appearance" :behavior="headBehavior || behavior" :motion-key="motionKey" />
-      <ExtensionCloudFoxFaceCustomization :appearance="appearance" :behavior="headBehavior || behavior" :motion-key="motionKey" />
       <ExtensionCloudFoxGazeOverlay
         :appearance="appearance"
         :behavior="behavior"

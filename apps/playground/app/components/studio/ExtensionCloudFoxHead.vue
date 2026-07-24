@@ -1,16 +1,18 @@
 <!--
   文件职责 / File responsibility
-  渲染云狐头部，并驱动头、眼、耳、嘴与触角动作；左右眼高光使用镜像局部坐标。
-  Renders the Cloud Fox head and animates head, eyes, ears, mouth, and antennae with mirrored eye highlights.
+  渲染唯一云狐头部外壳、耳朵、眼睛和触角，驱动共享头部动作，并在同一局部坐标内挂载唯一鼻嘴组件。
+  Renders the sole Cloud Fox head shell, ears, eyes, and antennae, drives shared head motion, and mounts the sole face component in the same local space.
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
 import { Color, Euler, Vector3 } from 'three'
-import type { Group, MeshBasicMaterial, MeshStandardMaterial } from 'three'
+import type { Group, MeshStandardMaterial } from 'three'
+import ExtensionCloudFoxFaceCustomization from './ExtensionCloudFoxFaceCustomization.vue'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import { createExtensionCloudFoxMotionFrame, mix, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import { createBallMotionPose, createCatchMotionPose } from '~/domain/cloud-fox-prop-motion'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
+import { resolvePetCustomization } from '~/domain/pet-part-customization'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 
 const props = defineProps<{
@@ -32,13 +34,12 @@ const clamp = (value: number, minimum: number, maximum: number) => Math.max(mini
 const head = shallowRef<Group>()
 const leftEye = shallowRef<Group>()
 const rightEye = shallowRef<Group>()
-const mouth = shallowRef<Group>()
 const leftEar = shallowRef<Group>()
 const rightEar = shallowRef<Group>()
 const leftAntenna = shallowRef<Group>()
 const rightAntenna = shallowRef<Group>()
 const glowMaterials = shallowRef<MeshStandardMaterial[]>([])
-const cheekMaterials = shallowRef<MeshBasicMaterial[]>([])
+const colors = computed(() => resolvePetCustomization(props.appearance).colors)
 const headScale = computed(() => scaled(scheme.model.head.scale, props.appearance.proportions.headScale))
 const eyeX = computed(() => scheme.model.head.eyeOffset[0] * props.appearance.proportions.eyeSpacing)
 const earX = computed(() => scheme.model.head.earOffset[0] * props.appearance.proportions.earScale)
@@ -70,10 +71,6 @@ function setAntennaRef(node: unknown, side: number) {
 function registerGlow(reference: unknown) {
   const material = reference as MeshStandardMaterial | null
   if (material && !glowMaterials.value.includes(material)) glowMaterials.value.push(material)
-}
-function registerCheek(reference: unknown) {
-  const material = reference as MeshBasicMaterial | null
-  if (material && !cheekMaterials.value.includes(material)) cheekMaterials.value.push(material)
 }
 
 const rainbow = new Color()
@@ -200,24 +197,6 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     rightEye.value.position.y = damp(rightEye.value.position.y, eyeOffsetY, 9, delta)
   }
 
-  if (mouth.value) {
-    const talking = state === 'talking' ? .72 + Math.max(0, Math.sin(elapsed * 10)) * .68 : 1
-    const eating = state === 'eating' ? .78 + Math.max(0, Math.sin(frame.eatProgress * Math.PI * 14)) * .82 : 1
-    const happy = state === 'happy' || state === 'excited' ? 1.18 : 1
-    const sneeze = state === 'sparkle-sneeze' ? 1 + frame.sneezeRelease * .8 : 1
-    mouth.value.scale.y = damp(mouth.value.scale.y, talking * eating * sneeze, 12, delta)
-    mouth.value.scale.x = damp(mouth.value.scale.x, happy, 10, delta)
-  }
-
-  const cheekOpacity = state === 'happy' || state === 'talking' || state === 'excited'
-    ? .34
-    : state === 'flapping'
-      ? .56 + Math.sin(stateElapsed * 2.1) * .055
-      : state === 'greeting' || state === 'jumping' || state === 'shy-peek'
-        ? .28
-        : 0
-  for (const material of cheekMaterials.value) material.opacity = damp(material.opacity, cheekOpacity, 9, delta)
-
   const earEnergy = state === 'energy-burst'
     ? frame.energyCharge * .16 + frame.energyRelease * .12
     : state === 'antenna-charge'
@@ -308,13 +287,13 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       >
         <TresMesh :position="vector(scheme.model.antenna.rodPosition)">
           <TresCylinderGeometry :args="antennaRod" />
-          <TresMeshStandardMaterial :color="appearance.palette.coatWarm" :roughness=".22" :metalness=".04" />
+          <TresMeshStandardMaterial :color="colors.antennaRod" :roughness=".22" :metalness=".04" />
         </TresMesh>
         <TresMesh :position="vector([side * scheme.model.antenna.tipPosition[0], scheme.model.antenna.tipPosition[1], scheme.model.antenna.tipPosition[2]])">
           <TresTorusGeometry v-if="appearance.parts.antennaTip === 'ring'" :args="[.12, .035, 12, 28]" />
           <TresDodecahedronGeometry v-else-if="appearance.parts.antennaTip === 'crystal'" :args="[.11, 0]" />
           <TresSphereGeometry v-else :args="[scheme.model.antenna.tipRadius, 20, 20]" />
-          <TresMeshStandardMaterial :ref="registerGlow" :color="appearance.palette.antennaGlow" :emissive="appearance.palette.antennaGlow" :emissive-intensity="1.6" transparent :opacity=".9" :roughness=".1" />
+          <TresMeshStandardMaterial :ref="registerGlow" :color="colors.antennaTip" :emissive="colors.antennaTip" :emissive-intensity="1.6" transparent :opacity=".9" :roughness=".1" />
         </TresMesh>
         <TresMesh :position="vector([side * scheme.model.antenna.tipPosition[0], scheme.model.antenna.tipPosition[1], scheme.model.antenna.tipPosition[2]])" :scale="vector([scheme.model.antenna.auraScale, scheme.model.antenna.auraScale, scheme.model.antenna.auraScale])">
           <TresSphereGeometry :args="[scheme.model.antenna.tipRadius, 16, 16]" />
@@ -324,7 +303,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     </template>
 
     <TresMesh><TresSphereGeometry :args="[scheme.model.head.radius, 64, 64]" /><TresMeshStandardMaterial :color="appearance.palette.coat" :roughness=".28" :metalness=".04" /></TresMesh>
-    <TresMesh :position="vector(scheme.model.head.muzzlePosition)" :scale="vector(scheme.model.head.muzzleScale)"><TresSphereGeometry :args="[scheme.model.head.muzzleRadius, 48, 48]" /><TresMeshStandardMaterial :color="scheme.palette.muzzle" :roughness=".34" /></TresMesh>
+    <TresMesh :position="vector(scheme.model.head.muzzlePosition)" :scale="vector(scheme.model.head.muzzleScale)"><TresSphereGeometry :args="[scheme.model.head.muzzleRadius, 48, 48]" /><TresMeshStandardMaterial :color="colors.muzzle" :roughness=".34" /></TresMesh>
 
     <template v-if="appearance.parts.eyes !== 'visor'">
       <TresGroup v-for="side in [-1, 1]" :key="`eye-${side}`" :ref="node => setEyeRef(node, side)" :position="vector([side * eyeX, scheme.model.head.eyeOffset[1], scheme.model.head.eyeOffset[2]])">
@@ -335,19 +314,12 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
         </TresMesh>
         <TresMesh v-if="appearance.parts.eyes === 'round'" :position="vector([side * highlightX, scheme.model.head.eyeHighlightPosition[1], scheme.model.head.eyeHighlightPosition[2]])" :scale="vector(scheme.model.head.eyeHighlightScale)">
           <TresSphereGeometry />
-          <TresMeshBasicMaterial :color="appearance.palette.secondaryGlow" />
+          <TresMeshBasicMaterial :color="colors.eyeHighlight" />
         </TresMesh>
       </TresGroup>
     </template>
-    <TresMesh v-else :position="vector([0, scheme.model.head.eyeOffset[1], scheme.model.head.eyeOffset[2]])" :scale="vector([.72, .16, .08])"><TresBoxGeometry /><TresMeshStandardMaterial :color="appearance.palette.eye" :emissive="appearance.palette.secondaryGlow" :emissive-intensity=".42" /></TresMesh>
+    <TresMesh v-else :position="vector([0, scheme.model.head.eyeOffset[1], scheme.model.head.eyeOffset[2]])" :scale="vector([.72, .16, .08])"><TresBoxGeometry /><TresMeshStandardMaterial :color="appearance.palette.eye" :emissive="colors.eyeHighlight" :emissive-intensity=".42" /></TresMesh>
 
-    <TresMesh v-for="side in [-1, 1]" :key="`cheek-${side}`" :position="vector([side * scheme.model.head.cheekOffset[0], scheme.model.head.cheekOffset[1], scheme.model.head.cheekOffset[2]])" :scale="vector(scheme.model.head.cheekScale)">
-      <TresSphereGeometry /><TresMeshBasicMaterial :ref="registerCheek" :color="scheme.palette.cheek" transparent :opacity="0" />
-    </TresMesh>
-    <TresMesh :position="vector(scheme.model.head.nosePosition)" :scale="vector(scheme.model.head.noseScale)"><TresSphereGeometry /><TresMeshStandardMaterial :color="scheme.palette.nose" :roughness=".22" /></TresMesh>
-    <TresGroup ref="mouth" :position="vector(scheme.model.head.mouthPosition)">
-      <TresMesh :scale="vector(scheme.model.head.mouthScale)"><TresSphereGeometry /><TresMeshStandardMaterial :color="scheme.palette.mouth" :roughness=".2" /></TresMesh>
-      <TresMesh :position="vector(scheme.model.head.tonguePosition)" :scale="vector(scheme.model.head.tongueScale)"><TresSphereGeometry /><TresMeshBasicMaterial :color="scheme.palette.tongue" /></TresMesh>
-    </TresGroup>
+    <ExtensionCloudFoxFaceCustomization :appearance="appearance" :behavior="behavior" :motion-key="motionKey" />
   </TresGroup>
 </template>
