@@ -22,7 +22,7 @@ const main = read('apps/extension/entrypoints/sidepanel/main.ts')
 const unifiedSource = configured.includes("from 'yk-pets-unified-cloud-fox'")
   && wxt.includes('../playground/app/components/studio/ExtensionAlignedCloudFox.vue')
 const checks = [
-  ['belly migration is explicit and ellipse-first', customization.includes("shape: 'ellipse'") && customization.includes('normalizeBelly') && customization.includes('legacyBelly')],
+  ['belly migration is explicit and ellipse-first', customization.includes("return 'ellipse'") && customization.includes('normalizeBelly') && customization.includes('legacyBelly')],
   ['Studio exposes visual belly shape controls', editor.includes('PET_BELLY_SHAPES') && editor.includes('shape-grid') && editor.includes('恢复椭圆默认')],
   ['canonical preview consumes explicit belly customization', preview.includes('resolvePetCustomization') && preview.includes("shape === 'ellipse'") && !preview.includes("mode === 'model-default'")],
   ['one customization normalizer handles every recipe source', configured.includes('normalizeCustomizableAppearance') && configured.includes('createExtensionClassicAppearance')],
