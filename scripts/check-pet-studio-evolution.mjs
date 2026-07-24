@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 校验配方、场景、多物种、独立头身、真实表面采样、局部编辑、完整动作与统一渲染能力持续存在。
- * Verifies recipes, scenes, multi-species support, independent head/body surfaces, real surface sampling, local editing, complete motions, and unified rendering.
+ * 校验配方、场景、多物种、独立头身、真实表面采样、路径级局部编辑、完整动作与统一渲染能力持续存在。
+ * Verifies recipes, scenes, multi-species support, independent head/body surfaces, real surface sampling, path-level local editing, complete motions, and unified rendering.
  */
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -58,11 +58,8 @@ const expectations = [
   ['surface geometry is numerically regression tested', surfaceTest.includes('maximumOffsetError') && surfaceTest.includes('eye separation remains visible') && surfaceTest.includes('spark eye is not allowed to collapse')],
   ['full action effects remain', effects.includes('thoughtBubbles') && effects.includes('starGroup') && effects.includes('cloud-nap') && effects.includes('sparkle-sneeze') && fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48') && headIntent.includes('createProductionFireworkBurstPlan') && limbMotion.includes('createCloudFoxFrontPawPose')],
   ['ear tail and front-paw local controls remain', phase2.includes('interface EarDesignRecipe') && phase2.includes('interface TailDesignRecipe') && registry.includes('FRONT_PAW_DESIGN_RANGES') && pawEditor.includes('连续前爪连接')],
-  ['local patch isolation remains', patchDomain.includes('applyPetAppearanceLocalPatch') && patchDomain.includes('frontPawDesign') && patchTest.includes('nonTailSnapshot') && patchTest.includes('nonEarSnapshot') && patchTest.includes('nonPawSnapshot')],
+  ['local patch isolation remains', patchDomain.includes('applyPetAppearanceLocalPatch') && patchDomain.includes('frontPawDesign') && patchTest.includes('assertOnlyChanged') && patchTest.includes("['tailDesign', 'customization.colors.tailGlow']") && patchTest.includes("['frontPawDesign']") && patchTest.includes("['customization.mouth']")],
 ]
 const failures = expectations.filter(([, ok]) => !ok).map(([name]) => name)
-if (failures.length) {
-  console.error('Pet Studio evolution check failed:', failures.join(', '))
-  process.exit(1)
-}
+if (failures.length) { console.error('Pet Studio evolution check failed:', failures.join(', ')); process.exit(1) }
 console.log(`Pet Studio evolution contract passed: ${expectations.length} checks.`)
