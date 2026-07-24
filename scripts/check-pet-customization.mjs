@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * 文件职责 / File responsibility
- * 锁定完整 Studio 架构：独立身体/头型、单一躯干与 FaceRoot、曲面肚皮、稳定布局、全部位颜色和本地编辑语义。
- * Locks the complete Studio architecture: independent body/head shapes, sole torso and FaceRoot, curved belly, stable layout, all-part colors, and local editing semantics.
+ * 锁定完整 Studio 架构：独立身体/头型、单一躯干与 FaceRoot、稳定相机、可滚动工作台、曲面肚皮和本地编辑语义。
+ * Locks the complete Studio architecture: independent body/head shapes, sole torso and FaceRoot, stable camera, scrollable workspace, curved belly, and local editing semantics.
  */
 import { existsSync, readFileSync } from 'node:fs'
 const url = path => new URL(`../${path}`, import.meta.url)
@@ -44,7 +44,9 @@ const checks = [
   ['classic mouth and thin alternate mouths remain', face.includes("appearance.parts.mouth === 'smile'") && face.includes('scheme.model.head.mouthScale') && face.includes('scheme.model.head.tongueScale') && face.includes('CatmullRomCurve3') && face.includes('TresTubeGeometry')],
   ['belly is a curved decal and never a body constructor', bellyIds.every(id => customization.includes(`id: '${id}'`)) && belly.includes('createCurvedSurface') && belly.includes('depth-write="false"') && !belly.includes('ExtensionCloudFoxBodyShape') && bellyEditor.includes('恢复椭圆默认')],
   ['body profile drives limb, belly, symbol and camera placement', body.includes('getCloudFoxBodyProfile') && belly.includes('getCloudFoxBodyProfile') && canvas.includes('getCloudFoxBodyProfile') && canvas.includes('getCloudFoxHeadProfile')],
-  ['Studio has bounded workspace tracks and opt-in hotspots', studio.includes('height:100dvh') && studio.includes('grid-template-rows:auto minmax(0,1fr)') && studio.includes('.controls{display:flex;min-height:0') && studio.includes('v-if="showHotspots"') && !studio.includes('position:sticky')],
+  ['camera scale is independent of active editor section', canvas.includes('fitRatio') && canvas.includes('cameraFactor') && !canvas.includes('focusZoom') && !canvas.includes('focusLift')],
+  ['Studio document and nested panels remain vertically scrollable', app.includes('overflow-y:auto!important') && app.includes('height:auto!important') && app.includes('margin:0 auto!important') && app.includes('scrollbar-gutter:stable') && studio.includes('.controls{display:flex;min-height:0')],
+  ['Studio has opt-in hotspots without sticky vertical centering', studio.includes('v-if="showHotspots"') && !studio.includes('position:sticky') && app.includes('.studio-workspace')],
   ['Studio suppresses the extension overlay while authoring', studio.includes("class: 'yk-pets-studio-page'") && app.includes('body.yk-pets-studio-page [data-nova-extension-root="overlay"]')],
   ['advanced features are native Vue and local-only', !oldAdvancedPlugin && studio.includes('compareSnapshot') && studio.includes('saveCustomScheme') && studio.includes('undoStack.length') && !studio.includes('setInterval(') && !store.includes('fetch(')],
   ['all material channels and expanded ranges remain', colorKeys.every(key => customization.includes(`${key}: string`)) && colors.includes('所有部位颜色') && customization.includes('bodyWidth: [.55, 1.7]') && customization.includes('headScale: [.68, 1.48]')],

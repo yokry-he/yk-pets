@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  装配 Studio 实时预览，并用独立身体/头型 Profile 计算稳定镜头边界和聚焦距离。
-  Assembles Studio live preview and uses independent body/head profiles for stable camera bounds and focus distance.
+  装配 Studio 实时预览，并用独立身体/头型 Profile 计算稳定且不随编辑分区变化的相机边界。
+  Assembles Studio live preview and uses independent body/head profiles for camera bounds that remain stable across editor sections.
 -->
 <script setup lang="ts">
 import { TresCanvas } from '@tresjs/core'
@@ -31,6 +31,7 @@ const props = withDefaults(defineProps<{
 })
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vec3 = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
+const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
 const legacyScene = computed(() => props.background === 'light'
   ? { ...createDefaultPetScene(), background: '#eef1ff', backgroundSecondary: '#ffffff', contrastMode: 'light' as const }
   : props.background === 'web'
@@ -56,20 +57,22 @@ function resolvedBounds(appearance: MultiSpeciesAppearanceRecipe) {
     width: base.width * widthScale,
     height: base.height * heightScale,
     depth: base.depth * depthScale,
-    radius: base.radius * Math.max(widthScale, heightScale, depthScale),
   }
 }
 const petBounds = computed(() => resolvedBounds(props.appearance))
 const referenceBounds = resolvedBounds(createExtensionClassicAppearance())
-const focusZoom = computed(() => ({ full: 1, head: .7, body: .82, tail: .9 }[props.focus]))
-const cameraFactor = computed(() => Math.max(.78, Math.min(1.5, petBounds.value.radius / referenceBounds.radius)) * focusZoom.value)
+const fitRatio = computed(() => Math.max(
+  petBounds.value.width / referenceBounds.width,
+  petBounds.value.height / referenceBounds.height,
+  petBounds.value.depth / referenceBounds.depth,
+))
+const cameraFactor = computed(() => clamp(fitRatio.value, .82, 1.5))
 const cameraPosition = computed(() => {
   const base = scheme.scene.camera.normalPosition
-  const focusLift = props.focus === 'head' ? .55 : props.focus === 'body' ? -.1 : 0
   return vec3([
     base[0],
-    base[1] + (petBounds.value.centerY - referenceBounds.centerY) + focusLift,
-    base[2] * cameraFactor.value * .9,
+    base[1] + (petBounds.value.centerY - referenceBounds.centerY),
+    base[2] * cameraFactor.value * .88,
   ])
 })
 const sceneStyle = computed(() => ({
@@ -82,7 +85,7 @@ const sceneStyle = computed(() => ({
 </script>
 
 <template>
-  <div :class="['studio-canvas', `studio-canvas--${contrast}`, { 'studio-canvas--extension': extensionScene }]" :style="sceneStyle" :data-visual-scheme="scheme.id">
+  <div :class="['studio-canvas', `studio-canvas--${contrast}`, { 'studio-canvas--extension': extensionScene }]" :style="sceneStyle" :data-visual-scheme="scheme.id" :data-focus="focus">
     <div v-if="!activeScene.transparent" class="scene-surface" />
     <div v-if="!activeScene.transparent" class="scene-gradient" />
     <div v-if="extensionScene" class="extension-nebula" />
