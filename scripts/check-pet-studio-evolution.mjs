@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 校验配方、场景、多物种、独立头身、真实表面采样、路径级局部编辑、完整动作与统一渲染能力持续存在。
- * Verifies recipes, scenes, multi-species support, independent head/body surfaces, real surface sampling, path-level local editing, complete motions, and unified rendering.
+ * 校验配方、场景、多物种、独立头身、真实表面采样、分区配置工作区、路径级局部编辑、完整动作与统一渲染能力持续存在。
+ * Verifies recipes, scenes, multi-species support, independent surfaces, sectioned configuration workspaces, path-level patches, complete motions, and unified rendering.
  */
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -13,7 +13,6 @@ const registry = read('apps/playground/app/domain/pet-species-registry.ts')
 const scene = read('apps/playground/app/domain/pet-scene.ts')
 const profiles = read('apps/playground/app/domain/cloud-fox-shape-profile.ts')
 const surface = read('apps/playground/app/domain/cloud-fox-surface-model.ts')
-const eyeMetrics = read('apps/playground/app/domain/cloud-fox-eye-metrics.ts')
 const limbMotion = read('apps/playground/app/domain/cloud-fox-limb-motion.ts')
 const store = read('apps/playground/app/stores/pet-appearance.ts')
 const page = read('apps/playground/app/pages/studio.vue')
@@ -37,7 +36,10 @@ const fireworksDomain = read('apps/playground/app/domain/production-cloud-fox-fi
 const headIntent = read('apps/playground/app/components/studio/ProductionCloudFoxHeadIntent.vue')
 const configured = read('apps/extension/components/avatar/ConfiguredCloudFox.vue')
 const wxt = read('apps/extension/wxt.config.ts')
-const pawEditor = read('apps/playground/app/components/studio/StudioTailEditor.vue')
+const pawEditor = read('apps/playground/app/components/studio/StudioFrontPawEditor.vue')
+const tailEditor = read('apps/playground/app/components/studio/StudioTailEditor.vue')
+const antennaEditor = read('apps/playground/app/components/studio/StudioAntennaEditor.vue')
+const mouthEditor = read('apps/playground/app/components/studio/StudioMouthEditor.vue')
 const patchDomain = read('apps/playground/app/domain/pet-appearance-patch.ts')
 const patchTest = read('scripts/test-pet-studio-local-patches.ts')
 const surfaceTest = read('scripts/test-cloud-fox-surface-model.ts')
@@ -57,7 +59,7 @@ const expectations = [
   ['sampled body and production head retain complete limbs and local face', body.includes('frontPawDesign') && body.includes('<ExtensionCloudFoxBodyShape') && bodyShape.includes('normalized unit envelope') && head.includes('<ExtensionCloudFoxHeadShape') && headShape.includes('scheme.model.head.scale') && surface.includes('sampleCloudFoxBodyFrontSurface') && surface.includes('resolveCloudFoxEyeSurfaceAnchor') && belly.includes('createCloudFoxBellySurfaceMesh') && head.includes('getCloudFoxEyeBlinkFloor') && eye.includes('ExtrudeGeometry') && tail.includes('tipGlow.enabled')],
   ['surface geometry is numerically regression tested', surfaceTest.includes('maximumOffsetError') && surfaceTest.includes('eye separation remains visible') && surfaceTest.includes('spark eye is not allowed to collapse')],
   ['full action effects remain', effects.includes('thoughtBubbles') && effects.includes('starGroup') && effects.includes('cloud-nap') && effects.includes('sparkle-sneeze') && fireworksDomain.includes('PRODUCTION_FIREWORK_PARTICLE_COUNT = 48') && headIntent.includes('createProductionFireworkBurstPlan') && limbMotion.includes('createCloudFoxFrontPawPose')],
-  ['ear tail and front-paw local controls remain', phase2.includes('interface EarDesignRecipe') && phase2.includes('interface TailDesignRecipe') && registry.includes('FRONT_PAW_DESIGN_RANGES') && pawEditor.includes('连续前爪连接')],
+  ['limb tail antenna and mouth controls have independent workspaces', pawEditor.includes('恢复扩展最初位置') && pawEditor.includes('frontPawDesign.mirror') && tailEditor.includes('分段尾巴') && !tailEditor.includes('连续前爪连接') && antennaEditor.includes('触角间距') && mouthEditor.includes('张嘴范围') && page.includes("tab==='limbs'") && page.includes("tab==='belly'") && page.includes("tab==='antenna'")],
   ['local patch isolation remains', patchDomain.includes('applyPetAppearanceLocalPatch') && patchDomain.includes('frontPawDesign') && patchTest.includes('assertOnlyChanged') && patchTest.includes("['tailDesign', 'customization.colors.tailGlow']") && patchTest.includes("['frontPawDesign']") && patchTest.includes("['customization.mouth']")],
 ]
 const failures = expectations.filter(([, ok]) => !ok).map(([name]) => name)
