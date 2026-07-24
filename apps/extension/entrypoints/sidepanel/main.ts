@@ -1,7 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 创建并挂载 Side Panel Vue 应用，同时安装 YK-PETS 品牌、运行偏好、宠物工坊、记忆导入、审计补丁和当前页面筛选兼容层。
- * Creates and mounts the Side Panel Vue application and installs YK-PETS branding, runtime preferences, Pet Studio, memory import, audit-patch, and Current Page filter bridges.
+ * 创建 Side Panel Vue 应用，并按顺序安装品牌、宠物设置、任务首页、工坊、记忆和审计兼容层。
+ * Creates the Side Panel Vue app and installs branding, pet settings, task-first home, Studio, memory, and audit bridges in order.
  */
 import { createApp } from 'vue'
 import App from './App.vue'
@@ -11,12 +11,21 @@ import { installPetMemoryCurrentPageTools } from './pet-memory-current-page-tool
 import { installPetMemoryImportTools } from './pet-memory-import-tools'
 import { installPetRuntimeSettingsTools } from './pet-runtime-settings-tools'
 import { installPetStudioTools } from './pet-studio-tools'
+import { installSidePanelExperienceTools } from './sidepanel-experience-tools'
 import './style.css'
 
 createApp(App).mount('#app')
 installYkPetsCompatibility(document)
-installPetRuntimeSettingsTools(document).catch(error => console.warn('[YK-PETS runtime settings]', error))
-installPetStudioTools(document).catch(error => console.warn('[YK-PETS pet studio tools]', error))
 installPetMemoryImportTools(document)
 installPetMemoryAuditPatchTools(document)
 installPetMemoryCurrentPageTools(document)
+
+Promise.allSettled([
+  installPetRuntimeSettingsTools(document),
+  installPetStudioTools(document),
+]).then((results) => {
+  for (const result of results) {
+    if (result.status === 'rejected') console.warn('[YK-PETS Side Panel tools]', result.reason)
+  }
+  return installSidePanelExperienceTools(document)
+}).catch(error => console.warn('[YK-PETS Side Panel experience]', error))
