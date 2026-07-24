@@ -14,7 +14,6 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,38 +26,18 @@ jobs:
           BUNDLE_SHA256: 5bed7417d8a964d1f60d336d87341c6dee69a08b07feea2e83fe2e3e3c0d91ea
         shell: bash
         run: |
-          set -u
-          report=/tmp/yk-pets-reconstruct-report.txt
-          fail=/tmp/yk-pets-reconstruct-failed
-          bundle_b64=/tmp/yk-pets-bundle.b64
-          : > "$report"
-          : > "$bundle_b64"
-          valid=1
-
+          set -euo pipefail
+          : > /tmp/yk-pets-bundle.b64
           while read -r blob expected
           do
-            if ! curl --fail-with-body --silent --show-error \
+            curl --fail-with-body --silent --show-error \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "https://api.github.com/repos/$GITHUB_REPOSITORY/git/blobs/$blob" \
-              > /tmp/yk-pets-blob.json
-            then
-              echo "$blob download-failed expected=$expected" >> "$report"
-              valid=0
-              continue
-            fi
-            if ! jq -r '.content' /tmp/yk-pets-blob.json | tr -d '\n' | base64 -d > /tmp/yk-pets-part
-            then
-              echo "$blob decode-failed expected=$expected" >> "$report"
-              valid=0
-              continue
-            fi
-            actual="$(sha256sum /tmp/yk-pets-part | cut -d' ' -f1)"
-            bytes="$(wc -c < /tmp/yk-pets-part)"
-            echo "$blob bytes=$bytes expected=$expected actual=$actual" >> "$report"
-            if [ "$actual" != "$expected" ]; then valid=0; fi
-            cat /tmp/yk-pets-part >> "$bundle_b64"
+              | jq -r '.content' | tr -d '\n' | base64 -d > /tmp/yk-pets-part
+            echo "$expected  /tmp/yk-pets-part" | sha256sum --check --strict
+            cat /tmp/yk-pets-part >> /tmp/yk-pets-bundle.b64
           done <<'PARTS'
           43809e288c5e8d49305a25d9093f8f6de7b743f1 785b629739c6d57337556c7a41d5db14eb5123709cbf558da9cfa45dfe91241f
           989148a667251fe421e11d25f166922f1ab02c25 21666c30273cf3a458cb092f17b9400f58c4c60919d55e7969fe1ab0fd6e6e1a
@@ -68,7 +47,8 @@ jobs:
           47b265bbf5c88c8f25339c0570c58bdbb37bd9ea eceba915fcce4634750006580795502dea147450036ffe48db9184c935d6af2d
           7a382fd545604d16b16960870e9fa3ac82325a8c 902bad0d98cf5abdfb722a911410beb2dd8de0632912dc95df2a686ea0e4f335
           21266310333fff9a6f5ba1864d61b43a79045ce4 8261d1c32565c85144b1352599e83e89f1944dce4c3de3b9a4bceb747fe7c13e
-          c6cba1500b80707108501c1b156ee2d24924af74 e3673aaafda09a3473a215b307648e00e416d63be3de584ba3b2716f48b276e9
+          14a878ee44c9a88fd2503e45ccc093fb50225c5f 91b7a6f061d7cc09da16f35845045c023ef5455526012a9aab072231ab6771f6
+          7f1994df139e65b84aa46311da146078158249b3 8b19d715b1a7b039775c325c75a99a40adaa145df8e38de8c65688946d8be29d
           e3a27effc8abffe46a9020b63db1d84830c503cf 747d766b71d31102d335c11ad292c8831df4eb97bd65bdf5ad3013f87b232877
           cceb4d1766e900f8d066029c586068035490f6f1 d351a17fc7e564fc1bd4419d6937d49752a78d4d2f95ca56243db12324bcb3e7
           82fa259c7b442ec876b31f7375f4059d27da529f aafa22c21b3f3bff556d63c7c0f52dd2427196df263a43066dfecafbd53ce4dc
@@ -81,40 +61,12 @@ jobs:
           3d348ef7bff0f326933aa8096fd77a206141fd9b cf9e5da3a712a7a9e7b96734fe759bbced982a63ededf56f7dc58bc30f1d4848
           612258ea11fdca1090ba43763ec6e231cd11b17f f556229167f0fff11d8a8063bbf91691ff6f04a14296738fdf30a17002f6bb01
           PARTS
-
-          if base64 -d "$bundle_b64" > /tmp/yk-pets-motion-domain-bundle.tar.gz
-          then
-            actual_bundle="$(sha256sum /tmp/yk-pets-motion-domain-bundle.tar.gz | cut -d' ' -f1)"
-            echo "bundle expected=$BUNDLE_SHA256 actual=$actual_bundle" >> "$report"
-            if [ "$actual_bundle" != "$BUNDLE_SHA256" ]; then valid=0; fi
-          else
-            echo 'bundle decode-failed' >> "$report"
-            valid=0
-          fi
-
-          echo "valid=$valid" >> "$report"
-          cat "$report"
-          if [ "$valid" -ne 1 ]; then
-            touch "$fail"
-            exit 0
-          fi
-
+          base64 -d /tmp/yk-pets-bundle.b64 > /tmp/yk-pets-motion-domain-bundle.tar.gz
+          echo "$BUNDLE_SHA256  /tmp/yk-pets-motion-domain-bundle.tar.gz" | sha256sum --check --strict
           tar -xzf /tmp/yk-pets-motion-domain-bundle.tar.gz
           cp .__yk_bundle_manifest /tmp/yk-pets-feature-manifest
           rm .__yk_bundle_manifest
           test "$(wc -l < /tmp/yk-pets-feature-manifest)" -eq 25
-
-      - name: Upload reconstruction report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: yk-pets-reconstruction-report
-          path: /tmp/yk-pets-reconstruct-report.txt
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Validate reconstruction
-        run: test ! -e /tmp/yk-pets-reconstruct-failed
 
       - name: Use Node.js 22
         uses: actions/setup-node@v4
@@ -136,44 +88,13 @@ jobs:
         run: pnpm check:cloud-fox-studio
 
       - name: Typecheck workspaces
-        id: typecheck
-        shell: bash
-        run: |
-          set +e
-          pnpm typecheck > /tmp/yk-pets-typecheck.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            tail -n 220 /tmp/yk-pets-typecheck.log
-          fi
-          exit "$status"
-
-      - name: Upload typecheck failure log
-        if: failure() && steps.typecheck.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: yk-pets-typecheck-errors
-          path: /tmp/yk-pets-typecheck.log
-          if-no-files-found: error
-          retention-days: 3
+        run: pnpm typecheck
 
       - name: Run tests
         run: pnpm test
 
       - name: Build Local Agent and extension
-        id: build
-        shell: bash
-        run: |
-          set -o pipefail
-          pnpm build 2>&1 | tee /tmp/yk-pets-build.log
-
-      - name: Upload build failure log
-        if: failure() && steps.build.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: yk-pets-build-errors
-          path: /tmp/yk-pets-build.log
-          if-no-files-found: error
-          retention-days: 3
+        run: pnpm build
 
       - name: Build Playground
         run: pnpm build:playground
@@ -188,54 +109,15 @@ jobs:
           parent_sha="$(git rev-parse HEAD)"
           base_tree="$(git rev-parse 'HEAD^{tree}')"
           tree_entries='[]'
-
           while IFS= read -r path
           do
-            test -f "$path"
             encoded="$(base64 -w 0 "$path")"
-            blob_sha="$(
-              jq -n --arg content "$encoded" '{content:$content,encoding:"base64"}' \
-              | curl --fail-with-body --silent --show-error \
-                  -X POST \
-                  -H "Authorization: Bearer $GH_TOKEN" \
-                  -H "Accept: application/vnd.github+json" \
-                  -H "X-GitHub-Api-Version: 2022-11-28" \
-                  "$api/git/blobs" \
-                  --data-binary @- \
-              | jq -er '.sha'
-            )"
+            blob_sha="$(jq -n --arg content "$encoded" '{content:$content,encoding:"base64"}' | curl --fail-with-body --silent --show-error -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api/git/blobs" --data-binary @- | jq -er '.sha')"
             tree_entries="$(jq --arg path "$path" --arg sha "$blob_sha" '. + [{path:$path,mode:"100644",type:"blob",sha:$sha}]' <<< "$tree_entries")"
           done < /tmp/yk-pets-feature-manifest
-
-          tree_sha="$(
-            jq -n --arg base_tree "$base_tree" --argjson tree "$tree_entries" '{base_tree:$base_tree,tree:$tree}' \
-            | curl --fail-with-body --silent --show-error \
-                -X POST \
-                -H "Authorization: Bearer $GH_TOKEN" \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "$api/git/trees" \
-                --data-binary @- \
-            | jq -er '.sha'
-          )"
-
-          commit_sha="$(
-            jq -n \
-              --arg message 'feat(motion): add semantic rig and keyframe domain' \
-              --arg tree "$tree_sha" \
-              --arg parent "$parent_sha" \
-              '{message:$message,tree:$tree,parents:[$parent]}' \
-            | curl --fail-with-body --silent --show-error \
-                -X POST \
-                -H "Authorization: Bearer $GH_TOKEN" \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "$api/git/commits" \
-                --data-binary @- \
-            | jq -er '.sha'
-          )"
+          tree_sha="$(jq -n --arg base_tree "$base_tree" --argjson tree "$tree_entries" '{base_tree:$base_tree,tree:$tree}' | curl --fail-with-body --silent --show-error -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api/git/trees" --data-binary @- | jq -er '.sha')"
+          commit_sha="$(jq -n --arg message 'feat(motion): add semantic rig and keyframe domain' --arg tree "$tree_sha" --arg parent "$parent_sha" '{message:$message,tree:$tree,parents:[$parent]}' | curl --fail-with-body --silent --show-error -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api/git/commits" --data-binary @- | jq -er '.sha')"
           printf '%s\n' "$commit_sha" > /tmp/yk-pets-feature-commit.txt
-          echo "Created unattached feature commit $commit_sha"
 
       - name: Upload atomic feature commit
         uses: actions/upload-artifact@v4
