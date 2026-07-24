@@ -5,7 +5,6 @@
 -->
 <script setup lang="ts">
 import { BufferAttribute, LatheGeometry, SphereGeometry, Vector2, Vector3 } from 'three'
-import { CapsuleGeometry } from 'three/examples/jsm/geometries/CapsuleGeometry.js'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import { getCloudFoxBodyProfile } from '~/domain/cloud-fox-shape-profile'
@@ -34,7 +33,16 @@ function createBeanGeometry() {
 }
 
 const sphereGeometry = new SphereGeometry(1, 72, 52)
-const capsuleGeometry = new CapsuleGeometry(.72, .62, 12, 40)
+const capsuleGeometry = new LatheGeometry([
+  new Vector2(.06, -1),
+  new Vector2(.42, -.94),
+  new Vector2(.7, -.72),
+  new Vector2(.76, -.46),
+  new Vector2(.76, .46),
+  new Vector2(.7, .72),
+  new Vector2(.42, .94),
+  new Vector2(.06, 1),
+], 72)
 const pearGeometry = new LatheGeometry([
   new Vector2(.18, -1),
   new Vector2(.62, -.86),
@@ -66,7 +74,7 @@ const scale = computed(() => {
   const body = scheme.model.body.scale
   const shape = profile.value.scale
   const radius = scheme.model.body.radius
-  const geometryCompensation = profile.value.geometry === 'rounded-cube' ? .54 : profile.value.geometry === 'capsule' ? .75 : 1
+  const geometryCompensation = profile.value.geometry === 'rounded-cube' ? .54 : 1
   return new Vector3(
     body[0] * radius * props.appearance.proportions.bodyWidth * shape[0] * geometryCompensation,
     body[1] * radius * props.appearance.proportions.bodyHeight * shape[1] * geometryCompensation,

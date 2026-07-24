@@ -4,9 +4,7 @@
   Renders one continuous independently selectable head shell and owns no eye, ear, face, or motion logic.
 -->
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue'
-import { BufferAttribute, SphereGeometry } from 'three'
-import { CapsuleGeometry } from 'three/examples/jsm/geometries/CapsuleGeometry.js'
+import { BufferAttribute, LatheGeometry, SphereGeometry, Vector2, Vector3 } from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import { getCloudFoxHeadProfile } from '~/domain/cloud-fox-shape-profile'
@@ -36,7 +34,16 @@ function createBeanGeometry() {
 }
 
 const sphereGeometry = new SphereGeometry(1, 64, 48)
-const capsuleGeometry = new CapsuleGeometry(.78, .42, 10, 36)
+const capsuleGeometry = new LatheGeometry([
+  new Vector2(.08, -1),
+  new Vector2(.42, -.92),
+  new Vector2(.72, -.68),
+  new Vector2(.78, -.38),
+  new Vector2(.78, .38),
+  new Vector2(.72, .68),
+  new Vector2(.42, .92),
+  new Vector2(.08, 1),
+], 64)
 const beanGeometry = createBeanGeometry()
 const roundedGeometry = new RoundedBoxGeometry(1.78, 1.58, 1.52, 7, .3)
 const geometry = computed(() => {
@@ -48,11 +55,11 @@ const geometry = computed(() => {
 const scale = computed(() => {
   const shape = profile.value.scale
   const headScale = props.appearance.proportions.headScale
-  return [
+  return new Vector3(
     baseRadius * shape[0] * headScale,
     baseRadius * shape[1] * headScale,
     baseRadius * shape[2] * headScale,
-  ] as const
+  )
 })
 
 onBeforeUnmount(() => {
