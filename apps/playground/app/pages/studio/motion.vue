@@ -4,10 +4,11 @@
   Provides motion drafts, playhead, keyframe editing, semantic pose authoring, and custom-motion preview through the sole production Cloud Fox renderer.
 -->
 <script setup lang="ts">
-import { evaluateNormalizedMotionAsset, type MotionInterpolation } from '@yk-pets/pet-core'
+import { evaluateMotionPropEvents, evaluateNormalizedMotionAsset, type MotionInterpolation } from '@yk-pets/pet-core'
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
 import StudioMotionPoseEditor from '~/components/studio/StudioMotionPoseEditor.vue'
 import StudioMotionTimeline from '~/components/studio/StudioMotionTimeline.vue'
+import StudioMotionPropEvents from '~/components/studio/StudioMotionPropEvents.vue'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 import { useStudioAssetStore } from '~/stores/studio-assets'
 import { useStudioMotionEditorStore } from '~/stores/studio-motion-editor'
@@ -24,6 +25,7 @@ const saved = computed(() => assets.motions.find(item => item.id === session.sel
 const draft = computed(() => editor.draft)
 const availableProps = computed(() => assets.props.filter(item => draft.value?.propIds.includes(item.id)))
 const evaluatedPose = computed(() => draft.value ? evaluateNormalizedMotionAsset(draft.value, editor.playheadTimeMs) : null)
+const evaluatedProps = computed(() => draft.value ? evaluateMotionPropEvents(draft.value, editor.playheadTimeMs) : { instances: [], diagnostics: [] })
 const status = ref('')
 let raf = 0
 
@@ -122,7 +124,7 @@ onBeforeUnmount(() => {
       </header>
       <div class="preview-shell">
         <ClientOnly>
-          <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" />
+          <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" />
         </ClientOnly>
         <div class="preview-options">
           <button v-for="item in ['front','left','back','right'] as const" :key="item" :class="{active:session.previewView===item}" @click="setView(item)">{{ item }}</button>
@@ -167,6 +169,16 @@ onBeforeUnmount(() => {
           @auto-key="editor.autoKey=$event"
         />
         <section class="dependency-card"><h3>道具依赖</h3><p v-if="!availableProps.length">当前动作尚未引用道具。</p><NuxtLink v-for="prop in availableProps" :key="prop.id" :to="`/studio/props?prop=${prop.id}`">{{ prop.nameZh }}</NuxtLink></section>
+        <StudioMotionPropEvents
+          :asset="draft"
+          :playhead-time-ms="editor.playheadTimeMs"
+          :prop-assets="assets.props"
+          :selected-event-ids="editor.selectedPropEventIds"
+          @add="editor.addPropEvent"
+          @select="editor.selectPropEvent"
+          @delete="editor.deletePropEvents"
+        />
+        <p v-if="evaluatedProps.diagnostics.length" class="diagnostics">道具事件：{{ evaluatedProps.diagnostics.slice(-2).map(item => item.code).join(' · ') }}</p>
         <p v-if="editor.lastDiagnostics.length" class="diagnostics">规范化：{{ editor.lastDiagnostics.slice(-3).join(' · ') }}</p>
         <code>{{ draft.rigId }}</code><code>{{ draft.id }}</code>
       </template>

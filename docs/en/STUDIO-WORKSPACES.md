@@ -21,7 +21,7 @@ Motions never mutate appearance recipes. Motions reference stable prop IDs and d
 
 ## Not complete yet
 
-Prop event tracks, prop entity geometry/material editing, and advanced animation tools are incomplete. Future work must keep reusing the sole production renderer without copying topology or adding another long-running WebGL scene.
+Prop event tracks, mount/world-space events, and same-scene instance preview are complete. Prop entity geometry/material editing and advanced animation tools remain incomplete. Future work must keep reusing the sole production renderer without copying topology or adding another long-running WebGL scene.
 
 ## Safety boundaries
 

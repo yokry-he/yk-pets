@@ -5,7 +5,7 @@
 -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import type { EvaluatedCloudFoxPose } from '@yk-pets/pet-core'
+import type { EvaluatedCloudFoxPose, EvaluatedMotionPropInstance } from '@yk-pets/pet-core'
 import { useLoop } from '@tresjs/core'
 import { Vector3 } from 'three'
 import type { Group } from 'three'
@@ -15,6 +15,7 @@ import ExtensionCloudFoxEnergyBall from './ExtensionCloudFoxEnergyBall.vue'
 import ExtensionCloudFoxMealOverlay from './ExtensionCloudFoxMealOverlay.vue'
 import ExtensionCloudFoxTail from './ExtensionCloudFoxTail.vue'
 import ExtensionCloudFoxMotionEffects from './ExtensionCloudFoxMotionEffects.vue'
+import ExtensionCloudFoxPropInstances from './ExtensionCloudFoxPropInstances.vue'
 import ExtensionCloudFoxOrbit from './ExtensionCloudFoxOrbit.vue'
 import ProductionCloudFoxFireworks from './ProductionCloudFoxFireworks.vue'
 import ProductionCloudFoxHeadIntent from './ProductionCloudFoxHeadIntent.vue'
@@ -35,6 +36,8 @@ const props = withDefaults(defineProps<{
   speaking?: boolean
   active?: boolean
   customPose?: EvaluatedCloudFoxPose | null
+  propInstances?: readonly EvaluatedMotionPropInstance[]
+  propAssets?: readonly import('~/domain/studio-workspace').StudioPropAssetMetadata[]
 }>(), {
   pointer: () => ({ x: 0, y: 0 }),
   speaking: false,
@@ -237,6 +240,7 @@ loop.onBeforeRender(({ elapsed, delta }) => {
     <ExtensionCloudFoxMealOverlay :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" />
     <TresGroup ref="motion" :position="vector(scheme.model.rootPosition)">
       <ExtensionCloudFoxOrbit :appearance="appearance" :behavior="behavior" />
+      <ExtensionCloudFoxPropInstances :appearance="appearance" :instances="propInstances" :prop-assets="propAssets" />
       <ExtensionCloudFoxEnergyBall :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" />
       <ExtensionCloudFoxTail :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" :custom-pose="customPose" />
       <TresGroup ref="bodyAssembly">

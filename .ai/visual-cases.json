@@ -99,6 +99,32 @@
         "body-and-belly-move-together",
         "refresh-restores-saved-motion"
       ]
+    },
+    {
+      "id": "motion-prop-hold-throw-catch",
+      "route": "/studio/motion",
+      "setup": {
+        "propKind": "composite",
+        "events": [
+          "create@0",
+          "attach:right-front-paw@0",
+          "detach:world@500",
+          "move@800",
+          "attach:left-front-paw@1200",
+          "destroy@1800"
+        ]
+      },
+      "automatedChecks": [
+        "prop-event-time-resolution",
+        "single-tres-canvas-prop-instance",
+        "missing-dependency-diagnostic"
+      ],
+      "manualChecks": [
+        "prop-attaches-to-right-paw",
+        "detached-prop-moves-in-world-space",
+        "prop-catches-on-left-paw",
+        "destroy-removes-instance"
+      ]
     }
   ]
 }

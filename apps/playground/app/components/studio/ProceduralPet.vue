@@ -4,7 +4,7 @@
   Dispatches the generic preview by species; Cloud Fox receives the full Chrome extension motion set while other species safely fall back.
 -->
 <script setup lang="ts">
-import type { EvaluatedCloudFoxPose } from '@yk-pets/pet-core'
+import type { EvaluatedCloudFoxPose, EvaluatedMotionPropInstance } from '@yk-pets/pet-core'
 import ExtensionAlignedCloudFox from './ExtensionAlignedCloudFox.vue'
 import MoonCat from './MoonCat.vue'
 import { PET_SPECIES_REGISTRY, resolveSpeciesBehavior, type MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
@@ -17,6 +17,8 @@ const props = defineProps<{
   motionKey: number
   view: CloudFoxStudioView
   customPose?: EvaluatedCloudFoxPose | null
+  propInstances?: readonly EvaluatedMotionPropInstance[]
+  propAssets?: readonly import('~/domain/studio-workspace').StudioPropAssetMetadata[]
 }>()
 const definition = computed(() => PET_SPECIES_REGISTRY[props.appearance.speciesId])
 const moonCatBehavior = computed(() => {
@@ -36,6 +38,8 @@ const moonCatBehavior = computed(() => {
     :motion-key="motionKey"
     :view="view"
     :custom-pose="customPose"
+    :prop-instances="propInstances"
+    :prop-assets="propAssets"
   />
   <MoonCat
     v-else-if="appearance.speciesId === 'moon-cat'"

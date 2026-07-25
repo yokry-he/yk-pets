@@ -16,13 +16,12 @@ Every phase must update the AI package in the same feature commit, run full CI, 
 
 ## Phase C: Prop event tracks
 
-- Status: Next
-- Stable prop-ID references; create, show, attach, detach, move, hide, and destroy events; mount/world conversion; color, scale, glow, and particle events; missing dependency and deletion cleanup.
-- Completion: deterministic hold, throw, catch, and effect-prop motions can be authored.
+- Status: Complete; manual WebGL acceptance required
+- Stable prop/instance IDs, full event lifecycle, mount/world space, style and particles, missing-dependency diagnostics, same-scene instance rendering, and hold/throw/catch/destroy tests are complete.
 
 ## Phase D: Prop Studio entity editing
 
-- Status: Planned
+- Status: Next
 - Parameterized primitives, hierarchy and local transforms; material, color, opacity, metalness, roughness, and glow; `origin`/`grip`/`display`/`emitter`; preview, duplication, JSON import/export, and budgets.
 
 ## Phase E: Advanced animation tools

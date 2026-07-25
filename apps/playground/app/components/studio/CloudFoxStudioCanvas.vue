@@ -13,7 +13,7 @@ import { calculatePetStudioVisualBounds } from '~/domain/pet-studio-phase2'
 import { getCloudFoxBodyProfile, getCloudFoxHeadProfile } from '~/domain/cloud-fox-shape-profile'
 import { createExtensionClassicAppearance, createExtensionClassicScene, isExtensionClassicScene } from '~/domain/extension-cloud-fox-default'
 import { createDefaultPetScene, getPetScenePreset, resolveSceneContrast, type PetSceneRecipe } from '~/domain/pet-scene'
-import type { EvaluatedCloudFoxPose } from '@yk-pets/pet-core'
+import type { EvaluatedCloudFoxPose, EvaluatedMotionPropInstance } from '@yk-pets/pet-core'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
@@ -27,6 +27,8 @@ const props = withDefaults(defineProps<{
   scene?: PetSceneRecipe
   focus?: 'full' | 'head' | 'body' | 'tail'
   customPose?: EvaluatedCloudFoxPose | null
+  propInstances?: readonly EvaluatedMotionPropInstance[]
+  propAssets?: readonly import('~/domain/studio-workspace').StudioPropAssetMetadata[]
 }>(), {
   motionKey: 0,
   focus: 'full',
@@ -98,7 +100,7 @@ const sceneStyle = computed(() => ({
       <TresPointLight :position="vec3(scheme.scene.lights.primaryPosition)" :intensity="scheme.scene.lights.primaryIntensity" :color="appearance.palette.primaryGlow" />
       <TresPointLight :position="vec3(scheme.scene.lights.secondaryPosition)" :intensity="scheme.scene.lights.secondaryIntensity" :color="appearance.palette.secondaryGlow" />
       <PetSceneEffects :scene="activeScene" :behavior="behavior" />
-      <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" />
+      <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" />
     </TresCanvas>
     <div v-if="extensionScene" class="extension-glow" />
     <div class="label">

@@ -44,9 +44,19 @@ The complete Appearance Studio, shared navigation, local StudioSession, stable m
 - breathing, blinking, gaze, and existing expressions retained on unauthored channels;
 - the thirty built-in motion runtime paths remain unchanged.
 
+### Prop-event tracks
+
+- Stable prop and instance IDs.
+- Create, show, attach, detach, move, hide, style, and destroy events.
+- Mount/world-space instance evaluation.
+- Color, opacity, glow, and particle rate.
+- Missing-dependency diagnostics and deletion-cleanup foundations.
+- Instances rendered in the sole production TresCanvas.
+- Deterministic hold, throw, catch, and effect authoring.
+
 ## 4. Explicitly incomplete
 
-- Prop event tracks and runtime instances;
+- Advanced interpolation for prop events;
 - prop geometry, material, hierarchy, and anchor entity editing;
 - smooth/Bézier interpolation, curve editing, onion skinning, and motion paths;
 - mirroring, pose presets, motion layers, interruption policy, IK, and audio tracks;
@@ -62,14 +72,14 @@ Evaluate once per frame. Store pose offsets relative to base appearance mounts a
 
 ## 6. Next phase
 
-The next phase is `motion-prop-event-tracks`:
+The next phase is `prop-studio-entity-editing`:
 
-1. Define stable prop-event tracks.
-2. Support create, show, attach, detach, move, hide, and destroy.
-3. Convert between pet mounts and world space.
-4. Evaluate and render deterministic prop instances inside the existing TresCanvas.
-5. Handle missing dependencies, deletion cleanup, and resource budgets.
-6. Complete hold, throw, catch, and effect-prop motions.
+1. Define versioned prop entities, parameterized components, materials, and anchor transforms.
+2. Implement component tree add/duplicate/delete and local-transform editing.
+3. Implement color, opacity, metalness, roughness, and glow.
+4. Implement numeric `origin`, `grip`, `display`, and `emitter` manipulation.
+5. Render real prop definitions in the same preview scene.
+6. Complete duplication, JSON import/export, and resource budgets.
 
 ## 7. Manual acceptance still required
 

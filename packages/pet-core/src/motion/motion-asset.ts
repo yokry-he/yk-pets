@@ -12,6 +12,10 @@ import {
   type CloudFoxRigChannelId,
 } from './cloud-fox-rig'
 import {
+  normalizePropEventTracks,
+  type MotionPropEventTrack,
+} from './prop-events'
+import {
   normalizeDisplayFps,
   normalizeMotionDurationMs,
   normalizeMotionLoopMode,
@@ -47,6 +51,7 @@ export interface StudioMotionAssetV2 {
   authoringAppearanceId?: string
   propIds: string[]
   tracks: MotionTrack[]
+  propEventTracks: MotionPropEventTrack[]
   createdAt: number
   updatedAt: number
   extensions?: Record<string, unknown>
@@ -103,6 +108,7 @@ const KNOWN_ASSET_KEYS = new Set([
   'authoringAppearanceId',
   'propIds',
   'tracks',
+  'propEventTracks',
   'createdAt',
   'updatedAt',
   'extensions',
@@ -139,6 +145,7 @@ export function normalizeMotionAsset(input: unknown, options: NormalizeMotionAss
   if (rawFps !== displayFps) diagnostics.push({ code: 'fps-clamped', path: 'displayFps' })
 
   const tracks = normalizeTracks(source.tracks, durationMs, diagnostics)
+  const propEventTracks = normalizePropEventTracks(source.propEventTracks, durationMs)
   const legacyAppearanceId = optionalText(source.appearanceId)
   const authoringAppearanceId = optionalText(source.authoringAppearanceId) || legacyAppearanceId
   const extensions = collectExtensions(source)
@@ -156,6 +163,7 @@ export function normalizeMotionAsset(input: unknown, options: NormalizeMotionAss
       ...(authoringAppearanceId ? { authoringAppearanceId } : {}),
       propIds: normalizeStringList(source.propIds),
       tracks,
+      propEventTracks,
       createdAt: finiteInteger(source.createdAt, now),
       updatedAt: finiteInteger(source.updatedAt, now),
       ...(Object.keys(extensions).length ? { extensions } : {}),

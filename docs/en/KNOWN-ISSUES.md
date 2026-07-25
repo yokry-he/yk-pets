@@ -29,10 +29,11 @@
 - Status: Open
 - Incomplete: parameterized geometry, materials, hierarchy, local transforms, anchor manipulation, import/export, and budgets.
 
-## PROP-002: Prop event tracks are not implemented
+## PROP-002: Prop event tracks are implemented; real WebGL acceptance remains
 
-- Status: Next
-- Motions currently record dependencies but cannot create, attach, detach, move, hide, or destroy runtime prop instances.
+- Status: Implemented; manual acceptance required
+- Complete: full event lifecycle, mount/world space, style/particles, missing-dependency diagnostics, and same-scene instance preview.
+- Not manually verified: real GPU depth ordering, complex trajectories, and high particle-count performance.
 
 ## VISUAL-001: Real-browser pixel acceptance is pending
 

@@ -23,7 +23,8 @@
     "appearanceMotionPropAssetsAreIndependent": true,
     "sharedSessionIsLocalOnly": true,
     "duplicateRendererForbidden": true,
-    "customMotionRendererWiringComplete": true
+    "customMotionRendererWiringComplete": true,
+    "motionPropEventTracksComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -48,12 +49,17 @@
     "motion-playhead-and-playback-controls",
     "motion-renderer-pose-adapter",
     "custom-motion-playback-runtime",
-    "motion-procedural-channel-blending"
+    "motion-procedural-channel-blending",
+    "motion-prop-event-tracks",
+    "motion-prop-event-runtime",
+    "motion-prop-instance-preview",
+    "motion-prop-mount-world-space",
+    "motion-prop-style-events",
+    "motion-prop-missing-dependency-diagnostics"
   ],
   "notCompleted": [
     "motion-smooth-and-bezier-interpolation",
     "motion-curve-editor",
-    "motion-prop-event-tracks",
     "prop-geometry-editor",
     "prop-material-editor",
     "prop-grip-and-emitter-manipulators",
@@ -61,20 +67,19 @@
     "real-chrome-side-panel-manual-acceptance",
     "real-gpu-webgl-manual-acceptance"
   ],
-  "nextPhase": "motion-prop-event-tracks",
+  "nextPhase": "prop-studio-entity-editing",
   "latestCompletedBatch": {
-    "id": "motion-timeline-authoring-and-preview-adapter",
+    "id": "motion-prop-event-tracks",
     "domainPackage": "@yk-pets/pet-core",
     "rendererModified": true,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "motion-draft-undo-redo",
-      "playhead-loop-resolution",
-      "keyframe-write-copy-paste-move-delete",
-      "fps-grid-snapping",
-      "single-evaluation-pose-flow",
-      "semantic-renderer-adapters",
-      "un-authored-procedural-channel-preservation"
+      "event-normalization-last-write-wins",
+      "hold-throw-catch-destroy",
+      "missing-prop-dependencies",
+      "same-canvas-instance-rendering",
+      "mount-and-world-space",
+      "style-and-particle-events"
     ]
   },
   "mandatoryDevelopmentPolicy": {

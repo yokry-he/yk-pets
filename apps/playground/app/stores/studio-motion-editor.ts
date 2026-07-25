@@ -6,16 +6,20 @@
 import {
   copyMotionKeyframes,
   duplicateMotionAssetForDraft,
+  insertMotionPropEvent,
   moveMotionKeyframes,
   normalizeMotionAsset,
   pasteMotionKeyframes,
   removeMotionKeyframes,
+  removeMotionPropEvents,
   resolveMotionTime,
   setMotionKeyframeInterpolation,
   writeMotionChannelValue,
   type CloudFoxRigChannelId,
   type MotionClipboardEntry,
   type MotionInterpolation,
+  type MotionPropEvent,
+  type MotionPropMountId,
   type StudioMotionAssetV2,
 } from '@yk-pets/pet-core'
 import { defineStore } from 'pinia'
@@ -36,6 +40,7 @@ interface MotionEditorState {
   snapToFrames: boolean
   autoKey: boolean
   lastDiagnostics: string[]
+  selectedPropEventIds: string[]
 }
 
 const DEFAULT_CHANNEL: CloudFoxRigChannelId = 'root.position.y'
@@ -59,6 +64,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     snapToFrames: true,
     autoKey: true,
     lastDiagnostics: [],
+    selectedPropEventIds: [],
   }),
   getters: {
     isDirty: state => Boolean(state.draft) && serialize(state.draft) !== state.baseline,
@@ -78,6 +84,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.playheadTimeMs = 0
       this.playing = false
       this.lastDiagnostics = []
+      this.selectedPropEventIds = []
     },
     replaceFromSaved(asset: StudioMotionAssetV2) {
       this.motionId = asset.id
@@ -96,6 +103,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.redoStack = []
       this.selectedKeyframeIds = []
       this.playing = false
+      this.selectedPropEventIds = []
     },
     snapshot() {
       if (!this.draft) return
@@ -225,6 +233,37 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       if (!this.draft || !this.selectedKeyframeIds.length) return
       const ids = [...this.selectedKeyframeIds]
       this.mutate(asset => setMotionKeyframeInterpolation(asset, ids, interpolation), ids)
+    },
+
+    addPropEvent(input: { propId: string; instanceId: string; kind: MotionPropEvent['kind']; mountId?: MotionPropMountId; transform?: MotionPropEvent['transform']; style?: MotionPropEvent['style'] }) {
+      if (!this.draft) return
+      this.snapshot()
+      const eventId = `prop-event-${input.instanceId}-${Math.round(this.playheadTimeMs)}-${input.kind}-${Date.now().toString(36)}`
+      const event: MotionPropEvent = {
+        id: eventId,
+        timeMs: this.playheadTimeMs,
+        kind: input.kind,
+        ...(input.mountId ? { mountId: input.mountId } : {}),
+        ...(input.kind === 'detach' || input.kind === 'move' ? { space: 'world' as const } : input.kind === 'attach' ? { space: 'mount' as const } : {}),
+        ...(input.transform ? { transform: input.transform } : {}),
+        ...(input.style ? { style: input.style } : {}),
+      }
+      const result = insertMotionPropEvent(this.draft.propEventTracks, { propId: input.propId, instanceId: input.instanceId, event }, this.draft.durationMs)
+      const propIds = this.draft.propIds.includes(input.propId) ? this.draft.propIds : [...this.draft.propIds, input.propId]
+      this.apply({ ...this.draft, propIds, propEventTracks: result.tracks, updatedAt: Date.now() })
+      this.selectedPropEventIds = [result.eventId]
+    },
+    deletePropEvents(eventIds?: string[]) {
+      const ids = eventIds ?? this.selectedPropEventIds
+      if (!this.draft || !ids.length) return
+      this.snapshot()
+      this.apply({ ...this.draft, propEventTracks: removeMotionPropEvents(this.draft.propEventTracks, ids, this.draft.durationMs), updatedAt: Date.now() })
+      this.selectedPropEventIds = []
+    },
+    selectPropEvent(id: string, additive = false) {
+      this.selectedPropEventIds = additive
+        ? this.selectedPropEventIds.includes(id) ? this.selectedPropEventIds.filter(item => item !== id) : [...this.selectedPropEventIds, id]
+        : [id]
     },
     updateMetadata(patch: Partial<Pick<StudioMotionAssetV2, 'nameZh' | 'nameEn' | 'durationMs' | 'displayFps' | 'loopMode' | 'propIds'>>) {
       if (!this.draft) return
