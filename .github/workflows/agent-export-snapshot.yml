@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/cloud-fox-studio-v0610
+  pull_request:
 
 permissions:
   contents: read
@@ -13,10 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Create source snapshot
