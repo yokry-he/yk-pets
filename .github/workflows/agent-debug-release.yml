@@ -15,10 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Download failed publish logs
+      - name: Download failed self-fix logs
         env:
           GH_TOKEN: ${{ github.token }}
-          FAILED_JOB_ID: '89655258767'
+          FAILED_JOB_ID: '89656372166'
         shell: bash
         run: |
           set -euo pipefail
@@ -30,15 +30,15 @@ jobs:
             --output /tmp/failed-job.log
           {
             echo '=== ERROR MATCHES ==='
-            grep -nEi '(^|[^a-z])(error|failed|failure|ERR_|ELIFECYCLE|TS[0-9]{4})([^a-z]|$)' /tmp/failed-job.log | tail -n 160 || true
+            grep -nEi '(^|[^a-z])(error|failed|failure|RuntimeError|Traceback|fatal)([^a-z]|$)' /tmp/failed-job.log | tail -n 120 || true
             echo
-            echo '=== LAST 260 LINES ==='
-            tail -n 260 /tmp/failed-job.log
-          } > /tmp/release-error.txt
-          cat /tmp/release-error.txt
+            echo '=== LAST 180 LINES ==='
+            tail -n 180 /tmp/failed-job.log
+          } > /tmp/self-fix-error.txt
+          cat /tmp/self-fix-error.txt
       - name: Upload diagnostic
         uses: actions/upload-artifact@v4
         with:
-          name: phase-release-error
-          path: /tmp/release-error.txt
+          name: self-fix-error
+          path: /tmp/self-fix-error.txt
           retention-days: 1
