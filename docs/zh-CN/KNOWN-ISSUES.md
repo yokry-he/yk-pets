@@ -1,5 +1,12 @@
 # 已知问题与未完成边界
 
+## STUDIO-001：Studio 子路由自跳转循环已修复，需浏览器复验
+
+- 状态：Implemented; browser recheck required
+- 根因：`pages/studio.vue` 同时成为 `/studio/*` 父路由并无条件跳转到 `/studio/appearance`，导致外观页反复导航；根 `app.vue` 又未渲染 `NuxtLayout`，警告随循环重复。
+- 修复：重定向移动到 `pages/studio/index.vue`，根应用恢复 `NuxtLayout`，并关闭已由显式导入替代的 Pinia Store 自动扫描。
+- 复验：重新启动开发服务器后确认四个 Studio 路由可直接进入、控制台不再重复输出布局与 `actions` 导入警告。
+
 ## MOTION-001：时间轴基础编辑已完成，浏览器交互仍需人工验收
 
 - 状态：Implemented; manual acceptance required

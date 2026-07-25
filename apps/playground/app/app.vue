@@ -14,7 +14,9 @@ const showEntry = computed(() => route.path !== '/studio')
 </script>
 
 <template>
-  <NuxtPage />
+  <NuxtLayout>
+    <NuxtPage />
+  </NuxtLayout>
   <NuxtLink v-if="showEntry" class="studio-entry" :to="nextRoute"><span>✦</span>{{ nextLabel }}</NuxtLink>
 </template>
 

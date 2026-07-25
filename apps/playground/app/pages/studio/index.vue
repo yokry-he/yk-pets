@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  将旧 `/studio` 入口兼容跳转到新的外观工坊路由，避免历史链接失效。
-  Redirects the legacy `/studio` entry to the new appearance workspace so existing links remain valid.
+  仅在精确 `/studio` 索引路由兼容跳转到外观工坊，避免父路由遮蔽 `/studio/*` 子页面。
+  Redirects only the exact `/studio` index route so it cannot shadow the `/studio/*` workspace pages.
 -->
 <script setup lang="ts">
 await navigateTo('/studio/appearance', { replace: true })

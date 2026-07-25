@@ -1,5 +1,12 @@
 # Known Issues and Incomplete Boundaries
 
+## STUDIO-001: Studio child-route self-redirect loop is fixed; browser recheck remains
+
+- Status: Implemented; browser recheck required
+- Root cause: `pages/studio.vue` became the parent of every `/studio/*` route while unconditionally navigating to `/studio/appearance`; root `app.vue` also omitted `NuxtLayout`, so the layout warning repeated with the loop.
+- Fix: move the redirect to `pages/studio/index.vue`, restore `NuxtLayout` at the app root, and disable Pinia Store auto-scanning because all stores are explicitly imported.
+- Recheck: restart the dev server, open all four Studio routes directly, and confirm the repeated layout and duplicate `actions` import warnings are gone.
+
 ## MOTION-001: Timeline editing is implemented; browser interaction acceptance remains
 
 - Status: Implemented; manual acceptance required

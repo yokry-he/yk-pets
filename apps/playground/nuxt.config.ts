@@ -16,6 +16,10 @@ export default defineNuxtConfig({
     '@pinia/nuxt',
   ],
 
+  pinia: {
+    storesDirs: [],
+  },
+
   css: ['~/assets/css/main.css'],
 
   devtools: {

@@ -32,7 +32,9 @@
     "motionLayersComplete": true,
     "motionAudioTracksComplete": true,
     "safeLocalGlbImportComplete": true,
-    "onionSkinUsesSemanticGuides": true
+    "onionSkinUsesSemanticGuides": true,
+    "studioRouteRenderingComplete": true,
+    "piniaStoreAutoScanDisabled": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -81,7 +83,10 @@
     "motion-layering-and-interruption",
     "motion-two-bone-ik-assist",
     "motion-local-audio-tracks",
-    "safe-local-glb-import"
+    "safe-local-glb-import",
+    "studio-nested-route-loop-repair",
+    "nuxt-layout-root-rendering",
+    "pinia-duplicate-store-import-warning-removal"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -90,19 +95,15 @@
   ],
   "nextPhase": "browser-acceptance-and-release-hardening",
   "latestCompletedBatch": {
-    "id": "advanced-motion-tools",
-    "domainPackage": "@yk-pets/pet-core",
-    "rendererModified": true,
-    "visualCasesModified": true,
+    "id": "studio-route-runtime-repair",
+    "domainPackage": "apps/playground",
+    "rendererModified": false,
+    "visualCasesModified": false,
     "automatedCoverage": [
-      "smooth-and-bezier-evaluation",
-      "weighted-motion-layer-composition",
-      "mirror-and-pose-presets",
-      "two-bone-ik",
-      "curve-editor-contract",
-      "semantic-onion-and-path-guides",
-      "local-audio-cue-normalization",
-      "safe-local-glb-validation"
+      "studio-index-only-redirect",
+      "nuxt-layout-root-rendering",
+      "pinia-store-autoscan-disabled",
+      "studio-child-route-non-shadowing"
     ]
   },
   "mandatoryDevelopmentPolicy": {
