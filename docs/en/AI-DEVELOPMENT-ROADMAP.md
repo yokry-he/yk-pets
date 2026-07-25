@@ -26,7 +26,7 @@ Every phase must update the AI package in the same feature commit, run full CI, 
 
 ## Phase E: Advanced animation tools
 
-- Status: Planned
+- Status: Next
 - Smooth/Bézier, curve editor, onion skinning, motion paths, left/right mirror and pose presets, motion layers and interruption, optional IK, audio tracks, and security/performance-reviewed local GLB import.
 
 ## Mandatory process

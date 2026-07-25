@@ -125,6 +125,23 @@
         "prop-catches-on-left-paw",
         "destroy-removes-instance"
       ]
+    },
+    {
+      "id": "prop-entity-material-anchor",
+      "route": "/studio/props",
+      "automatedChecks": [
+        "prop-component-budget",
+        "prop-hierarchy-cycle-cleanup",
+        "prop-material-range-normalization",
+        "prop-anchor-transform-persistence",
+        "sole-scene-prop-model"
+      ],
+      "manualChecks": [
+        "component-tree-edits-visible",
+        "materials-readable-on-dark-and-light",
+        "grip-display-emitter-anchors-align",
+        "no-depth-order-regression"
+      ]
     }
   ]
 }

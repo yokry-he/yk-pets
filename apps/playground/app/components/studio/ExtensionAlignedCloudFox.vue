@@ -38,6 +38,7 @@ const props = withDefaults(defineProps<{
   customPose?: EvaluatedCloudFoxPose | null
   propInstances?: readonly EvaluatedMotionPropInstance[]
   propAssets?: readonly import('~/domain/studio-workspace').StudioPropAssetMetadata[]
+  preservePropMaterials?: boolean
 }>(), {
   pointer: () => ({ x: 0, y: 0 }),
   speaking: false,
@@ -240,7 +241,7 @@ loop.onBeforeRender(({ elapsed, delta }) => {
     <ExtensionCloudFoxMealOverlay :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" />
     <TresGroup ref="motion" :position="vector(scheme.model.rootPosition)">
       <ExtensionCloudFoxOrbit :appearance="appearance" :behavior="behavior" />
-      <ExtensionCloudFoxPropInstances :appearance="appearance" :instances="propInstances" :prop-assets="propAssets" />
+      <ExtensionCloudFoxPropInstances :appearance="appearance" :instances="propInstances" :prop-assets="propAssets" :preserve-asset-materials="preservePropMaterials" />
       <ExtensionCloudFoxEnergyBall :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" />
       <ExtensionCloudFoxTail :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" :custom-pose="customPose" />
       <TresGroup ref="bodyAssembly">

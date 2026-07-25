@@ -4,10 +4,18 @@
  * Manages versioned motion and prop metadata in the shared Studio asset library, migrating legacy local motions into v2 storage.
  */
 import {
+  addPropComponent,
   createStudioMotionAsset,
+  createStudioPropAsset,
+  duplicatePropComponent,
   normalizeDisplayFps,
   normalizeMotionAsset,
   normalizeMotionAssetCollection,
+  normalizePropAsset,
+  normalizePropAssetCollection,
+  removePropComponent,
+  updatePropAnchor,
+  updatePropComponent,
 } from '@yk-pets/pet-core'
 import { defineStore } from 'pinia'
 import {
@@ -17,7 +25,9 @@ import {
   type StudioMotionAssetMetadata,
   type StudioMotionLoopMode,
   type StudioPropAssetMetadata,
+  type StudioPropAnchorId,
   type StudioPropKind,
+  type StudioPropPrimitive,
 } from '~/domain/studio-workspace'
 
 interface StudioAssetState {
@@ -40,7 +50,7 @@ export const useStudioAssetStore = defineStore('studio-assets', {
         const legacy = current ? null : localStorage.getItem(STUDIO_ASSET_LEGACY_STORAGE_KEY)
         const stored = JSON.parse(current || legacy || '{}') as Partial<StudioAssetState>
         this.motions = normalizeMotionAssetCollection(stored.motions)
-        this.props = Array.isArray(stored.props) ? stored.props : []
+        this.props = normalizePropAssetCollection(stored.props)
         this.hydrated = true
         if (!current && legacy) this.persist()
       }
@@ -96,26 +106,78 @@ export const useStudioAssetStore = defineStore('studio-assets', {
     },
     createProp(input: Partial<Pick<StudioPropAssetMetadata, 'nameZh' | 'nameEn' | 'kind' | 'defaultAnchor'>> = {}) {
       const now = Date.now()
-      const prop: StudioPropAssetMetadata = {
+      const prop = createStudioPropAsset({
         id: createStudioAssetId('prop'),
         nameZh: input.nameZh || `新道具 ${this.props.length + 1}`,
         nameEn: input.nameEn || `Prop ${this.props.length + 1}`,
         kind: input.kind || 'composite',
         defaultAnchor: input.defaultAnchor || 'right-front-paw',
-        anchorIds: ['origin', 'grip', 'display', 'emitter'],
         createdAt: now,
         updatedAt: now,
-      }
+      })
       this.props.unshift(prop)
       this.persist()
       return prop
     },
-    updateProp(id: string, patch: Partial<Pick<StudioPropAssetMetadata, 'nameZh' | 'nameEn' | 'kind' | 'defaultAnchor' | 'anchorIds'>>) {
+    updateProp(id: string, patch: Partial<Pick<StudioPropAssetMetadata, 'nameZh' | 'nameEn' | 'kind' | 'defaultAnchor'>>) {
       const prop = this.props.find(item => item.id === id)
       if (!prop) return
-      Object.assign(prop, patch, { updatedAt: Date.now() })
-      prop.kind = (['composite', 'effect'] as StudioPropKind[]).includes(prop.kind) ? prop.kind : 'composite'
+      const normalized = normalizePropAsset({ ...prop, ...patch, updatedAt: Date.now() }).asset
+      Object.assign(prop, normalized)
       this.persist()
+    },
+    replaceProp(asset: StudioPropAssetMetadata) {
+      const normalized = normalizePropAsset(asset).asset
+      const index = this.props.findIndex(item => item.id === normalized.id)
+      if (index < 0) this.props.unshift(normalized)
+      else this.props[index] = normalized
+      this.persist()
+      return normalized
+    },
+    duplicateProp(id: string) {
+      const source = this.props.find(item => item.id === id)
+      if (!source) return
+      const now = Date.now()
+      const copy = normalizePropAsset({ ...structuredClone(source), id: createStudioAssetId('prop'), nameZh: `${source.nameZh} 副本`, nameEn: `${source.nameEn} Copy`, createdAt: now, updatedAt: now }).asset
+      this.props.unshift(copy)
+      this.persist()
+      return copy
+    },
+    addPropComponent(id: string, primitive: StudioPropPrimitive, parentId?: string) {
+      const prop = this.props.find(item => item.id === id)
+      if (!prop) return
+      const componentId = `component-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+      return this.replaceProp(addPropComponent(prop, primitive, componentId, parentId))
+    },
+    duplicatePropComponent(id: string, componentId: string) {
+      const prop = this.props.find(item => item.id === id)
+      if (!prop) return
+      const newId = `component-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+      return this.replaceProp(duplicatePropComponent(prop, componentId, newId))
+    },
+    updatePropComponent(id: string, componentId: string, patch: Parameters<typeof updatePropComponent>[2]) {
+      const prop = this.props.find(item => item.id === id)
+      if (!prop) return
+      return this.replaceProp(updatePropComponent(prop, componentId, patch))
+    },
+    removePropComponent(id: string, componentId: string) {
+      const prop = this.props.find(item => item.id === id)
+      if (!prop) return
+      return this.replaceProp(removePropComponent(prop, componentId))
+    },
+    updatePropAnchor(id: string, anchorId: StudioPropAnchorId, patch: Parameters<typeof updatePropAnchor>[2]) {
+      const prop = this.props.find(item => item.id === id)
+      if (!prop) return
+      return this.replaceProp(updatePropAnchor(prop, anchorId, patch))
+    },
+    importProp(input: unknown) {
+      const now = Date.now()
+      const prop = normalizePropAsset(input, { fallbackId: createStudioAssetId('prop'), now }).asset
+      if (this.props.some(item => item.id === prop.id)) prop.id = createStudioAssetId('prop')
+      prop.updatedAt = now
+      this.props.unshift(prop)
+      this.persist()
+      return prop
     },
     deleteProp(id: string) {
       this.props = this.props.filter(item => item.id !== id)

@@ -174,3 +174,4 @@ export * from './motion/motion-evaluator'
 
 export * from './motion/motion-authoring'
 export * from './motion/prop-events'
+export * from './props/prop-asset'

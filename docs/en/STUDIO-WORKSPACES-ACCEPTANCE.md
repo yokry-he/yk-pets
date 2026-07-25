@@ -24,7 +24,7 @@ Automated CI cannot replace real-browser layout, navigation, and WebGL acceptanc
 ## Props and library
 
 - Prop foundation assets, default mounts, and four anchors remain available.
-- Prop event tracks are implemented, but prop geometry, material, hierarchy, and anchor entity editing must not be described as complete.
+- Prop events and prop entity editing are implemented, but real browser/WebGL, depth ordering, and advanced animation tools must not be described as accepted.
 - Deleting props clears motion dependencies; deleting selected assets clears shared selection.
 
 ## Local data, safety, and performance

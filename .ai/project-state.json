@@ -24,7 +24,10 @@
     "sharedSessionIsLocalOnly": true,
     "duplicateRendererForbidden": true,
     "customMotionRendererWiringComplete": true,
-    "motionPropEventTracksComplete": true
+    "motionPropEventTracksComplete": true,
+    "propAssetSchemaVersion": 2,
+    "propEntityEditorComplete": true,
+    "propAnchorEditorComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -55,31 +58,36 @@
     "motion-prop-instance-preview",
     "motion-prop-mount-world-space",
     "motion-prop-style-events",
-    "motion-prop-missing-dependency-diagnostics"
+    "motion-prop-missing-dependency-diagnostics",
+    "prop-asset-v2-migration",
+    "prop-geometry-editor",
+    "prop-material-editor",
+    "prop-component-hierarchy-editor",
+    "prop-grip-and-emitter-manipulators",
+    "prop-json-import-export",
+    "prop-resource-budgets",
+    "prop-model-shared-preview"
   ],
   "notCompleted": [
     "motion-smooth-and-bezier-interpolation",
     "motion-curve-editor",
-    "prop-geometry-editor",
-    "prop-material-editor",
-    "prop-grip-and-emitter-manipulators",
     "browser-screenshot-baselines",
     "real-chrome-side-panel-manual-acceptance",
     "real-gpu-webgl-manual-acceptance"
   ],
-  "nextPhase": "prop-studio-entity-editing",
+  "nextPhase": "advanced-motion-tools",
   "latestCompletedBatch": {
-    "id": "motion-prop-event-tracks",
+    "id": "prop-studio-entity-editing",
     "domainPackage": "@yk-pets/pet-core",
     "rendererModified": true,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "event-normalization-last-write-wins",
-      "hold-throw-catch-destroy",
-      "missing-prop-dependencies",
-      "same-canvas-instance-rendering",
-      "mount-and-world-space",
-      "style-and-particle-events"
+      "legacy-prop-entity-migration",
+      "component-budget-and-hierarchy-normalization",
+      "geometry-and-material-ranges",
+      "anchor-transform-editing",
+      "same-scene-parametric-preview",
+      "local-json-round-trip"
     ]
   },
   "mandatoryDevelopmentPolicy": {

@@ -19,6 +19,7 @@ const props = defineProps<{
   customPose?: EvaluatedCloudFoxPose | null
   propInstances?: readonly EvaluatedMotionPropInstance[]
   propAssets?: readonly import('~/domain/studio-workspace').StudioPropAssetMetadata[]
+  preservePropMaterials?: boolean
 }>()
 const definition = computed(() => PET_SPECIES_REGISTRY[props.appearance.speciesId])
 const moonCatBehavior = computed(() => {
@@ -40,6 +41,7 @@ const moonCatBehavior = computed(() => {
     :custom-pose="customPose"
     :prop-instances="propInstances"
     :prop-assets="propAssets"
+    :preserve-prop-materials="preservePropMaterials"
   />
   <MoonCat
     v-else-if="appearance.speciesId === 'moon-cat'"

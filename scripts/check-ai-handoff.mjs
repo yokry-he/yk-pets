@@ -34,6 +34,8 @@ const requiredFiles = [
   'docs/en/adr/0005-motion-timeline-preview-adapter.md',
   'docs/zh-CN/adr/0006-motion-prop-event-tracks.md',
   'docs/en/adr/0006-motion-prop-event-tracks.md',
+  'docs/zh-CN/adr/0007-prop-entity-editor.md',
+  'docs/en/adr/0007-prop-entity-editor.md',
 ]
 const contextPaths = new Set([
   '.ai/session-start.md',
@@ -75,6 +77,9 @@ if (state) {
   expect(state.architecture?.motionAssetSchemaVersion === 2, '动作资产 schema 必须为 2 / Motion asset schema must be 2')
   expect(state.architecture?.customMotionRendererWiringComplete === true, '正式自定义动作渲染接入必须标记完成 / Production custom-motion renderer wiring must be marked complete')
   expect(state.architecture?.motionPropEventTracksComplete === true, '道具事件轨道必须标记完成 / Prop event tracks must be marked complete')
+  expect(state.architecture?.propAssetSchemaVersion === 2, '道具资产 schema 必须为 2 / Prop asset schema must be 2')
+  expect(state.architecture?.propEntityEditorComplete === true, '道具实体编辑必须标记完成 / Prop entity editor must be marked complete')
+  expect(state.architecture?.propAnchorEditorComplete === true, '道具锚点编辑必须标记完成 / Prop anchor editor must be marked complete')
   expect(state.mandatoryDevelopmentPolicy?.updateAiPackageForEveryFeatureCommit === true, '必须启用每个功能提交更新 AI 包 / Per-feature-commit AI update policy must be enabled')
   expect((state.completed || []).includes('motion-semantic-rig'), '必须标记语义 Rig 领域已完成 / Semantic Rig domain must be marked complete')
   expect((state.completed || []).includes('motion-domain-evaluator'), '必须标记无 UI 动作求值器已完成 / UI-free motion evaluator must be marked complete')
@@ -83,8 +88,11 @@ if (state) {
   expect((state.completed || []).includes('motion-renderer-pose-adapter'), '必须标记正式姿态适配器已完成 / Production pose adapter must be marked complete')
   expect((state.completed || []).includes('motion-prop-event-tracks'), '必须标记道具事件轨道已完成 / Prop event tracks must be marked complete')
   expect((state.completed || []).includes('motion-prop-event-runtime'), '必须标记道具事件运行时已完成 / Prop event runtime must be marked complete')
-  expect((state.notCompleted || []).includes('prop-geometry-editor'), '必须标记道具几何编辑器尚未完成 / Prop geometry editor must remain marked incomplete')
-  expect(state.nextPhase === 'prop-studio-entity-editing', '下一阶段必须是道具实体编辑 / Next phase must be prop entity editing')
+  expect((state.completed || []).includes('prop-geometry-editor'), '必须标记道具几何编辑已完成 / Prop geometry editing must be marked complete')
+  expect((state.completed || []).includes('prop-material-editor'), '必须标记道具材质编辑已完成 / Prop material editing must be marked complete')
+  expect((state.completed || []).includes('prop-grip-and-emitter-manipulators'), '必须标记道具内部锚点编辑已完成 / Prop internal-anchor editing must be marked complete')
+  expect((state.notCompleted || []).includes('motion-curve-editor'), '必须标记曲线编辑器尚未完成 / Curve editor must remain marked incomplete')
+  expect(state.nextPhase === 'advanced-motion-tools', '下一阶段必须是高级动画工具 / Next phase must be advanced motion tools')
 }
 
 for (const routeFile of ['appearance.vue', 'motion.vue', 'props.vue', 'library.vue']) expect(existsSync(path.join(root, 'apps/playground/app/pages/studio', routeFile)), `缺少 Studio 路由文件 / Missing Studio route file: ${routeFile}`)
@@ -116,16 +124,17 @@ const packageJson = safeRead('package.json')
 
 expect(sessionStart.includes('同一个提交') && sessionStart.includes('scripts/check-ai-handoff.mjs'), '启动协议必须声明同提交更新和强制门禁 / Session protocol must require same-commit updates and name the gate')
 expect(sessionStart.includes('实际代码和运行结果') && sessionStart.includes('旧聊天记录'), '启动协议必须包含可信度顺序 / Session protocol must include the trust order')
-expect(handoffZh.includes('道具事件轨道') && handoffZh.includes('prop-studio-entity-editing'), '中文交接必须记录阶段 C 完成和阶段 D 下一步 / Chinese handoff must record completed Phase C and next Phase D')
-expect(handoffEn.includes('Prop-event tracks') && handoffEn.includes('prop-studio-entity-editing'), 'English handoff must record completed Phase C and next Phase D')
+expect(handoffZh.includes('道具工坊实体编辑') && handoffZh.includes('advanced-motion-tools'), '中文交接必须记录阶段 D 完成和阶段 E 下一步 / Chinese handoff must record completed Phase D and next Phase E')
+expect(handoffEn.includes('Prop Studio entity editing') && handoffEn.includes('advanced-motion-tools'), 'English handoff must record completed Phase D and next Phase E')
 expect(knownZh.includes('HANDOFF-001') && knownEn.includes('HANDOFF-001'), '中英文已知问题必须记录强制 AI 更新 / Known issues must record mandatory AI updates')
 expect(knownZh.includes('MOTION-004') && knownEn.includes('MOTION-004'), '中英文已知问题必须记录旧数据浏览器验收 / Known issues must record legacy-data browser acceptance')
 expect(roadmapZh.includes('阶段 A：语义 Rig 与关键帧领域') && roadmapEn.includes('Phase A: Semantic Rig and keyframe domain'), '中英文路线图必须保留语义 Rig 阶段记录 / Roadmaps must retain the semantic Rig phase record')
-expect(roadmapZh.includes('阶段 C：道具事件轨道') && roadmapZh.includes('Complete') && roadmapZh.includes('阶段 D：道具工坊实体编辑') && roadmapZh.includes('状态：Next') && roadmapEn.includes('Phase C: Prop event tracks') && roadmapEn.includes('Complete') && roadmapEn.includes('Phase D: Prop Studio entity editing') && roadmapEn.includes('Status: Next'), '中英文路线图必须记录阶段 C 完成并把阶段 D 标为下一步 / Roadmaps must record Phase C complete and mark Phase D next')
+expect(roadmapZh.includes('阶段 D：道具工坊实体编辑') && roadmapZh.includes('Complete') && roadmapZh.includes('阶段 E：高级动画工具') && roadmapZh.includes('状态：Next') && roadmapEn.includes('Phase D: Prop Studio entity editing') && roadmapEn.includes('Complete') && roadmapEn.includes('Phase E: Advanced animation tools') && roadmapEn.includes('Status: Next'), '中英文路线图必须记录阶段 D 完成并把阶段 E 标为下一步 / Roadmaps must record Phase D complete and mark Phase E next')
 expect(packageJson.includes('"check:ai-handoff"') && packageJson.includes('node scripts/check-ai-handoff.mjs'), 'package.json 必须运行 AI 交接门禁 / package.json must run the AI handoff gate')
 expect(packageJson.includes('"check:motion-semantic-rig"') && packageJson.includes('node scripts/check-motion-semantic-rig.mjs'), 'package.json 必须运行动作领域门禁 / package.json must run the motion-domain gate')
 expect(packageJson.includes('"check:motion-timeline-preview"') && packageJson.includes('node scripts/check-motion-timeline-preview.mjs'), 'package.json 必须运行时间轴预览门禁 / package.json must run the timeline-preview gate')
 expect(packageJson.includes('"check:motion-prop-events"') && packageJson.includes('node scripts/check-motion-prop-events.mjs'), 'package.json 必须运行道具事件门禁 / package.json must run the prop-event gate')
+expect(packageJson.includes('"check:prop-entity-editor"') && packageJson.includes('node scripts/check-prop-entity-editor.mjs'), 'package.json 必须运行道具实体门禁 / package.json must run the prop-entity gate')
 
 for (const adrPath of requiredFiles.filter(item => item.includes('/adr/'))) {
   const content = safeRead(adrPath)

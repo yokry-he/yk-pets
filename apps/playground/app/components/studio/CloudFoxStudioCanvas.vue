@@ -29,6 +29,7 @@ const props = withDefaults(defineProps<{
   customPose?: EvaluatedCloudFoxPose | null
   propInstances?: readonly EvaluatedMotionPropInstance[]
   propAssets?: readonly import('~/domain/studio-workspace').StudioPropAssetMetadata[]
+  preservePropMaterials?: boolean
 }>(), {
   motionKey: 0,
   focus: 'full',
@@ -100,7 +101,7 @@ const sceneStyle = computed(() => ({
       <TresPointLight :position="vec3(scheme.scene.lights.primaryPosition)" :intensity="scheme.scene.lights.primaryIntensity" :color="appearance.palette.primaryGlow" />
       <TresPointLight :position="vec3(scheme.scene.lights.secondaryPosition)" :intensity="scheme.scene.lights.secondaryIntensity" :color="appearance.palette.secondaryGlow" />
       <PetSceneEffects :scene="activeScene" :behavior="behavior" />
-      <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" />
+      <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" />
     </TresCanvas>
     <div v-if="extensionScene" class="extension-glow" />
     <div class="label">

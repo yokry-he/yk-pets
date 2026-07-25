@@ -54,10 +54,19 @@ The complete Appearance Studio, shared navigation, local StudioSession, stable m
 - Instances rendered in the sole production TresCanvas.
 - Deterministic hold, throw, catch, and effect authoring.
 
+### Prop Studio entity editing
+
+- Schema v2 parametric prop entities and legacy metadata migration.
+- Sphere, box, cylinder, cone, torus, capsule, crystal, text plaque, and particle components.
+- Component hierarchy, local transforms, duplication, and recursive deletion.
+- Color, opacity, metalness, roughness, glow color, and glow intensity.
+- Internal `origin`, `grip`, `display`, and `emitter` anchors.
+- Budgets of 48 components, 240 particles, and bounded text.
+- Local JSON import/export and shared production-scene model preview.
+
 ## 4. Explicitly incomplete
 
 - Advanced interpolation for prop events;
-- prop geometry, material, hierarchy, and anchor entity editing;
 - smooth/Bézier interpolation, curve editing, onion skinning, and motion paths;
 - mirroring, pose presets, motion layers, interruption policy, IK, and audio tracks;
 - security-reviewed local GLB import;
@@ -72,14 +81,14 @@ Evaluate once per frame. Store pose offsets relative to base appearance mounts a
 
 ## 6. Next phase
 
-The next phase is `prop-studio-entity-editing`:
+The next phase is `advanced-motion-tools`:
 
-1. Define versioned prop entities, parameterized components, materials, and anchor transforms.
-2. Implement component tree add/duplicate/delete and local-transform editing.
-3. Implement color, opacity, metalness, roughness, and glow.
-4. Implement numeric `origin`, `grip`, `display`, and `emitter` manipulation.
-5. Render real prop definitions in the same preview scene.
-6. Complete duplication, JSON import/export, and resource budgets.
+1. Smooth/Bézier interpolation and curve editing.
+2. Onion skinning and motion paths.
+3. Left/right mirroring, pose presets, motion layers, and interruption policy.
+4. Optional IK assistance and local audio tracks.
+5. Define safe local GLB import budgets, validation, and fallback.
+6. Preserve the sole production renderer and one long-running WebGL scene.
 
 ## 7. Manual acceptance still required
 
