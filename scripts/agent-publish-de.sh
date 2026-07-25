@@ -13,6 +13,7 @@ mkdir -p "$RELEASE_DIR" "$REPORT_DIR"
 test "$(git rev-parse HEAD)" = "$RELEASE_PARENT_SHA"
 git diff --exit-code "$RELEASE_BASE_SHA" HEAD -- . \
   ':(exclude).github/workflows/agent-export-snapshot.yml' \
+  ':(exclude).github/workflows/agent-inspect-blobs.yml' \
   ':(exclude).github/workflows/agent-debug-release.yml' \
   ':(exclude).github/workflows/agent-resume-phases-de.yml' \
   ':(exclude)scripts/agent-publish-de.sh'
