@@ -7,6 +7,13 @@
 - 修复：重定向移动到 `pages/studio/index.vue`，根应用恢复 `NuxtLayout`，并关闭已由显式导入替代的 Pinia Store 自动扫描。
 - 复验：重新启动开发服务器后确认四个 Studio 路由可直接进入、控制台不再重复输出布局与 `actions` 导入警告。
 
+## MOTION-005：身体部件直接操控已实现，真实 3D Gizmo 待后续
+
+- 状态：Implemented; manual acceptance required
+- 已完成：身体部件树、当前帧/已选关键帧/整段范围、移动/旋转/缩放、整体与身体倍率、对称编辑、归零和预览拖拽操控板。
+- 未完成：直接点击模型部件的射线拾取与三轴 3D Gizmo；当前通过部件树或预览下拉选择部件。
+- 未人工确认：真实浏览器中的长时间拖拽、触控、窄屏和复杂多选撤销。
+
 ## MOTION-001：时间轴基础编辑已完成，浏览器交互仍需人工验收
 
 - 状态：Implemented; manual acceptance required

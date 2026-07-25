@@ -173,6 +173,7 @@ export * from './motion/motion-asset'
 export * from './motion/motion-evaluator'
 
 export * from './motion/motion-authoring'
+export * from './motion/motion-controls'
 export * from './motion/prop-events'
 export * from './props/prop-asset'
 export * from './motion/motion-advanced'

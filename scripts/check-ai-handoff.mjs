@@ -38,6 +38,8 @@ const requiredFiles = [
   'docs/en/adr/0007-prop-entity-editor.md',
   'docs/zh-CN/adr/0008-advanced-motion-tools.md',
   'docs/en/adr/0008-advanced-motion-tools.md',
+  'docs/zh-CN/adr/0009-motion-direct-manipulation.md',
+  'docs/en/adr/0009-motion-direct-manipulation.md',
 ]
 const contextPaths = new Set([
   '.ai/session-start.md',
@@ -86,6 +88,10 @@ if (state) {
   expect(state.architecture?.motionLayersComplete === true, '动作层必须标记完成 / Motion layers must be marked complete')
   expect(state.architecture?.motionAudioTracksComplete === true, '音效轨道必须标记完成 / Audio tracks must be marked complete')
   expect(state.architecture?.safeLocalGlbImportComplete === true, '安全本地 GLB 必须标记完成 / Safe local GLB import must be marked complete')
+  expect(state.architecture?.motionPartControlRegistryComplete === true, '动作部件控制注册表必须标记完成 / Motion part-control registry must be marked complete')
+  expect(state.architecture?.motionDirectAuthoringPadComplete === true, '动作直接操控板必须标记完成 / Direct motion authoring pad must be marked complete')
+  expect(state.architecture?.motionAuthoringScopesComplete === true, '动作三种作用范围必须标记完成 / Motion authoring scopes must be marked complete')
+  expect(state.architecture?.motionWholeClipCorrectionLayerComplete === true, '整段动作修正层必须标记完成 / Whole-clip correction layer must be marked complete')
   expect(state.mandatoryDevelopmentPolicy?.updateAiPackageForEveryFeatureCommit === true, '必须启用每个功能提交更新 AI 包 / Per-feature-commit AI update policy must be enabled')
   expect((state.completed || []).includes('motion-semantic-rig'), '必须标记语义 Rig 领域已完成 / Semantic Rig domain must be marked complete')
   expect((state.completed || []).includes('motion-domain-evaluator'), '必须标记无 UI 动作求值器已完成 / UI-free motion evaluator must be marked complete')
@@ -101,6 +107,10 @@ if (state) {
   expect((state.completed || []).includes('motion-curve-editor'), '必须标记曲线编辑器已完成 / Curve editor must be marked complete')
   expect((state.completed || []).includes('motion-layering-and-interruption'), '必须标记动作层与中断已完成 / Motion layers and interruption must be marked complete')
   expect((state.completed || []).includes('safe-local-glb-import'), '必须标记安全本地 GLB 已完成 / Safe local GLB import must be marked complete')
+  expect((state.completed || []).includes('motion-body-part-control-registry'), '必须标记动作部件控制注册表完成 / Motion part-control registry must be marked complete')
+  expect((state.completed || []).includes('motion-current-selected-clip-scopes'), '必须标记动作三种作用范围完成 / Motion authoring scopes must be marked complete')
+  expect((state.completed || []).includes('motion-root-and-body-uniform-scale'), '必须标记整体与身体缩放完成 / Root and body uniform scale must be marked complete')
+  expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
   expect((state.notCompleted || []).includes('browser-screenshot-baselines'), '必须保留浏览器截图基线未完成 / Browser screenshot baselines must remain incomplete')
   expect(state.nextPhase === 'browser-acceptance-and-release-hardening', '下一阶段必须是浏览器验收和发布加固 / Next phase must be browser acceptance and release hardening')
 }
@@ -136,16 +146,19 @@ expect(sessionStart.includes('同一个提交') && sessionStart.includes('script
 expect(sessionStart.includes('实际代码和运行结果') && sessionStart.includes('旧聊天记录'), '启动协议必须包含可信度顺序 / Session protocol must include the trust order')
 expect(handoffZh.includes('高级动画工具') && handoffZh.includes('browser-acceptance-and-release-hardening'), '中文交接必须记录阶段 E 完成和浏览器验收下一步 / Chinese handoff must record completed Phase E and browser acceptance next')
 expect(handoffEn.includes('Advanced animation tools') && handoffEn.includes('browser-acceptance-and-release-hardening'), 'English handoff must record completed Phase E and browser acceptance next')
+expect(handoffZh.includes('动作直接操控批次') && handoffEn.includes('Direct motion manipulation batch'), '中英文交接必须记录动作直接操控批次 / Handoffs must record the direct manipulation batch')
 expect(knownZh.includes('HANDOFF-001') && knownEn.includes('HANDOFF-001'), '中英文已知问题必须记录强制 AI 更新 / Known issues must record mandatory AI updates')
 expect(knownZh.includes('MOTION-004') && knownEn.includes('MOTION-004'), '中英文已知问题必须记录旧数据浏览器验收 / Known issues must record legacy-data browser acceptance')
 expect(roadmapZh.includes('阶段 A：语义 Rig 与关键帧领域') && roadmapEn.includes('Phase A: Semantic Rig and keyframe domain'), '中英文路线图必须保留语义 Rig 阶段记录 / Roadmaps must retain the semantic Rig phase record')
 expect(roadmapZh.includes('阶段 E：高级动画工具') && roadmapZh.includes('Complete') && roadmapZh.includes('阶段 F：浏览器验收与发布加固') && roadmapZh.includes('状态：Next') && roadmapEn.includes('Phase E: Advanced animation tools') && roadmapEn.includes('Complete') && roadmapEn.includes('Phase F: Browser acceptance and release hardening') && roadmapEn.includes('Status: Next'), '中英文路线图必须记录阶段 E 完成并把浏览器验收标为下一步 / Roadmaps must record Phase E complete and mark browser acceptance next')
+expect(roadmapZh.includes('阶段 F.1：动作直接操控可用性') && roadmapEn.includes('Phase F.1: Direct motion-authoring usability'), '中英文路线图必须记录动作直接操控可用性批次 / Roadmaps must record the direct motion-authoring usability batch')
 expect(packageJson.includes('"check:ai-handoff"') && packageJson.includes('node scripts/check-ai-handoff.mjs'), 'package.json 必须运行 AI 交接门禁 / package.json must run the AI handoff gate')
 expect(packageJson.includes('"check:motion-semantic-rig"') && packageJson.includes('node scripts/check-motion-semantic-rig.mjs'), 'package.json 必须运行动作领域门禁 / package.json must run the motion-domain gate')
 expect(packageJson.includes('"check:motion-timeline-preview"') && packageJson.includes('node scripts/check-motion-timeline-preview.mjs'), 'package.json 必须运行时间轴预览门禁 / package.json must run the timeline-preview gate')
 expect(packageJson.includes('"check:motion-prop-events"') && packageJson.includes('node scripts/check-motion-prop-events.mjs'), 'package.json 必须运行道具事件门禁 / package.json must run the prop-event gate')
 expect(packageJson.includes('"check:prop-entity-editor"') && packageJson.includes('node scripts/check-prop-entity-editor.mjs'), 'package.json 必须运行道具实体门禁 / package.json must run the prop-entity gate')
 expect(packageJson.includes('"check:advanced-motion-tools"') && packageJson.includes('node scripts/check-advanced-motion-tools.mjs'), 'package.json 必须运行高级动画门禁 / package.json must run the advanced-motion gate')
+expect(packageJson.includes('"check:motion-direct-controls"') && packageJson.includes('node scripts/check-motion-direct-controls.mjs'), 'package.json 必须运行动作直接操控门禁 / package.json must run the motion direct-controls gate')
 
 for (const adrPath of requiredFiles.filter(item => item.includes('/adr/'))) {
   const content = safeRead(adrPath)

@@ -34,7 +34,12 @@
     "safeLocalGlbImportComplete": true,
     "onionSkinUsesSemanticGuides": true,
     "studioRouteRenderingComplete": true,
-    "piniaStoreAutoScanDisabled": true
+    "piniaStoreAutoScanDisabled": true,
+    "motionPartControlRegistryComplete": true,
+    "motionDirectAuthoringPadComplete": true,
+    "motionAuthoringScopesComplete": true,
+    "motionWholeClipCorrectionLayerComplete": true,
+    "motionSymmetryEditingComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -86,24 +91,35 @@
     "safe-local-glb-import",
     "studio-nested-route-loop-repair",
     "nuxt-layout-root-rendering",
-    "pinia-duplicate-store-import-warning-removal"
+    "pinia-duplicate-store-import-warning-removal",
+    "motion-body-part-control-registry",
+    "motion-current-selected-clip-scopes",
+    "motion-direct-authoring-pad",
+    "motion-root-and-body-uniform-scale",
+    "motion-symmetry-editing",
+    "motion-appearance-style-property-panel"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
     "real-chrome-side-panel-manual-acceptance",
-    "real-gpu-webgl-manual-acceptance"
+    "real-gpu-webgl-manual-acceptance",
+    "true-3d-raycast-gizmo-manipulation"
   ],
   "nextPhase": "browser-acceptance-and-release-hardening",
   "latestCompletedBatch": {
-    "id": "studio-route-runtime-repair",
-    "domainPackage": "apps/playground",
+    "id": "motion-direct-manipulation-and-routing-repair",
+    "domainPackage": "@yk-pets/pet-core",
     "rendererModified": false,
-    "visualCasesModified": false,
+    "visualCasesModified": true,
     "automatedCoverage": [
-      "studio-index-only-redirect",
-      "nuxt-layout-root-rendering",
-      "pinia-store-autoscan-disabled",
-      "studio-child-route-non-shadowing"
+      "body-part-and-control-registry",
+      "current-frame-authoring",
+      "selected-keyframe-batch-editing",
+      "whole-clip-additive-correction",
+      "uniform-root-and-body-scale",
+      "left-right-symmetry",
+      "studio-index-route-rendering",
+      "nuxt-layout-root-rendering"
     ]
   },
   "mandatoryDevelopmentPolicy": {

@@ -160,6 +160,30 @@
         "local-audio-user-gesture-works",
         "safe-glb-renders-without-network"
       ]
+    },
+    {
+      "id": "motion-direct-body-part-authoring",
+      "route": "/studio/motion",
+      "setup": {
+        "createMotion": true,
+        "selectedPart": "root",
+        "scope": "current-frame",
+        "mode": "scale"
+      },
+      "automatedChecks": [
+        "body-part-control-registry",
+        "three-authoring-scopes",
+        "uniform-scale-three-channel-write",
+        "whole-clip-additive-correction-layer",
+        "symmetry-channel-pairing"
+      ],
+      "manualChecks": [
+        "direct-pad-drag-is-responsive",
+        "part-tree-and-preview-selection-stay-synchronized",
+        "whole-pet-scale-reads-as-multiplier",
+        "selected-keyframe-scope-only-edits-selection",
+        "undo-restores-one-complete-drag-gesture"
+      ]
     }
   ]
 }

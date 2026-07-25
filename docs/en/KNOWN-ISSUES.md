@@ -7,6 +7,13 @@
 - Fix: move the redirect to `pages/studio/index.vue`, restore `NuxtLayout` at the app root, and disable Pinia Store auto-scanning because all stores are explicitly imported.
 - Recheck: restart the dev server, open all four Studio routes directly, and confirm the repeated layout and duplicate `actions` import warnings are gone.
 
+## MOTION-005: Direct body-part manipulation is implemented; true 3D gizmos remain
+
+- Status: Implemented; manual acceptance required
+- Complete: body-part tree, current/selected/whole scopes, translate/rotate/scale, whole-pet and body multipliers, symmetry, reset, and a preview drag pad.
+- Incomplete: raycast selection by clicking the model and three-axis 3D gizmos; parts are currently selected through the tree or preview selector.
+- Not manually verified: long real-browser drags, touch input, narrow layouts, and complex multi-selection undo.
+
 ## MOTION-001: Timeline editing is implemented; browser interaction acceptance remains
 
 - Status: Implemented; manual acceptance required

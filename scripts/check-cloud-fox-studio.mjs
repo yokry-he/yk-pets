@@ -16,7 +16,7 @@ const files = {
   scene: read('apps/playground/app/domain/pet-scene.ts'), registry: read('apps/playground/app/domain/pet-species-registry.ts'),
   profile: read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts'), motionCatalog: read('apps/playground/app/domain/chrome-extension-cloud-fox-motions.ts'),
   motionRuntime: read('apps/playground/app/domain/chrome-extension-cloud-fox-motion-runtime.ts'), store: read('apps/playground/app/stores/pet-appearance.ts'),
-  page: read('apps/playground/app/components/studio/StudioAppearanceWorkspace.vue'), studioRedirect: read('apps/playground/app/pages/studio.vue'),
+  page: read('apps/playground/app/components/studio/StudioAppearanceWorkspace.vue'), studioRedirect: read('apps/playground/app/pages/studio/index.vue'),
   studioAppearanceRoute: read('apps/playground/app/pages/studio/appearance.vue'), presets: read('apps/playground/app/pages/studio-presets.vue'), scenes: read('apps/playground/app/pages/studio-scenes.vue'),
   procedural: read('apps/playground/app/components/studio/ProceduralPet.vue'), canvas: read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue'),
   core: read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue'), body: read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue'),

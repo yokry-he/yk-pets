@@ -107,3 +107,13 @@ The next phase is `browser-acceptance-and-release-hardening`:
 Every feature commit modifying `apps/` or `packages/` must update `.ai/project-state.json` and at least one handoff context in the same commit. `scripts/check-ai-handoff.mjs` enforces this per commit.
 
 Trust order: actual code and runtime results > latest full CI > machine state > ADR/handoff > PR > old chat history.
+
+## 9. Direct motion manipulation batch
+
+- Added a semantic body-part tree and one control registry.
+- Added current-frame, selected-keyframe, and whole-clip authoring scopes.
+- Added whole-pet and body translation, rotation, uniform scale, and advanced per-axis scale.
+- Added safe semantic controls for the head, paws, ears, tail, antennae, eyes, and mouth.
+- Added symmetry, reset, numeric stepping, W/E/R/S/Q/K shortcuts, and a preview drag pad.
+- Whole-clip edits use a separate additive `clip-adjustment` layer and do not rewrite authored keyframes.
+- True model raycast picking and three-axis 3D gizmos remain a later real-browser batch.

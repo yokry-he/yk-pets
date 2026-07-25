@@ -41,3 +41,9 @@ Every phase must update the AI package in the same feature commit, run full CI, 
 4. Run full CI.
 5. Update PR only after green.
 6. Preserve real-browser and WebGL manual acceptance boundaries.
+
+### Phase F.1: Direct motion-authoring usability
+
+- Status: Complete; manual browser acceptance required
+- Completed the body-part tree, appearance-style numeric panel, current/selected/whole scopes, whole-pet and body scaling, symmetry, and preview drag pad.
+- True model raycast picking and three-axis 3D gizmos remain after real-browser acceptance.

@@ -12,7 +12,12 @@ import {
   insertMotionPropEvent,
   mirrorMotionAsset,
   moveMotionKeyframes,
+  nudgeMotionControls,
+  nudgeMotionControlValue,
   normalizeMotionAsset,
+  readMotionControlValue,
+  resetMotionControlValue,
+  setMotionControlValue,
   pasteMotionKeyframes,
   removeMotionKeyframes,
   removeMotionLayer,
@@ -21,11 +26,18 @@ import {
   setMotionKeyframeInterpolation,
   setMotionKeyframeTangents,
   solveTwoBoneIk2D,
+  getMotionBodyPartControls,
+  getMotionBodyPartModes,
+  getMotionControl,
   updateMotionLayer,
   writeMotionChannelValue,
   type CloudFoxRigChannelId,
   type MotionClipboardEntry,
   type MotionAudioCue,
+  type MotionAuthoringScope,
+  type MotionBodyPartId,
+  type MotionControlId,
+  type MotionTransformMode,
   type MotionInterruptionPolicy,
   type MotionInterpolation,
   type MotionLayerMode,
@@ -63,6 +75,12 @@ interface MotionEditorState {
   blendOutStartedAt: number
   blendOutDurationMs: number
   playbackDirection: 1 | -1
+  selectedBodyPartId: MotionBodyPartId
+  authoringScope: MotionAuthoringScope
+  transformMode: MotionTransformMode
+  selectedControlId: MotionControlId
+  symmetryEnabled: boolean
+  controlGestureBaseline: string
 }
 
 const DEFAULT_CHANNEL: CloudFoxRigChannelId = 'root.position.y'
@@ -97,6 +115,12 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     blendOutStartedAt: 0,
     blendOutDurationMs: 0,
     playbackDirection: 1,
+    selectedBodyPartId: 'root',
+    authoringScope: 'current-frame',
+    transformMode: 'translate',
+    selectedControlId: 'root.translate.y',
+    symmetryEnabled: false,
+    controlGestureBaseline: '',
   }),
   getters: {
     isDirty: state => Boolean(state.draft) && serialize(state.draft) !== state.baseline,
@@ -121,6 +145,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.playbackWeight = 1
       this.interruptionPending = false
       this.playbackDirection = 1
+      this.controlGestureBaseline = ''
     },
     replaceFromSaved(asset: StudioMotionAssetV2) {
       this.motionId = asset.id
@@ -134,6 +159,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.playbackWeight = 1
       this.interruptionPending = false
       this.playbackDirection = 1
+      this.controlGestureBaseline = ''
     },
     close() {
       this.motionId = ''
@@ -147,6 +173,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.playbackWeight = 1
       this.interruptionPending = false
       this.playbackDirection = 1
+      this.controlGestureBaseline = ''
     },
     snapshot() {
       if (!this.draft) return
@@ -279,6 +306,94 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       }
       return false
     },
+    selectBodyPart(partId: MotionBodyPartId) {
+      this.selectedBodyPartId = partId
+      const modes = getMotionBodyPartModes(partId)
+      if (!modes.includes(this.transformMode)) this.transformMode = modes[0] || 'rotate'
+      const first = getMotionBodyPartControls(partId, this.transformMode)[0]
+      if (first) this.selectControl(first.id as MotionControlId)
+    },
+    setAuthoringScope(scope: MotionAuthoringScope) {
+      this.authoringScope = scope
+    },
+    setTransformMode(mode: MotionTransformMode) {
+      const controls = getMotionBodyPartControls(this.selectedBodyPartId, mode)
+      if (!controls.length) return
+      this.transformMode = mode
+      this.selectControl(controls[0]!.id as MotionControlId)
+    },
+    selectControl(controlId: MotionControlId) {
+      const definition = getMotionControl(controlId)
+      this.selectedControlId = controlId
+      this.selectedBodyPartId = definition.partId
+      this.transformMode = definition.mode
+      this.selectedChannelId = definition.channelIds[0]!
+    },
+    controlOptions(scope?: MotionAuthoringScope) {
+      const targetScope = scope ?? this.authoringScope
+      return {
+        scope: targetScope,
+        playheadTimeMs: this.playheadTimeMs,
+        selectedKeyframeIds: this.selectedKeyframeIds,
+        interpolation: 'smooth' as MotionInterpolation,
+        snapToFrames: this.snapToFrames,
+        displayFps: this.draft?.displayFps || 30,
+        layerId: this.activeLayerId,
+        symmetry: this.symmetryEnabled,
+      }
+    },
+    writeControlValue(controlId: MotionControlId, value: number) {
+      if (!this.draft || (this.authoringScope === 'selected-keyframes' && !this.selectedKeyframeIds.length)) return
+      this.snapshot()
+      const result = setMotionControlValue(this.draft, controlId, value, this.controlOptions())
+      this.apply(result.asset, result.selectedKeyframeIds)
+      this.selectControl(controlId)
+    },
+    nudgeControl(controlId: MotionControlId, delta: number) {
+      if (!this.draft || (this.authoringScope === 'selected-keyframes' && !this.selectedKeyframeIds.length)) return
+      this.snapshot()
+      const result = nudgeMotionControlValue(this.draft, controlId, delta, this.controlOptions())
+      this.apply(result.asset, result.selectedKeyframeIds)
+      this.selectControl(controlId)
+    },
+    resetControl(controlId?: MotionControlId) {
+      const targetControlId = controlId ?? this.selectedControlId
+      if (!this.draft || (this.authoringScope === 'selected-keyframes' && !this.selectedKeyframeIds.length)) return
+      this.snapshot()
+      const result = resetMotionControlValue(this.draft, targetControlId, this.controlOptions())
+      this.apply(result.asset, result.selectedKeyframeIds)
+    },
+    keySelectedControl() {
+      if (!this.draft) return
+      const value = readMotionControlValue(this.draft, this.selectedControlId, 'current-frame', { playheadTimeMs: this.playheadTimeMs }) ?? 0
+      this.snapshot()
+      const result = setMotionControlValue(this.draft, this.selectedControlId, value, this.controlOptions('current-frame'))
+      this.apply(result.asset, result.selectedKeyframeIds)
+    },
+    beginControlGesture() {
+      if (!this.draft || this.controlGestureBaseline) return
+      this.controlGestureBaseline = serialize(this.draft)
+      this.snapshot()
+    },
+    previewControlGesture(edits: readonly { controlId: MotionControlId; delta: number }[]) {
+      if (!this.draft || !this.controlGestureBaseline) return
+      const baseline = parse(this.controlGestureBaseline)
+      if (!baseline) return
+      const result = nudgeMotionControls(baseline, edits, this.controlOptions())
+      this.apply(result.asset, result.selectedKeyframeIds)
+    },
+    endControlGesture() {
+      if (!this.controlGestureBaseline) return
+      if (serialize(this.draft) === this.controlGestureBaseline) this.undoStack.pop()
+      this.controlGestureBaseline = ''
+    },
+    cancelControlGesture() {
+      if (!this.controlGestureBaseline) return
+      this.draft = parse(this.controlGestureBaseline)
+      this.undoStack.pop()
+      this.controlGestureBaseline = ''
+    },
+
     writeChannelValue(value: number, interpolation: MotionInterpolation = 'linear') {
       if (!this.draft) return
       this.snapshot()
