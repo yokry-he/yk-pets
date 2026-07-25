@@ -10,7 +10,7 @@ permissions:
 
 env:
   RELEASE_SHA256: 6564cd2c397c307d17425fbabf911231de59fbdb4be546a19c9f1d421865eb53
-  RELEASE_BASE_SHA: 6f780a4f9fce5014a57949c84a8aea565bdfd5b0
+  RELEASE_BASE_SHA: 9d700572eac9c5acff7fbbf4ae305ecd5974fec5
   RELEASE_PARENT_SHA: ${{ github.event.pull_request.head.sha }}
 
 jobs:
@@ -196,59 +196,105 @@ jobs:
             printf '%s %s\n' "$phase" "$phase_sha" | tee -a /tmp/phase-commits.txt
           }
 
-          git apply --check /tmp/yk-pets-release/phase-B.patch
-          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-B.patch
-          python - <<'PY_FIX_B'
+          printf '%s %s\n' B "$RELEASE_BASE_SHA" | tee -a /tmp/phase-commits.txt
+
+          git apply --check /tmp/yk-pets-release/phase-C.patch
+          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-C.patch
+          cp apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue /tmp/phase-C-ExtensionCloudFoxPropInstances.vue
+          python - <<'PY_FIX_C'
           from pathlib import Path
 
-          path = Path('apps/playground/app/stores/studio-motion-editor.ts')
+          prop_instances = Path('apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue')
+          source = prop_instances.read_text()
+          replacements = [
+              (
+                  "import type { EvaluatedMotionPropInstance, MotionPropMountId } from '@yk-pets/pet-core'\n",
+                  "import type { EvaluatedMotionPropInstance, MotionPropMountId } from '@yk-pets/pet-core'\nimport { Euler, Vector3 } from 'three'\n",
+              ),
+              (
+                  "function position(instance: EvaluatedMotionPropInstance): readonly [number, number, number] {\n  const base = instance.space === 'mount' ? mountPosition(instance.mountId) : [0, 0, 0] as const\n  return [base[0] + instance.transform.position[0], base[1] + instance.transform.position[1], base[2] + instance.transform.position[2]]\n}\n",
+                  "function position(instance: EvaluatedMotionPropInstance): Vector3 {\n  const base = instance.space === 'mount' ? mountPosition(instance.mountId) : [0, 0, 0] as const\n  return new Vector3(base[0] + instance.transform.position[0], base[1] + instance.transform.position[1], base[2] + instance.transform.position[2])\n}\nfunction rotation(instance: EvaluatedMotionPropInstance): Euler { return new Euler(...instance.transform.rotation) }\nfunction scaleVector(instance: EvaluatedMotionPropInstance): Vector3 { return new Vector3(...instance.transform.scale) }\nfunction vector(value: readonly [number, number, number]): Vector3 { return new Vector3(...value) }\n",
+              ),
+              (
+                  ':rotation="instance.transform.rotation" :scale="instance.transform.scale"',
+                  ':rotation="rotation(instance)" :scale="scaleVector(instance)"',
+              ),
+              (':position="offset"', ':position="vector(offset)"'),
+          ]
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise RuntimeError(f'phase C prop-instance marker count for {old!r}: {source.count(old)}')
+              source = source.replace(old, new, 1)
+          prop_instances.write_text(source)
+
+          events = Path('apps/playground/app/components/studio/StudioMotionPropEvents.vue')
+          source = events.read_text()
+          replacements = [
+              ('  props: StudioPropAssetMetadata[]', '  propAssets: StudioPropAssetMetadata[]'),
+              ('watch(() => props.props,', 'watch(() => props.propAssets,'),
+              ('v-if="props.length"', 'v-if="propAssets.length"'),
+              ('v-for="prop in props"', 'v-for="prop in propAssets"'),
+          ]
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise RuntimeError(f'phase C event-editor marker count for {old!r}: {source.count(old)}')
+              source = source.replace(old, new, 1)
+          events.write_text(source)
+
+          page = Path('apps/playground/app/pages/studio/motion.vue')
+          source = page.read_text()
+          old = ':props="assets.props"'
+          if source.count(old) != 1:
+              raise RuntimeError(f'phase C page binding marker count: {source.count(old)}')
+          page.write_text(source.replace(old, ':prop-assets="assets.props"', 1))
+
+          editor = Path('apps/playground/app/stores/studio-motion-editor.ts')
+          source = editor.read_text()
+          old = "    deletePropEvents(eventIds = this.selectedPropEventIds) {\n      if (!this.draft || !eventIds.length) return\n      this.snapshot()\n      this.apply({ ...this.draft, propEventTracks: removeMotionPropEvents(this.draft.propEventTracks, eventIds, this.draft.durationMs), updatedAt: Date.now() })"
+          new = "    deletePropEvents(eventIds?: string[]) {\n      const ids = eventIds ?? this.selectedPropEventIds\n      if (!this.draft || !ids.length) return\n      this.snapshot()\n      this.apply({ ...this.draft, propEventTracks: removeMotionPropEvents(this.draft.propEventTracks, ids, this.draft.durationMs), updatedAt: Date.now() })"
+          if source.count(old) != 1:
+              raise RuntimeError(f'phase C delete-event marker count: {source.count(old)}')
+          editor.write_text(source.replace(old, new, 1))
+          PY_FIX_C
+          git add \
+            apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue \
+            apps/playground/app/components/studio/StudioMotionPropEvents.vue \
+            apps/playground/app/pages/studio/motion.vue \
+            apps/playground/app/stores/studio-motion-editor.ts
+          git commit -m 'feat(props): complete motion prop event tracks'
+          validate_phase C
+          push_phase C "$RELEASE_PARENT_SHA"
+
+          cp /tmp/phase-C-ExtensionCloudFoxPropInstances.vue apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue
+          git add apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue
+          git apply --check /tmp/yk-pets-release/phase-D.patch
+          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-D.patch
+          python - <<'PY_FIX_D'
+          from pathlib import Path
+
+          path = Path('apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue')
           source = path.read_text()
           replacements = [
               (
-                  '    apply(asset: StudioMotionAssetV2, selectedKeyframeIds = this.selectedKeyframeIds) {',
-                  '    apply(asset: StudioMotionAssetV2, selectedKeyframeIds?: string[]) {',
+                  "import type { EvaluatedMotionPropInstance, MotionPropMountId, StudioPropAssetV2 } from '@yk-pets/pet-core'\n",
+                  "import type { EvaluatedMotionPropInstance, MotionPropMountId, StudioPropAssetV2 } from '@yk-pets/pet-core'\nimport { Euler, Vector3 } from 'three'\n",
               ),
               (
-                  '      this.selectedKeyframeIds = selectedKeyframeIds',
-                  '      this.selectedKeyframeIds = selectedKeyframeIds ?? this.selectedKeyframeIds',
+                  "function position(instance: EvaluatedMotionPropInstance): readonly [number, number, number] {\n  const base = instance.space === 'mount' ? mountPosition(instance.mountId) : [0, 0, 0] as const\n  return [base[0] + instance.transform.position[0], base[1] + instance.transform.position[1], base[2] + instance.transform.position[2]]\n}\n",
+                  "function position(instance: EvaluatedMotionPropInstance): Vector3 {\n  const base = instance.space === 'mount' ? mountPosition(instance.mountId) : [0, 0, 0] as const\n  return new Vector3(base[0] + instance.transform.position[0], base[1] + instance.transform.position[1], base[2] + instance.transform.position[2])\n}\nfunction rotation(instance: EvaluatedMotionPropInstance): Euler { return new Euler(...instance.transform.rotation) }\nfunction scaleVector(instance: EvaluatedMotionPropInstance): Vector3 { return new Vector3(...instance.transform.scale) }\n",
               ),
               (
-                  '    setPlayhead(timeMs: number, snap = this.snapToFrames) {',
-                  '    setPlayhead(timeMs: number, snap?: boolean) {',
-              ),
-              (
-                  '      if (!snap) this.playheadTimeMs = raw',
-                  '      const shouldSnap = snap ?? this.snapToFrames\n      if (!shouldSnap) this.playheadTimeMs = raw',
+                  ':rotation="instance.transform.rotation" :scale="instance.transform.scale"',
+                  ':rotation="rotation(instance)" :scale="scaleVector(instance)"',
               ),
           ]
           for old, new in replacements:
               if source.count(old) != 1:
-                  raise RuntimeError(f'phase B typing marker count for {old!r}: {source.count(old)}')
+                  raise RuntimeError(f'phase D prop-instance marker count for {old!r}: {source.count(old)}')
               source = source.replace(old, new, 1)
           path.write_text(source)
-          PY_FIX_B
-          git add apps/playground/app/stores/studio-motion-editor.ts
-          cat > apps/extension/domain/custom-motion-pose.ts <<'EOF_CUSTOM_POSE_BRIDGE'
-          /**
-           * 文件职责 / File responsibility
-           * 将扩展构建中的自定义动作姿态映射导向 Playground 的唯一领域源码，不复制实现。
-           * Bridges extension builds to the sole Playground custom-motion pose mapping without duplicating implementation.
-           */
-          export * from '../../playground/app/domain/custom-motion-pose'
-          EOF_CUSTOM_POSE_BRIDGE
-          git add apps/extension/domain/custom-motion-pose.ts
-          git commit -m 'feat(motion): complete timeline authoring and preview adapter'
-          validate_phase B
-          push_phase B "$RELEASE_PARENT_SHA"
-
-          git apply --check /tmp/yk-pets-release/phase-C.patch
-          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-C.patch
-          git commit -m 'feat(props): complete motion prop event tracks'
-          validate_phase C
-          push_phase C "$(awk '$1 == "B" {print $2}' /tmp/phase-commits.txt)"
-
-          git apply --check /tmp/yk-pets-release/phase-D.patch
-          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-D.patch
+          PY_FIX_D
+          git add apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue
           git commit -m 'feat(props): complete parametric prop entity editor'
           validate_phase D
           push_phase D "$(awk '$1 == "C" {print $2}' /tmp/phase-commits.txt)"
