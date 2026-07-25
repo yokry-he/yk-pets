@@ -1,4 +1,4 @@
-name: Agent Fix Phase Publisher Script
+name: Agent Debug Phase E Release
 
 on:
   pull_request:
@@ -6,48 +6,39 @@ on:
       - synchronize
 
 permissions:
-  contents: write
-
-env:
-  FIX_PARENT_SHA: ${{ github.event.pull_request.head.sha }}
+  actions: read
+  contents: read
 
 jobs:
-  fix:
+  debug:
     if: "${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/cloud-fox-studio-v0610' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout maintenance head
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.FIX_PARENT_SHA }}
-          fetch-depth: 0
-
-      - name: Add removed-workflow exclusion
+      - name: Download failed phase E logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FAILED_JOB_ID: '89660011072'
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$FIX_PARENT_SHA"
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('scripts/agent-publish-de.sh')
-          source = path.read_text()
-          marker = "  ':(exclude).github/workflows/agent-export-snapshot.yml' \\\n"
-          addition = marker + "  ':(exclude).github/workflows/agent-inspect-blobs.yml' \\\n"
-          if "':(exclude).github/workflows/agent-inspect-blobs.yml'" in source:
-              print('Publisher script already fixed.')
-          else:
-              if source.count(marker) != 1:
-                  raise RuntimeError(f'exclusion marker count: {source.count(marker)}')
-              path.write_text(source.replace(marker, addition, 1))
-          PY
-          if git diff --quiet -- scripts/agent-publish-de.sh; then
-            exit 0
-          fi
-          git diff --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add scripts/agent-publish-de.sh
-          git commit -m 'chore(ci): fix phases D-E parent verification'
-          git push origin HEAD:refs/heads/agent/cloud-fox-studio-v0610
+          curl --fail-with-body --location --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/jobs/$FAILED_JOB_ID/logs" \
+            --output /tmp/failed-job.log
+          {
+            echo '=== ERROR MATCHES ==='
+            grep -nEi '(^|[^a-z])(error|failed|failure|ERR_|ELIFECYCLE|TS[0-9]{4}|AssertionError|RuntimeError)([^a-z]|$)' /tmp/failed-job.log | tail -n 240 || true
+            echo
+            echo '=== LAST 460 LINES ==='
+            tail -n 460 /tmp/failed-job.log
+          } > /tmp/phase-e-error.txt
+          cat /tmp/phase-e-error.txt
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-e-release-error
+          path: /tmp/phase-e-error.txt
+          retention-days: 1
