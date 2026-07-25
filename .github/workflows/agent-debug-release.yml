@@ -18,7 +18,7 @@ jobs:
       - name: Download failed publish logs
         env:
           GH_TOKEN: ${{ github.token }}
-          FAILED_JOB_ID: '89657544764'
+          FAILED_JOB_ID: '89658429371'
         shell: bash
         run: |
           set -euo pipefail
@@ -30,10 +30,10 @@ jobs:
             --output /tmp/failed-job.log
           {
             echo '=== ERROR MATCHES ==='
-            grep -nEi '(^|[^a-z])(error|failed|failure|ERR_|ELIFECYCLE|TS[0-9]{4}|AssertionError|RuntimeError)([^a-z]|$)' /tmp/failed-job.log | tail -n 180 || true
+            grep -nEi '(^|[^a-z])(error|failed|failure|ERR_|ELIFECYCLE|TS[0-9]{4}|AssertionError|RuntimeError)([^a-z]|$)' /tmp/failed-job.log | tail -n 220 || true
             echo
-            echo '=== LAST 360 LINES ==='
-            tail -n 360 /tmp/failed-job.log
+            echo '=== LAST 420 LINES ==='
+            tail -n 420 /tmp/failed-job.log
           } > /tmp/release-error.txt
           cat /tmp/release-error.txt
       - name: Upload diagnostic
