@@ -1,4 +1,4 @@
-name: Agent Debug Phase E Release
+name: Agent Fix Phase E Publisher Script
 
 on:
   pull_request:
@@ -6,39 +6,106 @@ on:
       - synchronize
 
 permissions:
-  actions: read
-  contents: read
+  contents: write
+
+env:
+  FIX_PARENT_SHA: ${{ github.event.pull_request.head.sha }}
 
 jobs:
-  debug:
+  fix:
     if: "${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/cloud-fox-studio-v0610' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Download failed phase E logs
-        env:
-          GH_TOKEN: ${{ github.token }}
-          FAILED_JOB_ID: '89660011072'
+      - name: Checkout maintenance head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FIX_PARENT_SHA }}
+          fetch-depth: 0
+
+      - name: Resume from validated phase D
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail-with-body --location --silent --show-error \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/jobs/$FAILED_JOB_ID/logs" \
-            --output /tmp/failed-job.log
-          {
-            echo '=== ERROR MATCHES ==='
-            grep -nEi '(^|[^a-z])(error|failed|failure|ERR_|ELIFECYCLE|TS[0-9]{4}|AssertionError|RuntimeError)([^a-z]|$)' /tmp/failed-job.log | tail -n 240 || true
-            echo
-            echo '=== LAST 460 LINES ==='
-            tail -n 460 /tmp/failed-job.log
-          } > /tmp/phase-e-error.txt
-          cat /tmp/phase-e-error.txt
-      - name: Upload diagnostic
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase-e-release-error
-          path: /tmp/phase-e-error.txt
-          retention-days: 1
+          test "$(git rev-parse HEAD)" = "$FIX_PARENT_SHA"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/agent-publish-de.sh')
+          source = path.read_text()
+          old_base = "RELEASE_BASE_SHA='98ae8357feece1ff502fce1ec33bed98ba99a2d6'"
+          new_base = "RELEASE_BASE_SHA='145a7ed12ddd008da7de9daeca801c09a71fd96b'"
+          if old_base in source:
+              source = source.replace(old_base, new_base, 1)
+          elif new_base not in source:
+              raise RuntimeError('phase E release base marker not found')
+
+          start_marker = "cat > apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue <<'EOF_PHASE_C_PROP'"
+          end_marker = 'push_phase D "$RELEASE_PARENT_SHA"\n'
+          if start_marker in source:
+              start = source.index(start_marker)
+              end = source.index(end_marker, start) + len(end_marker)
+              source = source[:start] + "printf '%s %s\\n' D \"$RELEASE_BASE_SHA\" >> \"$REPORT_DIR/phase-commits.txt\"\n\n" + source[end:]
+
+          restore_old = "cp /tmp/phase-D-StudioPropModel.vue apps/playground/app/components/studio/StudioPropModel.vue\ngit add apps/playground/app/components/studio/StudioPropModel.vue\n"
+          restore_new = """cat > apps/playground/app/components/studio/StudioPropModel.vue <<'EOF_PHASE_D_MODEL'
+<!--
+  文件职责 / File responsibility
+  将版本化道具实体的显示锚点和根组件树组合成可复用的正式场景模型。
+  Composes a versioned prop entity display anchor and root component tree into a reusable production-scene model.
+-->
+<script setup lang=\"ts\">
+import type { MotionPropStyle, StudioPropAssetV2 } from '@yk-pets/pet-core'
+import StudioPropComponentNode from './StudioPropComponentNode.vue'
+
+const props = defineProps<{ asset: StudioPropAssetV2; styleOverride?: MotionPropStyle }>()
+const roots = computed(() => props.asset.components.filter(component => !component.parentId))
+const display = computed(() => props.asset.anchors.find(anchor => anchor.id === 'display')?.transform || { position: [0,0,0], rotation: [0,0,0], scale: [1,1,1] })
+const modelPosition = computed(() => [-display.value.position[0], -display.value.position[1], -display.value.position[2]] as const)
+const modelRotation = computed(() => [-display.value.rotation[0], -display.value.rotation[1], -display.value.rotation[2]] as const)
+const modelScale = computed(() => display.value.scale.map(value => 1 / Math.max(.01, value)) as [number, number, number])
+</script>
+
+<template>
+  <TresGroup :position=\"modelPosition\" :rotation=\"modelRotation\" :scale=\"modelScale\">
+    <StudioPropComponentNode v-for=\"component in roots\" :key=\"component.id\" :component=\"component\" :components=\"asset.components\" :style-override=\"styleOverride\" />
+  </TresGroup>
+</template>
+EOF_PHASE_D_MODEL
+git add apps/playground/app/components/studio/StudioPropModel.vue
+"""
+          if restore_old in source:
+              source = source.replace(restore_old, restore_new, 1)
+          elif "EOF_PHASE_D_MODEL" not in source:
+              raise RuntimeError('phase E model restore marker not found')
+
+          depth_old = "path.write_text(source.replace(old, new, 1))\nPY_FIX_E"
+          depth_new = """source = source.replace(old, new, 1)
+marker = ' depth-write=\"false\"'
+if source.count(marker) != 2:
+    raise RuntimeError(f'phase E depth-write marker count: {source.count(marker)}')
+path.write_text(source.replace(marker, ' :depth-write=\"false\"'))
+PY_FIX_E"""
+          if depth_old in source:
+              source = source.replace(depth_old, depth_new, 1)
+          elif 'phase E depth-write marker count' not in source:
+              raise RuntimeError('phase E depth-write insertion marker not found')
+
+          push_old = "push_phase E \"$(awk '$1 == \"D\" {print $2}' \"$REPORT_DIR/phase-commits.txt\")\""
+          if push_old in source:
+              source = source.replace(push_old, 'push_phase E "$RELEASE_PARENT_SHA"', 1)
+          elif 'push_phase E "$RELEASE_PARENT_SHA"' not in source:
+              raise RuntimeError('phase E push marker not found')
+
+          path.write_text(source)
+          PY
+          bash -n scripts/agent-publish-de.sh
+          if git diff --quiet -- scripts/agent-publish-de.sh; then
+            exit 0
+          fi
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/agent-publish-de.sh
+          git commit -m 'chore(ci): resume validated phase E'
+          git push origin HEAD:refs/heads/agent/cloud-fox-studio-v0610
