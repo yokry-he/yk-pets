@@ -5,7 +5,7 @@ set -euo pipefail
 : "${RELEASE_PARENT_SHA:?RELEASE_PARENT_SHA is required}"
 
 RELEASE_SHA256='6564cd2c397c307d17425fbabf911231de59fbdb4be546a19c9f1d421865eb53'
-RELEASE_BASE_SHA='98ae8357feece1ff502fce1ec33bed98ba99a2d6'
+RELEASE_BASE_SHA='145a7ed12ddd008da7de9daeca801c09a71fd96b'
 RELEASE_DIR='/tmp/yk-pets-release'
 REPORT_DIR='/tmp/yk-pets-release-report'
 mkdir -p "$RELEASE_DIR" "$REPORT_DIR"
@@ -120,7 +120,8 @@ git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 : > "$REPORT_DIR/phase-commits.txt"
 printf '%s %s\n' B '9d700572eac9c5acff7fbbf4ae305ecd5974fec5' >> "$REPORT_DIR/phase-commits.txt"
-printf '%s %s\n' C "$RELEASE_BASE_SHA" >> "$REPORT_DIR/phase-commits.txt"
+printf '%s %s\n' C '98ae8357feece1ff502fce1ec33bed98ba99a2d6' >> "$REPORT_DIR/phase-commits.txt"
+printf '%s %s\n' D "$RELEASE_BASE_SHA" >> "$REPORT_DIR/phase-commits.txt"
 
 validate_phase() {
   local phase="$1"
@@ -158,135 +159,30 @@ push_phase() {
   printf '%s %s\n' "$phase" "$phase_sha" | tee -a "$REPORT_DIR/phase-commits.txt"
 }
 
-cat > apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue <<'EOF_PHASE_C_PROP'
+cat > apps/playground/app/components/studio/StudioPropModel.vue <<'EOF_PHASE_D_MODEL'
 <!--
   文件职责 / File responsibility
-  在唯一正式云狐场景中渲染道具事件求值后的本地实例，支持挂点和世界空间而不创建第二个 WebGL 场景。
-  Renders locally evaluated prop-event instances inside the sole production Cloud Fox scene, supporting mount and world space without a second WebGL scene.
+  将版本化道具实体的显示锚点和根组件树组合成可复用的正式场景模型。
+  Composes a versioned prop entity display anchor and root component tree into a reusable production-scene model.
 -->
 <script setup lang="ts">
-import type { EvaluatedMotionPropInstance, MotionPropMountId } from '@yk-pets/pet-core'
-import type { StudioPropAssetMetadata } from '~/domain/studio-workspace'
-import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
+import type { MotionPropStyle, StudioPropAssetV2 } from '@yk-pets/pet-core'
+import StudioPropComponentNode from './StudioPropComponentNode.vue'
 
-const props = defineProps<{
-  appearance: MultiSpeciesAppearanceRecipe
-  instances?: readonly EvaluatedMotionPropInstance[]
-  propAssets?: readonly StudioPropAssetMetadata[]
-}>()
-const assetById = computed(() => new Map((props.propAssets || []).map(asset => [asset.id, asset])))
-const particleOffsets = [[-.12,.06,0],[.11,.12,.03],[0,.2,-.04],[-.07,.27,.02],[.09,.32,0],[.02,.4,.04]] as const
-
-function mountPosition(id: MotionPropMountId): readonly [number, number, number] {
-  const width = props.appearance.proportions.bodyWidth
-  const height = props.appearance.proportions.bodyHeight
-  const depth = props.appearance.proportions.bodyDepth
-  const map: Record<MotionPropMountId, readonly [number, number, number]> = {
-    world: [0, 0, 0], 'pet-root': [0, 0, 0], 'head-top': [0, 1.62 * height, .02], muzzle: [0, 1.04 * height, .72 * depth],
-    'left-front-paw': [-.62 * width, .04, .5 * depth], 'right-front-paw': [.62 * width, .04, .5 * depth],
-    'left-hind-paw': [-.55 * width, -.72 * height, .22 * depth], 'right-hind-paw': [.55 * width, -.72 * height, .22 * depth], 'tail-tip': [-1.5 * width, .18, -.35 * depth],
-  }
-  return map[id]
-}
-function position(instance: EvaluatedMotionPropInstance): readonly [number, number, number] {
-  const base = instance.space === 'mount' ? mountPosition(instance.mountId) : [0, 0, 0] as const
-  return [base[0] + instance.transform.position[0], base[1] + instance.transform.position[1], base[2] + instance.transform.position[2]]
-}
-function asset(instance: EvaluatedMotionPropInstance) { return assetById.value.get(instance.propId) }
+const props = defineProps<{ asset: StudioPropAssetV2; styleOverride?: MotionPropStyle }>()
+const roots = computed(() => props.asset.components.filter(component => !component.parentId))
+const display = computed(() => props.asset.anchors.find(anchor => anchor.id === 'display')?.transform || { position: [0,0,0], rotation: [0,0,0], scale: [1,1,1] })
+const modelPosition = computed(() => [-display.value.position[0], -display.value.position[1], -display.value.position[2]] as const)
+const modelRotation = computed(() => [-display.value.rotation[0], -display.value.rotation[1], -display.value.rotation[2]] as const)
+const modelScale = computed(() => display.value.scale.map(value => 1 / Math.max(.01, value)) as [number, number, number])
 </script>
 
 <template>
-  <TresGroup v-for="instance in instances || []" :key="instance.instanceId" :visible="instance.visible" :position="position(instance)" :rotation="instance.transform.rotation" :scale="instance.transform.scale">
-    <template v-if="asset(instance)?.kind === 'effect'">
-      <TresMesh><TresIcosahedronGeometry :args="[.2,2]" /><TresMeshStandardMaterial :color="instance.style.color" :emissive="instance.style.color" :emissive-intensity="instance.style.glow" transparent :opacity="instance.style.opacity" /></TresMesh>
-      <TresPointLight :color="instance.style.color" :intensity="instance.style.glow * .8" :distance="2" />
-      <TresMesh v-for="(offset,index) in particleOffsets.slice(0, Math.ceil(instance.style.particleRate / 40))" :key="index" :position="offset"><TresSphereGeometry :args="[.035,10,10]" /><TresMeshBasicMaterial :color="instance.style.color" transparent :opacity="instance.style.opacity * .7" /></TresMesh>
-    </template>
-    <template v-else>
-      <TresMesh cast-shadow><TresBoxGeometry :args="[.34,.2,.18]" /><TresMeshStandardMaterial :color="instance.style.color" :emissive="instance.style.color" :emissive-intensity="instance.style.glow" :metalness=".2" :roughness=".28" transparent :opacity="instance.style.opacity" /></TresMesh>
-      <TresMesh :rotation="[Math.PI/2,0,0]"><TresTorusGeometry :args="[.13,.025,12,24]" /><TresMeshStandardMaterial :color="instance.style.color" :emissive="instance.style.color" :emissive-intensity="instance.style.glow * .5" /></TresMesh>
-    </template>
+  <TresGroup :position="modelPosition" :rotation="modelRotation" :scale="modelScale">
+    <StudioPropComponentNode v-for="component in roots" :key="component.id" :component="component" :components="asset.components" :style-override="styleOverride" />
   </TresGroup>
 </template>
-EOF_PHASE_C_PROP
-git add apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue
-git apply --check "$RELEASE_DIR/phase-D.patch"
-git apply --index --whitespace=error-all "$RELEASE_DIR/phase-D.patch"
-cp apps/playground/app/components/studio/StudioPropModel.vue /tmp/phase-D-StudioPropModel.vue
-
-python - <<'PY_FIX_D'
-from pathlib import Path
-
-path = Path('apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue')
-source = path.read_text()
-replacements = [
-    (
-        "import type { EvaluatedMotionPropInstance, MotionPropMountId, StudioPropAssetV2 } from '@yk-pets/pet-core'\n",
-        "import type { EvaluatedMotionPropInstance, MotionPropMountId, StudioPropAssetV2 } from '@yk-pets/pet-core'\nimport { Euler, Vector3 } from 'three'\n",
-    ),
-    (
-        "function position(instance: EvaluatedMotionPropInstance): readonly [number, number, number] {\n  const base = instance.space === 'mount' ? mountPosition(instance.mountId) : [0, 0, 0] as const\n  return [base[0] + instance.transform.position[0], base[1] + instance.transform.position[1], base[2] + instance.transform.position[2]]\n}\n",
-        "function position(instance: EvaluatedMotionPropInstance): Vector3 {\n  const base = instance.space === 'mount' ? mountPosition(instance.mountId) : [0, 0, 0] as const\n  return new Vector3(base[0] + instance.transform.position[0], base[1] + instance.transform.position[1], base[2] + instance.transform.position[2])\n}\nfunction rotation(instance: EvaluatedMotionPropInstance): Euler { return new Euler(...instance.transform.rotation) }\nfunction scaleVector(instance: EvaluatedMotionPropInstance): Vector3 { return new Vector3(...instance.transform.scale) }\n",
-    ),
-    (
-        ':rotation="instance.transform.rotation" :scale="instance.transform.scale"',
-        ':rotation="rotation(instance)" :scale="scaleVector(instance)"',
-    ),
-]
-for old, new in replacements:
-    if source.count(old) != 1:
-        raise RuntimeError(f'phase D prop-instance marker count for {old!r}: {source.count(old)}')
-    source = source.replace(old, new, 1)
-path.write_text(source)
-
-path = Path('apps/playground/app/components/studio/StudioPropComponentNode.vue')
-source = path.read_text()
-old = "import type { MotionPropStyle, StudioPropComponent } from '@yk-pets/pet-core'\n"
-new = old + "import { Euler, Vector3 } from 'three'\n"
-if source.count(old) != 1:
-    raise RuntimeError('phase D component import marker mismatch')
-source = source.replace(old, new, 1)
-old = "const particleOffsets = computed(() => Array.from({ length: Math.min(48, props.component.geometry.particleCount) }, (_, index) => {\n"
-new = "function vector(value: readonly [number, number, number]): Vector3 { return new Vector3(...value) }\nfunction rotation(value: readonly [number, number, number]): Euler { return new Euler(...value) }\nfunction crystalScale(): Vector3 { return new Vector3(props.component.geometry.width, props.component.geometry.height, props.component.geometry.depth) }\nfunction textFrontPosition(): Vector3 { return new Vector3(0, 0, Math.min(props.component.geometry.depth, .06) * .55) }\n" + old
-if source.count(old) != 1:
-    raise RuntimeError('phase D component helper marker mismatch')
-source = source.replace(old, new, 1)
-replacements = [
-    (':position="component.transform.position" :rotation="component.transform.rotation" :scale="component.transform.scale"', ':position="vector(component.transform.position)" :rotation="rotation(component.transform.rotation)" :scale="vector(component.transform.scale)"'),
-    (':scale="[component.geometry.width,component.geometry.height,component.geometry.depth]"', ':scale="crystalScale()"'),
-    (':position="offset"', ':position="vector(offset)"'),
-    (':position="[0,0,Math.min(component.geometry.depth,.06)*.55]"', ':position="textFrontPosition()"'),
-]
-for old, new in replacements:
-    if source.count(old) != 1:
-        raise RuntimeError(f'phase D component marker count for {old!r}: {source.count(old)}')
-    source = source.replace(old, new, 1)
-path.write_text(source)
-
-path = Path('apps/playground/app/components/studio/StudioPropModel.vue')
-source = path.read_text()
-old = '<script setup lang="ts">\n'
-new = old + "import { Euler, Vector3 } from 'three'\n"
-if source.count(old) != 1:
-    raise RuntimeError('phase D model import marker mismatch')
-source = source.replace(old, new, 1)
-old = "const modelPosition = computed(() => [-display.value.position[0], -display.value.position[1], -display.value.position[2]] as const)\nconst modelRotation = computed(() => [-display.value.rotation[0], -display.value.rotation[1], -display.value.rotation[2]] as const)\nconst modelScale = computed(() => display.value.scale.map(value => 1 / Math.max(.01, value)) as [number, number, number])"
-new = "const modelPosition = computed(() => new Vector3(-display.value.position[0], -display.value.position[1], -display.value.position[2]))\nconst modelRotation = computed(() => new Euler(-display.value.rotation[0], -display.value.rotation[1], -display.value.rotation[2]))\nconst modelScale = computed(() => new Vector3(...display.value.scale.map(value => 1 / Math.max(.01, value)) as [number, number, number]))"
-if source.count(old) != 1:
-    raise RuntimeError('phase D model transform marker mismatch')
-path.write_text(source.replace(old, new, 1))
-PY_FIX_D
-
-git add \
-  apps/playground/app/components/studio/ExtensionCloudFoxPropInstances.vue \
-  apps/playground/app/components/studio/StudioPropComponentNode.vue \
-  apps/playground/app/components/studio/StudioPropModel.vue
-git diff --cached --check
-git commit -m 'feat(props): complete parametric prop entity editor'
-validate_phase D
-push_phase D "$RELEASE_PARENT_SHA"
-
-cp /tmp/phase-D-StudioPropModel.vue apps/playground/app/components/studio/StudioPropModel.vue
+EOF_PHASE_D_MODEL
 git add apps/playground/app/components/studio/StudioPropModel.vue
 git apply --check "$RELEASE_DIR/phase-E.patch"
 git apply --index --whitespace=error-all "$RELEASE_DIR/phase-E.patch"
@@ -323,7 +219,11 @@ old = ':position="point"><TresSphereGeometry :args="[.025,8,8]"'
 new = ':position="vector(point)"><TresSphereGeometry :args="[.025,8,8]"'
 if source.count(old) != 1:
     raise RuntimeError('phase E guide path marker mismatch')
-path.write_text(source.replace(old, new, 1))
+source = source.replace(old, new, 1)
+marker = ' depth-write="false"'
+if source.count(marker) != 2:
+    raise RuntimeError(f'phase E depth-write marker count: {source.count(marker)}')
+path.write_text(source.replace(marker, ' :depth-write="false"'))
 PY_FIX_E
 
 git add \
@@ -332,7 +232,7 @@ git add \
 git diff --cached --check
 git commit -m 'feat(motion): complete advanced animation tools'
 validate_phase E
-push_phase E "$(awk '$1 == "D" {print $2}' "$REPORT_DIR/phase-commits.txt")"
+push_phase E "$RELEASE_PARENT_SHA"
 
 {
   echo "release_parent=$RELEASE_PARENT_SHA"
