@@ -228,6 +228,15 @@ jobs:
           path.write_text(source)
           PY_FIX_B
           git add apps/playground/app/stores/studio-motion-editor.ts
+          cat > apps/extension/domain/custom-motion-pose.ts <<'EOF_CUSTOM_POSE_BRIDGE'
+          /**
+           * 文件职责 / File responsibility
+           * 将扩展构建中的自定义动作姿态映射导向 Playground 的唯一领域源码，不复制实现。
+           * Bridges extension builds to the sole Playground custom-motion pose mapping without duplicating implementation.
+           */
+          export * from '../../playground/app/domain/custom-motion-pose'
+          EOF_CUSTOM_POSE_BRIDGE
+          git add apps/extension/domain/custom-motion-pose.ts
           git commit -m 'feat(motion): complete timeline authoring and preview adapter'
           validate_phase B
           push_phase B "$RELEASE_PARENT_SHA"
