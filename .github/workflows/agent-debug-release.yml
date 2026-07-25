@@ -1,9 +1,9 @@
 name: Agent Debug Phase Release
 
 on:
-  push:
-    branches:
-      - agent/cloud-fox-studio-v0610
+  pull_request:
+    types:
+      - synchronize
 
 permissions:
   actions: read
@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   debug:
+    if: "${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/cloud-fox-studio-v0610' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
