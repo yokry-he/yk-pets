@@ -18,7 +18,7 @@ jobs:
       - name: Download failed self-fix logs
         env:
           GH_TOKEN: ${{ github.token }}
-          FAILED_JOB_ID: '89656528763'
+          FAILED_JOB_ID: '89656678776'
         shell: bash
         run: |
           set -euo pipefail
@@ -30,7 +30,7 @@ jobs:
             --output /tmp/failed-job.log
           {
             echo '=== ERROR MATCHES ==='
-            grep -nEi '(^|[^a-z])(error|failed|failure|RuntimeError|Traceback|fatal|YAML)([^a-z]|$)' /tmp/failed-job.log | tail -n 120 || true
+            grep -nEi '(^|[^a-z])(error|failed|failure|RuntimeError|Traceback|fatal|YAML|refusing)([^a-z]|$)' /tmp/failed-job.log | tail -n 120 || true
             echo
             echo '=== LAST 180 LINES ==='
             tail -n 180 /tmp/failed-job.log
