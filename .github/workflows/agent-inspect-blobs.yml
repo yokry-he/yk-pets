@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/cloud-fox-studio-v0610
+  pull_request:
 
 permissions:
   contents: read
