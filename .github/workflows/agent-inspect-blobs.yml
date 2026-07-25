@@ -1,66 +1,246 @@
-name: Agent Inspect Release Blobs
+name: Agent Publish Phases B-E
 
 on:
   push:
     branches:
       - agent/cloud-fox-studio-v0610
-  pull_request:
 
 permissions:
-  contents: read
+  contents: write
+
+env:
+  RELEASE_SHA256: 6564cd2c397c307d17425fbabf911231de59fbdb4be546a19c9f1d421865eb53
+  RELEASE_BASE_SHA: 6f780a4f9fce5014a57949c84a8aea565bdfd5b0
 
 jobs:
-  inspect:
+  publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 180
     steps:
-      - name: Inspect staged blobs
+      - name: Checkout release parent
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify release parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code "$RELEASE_BASE_SHA" HEAD -- . \
+            ':(exclude).github/workflows/agent-export-snapshot.yml' \
+            ':(exclude).github/workflows/agent-inspect-blobs.yml'
+
+      - name: Reconstruct verified release bundle
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          report=/tmp/blob-report.txt
-          : > "$report"
-          for sha in \
-            9fc3e7cb6b35cd74225386bb8d363d5c679dc71b \
-            7eaed40cc67434f20657d4af0a2a0e432d72b107 \
-            8c972bea82aac73d4303b0be3ececb30352d35ff \
-            241571d1236abcc1722266aabd39e7ae992d12d5 \
-            40c450c1ce96170b630c7de43f915c6be1eb282f \
-            68a64b255cb2eb15b1ece90e74ba54b105948969 \
-            a84ee027fdfaadd108ae02bd54306bbbedc2ee58 \
-            3ce4dac60c33c30626beb744f627f640a32b06c1 \
-            222b0b3ecdda65f537691ce4e27156cac7133210 \
-            df3b04c735bb834610ee2d85564506cd26d8642f \
-            6f7f0f9ba431c737f263a2a57e0601ff26f8d799 \
-            e89a887073b6a3d084107ef9611e9c2902812e84 \
-            ec264000b620348ff68844b8b029851e6f969d3e \
-            1a4c93332ba24dacc18b8a5a0b4c5d3e00f9d92b \
-            cbd946751ff70ffd2e45089524ae7cae4b31bc4c \
-            7b595ba1d74b8dc07d1aac96a3c6ae17e6b223e3
-          do
-            curl --fail-with-body --silent --show-error \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/$GITHUB_REPOSITORY/git/blobs/$sha" \
-              > /tmp/blob.json
-            jq -r '.content' /tmp/blob.json | tr -d '\n' | base64 -d > "/tmp/$sha"
-            bytes=$(wc -c < "/tmp/$sha")
-            hash=$(sha256sum "/tmp/$sha" | cut -d' ' -f1)
-            kind=$(file -b "/tmp/$sha")
-            printf '%s bytes=%s sha256=%s type=%s\n' "$sha" "$bytes" "$hash" "$kind" >> "$report"
-            if gzip -t "/tmp/$sha" 2>/dev/null; then
-              printf '  gzip=yes uncompressed=%s head=%s\n' "$(gzip -cd "/tmp/$sha" | wc -c)" "$(gzip -cd "/tmp/$sha" | head -c 80 | base64 -w0)" >> "$report"
-            else
-              printf '  gzip=no head=%s\n' "$(head -c 80 "/tmp/$sha" | base64 -w0)" >> "$report"
-            fi
-          done
-          cat "$report"
-      - name: Upload report
+          python - <<'PY_RELEASE'
+          import base64
+          import hashlib
+          import json
+          import os
+          import tarfile
+          import urllib.request
+          from pathlib import Path
+
+          parts = [
+              ('22ac16e805f41a5e4dbfd26240d8f0152d154b73', 10000),
+              ('314c0cb3a878741f61ce8f64f2a59c5d658b24dc', 10000),
+              ('d18486d5bc96259d6741e24e0bb201f45861c09a', 4000),
+              ('b997cf9a42b4e68d9cadb1923c9f5005c329909b', 4000),
+              ('b2af1c27142ad16bb603f03621a30a059e00fa1c', 4000),
+              ('34762286177f77e56414037ead0477017a18489f', 3000),
+              ('6bf5b00a163b5a937e64a3ef56b64155d4fa19cc', 6000),
+              ('9b2470b7b8929b18a4a6898ab2b0825af826f241', 6000),
+              ('1fd342e0c1ac7768cbf25cd0b02ce23d792a4a3d', 6000),
+              ('d36239696b1392f5dc72973d405002d39589e1df', 3000),
+              ('6351643c7b2c74a3bc92dc59d776c3b3d95eb9d3', 3000),
+              ('bfcfd9a2504cea790acbc2867d00150aea0a33ce', 3000),
+              ('40b8619da2609cf835e96b7f1bc503ca65319428', 3000),
+              ('047b903d791b9305b0559e0c8e8a22710fb622be', 2000),
+              ('24b390af8f379a4c6bea06e4c592ca329f343726', 2000),
+              ('bcd9ee2daca7dcfa970ea3e6f15c26f27aa2c29c', 2000),
+              ('8dcf4e604a0e6b6d281c638eb0fcc4ff430e3ff7', 2000),
+              ('28705d111884d97e0fcfe52c32e0e42cb85f517f', 2000),
+              ('b9348142eca9ff34f8c5fb7fd595765a20ed0403', 2000),
+              ('5dccecd207456452b7cb5eab532c3d268725e8e5', 2000),
+              ('aac1d1566128bfc71ee1e3d5d9b61fb05671d2d4', 2000),
+              ('cbdbd098cb838451dd8af9d1a74bf0b92e6f8e18', 2000),
+              ('e0dc30bd5aced62e83c130bfc520454501122a6a', 2000),
+              ('0b6ba89582abeb4d4aa3e49ffc3278451e5d2bab', 2000),
+              ('a02e8e8e92bb06e3f8858598439d8e34887ebfd3', 2000),
+              ('d0290f50a85a2c400e6eeb54efea772a932e01db', 2000),
+              ('0b8c9b9dc120042d0c07a05df69252a26aae7ae9', 2000),
+              ('0106276521819b3be759a7f9a05ab651d1552e3c', 2000),
+              ('fd0aaebd9f465826565b3011907a6bc40e1e5f3c', 2000),
+              ('0b0dfd1fa655ed4b9c1788ca707bcd7f525bfd63', 2000),
+              ('15f4a68024633db29b749bbd9b81eb8d18957039', 2000),
+              ('91a3b4448c11823e8ff18f5f615354f8a377b8e7', 2000),
+              ('f2441f58431322dbe635fcbec5b1bcca019c8947', 2000),
+              ('1870f5d56b352b048958f04a70df83775efd9ad9', 2000),
+              ('03071da154b7c9b58c8428434be4060aff96c2d2', 2000),
+              ('a9516c0206f37d5b951b48bbfad7f8ab516d007c', 2000),
+              ('e80ed31acd09ff23a6f17710a4269e27286c0d70', 2000),
+              ('49d60372f7e62013a3e3ea233fd66f9a0d93988d', 1000),
+              ('ad2d401458c908afc387be01a0de32e333e739d4', 1000),
+              ('435af163e9e5203f758426936cfb6723125986a9', 1000),
+              ('91308592bbf6b99cf0b4dfed0d70f0e031df2bd1', 1000),
+              ('1f3a3f1636167d8fc9592927fda710318cc0686a', 1000),
+              ('29ff5598eb18bb83cb4dae5cebd64b126be751a2', 1000),
+              ('240e4cbb83a158361d1db49b713a1c6f260499c8', 1000),
+              ('b514c982aa17a06324497d2fe365373ef6ddac64', 1000),
+              ('89a0618a540fe74faf7e53dc70bb5e927a22d05d', 1000),
+              ('76a91df1a7feba5fae21627376e38ff653f21a89', 1000),
+              ('2064f882bc4072db5ab5c63dc382fa1469357144', 1000),
+              ('5b9dc25db85a8c75c59cab22bbb1a3dcd0b2d592', 1000),
+              ('d6fd6c7dbb5eb3327b0c1e0b1d1c8c2729a64092', 1000),
+              ('d9e1e607b1488f82ac3a2dbf2494a2725bce2f70', 1000),
+              ('da7f6bc8eba601a099aaa894cb4f9f3f7d5999e9', 930),
+          ]
+          headers = {
+              'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+          }
+          archive = bytearray()
+          repository = os.environ['GITHUB_REPOSITORY']
+          for index, (sha, expected_size) in enumerate(parts, start=1):
+              url = f'https://api.github.com/repos/{repository}/git/blobs/{sha}'
+              request = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(request) as response:
+                  payload = json.load(response)
+              chunk = base64.b64decode(payload['content'])
+              if len(chunk) != expected_size:
+                  raise RuntimeError(f'chunk {index} {sha} expected {expected_size} bytes, got {len(chunk)}')
+              archive.extend(chunk)
+          expected = os.environ['RELEASE_SHA256']
+          actual = hashlib.sha256(archive).hexdigest()
+          if actual != expected:
+              raise RuntimeError(f'release SHA-256 mismatch: expected {expected}, got {actual}')
+          if len(archive) != 127930:
+              raise RuntimeError(f'release size mismatch: {len(archive)}')
+          release_dir = Path('/tmp/yk-pets-release')
+          release_dir.mkdir(parents=True, exist_ok=True)
+          archive_path = release_dir / 'phases-BE.tar.gz'
+          archive_path.write_bytes(archive)
+          with tarfile.open(archive_path, 'r:gz') as bundle:
+              names = sorted(bundle.getnames())
+              expected_names = ['phase-B.patch', 'phase-C.patch', 'phase-D.patch', 'phase-E.patch']
+              if names != expected_names:
+                  raise RuntimeError(f'unexpected bundle entries: {names}')
+              bundle.extractall(release_dir)
+          print(f'Reconstructed {len(archive)} bytes with SHA-256 {actual}.')
+          PY_RELEASE
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate
+
+      - name: Configure release author
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Publish and validate Phase B
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check /tmp/yk-pets-release/phase-B.patch
+          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-B.patch
+          git commit -m 'feat(motion): complete timeline authoring and preview adapter'
+          pnpm install --frozen-lockfile
+          pnpm check:brand
+          pnpm check:cloud-fox-studio
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          pnpm build:playground
+          git diff --exit-code
+          git rev-parse HEAD >> /tmp/phase-commits.txt
+
+      - name: Publish and validate Phase C
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check /tmp/yk-pets-release/phase-C.patch
+          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-C.patch
+          git commit -m 'feat(props): complete motion prop event tracks'
+          pnpm install --frozen-lockfile
+          pnpm check:brand
+          pnpm check:cloud-fox-studio
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          pnpm build:playground
+          git diff --exit-code
+          git rev-parse HEAD >> /tmp/phase-commits.txt
+
+      - name: Publish and validate Phase D
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check /tmp/yk-pets-release/phase-D.patch
+          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-D.patch
+          git commit -m 'feat(props): complete parametric prop entity editor'
+          pnpm install --frozen-lockfile
+          pnpm check:brand
+          pnpm check:cloud-fox-studio
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          pnpm build:playground
+          git diff --exit-code
+          git rev-parse HEAD >> /tmp/phase-commits.txt
+
+      - name: Publish and validate Phase E
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check /tmp/yk-pets-release/phase-E.patch
+          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-E.patch
+          git rm .github/workflows/agent-export-snapshot.yml
+          git rm .github/workflows/agent-inspect-blobs.yml
+          git commit -m 'feat(motion): complete advanced animation tools'
+          pnpm install --frozen-lockfile
+          pnpm check:brand
+          pnpm check:cloud-fox-studio
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          pnpm build:playground
+          git diff --exit-code
+          git rev-parse HEAD >> /tmp/phase-commits.txt
+
+      - name: Push validated phase chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote origin refs/heads/agent/cloud-fox-studio-v0610 | cut -f1)"
+          test "$remote_sha" = "$GITHUB_SHA"
+          git push origin HEAD:refs/heads/agent/cloud-fox-studio-v0610
+          {
+            echo "release_parent=$GITHUB_SHA"
+            echo "release_head=$(git rev-parse HEAD)"
+            nl -ba /tmp/phase-commits.txt
+          } | tee /tmp/phase-release-report.txt
+
+      - name: Upload release report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: staged-blob-report
-          path: /tmp/blob-report.txt
-          retention-days: 1
+          name: phases-be-release-report
+          path: |
+            /tmp/phase-commits.txt
+            /tmp/phase-release-report.txt
+          if-no-files-found: warn
+          retention-days: 3
