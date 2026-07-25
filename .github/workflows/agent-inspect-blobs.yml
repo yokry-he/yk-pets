@@ -1,9 +1,9 @@
 name: Agent Publish Phases B-E Observable
 
 on:
-  push:
-    branches:
-      - agent/cloud-fox-studio-v0610
+  pull_request:
+    types:
+      - synchronize
 
 permissions:
   contents: write
@@ -11,24 +11,25 @@ permissions:
 env:
   RELEASE_SHA256: 6564cd2c397c307d17425fbabf911231de59fbdb4be546a19c9f1d421865eb53
   RELEASE_BASE_SHA: 6f780a4f9fce5014a57949c84a8aea565bdfd5b0
+  RELEASE_PARENT_SHA: ${{ github.event.pull_request.head.sha }}
 
 jobs:
   publish:
-    if: "${{ github.event.head_commit.message == 'chore(ci): publish and validate phases B-E observable' }}"
+    if: "${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/cloud-fox-studio-v0610' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
       - name: Checkout release parent
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.RELEASE_PARENT_SHA }}
           fetch-depth: 0
 
       - name: Verify release parent
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_PARENT_SHA"
           git diff --exit-code "$RELEASE_BASE_SHA" HEAD -- . \
             ':(exclude).github/workflows/agent-export-snapshot.yml' \
             ':(exclude).github/workflows/agent-inspect-blobs.yml'
@@ -197,7 +198,7 @@ jobs:
           git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-B.patch
           git commit -m 'feat(motion): complete timeline authoring and preview adapter'
           validate_phase B
-          push_phase B "$GITHUB_SHA"
+          push_phase B "$RELEASE_PARENT_SHA"
 
           git apply --check /tmp/yk-pets-release/phase-C.patch
           git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-C.patch
@@ -220,7 +221,7 @@ jobs:
           push_phase E "$(awk '$1 == "D" {print $2}' /tmp/phase-commits.txt)"
 
           {
-            echo "release_parent=$GITHUB_SHA"
+            echo "release_parent=$RELEASE_PARENT_SHA"
             echo "release_head=$(git rev-parse HEAD)"
             cat /tmp/phase-commits.txt
           } | tee /tmp/phase-release-report.txt
