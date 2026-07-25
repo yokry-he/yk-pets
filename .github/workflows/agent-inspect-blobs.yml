@@ -1,0 +1,65 @@
+name: Agent Inspect Release Blobs
+
+on:
+  push:
+    branches:
+      - agent/cloud-fox-studio-v0610
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect staged blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          report=/tmp/blob-report.txt
+          : > "$report"
+          for sha in \
+            9fc3e7cb6b35cd74225386bb8d363d5c679dc71b \
+            7eaed40cc67434f20657d4af0a2a0e432d72b107 \
+            8c972bea82aac73d4303b0be3ececb30352d35ff \
+            241571d1236abcc1722266aabd39e7ae992d12d5 \
+            40c450c1ce96170b630c7de43f915c6be1eb282f \
+            68a64b255cb2eb15b1ece90e74ba54b105948969 \
+            a84ee027fdfaadd108ae02bd54306bbbedc2ee58 \
+            3ce4dac60c33c30626beb744f627f640a32b06c1 \
+            222b0b3ecdda65f537691ce4e27156cac7133210 \
+            df3b04c735bb834610ee2d85564506cd26d8642f \
+            6f7f0f9ba431c737f263a2a57e0601ff26f8d799 \
+            e89a887073b6a3d084107ef9611e9c2902812e84 \
+            ec264000b620348ff68844b8b029851e6f969d3e \
+            1a4c93332ba24dacc18b8a5a0b4c5d3e00f9d92b \
+            cbd946751ff70ffd2e45089524ae7cae4b31bc4c \
+            7b595ba1d74b8dc07d1aac96a3c6ae17e6b223e3
+          do
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/git/blobs/$sha" \
+              > /tmp/blob.json
+            jq -r '.content' /tmp/blob.json | tr -d '\n' | base64 -d > "/tmp/$sha"
+            bytes=$(wc -c < "/tmp/$sha")
+            hash=$(sha256sum "/tmp/$sha" | cut -d' ' -f1)
+            kind=$(file -b "/tmp/$sha")
+            printf '%s bytes=%s sha256=%s type=%s\n' "$sha" "$bytes" "$hash" "$kind" >> "$report"
+            if gzip -t "/tmp/$sha" 2>/dev/null; then
+              printf '  gzip=yes uncompressed=%s head=%s\n' "$(gzip -cd "/tmp/$sha" | wc -c)" "$(gzip -cd "/tmp/$sha" | head -c 80 | base64 -w0)" >> "$report"
+            else
+              printf '  gzip=no head=%s\n' "$(head -c 80 "/tmp/$sha" | base64 -w0)" >> "$report"
+            fi
+          done
+          cat "$report"
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: staged-blob-report
+          path: /tmp/blob-report.txt
+          retention-days: 1
