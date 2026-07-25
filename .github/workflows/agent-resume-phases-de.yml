@@ -1,0 +1,44 @@
+name: Agent Resume Phases D-E
+
+on:
+  pull_request:
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_PARENT_SHA: ${{ github.event.pull_request.head.sha }}
+
+jobs:
+  publish:
+    if: "${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/cloud-fox-studio-v0610' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout release parent
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_PARENT_SHA }}
+          fetch-depth: 0
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Publish validated phases D-E
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: bash scripts/agent-publish-de.sh
+
+      - name: Upload release report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phases-de-release-report
+          path: /tmp/yk-pets-release-report
+          if-no-files-found: warn
+          retention-days: 3
