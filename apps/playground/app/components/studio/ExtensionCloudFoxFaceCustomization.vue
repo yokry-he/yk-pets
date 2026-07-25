@@ -7,13 +7,15 @@
 import { CatmullRomCurve3, Euler, Vector3 } from 'three'
 import type { MeshBasicMaterial } from 'three'
 import { useLoop } from '@tresjs/core'
+import type { EvaluatedCloudFoxPose } from '@yk-pets/pet-core'
 import { createExtensionCloudFoxMotionFrame } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import { resolveCloudFoxMuzzleSurfaceAnchor } from '~/domain/cloud-fox-surface-model'
 import { resolvePetCustomization } from '~/domain/pet-part-customization'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
+import { customPoseValue, hasAuthoredPoseChannel } from '~/domain/custom-motion-pose'
 
-const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe; behavior: ExtensionCloudFoxMotionId; motionKey: number }>()
+const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe; behavior: ExtensionCloudFoxMotionId; motionKey: number; customPose?: EvaluatedCloudFoxPose | null }>()
 const vector = (values: readonly number[]) => new Vector3(values[0] || 0, values[1] || 0, values[2] || 0)
 const rotation = (values: readonly number[]) => new Euler(values[0] || 0, values[1] || 0, values[2] || 0)
 const damp = (current: number, target: number, speed: number, delta: number) => current + (target - current) * Math.min(1, 1 - Math.exp(-speed * delta))
@@ -87,7 +89,8 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   else if (props.behavior === 'eating') targetOpen = .25 + Math.max(0, Math.sin(frame.eatProgress * Math.PI * 14)) * .7
   else if (props.behavior === 'sparkle-sneeze') targetOpen = frame.sneezeRelease
   else if (props.behavior === 'happy' || props.behavior === 'excited') targetOpen = .18
-  animatedOpen.value = damp(animatedOpen.value, Math.min(1, targetOpen), 12, delta)
+  const resolvedOpen = hasAuthoredPoseChannel(props.customPose, 'mouth.open') ? customPoseValue(props.customPose, 'mouth.open') : Math.min(1, targetOpen)
+  animatedOpen.value = damp(animatedOpen.value, resolvedOpen, 12, delta)
   const cheekOpacity = props.behavior === 'happy' || props.behavior === 'talking' || props.behavior === 'excited'
     ? .34
     : props.behavior === 'flapping'

@@ -171,3 +171,5 @@ export * from './motion/cloud-fox-rig'
 export * from './motion/motion-time'
 export * from './motion/motion-asset'
 export * from './motion/motion-evaluator'
+
+export * from './motion/motion-authoring'

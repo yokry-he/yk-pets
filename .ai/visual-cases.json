@@ -75,6 +75,30 @@
         "no-unintended-mirroring",
         "no-paw-detachment"
       ]
+    },
+    {
+      "id": "custom-motion-timeline-preview",
+      "route": "/studio/motion",
+      "setup": {
+        "createMotion": true,
+        "keyframes": [
+          "root.position.y@0=0",
+          "root.position.y@600=1",
+          "mouth.open@300=1"
+        ]
+      },
+      "automatedChecks": [
+        "single-canonical-tres-canvas",
+        "semantic-pose-propagation",
+        "timeline-keyframe-selection",
+        "un-authored-channel-preservation"
+      ],
+      "manualChecks": [
+        "playhead-drives-preview",
+        "mouth-keyframe-does-not-disable-un-authored-blink",
+        "body-and-belly-move-together",
+        "refresh-restores-saved-motion"
+      ]
     }
   ]
 }

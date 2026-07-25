@@ -5,6 +5,7 @@
 -->
 <script setup lang="ts">
 import { shallowRef } from 'vue'
+import type { EvaluatedCloudFoxPose } from '@yk-pets/pet-core'
 import { useLoop } from '@tresjs/core'
 import { Vector3 } from 'three'
 import type { Group } from 'three'
@@ -23,6 +24,7 @@ const props = withDefaults(defineProps<{
   motionKey: number
   pointer?: { x: number; y: number }
   fireworkSeed?: number
+  customPose?: EvaluatedCloudFoxPose | null
 }>(), {
   pointer: () => ({ x: 0, y: 0 }),
   fireworkSeed: 0,
@@ -70,7 +72,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 <template>
   <TresGroup ref="headPivot" :position="vector(scheme.model.head.position)">
     <TresGroup :position="inverseHeadPosition">
-      <ExtensionCloudFoxHead :appearance="appearance" :behavior="headBehavior || behavior" :motion-key="motionKey" />
+      <ExtensionCloudFoxHead :appearance="appearance" :behavior="headBehavior || behavior" :motion-key="motionKey" :custom-pose="customPose" />
       <ExtensionCloudFoxGazeOverlay
         :appearance="appearance"
         :behavior="behavior"

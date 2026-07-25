@@ -2,49 +2,34 @@
 
 Automated CI cannot replace real-browser layout, navigation, and WebGL acceptance.
 
-## Routes and navigation
+## Routes and appearance
 
-- Open `/studio` and confirm it only redirects to `/studio/appearance`.
-- Switch among Appearance, Motion, Props, and Library; confirm the URL and active workspace match.
-- Use browser Back and Forward; confirm workspace and context restore correctly.
-- Refresh any workspace; confirm selected motion and prop remain selected.
-- Review the top navigation at 760, 920, 1180, 1440, and 1920 pixel widths; it must not obscure the workspace's primary action.
+- Open `/studio` and confirm it redirects to `/studio/appearance`.
+- Switch among all four workspaces and use Back/Forward. Refresh any workspace and confirm selections restore.
+- Review 760, 920, 1180, 1440, and 1920 pixel layouts.
+- Confirm complete appearance editing, import/export, undo/redo, and extension synchronization remain usable.
 
-## Appearance Studio migration
+## Motion Studio
 
-- Confirm identity, head, body, front and hind paws, belly, tail, antenna, colors, glow, symbols, and audit sections remain available.
-- Confirm save, import, export, undo, redo, randomize, classic comparison, and local schemes still work.
-- Model rendering, motion testing, and four views in `/studio/appearance` should match the pre-migration workspace.
-- The shared Studio shell must not re-enable the page-pet overlay.
+- Create a motion and confirm a stable ID.
+- Edit names, duration, FPS, and loop mode.
+- Write root, body, head, limb, ear, eye/mouth, tail, and antenna keyframes.
+- Verify delete, copy, paste, drag, multi-select, undo, and redo.
+- Verify FPS snapping and exact millisecond input.
+- Verify `once`, `loop`, and `ping-pong` playback.
+- Save, refresh, and confirm restoration.
+- Confirm body and belly move together and unauthored channels retain breathing, blinking, and gaze.
+- Confirm the thirty built-in motions do not regress.
 
-## Motion Studio foundation
+## Props and library
 
-- Create a motion and confirm it receives a stable ID.
-- Change Chinese and English names, duration, and loop mode; refresh and confirm they persist.
-- Select different motions and confirm the shared top context updates.
-- Switch front, left, back, and right views while preserving the active appearance.
-- Confirm timeline ticks change with duration.
-- The current foundation must not imply that custom keyframes can already be written or played.
-
-## Prop Studio foundation
-
-- Create composite and effect props and confirm stable IDs.
-- Change name, kind, and default mount; refresh and confirm they persist.
-- Confirm internal anchors include at least origin, grip, display, and emitter.
-- Use **Test in Motion Studio** and confirm the motion route opens while the current prop context remains selected.
-- Disabled geometry buttons must not appear editable in this foundation phase.
-
-## Asset Library
-
-- Confirm the library shows the current appearance, the count of thirty built-in motions, custom motions, and custom props.
-- Motion and prop edit actions must open the correct route and select the intended asset.
-- Deleting a prop must remove that prop from motion dependency lists.
-- Deleting the selected motion or prop must return the shared context to **Not selected**.
+- Prop foundation assets, default mounts, and four anchors remain available.
+- Prop events and geometry/material editing must not yet be described as complete.
+- Deleting props clears motion dependencies; deleting selected assets clears shared selection.
 
 ## Local data, safety, and performance
 
-- Use developer tools to confirm no new uploads, polling, or WebSocket connections.
-- Confirm extension permissions remain unchanged.
-- Repeatedly switch workspaces and confirm multiple continuously running WebGL scenes do not accumulate.
-- Review keyboard focus, accessible names, button states, and vertical scrolling on narrow layouts.
-- With reduced motion enabled, top navigation and route changes must remain usable.
+- Verify v1-to-v2 migration, refresh restoration, and retained v1 rollback data.
+- Confirm no new uploads, polling, WebSocket, or extension permissions.
+- Repeatedly switch workspaces and confirm no extra WebGL scenes accumulate.
+- Real Chrome Side Panel, GPU/WebGL depth ordering, and final pixels remain separate manual acceptance.

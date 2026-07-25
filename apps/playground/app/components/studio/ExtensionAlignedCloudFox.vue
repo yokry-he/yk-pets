@@ -5,6 +5,7 @@
 -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import type { EvaluatedCloudFoxPose } from '@yk-pets/pet-core'
 import { useLoop } from '@tresjs/core'
 import { Vector3 } from 'three'
 import type { Group } from 'three'
@@ -23,6 +24,7 @@ import { createBallMotionPose, createCatchMotionPose } from '~/domain/cloud-fox-
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
+import { CUSTOM_MOTION_DISTANCE_SCALE, customPoseScale, customPoseValue } from '~/domain/custom-motion-pose'
 
 const props = withDefaults(defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
@@ -32,6 +34,7 @@ const props = withDefaults(defineProps<{
   pointer?: { x: number; y: number }
   speaking?: boolean
   active?: boolean
+  customPose?: EvaluatedCloudFoxPose | null
 }>(), {
   pointer: () => ({ x: 0, y: 0 }),
   speaking: false,
@@ -45,6 +48,7 @@ const loop = useLoop()
 
 const presentation = shallowRef<Group>()
 const motion = shallowRef<Group>()
+const bodyAssembly = shallowRef<Group>()
 const viewY = computed(() => ({ front: 0, left: Math.PI / 2, back: Math.PI, right: -Math.PI / 2 }[props.view]))
 const effectsBehavior = computed<ExtensionCloudFoxMotionId>(() => props.behavior === 'eating' ? 'idle' : props.behavior)
 const headBehavior = computed<ExtensionCloudFoxMotionId>(() => ['playing-ball', 'diving-catch'].includes(props.behavior) ? 'idle' : props.behavior)
@@ -139,7 +143,9 @@ loop.onBeforeRender(({ elapsed, delta }) => {
   const flapHop = state === 'flapping' ? Math.max(0, Math.sin(stateElapsed * 9)) * .1 : 0
   const ballHop = state === 'playing-ball' ? ballPose.height * .055 : 0
   const juggleHop = juggle ? Math.max(0, Math.sin(frame.juggleProgress * Math.PI * 4)) * .055 * frame.jugglePose : 0
+  const customPose = props.customPose
   const targetY = baseY
+    + customPoseValue(customPose, 'root.position.y') * CUSTOM_MOTION_DISTANCE_SCALE
     + Math.sin(elapsed * bobSpeed) * bobAmount
     + happyHop
     + frame.jumpOffset
@@ -150,7 +156,7 @@ loop.onBeforeRender(({ elapsed, delta }) => {
     + juggleHop
     - frame.backflipCrouch * .18
     - frame.backflipLand * .12
-  const targetX = state === 'playing'
+  const targetX = customPoseValue(customPose, 'root.position.x') * CUSTOM_MOTION_DISTANCE_SCALE + (state === 'playing'
     ? Math.sin(elapsed * 2.4) * .2
     : state === 'playing-ball'
       ? ballPose.position.x * .125
@@ -160,8 +166,8 @@ loop.onBeforeRender(({ elapsed, delta }) => {
           ? Math.sin(frame.juggleProgress * Math.PI * 6) * .09 * frame.jugglePose
           : cloudNap
             ? -.22 * frame.cloudNapPose
-            : 0
-  const targetZ = diving ? catchPose.bodyTarget.z : cloudNap ? .08 * frame.cloudNapPose : 0
+            : 0)
+  const targetZ = customPoseValue(customPose, 'root.position.z') * CUSTOM_MOTION_DISTANCE_SCALE + (diving ? catchPose.bodyTarget.z : cloudNap ? .08 * frame.cloudNapPose : 0)
   motionGroup.position.y = damp(motionGroup.position.y, targetY, state === 'jumping' || diving ? 10 : 5.4, delta)
   motionGroup.position.x = damp(motionGroup.position.x, targetX, diving ? 8.5 : 5, delta)
   motionGroup.position.z = damp(motionGroup.position.z, targetZ, diving ? 8.5 : 5, delta)
@@ -170,7 +176,7 @@ loop.onBeforeRender(({ elapsed, delta }) => {
     const eased = 1 - Math.pow(1 - frame.spinProgress, 3)
     motionGroup.rotation.y = spinStart + eased * TAU
   }
-  else motionGroup.rotation.y = damp(motionGroup.rotation.y, 0, 7, delta)
+  else motionGroup.rotation.y = damp(motionGroup.rotation.y, customPoseValue(customPose, 'root.rotation.y'), 7, delta)
   if (state === 'backflip') motionGroup.rotation.x = flipStart - frame.backflipRotation * TAU
   else {
     const targetXRotation = resting
@@ -186,7 +192,7 @@ loop.onBeforeRender(({ elapsed, delta }) => {
               : diving
                 ? -.16 * frame.catchAir + .12 * frame.catchLand
                 : 0
-    motionGroup.rotation.x = damp(motionGroup.rotation.x, targetXRotation, 7, delta)
+    motionGroup.rotation.x = damp(motionGroup.rotation.x, targetXRotation + customPoseValue(customPose, 'root.rotation.x'), 7, delta)
   }
   const targetZRotation = cloudNap
     ? -1.16 * frame.cloudNapPose
@@ -203,13 +209,24 @@ loop.onBeforeRender(({ elapsed, delta }) => {
               : juggle
                 ? Math.sin(frame.juggleProgress * Math.PI * 6) * .08 * frame.jugglePose
                 : 0
-  motionGroup.rotation.z = damp(motionGroup.rotation.z, targetZRotation, 7, delta)
+  motionGroup.rotation.z = damp(motionGroup.rotation.z, targetZRotation + customPoseValue(customPose, 'root.rotation.z'), 7, delta)
   const squash = frame.jumpLanding * .08 + frame.energyCharge * .035 + frame.backflipCrouch * .09 + frame.backflipLand * .07
   const stretchScale = frame.stretchStrength * .05
   const restFlatten = frame.restingPose * .08
-  motionGroup.scale.x = damp(motionGroup.scale.x, 1 + squash + restFlatten - stretchScale * .2, 7, delta)
-  motionGroup.scale.y = damp(motionGroup.scale.y, 1 - squash - restFlatten * .45 + stretchScale, 7, delta)
-  motionGroup.scale.z = damp(motionGroup.scale.z, 1 + squash * .35 + restFlatten * .5, 7, delta)
+  motionGroup.scale.x = damp(motionGroup.scale.x, (1 + squash + restFlatten - stretchScale * .2) * customPoseScale(customPose, 'root.scale.x'), 7, delta)
+  motionGroup.scale.y = damp(motionGroup.scale.y, (1 - squash - restFlatten * .45 + stretchScale) * customPoseScale(customPose, 'root.scale.y'), 7, delta)
+  motionGroup.scale.z = damp(motionGroup.scale.z, (1 + squash * .35 + restFlatten * .5) * customPoseScale(customPose, 'root.scale.z'), 7, delta)
+  if (bodyAssembly.value) {
+    bodyAssembly.value.position.x = damp(bodyAssembly.value.position.x, customPoseValue(customPose, 'body.position.x') * CUSTOM_MOTION_DISTANCE_SCALE, 9, delta)
+    bodyAssembly.value.position.y = damp(bodyAssembly.value.position.y, customPoseValue(customPose, 'body.position.y') * CUSTOM_MOTION_DISTANCE_SCALE, 9, delta)
+    bodyAssembly.value.position.z = damp(bodyAssembly.value.position.z, customPoseValue(customPose, 'body.position.z') * CUSTOM_MOTION_DISTANCE_SCALE, 9, delta)
+    bodyAssembly.value.rotation.x = damp(bodyAssembly.value.rotation.x, customPoseValue(customPose, 'body.rotation.x'), 9, delta)
+    bodyAssembly.value.rotation.y = damp(bodyAssembly.value.rotation.y, customPoseValue(customPose, 'body.rotation.y'), 9, delta)
+    bodyAssembly.value.rotation.z = damp(bodyAssembly.value.rotation.z, customPoseValue(customPose, 'body.rotation.z'), 9, delta)
+    bodyAssembly.value.scale.x = damp(bodyAssembly.value.scale.x, customPoseScale(customPose, 'body.scale.x'), 9, delta)
+    bodyAssembly.value.scale.y = damp(bodyAssembly.value.scale.y, customPoseScale(customPose, 'body.scale.y'), 9, delta)
+    bodyAssembly.value.scale.z = damp(bodyAssembly.value.scale.z, customPoseScale(customPose, 'body.scale.z'), 9, delta)
+  }
 })
 </script>
 
@@ -221,9 +238,11 @@ loop.onBeforeRender(({ elapsed, delta }) => {
     <TresGroup ref="motion" :position="vector(scheme.model.rootPosition)">
       <ExtensionCloudFoxOrbit :appearance="appearance" :behavior="behavior" />
       <ExtensionCloudFoxEnergyBall :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" />
-      <ExtensionCloudFoxTail :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" />
-      <ExtensionCloudFoxBody :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" />
-      <ExtensionCloudFoxBellyPatch :appearance="appearance" />
+      <ExtensionCloudFoxTail :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" :custom-pose="customPose" />
+      <TresGroup ref="bodyAssembly">
+        <ExtensionCloudFoxBody :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" :custom-pose="customPose" />
+        <ExtensionCloudFoxBellyPatch :appearance="appearance" />
+      </TresGroup>
       <ProductionCloudFoxHeadIntent
         :appearance="appearance"
         :behavior="behavior"
@@ -231,6 +250,7 @@ loop.onBeforeRender(({ elapsed, delta }) => {
         :motion-key="effectiveMotionKey"
         :pointer="pointer"
         :firework-seed="fireworkSeed"
+        :custom-pose="customPose"
       />
     </TresGroup>
   </TresGroup>

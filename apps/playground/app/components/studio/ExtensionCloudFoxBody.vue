@@ -5,6 +5,7 @@
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
+import type { EvaluatedCloudFoxPose } from '@yk-pets/pet-core'
 import { CanvasTexture, DoubleSide, Euler, Vector3 } from 'three'
 import type { Group } from 'three'
 import ExtensionCloudFoxBodyShape from './ExtensionCloudFoxBodyShape.vue'
@@ -20,8 +21,9 @@ import {
 } from '~/domain/pet-part-customization'
 import type { SymbolChannelRecipe } from '~/domain/pet-studio-phase4'
 import type { FrontPawStyle, MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
+import { customPoseScale, customPoseValue } from '~/domain/custom-motion-pose'
 
-const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe; behavior: ExtensionCloudFoxMotionId; motionKey: number }>()
+const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe; behavior: ExtensionCloudFoxMotionId; motionKey: number; customPose?: EvaluatedCloudFoxPose | null }>()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vector = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
 const rotation = (value: readonly number[]) => new Euler(value[0] || 0, value[1] || 0, value[2] || 0)
@@ -161,18 +163,26 @@ let previousBehavior: ExtensionCloudFoxMotionId = props.behavior; let previousMo
 useLoop().onBeforeRender(({ elapsed, delta }) => {
   if (previousBehavior !== props.behavior || previousMotionKey !== props.motionKey) { previousBehavior = props.behavior; previousMotionKey = props.motionKey; startedAt = elapsed }
   const frame = createExtensionCloudFoxMotionFrame(props.behavior, Math.max(0, elapsed - startedAt))
+  const customPose = props.customPose
   const updateFront = (group: Group | undefined, tip: Group | undefined, side: -1 | 1) => {
     if (!group || !tip) return
     const pose = createCloudFoxFrontPawPose(props.behavior, side, elapsed, frame, frontPaw.value)
-    group.rotation.x = damp(group.rotation.x, pose.x, 8, delta); group.rotation.y = damp(group.rotation.y, pose.y, 8, delta); group.rotation.z = damp(group.rotation.z, pose.z, 8, delta)
-    group.scale.y = damp(group.scale.y, pose.scaleY, 8, delta); tip.rotation.x = damp(tip.rotation.x, pose.tipX, 10, delta); tip.rotation.z = damp(tip.rotation.z, pose.tipZ, 10, delta)
+    const prefix = side < 0 ? 'frontPaw.left' : 'frontPaw.right'
+    group.rotation.x = damp(group.rotation.x, pose.x + customPoseValue(customPose, `${prefix}.rotation.x` as never), 8, delta)
+    group.rotation.y = damp(group.rotation.y, pose.y + customPoseValue(customPose, `${prefix}.rotation.y` as never), 8, delta)
+    group.rotation.z = damp(group.rotation.z, pose.z + customPoseValue(customPose, `${prefix}.rotation.z` as never), 8, delta)
+    group.scale.y = damp(group.scale.y, pose.scaleY * customPoseScale(customPose, `${prefix}.length` as never), 8, delta)
+    tip.rotation.x = damp(tip.rotation.x, pose.tipX + customPoseValue(customPose, `${prefix}.tip.rotation.x` as never), 10, delta)
+    tip.rotation.z = damp(tip.rotation.z, pose.tipZ + customPoseValue(customPose, `${prefix}.tip.rotation.z` as never), 10, delta)
   }
   updateFront(leftMotion.value, leftTip.value, -1); updateFront(rightMotion.value, rightTip.value, 1)
   const updateHind = (group: Group | undefined, side: -1 | 1) => {
     if (!group) return
     const pose = createCloudFoxHindPawPose(props.behavior, side, elapsed, frame)
-    group.rotation.x = damp(group.rotation.x, pose.x, 8, delta)
-    group.rotation.z = damp(group.rotation.z, pose.z, 8, delta)
+    const prefix = side < 0 ? 'hindPaw.left' : 'hindPaw.right'
+    group.rotation.x = damp(group.rotation.x, pose.x + customPoseValue(customPose, `${prefix}.rotation.x` as never), 8, delta)
+    group.rotation.y = damp(group.rotation.y, customPoseValue(customPose, `${prefix}.rotation.y` as never), 8, delta)
+    group.rotation.z = damp(group.rotation.z, pose.z + customPoseValue(customPose, `${prefix}.rotation.z` as never), 8, delta)
   }
   updateHind(leftHind.value, -1); updateHind(rightHind.value, 1)
 })

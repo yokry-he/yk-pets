@@ -23,7 +23,7 @@
     "appearanceMotionPropAssetsAreIndependent": true,
     "sharedSessionIsLocalOnly": true,
     "duplicateRendererForbidden": true,
-    "customMotionRendererWiringComplete": false
+    "customMotionRendererWiringComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -41,15 +41,18 @@
     "motion-millisecond-time-and-fps-grid",
     "motion-basic-step-linear-interpolation",
     "motion-domain-evaluator",
-    "motion-asset-v2-migration"
+    "motion-asset-v2-migration",
+    "motion-timeline-authoring",
+    "motion-keyframe-writing",
+    "motion-keyframe-copy-move-delete-multiselect",
+    "motion-playhead-and-playback-controls",
+    "motion-renderer-pose-adapter",
+    "custom-motion-playback-runtime",
+    "motion-procedural-channel-blending"
   ],
   "notCompleted": [
-    "motion-keyframe-writing",
-    "motion-timeline-editing",
     "motion-smooth-and-bezier-interpolation",
     "motion-curve-editor",
-    "custom-motion-playback-runtime",
-    "motion-renderer-pose-adapter",
     "motion-prop-event-tracks",
     "prop-geometry-editor",
     "prop-material-editor",
@@ -58,23 +61,20 @@
     "real-chrome-side-panel-manual-acceptance",
     "real-gpu-webgl-manual-acceptance"
   ],
-  "nextPhase": "motion-timeline-authoring-and-preview-adapter",
+  "nextPhase": "motion-prop-event-tracks",
   "latestCompletedBatch": {
-    "id": "motion-semantic-rig-and-keyframe-domain",
+    "id": "motion-timeline-authoring-and-preview-adapter",
     "domainPackage": "@yk-pets/pet-core",
-    "storageMigration": "yk-pets:studio:assets:v1 -> yk-pets:studio:assets:v2",
-    "rendererModified": false,
-    "visualCasesModified": false,
+    "rendererModified": true,
+    "visualCasesModified": true,
     "automatedCoverage": [
-      "rig-channel-uniqueness",
-      "millisecond-and-fps-conversion",
-      "once-loop-ping-pong-time-resolution",
-      "legacy-motion-migration",
-      "track-and-keyframe-normalization",
-      "duplicate-time-last-write-wins",
-      "step-and-linear-interpolation",
-      "deterministic-ui-free-pose-evaluation",
-      "json-round-trip"
+      "motion-draft-undo-redo",
+      "playhead-loop-resolution",
+      "keyframe-write-copy-paste-move-delete",
+      "fps-grid-snapping",
+      "single-evaluation-pose-flow",
+      "semantic-renderer-adapters",
+      "un-authored-procedural-channel-preservation"
     ]
   },
   "mandatoryDevelopmentPolicy": {
@@ -83,7 +83,10 @@
     "updatePullRequestOnlyAfterGreen": true,
     "mergeOnlyWithExplicitUserRequest": true,
     "updateAiPackageForEveryFeatureCommit": true,
-    "featureSourceRoots": ["apps/", "packages/"],
+    "featureSourceRoots": [
+      "apps/",
+      "packages/"
+    ],
     "requiredMachineStateFile": ".ai/project-state.json",
     "requiredContextChoices": [
       ".ai/session-start.md",

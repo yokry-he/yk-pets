@@ -83,6 +83,13 @@ export const useStudioAssetStore = defineStore('studio-assets', {
       Object.assign(motion, normalizeMotionAsset(motion).asset)
       this.persist()
     },
+    replaceMotion(asset: StudioMotionAssetMetadata) {
+      const index = this.motions.findIndex(item => item.id === asset.id)
+      if (index < 0) this.motions.unshift(normalizeMotionAsset(asset).asset)
+      else this.motions[index] = normalizeMotionAsset(asset).asset
+      this.persist()
+      return this.motions.find(item => item.id === asset.id)
+    },
     deleteMotion(id: string) {
       this.motions = this.motions.filter(item => item.id !== id)
       this.persist()

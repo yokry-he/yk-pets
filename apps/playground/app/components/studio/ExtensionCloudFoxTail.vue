@@ -5,17 +5,20 @@
 -->
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
+import type { EvaluatedCloudFoxPose } from '@yk-pets/pet-core'
 import { AdditiveBlending, CatmullRomCurve3, Color, Euler, Quaternion, Vector3 } from 'three'
 import type { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from 'three'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME, type VisualCurve } from '~/domain/chrome-extension-cloud-fox-profile'
 import { createExtensionCloudFoxMotionFrame, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
+import { customPoseValue } from '~/domain/custom-motion-pose'
 
 const props = defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
   behavior: ExtensionCloudFoxMotionId
   motionKey: number
+  customPose?: EvaluatedCloudFoxPose | null
 }>()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vector = (values: readonly number[]) => new Vector3(values[0] || 0, values[1] || 0, values[2] || 0)
@@ -240,22 +243,22 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 
   if (tail.value) {
     const target = directionRotation.value
-    tail.value.rotation.x = damp(tail.value.rotation.x, target.x + Math.cos(elapsed * speed * .45) * .018 - stretchTailLift * .06, 6, delta)
-    tail.value.rotation.y = damp(tail.value.rotation.y, target.y + Math.sin(elapsed * speed * .32) * amplitude * .08, 6, delta)
+    tail.value.rotation.x = damp(tail.value.rotation.x, target.x + Math.cos(elapsed * speed * .45) * .018 - stretchTailLift * .06 + customPoseValue(props.customPose, 'tail.root.rotation.x'), 6, delta)
+    tail.value.rotation.y = damp(tail.value.rotation.y, target.y + Math.sin(elapsed * speed * .32) * amplitude * .08 + customPoseValue(props.customPose, 'tail.root.rotation.y'), 6, delta)
     if (tornado) tail.value.rotation.z = target.z + tailWindmillAngle
-    else tail.value.rotation.z = damp(tail.value.rotation.z, target.z + rootWave * amplitude * .24 + restFold * .45 - stretchTailLift * .05, 7, delta)
+    else tail.value.rotation.z = damp(tail.value.rotation.z, target.z + rootWave * amplitude * .24 + restFold * .45 - stretchTailLift * .05 + customPoseValue(props.customPose, 'tail.root.rotation.z'), 7, delta)
   }
   if (midTail.value) {
     const tornadoLag = tornado ? Math.sin(tailWindmillAngle - .62) * .16 * frame.tornadoStrength : 0
-    midTail.value.rotation.x = damp(midTail.value.rotation.x, midRotation.value.x + tornadoLag * .32, 7, delta)
-    midTail.value.rotation.y = damp(midTail.value.rotation.y, midRotation.value.y + Math.cos(elapsed * speed - .45) * amplitude * .1 + tornadoLag * .24, 7, delta)
-    midTail.value.rotation.z = damp(midTail.value.rotation.z, midRotation.value.z + midWave * amplitude * .62 + restFold * .42 + stretchTailLift * .14 + tornadoLag, 8, delta)
+    midTail.value.rotation.x = damp(midTail.value.rotation.x, midRotation.value.x + tornadoLag * .32 + customPoseValue(props.customPose, 'tail.mid.rotation.x'), 7, delta)
+    midTail.value.rotation.y = damp(midTail.value.rotation.y, midRotation.value.y + Math.cos(elapsed * speed - .45) * amplitude * .1 + tornadoLag * .24 + customPoseValue(props.customPose, 'tail.mid.rotation.y'), 7, delta)
+    midTail.value.rotation.z = damp(midTail.value.rotation.z, midRotation.value.z + midWave * amplitude * .62 + restFold * .42 + stretchTailLift * .14 + tornadoLag + customPoseValue(props.customPose, 'tail.mid.rotation.z'), 8, delta)
   }
   if (tipTail.value) {
     const tornadoLag = tornado ? Math.sin(tailWindmillAngle - 1.18) * .28 * frame.tornadoStrength : 0
-    tipTail.value.rotation.x = damp(tipTail.value.rotation.x, tipRotation.value.x + tornadoLag * .3, 8, delta)
-    tipTail.value.rotation.y = damp(tipTail.value.rotation.y, tipRotation.value.y + Math.cos(elapsed * speed - .8) * amplitude * .18 + stretchTailLift * .04 + tornadoLag * .22, 8, delta)
-    tipTail.value.rotation.z = damp(tipTail.value.rotation.z, tipRotation.value.z + tipWave * amplitude * 1.02 + restFold * .28 + stretchTailLift * .22 + tornadoLag, 9, delta)
+    tipTail.value.rotation.x = damp(tipTail.value.rotation.x, tipRotation.value.x + tornadoLag * .3 + customPoseValue(props.customPose, 'tail.tip.rotation.x'), 8, delta)
+    tipTail.value.rotation.y = damp(tipTail.value.rotation.y, tipRotation.value.y + Math.cos(elapsed * speed - .8) * amplitude * .18 + stretchTailLift * .04 + tornadoLag * .22 + customPoseValue(props.customPose, 'tail.tip.rotation.y'), 8, delta)
+    tipTail.value.rotation.z = damp(tipTail.value.rotation.z, tipRotation.value.z + tipWave * amplitude * 1.02 + restFold * .28 + stretchTailLift * .22 + tornadoLag + customPoseValue(props.customPose, 'tail.tip.rotation.z'), 9, delta)
   }
 
   const glowBoost = state === 'tail-glow'
