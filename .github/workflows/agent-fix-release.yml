@@ -31,71 +31,61 @@ jobs:
           from pathlib import Path
 
           workflow = Path('.github/workflows/agent-inspect-blobs.yml')
-          text = workflow.read_text()
+          lines = workflow.read_text().splitlines()
 
-          old_excludes = """            ':(exclude).github/workflows/agent-export-snapshot.yml' \\
-              ':(exclude).github/workflows/agent-inspect-blobs.yml'
-          """
-          new_excludes = """            ':(exclude).github/workflows/agent-export-snapshot.yml' \\
-              ':(exclude).github/workflows/agent-inspect-blobs.yml' \\
-              ':(exclude).github/workflows/agent-debug-release.yml'
-          """
-          if old_excludes not in text:
-              raise RuntimeError('release parent exclusion marker not found')
-          text = text.replace(old_excludes, new_excludes, 1)
+          def find_line(fragment: str) -> int:
+              matches = [index for index, line in enumerate(lines) if fragment in line]
+              if len(matches) != 1:
+                  raise RuntimeError(f'expected one line containing {fragment!r}, found {len(matches)}')
+              return matches[0]
 
-          apply_marker = """          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-B.patch
-          git commit -m 'feat(motion): complete timeline authoring and preview adapter'
-          """
-          apply_replacement = """          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-B.patch
-          python - <<'PY_FIX_B'
-          from pathlib import Path
+          exclusion_index = find_line("':(exclude).github/workflows/agent-inspect-blobs.yml'")
+          exclusion_indent = lines[exclusion_index][:len(lines[exclusion_index]) - len(lines[exclusion_index].lstrip())]
+          if not lines[exclusion_index].rstrip().endswith('\\'):
+              lines[exclusion_index] = lines[exclusion_index] + ' \\'
+          lines.insert(exclusion_index + 1, exclusion_indent + "':(exclude).github/workflows/agent-debug-release.yml'")
 
-          path = Path('apps/playground/app/stores/studio-motion-editor.ts')
-          source = path.read_text()
-          replacements = [
-              (
-                  '    apply(asset: StudioMotionAssetV2, selectedKeyframeIds = this.selectedKeyframeIds) {',
-                  '    apply(asset: StudioMotionAssetV2, selectedKeyframeIds?: string[]) {',
-              ),
-              (
-                  '      this.selectedKeyframeIds = selectedKeyframeIds',
-                  '      this.selectedKeyframeIds = selectedKeyframeIds ?? this.selectedKeyframeIds',
-              ),
-              (
-                  '    setPlayhead(timeMs: number, snap = this.snapToFrames) {',
-                  '    setPlayhead(timeMs: number, snap?: boolean) {',
-              ),
-              (
-                  '      if (!snap) this.playheadTimeMs = raw',
-                  '      const shouldSnap = snap ?? this.snapToFrames\\n      if (!shouldSnap) this.playheadTimeMs = raw',
-              ),
+          apply_index = find_line('git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-B.patch')
+          apply_indent = lines[apply_index][:len(lines[apply_index]) - len(lines[apply_index].lstrip())]
+          fix_block = [
+              apply_indent + "python - <<'PY_FIX_B'",
+              apply_indent + 'from pathlib import Path',
+              apply_indent + '',
+              apply_indent + "path = Path('apps/playground/app/stores/studio-motion-editor.ts')",
+              apply_indent + 'source = path.read_text()',
+              apply_indent + 'replacements = [',
+              apply_indent + '    (',
+              apply_indent + "        '    apply(asset: StudioMotionAssetV2, selectedKeyframeIds = this.selectedKeyframeIds) {',",
+              apply_indent + "        '    apply(asset: StudioMotionAssetV2, selectedKeyframeIds?: string[]) {',",
+              apply_indent + '    ),',
+              apply_indent + '    (',
+              apply_indent + "        '      this.selectedKeyframeIds = selectedKeyframeIds',",
+              apply_indent + "        '      this.selectedKeyframeIds = selectedKeyframeIds ?? this.selectedKeyframeIds',",
+              apply_indent + '    ),',
+              apply_indent + '    (',
+              apply_indent + "        '    setPlayhead(timeMs: number, snap = this.snapToFrames) {',",
+              apply_indent + "        '    setPlayhead(timeMs: number, snap?: boolean) {',",
+              apply_indent + '    ),',
+              apply_indent + '    (',
+              apply_indent + "        '      if (!snap) this.playheadTimeMs = raw',",
+              apply_indent + "        '      const shouldSnap = snap ?? this.snapToFrames\\n      if (!shouldSnap) this.playheadTimeMs = raw',",
+              apply_indent + '    ),',
+              apply_indent + ']',
+              apply_indent + 'for old, new in replacements:',
+              apply_indent + '    if source.count(old) != 1:',
+              apply_indent + "        raise RuntimeError(f'phase B typing marker count for {old!r}: {source.count(old)}')",
+              apply_indent + '    source = source.replace(old, new, 1)',
+              apply_indent + 'path.write_text(source)',
+              apply_indent + 'PY_FIX_B',
+              apply_indent + 'git add apps/playground/app/stores/studio-motion-editor.ts',
           ]
-          for old, new in replacements:
-              if source.count(old) != 1:
-                  raise RuntimeError(f'phase B typing marker count for {old!r}: {source.count(old)}')
-              source = source.replace(old, new, 1)
-          path.write_text(source)
-          PY_FIX_B
-          git add apps/playground/app/stores/studio-motion-editor.ts
-          git commit -m 'feat(motion): complete timeline authoring and preview adapter'
-          """
-          if apply_marker not in text:
-              raise RuntimeError('phase B apply marker not found')
-          text = text.replace(apply_marker, apply_replacement, 1)
+          lines[apply_index + 1:apply_index + 1] = fix_block
 
-          cleanup_marker = """          git rm .github/workflows/agent-export-snapshot.yml
-          git rm .github/workflows/agent-inspect-blobs.yml
-          """
-          cleanup_replacement = """          git rm .github/workflows/agent-export-snapshot.yml
-          git rm .github/workflows/agent-inspect-blobs.yml
-          git rm .github/workflows/agent-debug-release.yml
-          """
-          if cleanup_marker not in text:
-              raise RuntimeError('temporary workflow cleanup marker not found')
-          text = text.replace(cleanup_marker, cleanup_replacement, 1)
+          cleanup_index = find_line('git rm .github/workflows/agent-inspect-blobs.yml')
+          cleanup_indent = lines[cleanup_index][:len(lines[cleanup_index]) - len(lines[cleanup_index].lstrip())]
+          lines.insert(cleanup_index + 1, cleanup_indent + 'git rm .github/workflows/agent-debug-release.yml')
 
-          workflow.write_text(text)
+          workflow.write_text('\n'.join(lines) + '\n')
           PY
           git rm .github/workflows/agent-fix-release.yml
           git diff --check
