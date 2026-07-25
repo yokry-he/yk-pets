@@ -50,7 +50,7 @@ jobs:
           fix_block = [
               apply_indent + "python - <<'PY_FIX_B'",
               apply_indent + 'from pathlib import Path',
-              apply_indent + '',
+              '',
               apply_indent + "path = Path('apps/playground/app/stores/studio-motion-editor.ts')",
               apply_indent + 'source = path.read_text()',
               apply_indent + 'replacements = [',
@@ -85,7 +85,7 @@ jobs:
           cleanup_indent = lines[cleanup_index][:len(lines[cleanup_index]) - len(lines[cleanup_index].lstrip())]
           lines.insert(cleanup_index + 1, cleanup_indent + 'git rm .github/workflows/agent-debug-release.yml')
 
-          workflow.write_text('\n'.join(lines) + '\n')
+          workflow.write_text('\n'.join(line.rstrip() for line in lines) + '\n')
           PY
           git rm .github/workflows/agent-fix-release.yml
           git diff --check
