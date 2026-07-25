@@ -11,23 +11,27 @@ Every phase must update the AI package in the same feature commit, run full CI, 
 ## Phase B: Timeline editing and production preview
 
 - Status: Complete; manual browser/WebGL acceptance required
-- Independent drafts and undo/redo, playhead and controls, add/delete/copy/paste/move/multi-select, normalized conflict handling, once-per-frame evaluation, complete semantic adapters, procedural-channel preservation, save, and custom playback without prop events are complete.
-- This phase uses `step` and `linear`; advanced curves remain Phase E.
+- Independent drafts and undo/redo, playhead and controls, add/delete/copy/paste/move/multi-select, normalized conflict handling, once-per-frame evaluation, complete semantic adapters, procedural-channel preservation, save, and custom playback are complete.
 
 ## Phase C: Prop event tracks
 
 - Status: Complete; manual WebGL acceptance required
-- Stable prop/instance IDs, full event lifecycle, mount/world space, style and particles, missing-dependency diagnostics, same-scene instance rendering, and hold/throw/catch/destroy tests are complete.
+- Stable prop/instance IDs, complete event lifecycle, mount/world space, style and particles, missing-dependency diagnostics, same-scene instance rendering, and hold/throw/catch/destroy tests are complete.
 
 ## Phase D: Prop Studio entity editing
 
-- Status: Next
-- Parameterized primitives, hierarchy and local transforms; material, color, opacity, metalness, roughness, and glow; `origin`/`grip`/`display`/`emitter`; preview, duplication, JSON import/export, and budgets.
+- Status: Complete; manual browser/WebGL acceptance required
+- Schema v2, legacy migration, nine parameterized component kinds, hierarchy and local transforms, materials, four internal anchors, same-scene preview, duplication, JSON import/export, and resource budgets are complete.
 
 ## Phase E: Advanced animation tools
 
+- Status: Complete; manual browser/audio/WebGL acceptance required
+- Smooth/Bézier interpolation, curve editing, lightweight onion skinning and paths, mirror/presets, layers/interruption, two-bone IK, local audio cues, and safety-reviewed local GLB validation and parsing are complete.
+
+## Phase F: Browser acceptance and release hardening
+
 - Status: Next
-- Smooth/Bézier, curve editor, onion skinning, motion paths, left/right mirror and pose presets, motion layers and interruption, optional IK, audio tracks, and security/performance-reviewed local GLB import.
+- Real Chrome/Side Panel/GPU/WebGL/audio/GLB acceptance, screenshot baselines, multi-resolution regression, and release documentation.
 
 ## Mandatory process
 

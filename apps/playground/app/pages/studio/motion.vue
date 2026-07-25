@@ -6,6 +6,7 @@
 <script setup lang="ts">
 import { evaluateMotionPropEvents, evaluateNormalizedMotionAsset, type MotionInterpolation } from '@yk-pets/pet-core'
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
+import StudioMotionAdvancedTools from '~/components/studio/StudioMotionAdvancedTools.vue'
 import StudioMotionPoseEditor from '~/components/studio/StudioMotionPoseEditor.vue'
 import StudioMotionTimeline from '~/components/studio/StudioMotionTimeline.vue'
 import StudioMotionPropEvents from '~/components/studio/StudioMotionPropEvents.vue'
@@ -24,9 +25,27 @@ const session = useStudioSessionStore()
 const saved = computed(() => assets.motions.find(item => item.id === session.selectedMotionId))
 const draft = computed(() => editor.draft)
 const availableProps = computed(() => assets.props.filter(item => draft.value?.propIds.includes(item.id)))
-const evaluatedPose = computed(() => draft.value ? evaluateNormalizedMotionAsset(draft.value, editor.playheadTimeMs) : null)
+const evaluatedPose = computed(() => {
+  if (!draft.value) return null
+  const pose = evaluateNormalizedMotionAsset(draft.value, editor.playheadTimeMs)
+  if (editor.playbackWeight >= .999) return pose
+  return { ...pose, values: Object.fromEntries(Object.entries(pose.values).map(([key,value]) => [key, value * editor.playbackWeight])) as typeof pose.values }
+})
+const onionPoses = computed(() => {
+  if (!draft.value || !editor.onionSkin) return []
+  const frame = 1000 / draft.value.displayFps
+  return [Math.max(0, editor.playheadTimeMs - frame), Math.min(draft.value.durationMs, editor.playheadTimeMs + frame)].map(time => evaluateNormalizedMotionAsset(draft.value!, time))
+})
+const motionPathPoints = computed(() => {
+  if (!draft.value || !editor.showMotionPath) return []
+  return Array.from({ length: 40 }, (_, index) => {
+    const pose = evaluateNormalizedMotionAsset(draft.value!, draft.value!.durationMs * index / 39)
+    return [pose.values['root.position.x'] * .45, pose.values['root.position.y'] * .45, pose.values['root.position.z'] * .45] as const
+  })
+})
 const evaluatedProps = computed(() => draft.value ? evaluateMotionPropEvents(draft.value, editor.playheadTimeMs) : { instances: [], diagnostics: [] })
 const status = ref('')
+const pendingMotionId = ref('')
 let raf = 0
 
 function saveCurrent(message = '动作已保存') {
@@ -35,17 +54,27 @@ function saveCurrent(message = '动作已保存') {
   if (savedAsset) editor.markSaved(savedAsset)
   status.value = message
 }
-function selectMotion(id: string) {
-  if (editor.isDirty) saveCurrent('已自动保存上一动作')
+function switchMotionNow(id: string) {
+  pendingMotionId.value = ''
   session.selectMotion(id)
   const asset = assets.motions.find(item => item.id === id)
   if (asset) editor.open(asset)
   navigateTo({ path: '/studio/motion', query: { motion: id } }, { replace: true })
 }
+function selectMotion(id: string) {
+  if (id === editor.motionId) return
+  if (editor.isDirty) saveCurrent('已自动保存上一动作')
+  if (editor.requestPlaybackInterruption()) switchMotionNow(id)
+  else {
+    pendingMotionId.value = id
+    status.value = editor.draft?.interruptionPolicy.mode === 'finish-loop' ? '将在当前循环边界切换动作' : '正在按中断策略淡出当前动作'
+  }
+}
 function createMotion() {
   if (editor.isDirty) saveCurrent('已自动保存上一动作')
   const motion = assets.createMotion({ authoringAppearanceId: session.selectedAppearanceId })
-  selectMotion(motion.id)
+  if (editor.requestPlaybackInterruption()) switchMotionNow(motion.id)
+  else pendingMotionId.value = motion.id
 }
 function patchName(field: 'nameZh' | 'nameEn', event: Event) {
   editor.updateMetadata({ [field]: (event.target as HTMLInputElement).value })
@@ -64,6 +93,7 @@ function setBackground(background: typeof session.previewBackground) { session.s
 function applyInterpolation(value: MotionInterpolation) { editor.setSelectedInterpolation(value) }
 function frame(now: number) {
   editor.advancePlayback(now)
+  if (pendingMotionId.value && !editor.playing && !editor.interruptionPending) switchMotionNow(pendingMotionId.value)
   raf = requestAnimationFrame(frame)
 }
 function keyboard(event: KeyboardEvent) {
@@ -124,7 +154,7 @@ onBeforeUnmount(() => {
       </header>
       <div class="preview-shell">
         <ClientOnly>
-          <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" />
+          <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" />
         </ClientOnly>
         <div class="preview-options">
           <button v-for="item in ['front','left','back','right'] as const" :key="item" :class="{active:session.previewView===item}" @click="setView(item)">{{ item }}</button>
@@ -168,6 +198,7 @@ onBeforeUnmount(() => {
           @snap="editor.snapToFrames=$event"
           @auto-key="editor.autoKey=$event"
         />
+        <StudioMotionAdvancedTools />
         <section class="dependency-card"><h3>道具依赖</h3><p v-if="!availableProps.length">当前动作尚未引用道具。</p><NuxtLink v-for="prop in availableProps" :key="prop.id" :to="`/studio/props?prop=${prop.id}`">{{ prop.nameZh }}</NuxtLink></section>
         <StudioMotionPropEvents
           :asset="draft"

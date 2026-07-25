@@ -4,20 +4,32 @@
  * Manages Motion Studio drafts, playhead, keyframe selection, clipboard, and transactional undo/redo without directly persisting assets.
  */
 import {
+  addMotionLayer,
+  applyMotionPosePreset,
+  assignTrackToLayer,
   copyMotionKeyframes,
   duplicateMotionAssetForDraft,
   insertMotionPropEvent,
+  mirrorMotionAsset,
   moveMotionKeyframes,
   normalizeMotionAsset,
   pasteMotionKeyframes,
   removeMotionKeyframes,
+  removeMotionLayer,
   removeMotionPropEvents,
   resolveMotionTime,
   setMotionKeyframeInterpolation,
+  setMotionKeyframeTangents,
+  solveTwoBoneIk2D,
+  updateMotionLayer,
   writeMotionChannelValue,
   type CloudFoxRigChannelId,
   type MotionClipboardEntry,
+  type MotionAudioCue,
+  type MotionInterruptionPolicy,
   type MotionInterpolation,
+  type MotionLayerMode,
+  type MotionPosePresetId,
   type MotionPropEvent,
   type MotionPropMountId,
   type StudioMotionAssetV2,
@@ -41,6 +53,16 @@ interface MotionEditorState {
   autoKey: boolean
   lastDiagnostics: string[]
   selectedPropEventIds: string[]
+  activeLayerId: string
+  onionSkin: boolean
+  showMotionPath: boolean
+  playbackWeight: number
+  interruptionPending: boolean
+  interruptionMode: MotionInterruptionPolicy['mode']
+  interruptionDeadline: number
+  blendOutStartedAt: number
+  blendOutDurationMs: number
+  playbackDirection: 1 | -1
 }
 
 const DEFAULT_CHANNEL: CloudFoxRigChannelId = 'root.position.y'
@@ -65,6 +87,16 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     autoKey: true,
     lastDiagnostics: [],
     selectedPropEventIds: [],
+    activeLayerId: 'base',
+    onionSkin: false,
+    showMotionPath: false,
+    playbackWeight: 1,
+    interruptionPending: false,
+    interruptionMode: 'immediate',
+    interruptionDeadline: 0,
+    blendOutStartedAt: 0,
+    blendOutDurationMs: 0,
+    playbackDirection: 1,
   }),
   getters: {
     isDirty: state => Boolean(state.draft) && serialize(state.draft) !== state.baseline,
@@ -85,6 +117,10 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.playing = false
       this.lastDiagnostics = []
       this.selectedPropEventIds = []
+      this.activeLayerId = this.draft.layers[0]?.id || 'base'
+      this.playbackWeight = 1
+      this.interruptionPending = false
+      this.playbackDirection = 1
     },
     replaceFromSaved(asset: StudioMotionAssetV2) {
       this.motionId = asset.id
@@ -94,6 +130,10 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.redoStack = []
       this.selectedKeyframeIds = []
       this.playheadTimeMs = Math.min(this.playheadTimeMs, asset.durationMs)
+      this.activeLayerId = this.draft.layers[0]?.id || 'base'
+      this.playbackWeight = 1
+      this.interruptionPending = false
+      this.playbackDirection = 1
     },
     close() {
       this.motionId = ''
@@ -104,6 +144,9 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.selectedKeyframeIds = []
       this.playing = false
       this.selectedPropEventIds = []
+      this.playbackWeight = 1
+      this.interruptionPending = false
+      this.playbackDirection = 1
     },
     snapshot() {
       if (!this.draft) return
@@ -170,6 +213,8 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     startPlayback(now = performance.now()) {
       if (!this.draft) return
       this.playing = true
+      this.playbackWeight = 1
+      this.interruptionPending = false
       this.playbackOriginTimeMs = this.playheadTimeMs
       this.playbackStartedAt = now
     },
@@ -181,6 +226,8 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     stopPlayback() {
       this.playing = false
       this.playheadTimeMs = 0
+      this.playbackWeight = 1
+      this.interruptionPending = false
     },
     togglePlayback(now = performance.now()) {
       if (this.playing) this.pausePlayback(now)
@@ -191,7 +238,46 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       const requested = this.playbackOriginTimeMs + Math.max(0, now - this.playbackStartedAt)
       const resolved = resolveMotionTime(requested, this.draft.durationMs, this.draft.loopMode)
       this.playheadTimeMs = resolved.resolvedTimeMs
+      this.playbackDirection = resolved.direction
+      if (this.interruptionPending && this.interruptionMode === 'finish-loop' && requested >= this.interruptionDeadline) {
+        this.playing = false
+        this.interruptionPending = false
+        this.playbackWeight = 0
+        return
+      }
+      if (this.interruptionPending && this.interruptionMode === 'blend-out') {
+        const progress = Math.max(0, Math.min(1, (now - this.blendOutStartedAt) / Math.max(1, this.blendOutDurationMs)))
+        this.playbackWeight = 1 - progress
+        if (progress >= 1) {
+          this.playing = false
+          this.interruptionPending = false
+          this.playbackWeight = 0
+          return
+        }
+      }
       if (this.draft.loopMode === 'once' && requested >= this.draft.durationMs) this.playing = false
+    },
+    requestPlaybackInterruption(now = performance.now()) {
+      if (!this.playing || !this.draft) return true
+      const policy = this.draft.interruptionPolicy
+      if (policy.mode === 'immediate') {
+        this.playing = false
+        this.interruptionPending = false
+        this.playbackWeight = 0
+        return true
+      }
+      this.interruptionPending = true
+      this.interruptionMode = policy.mode
+      if (policy.mode === 'blend-out') {
+        this.blendOutStartedAt = now
+        this.blendOutDurationMs = Math.max(1, policy.blendOutMs)
+      }
+      else {
+        const requested = this.playbackOriginTimeMs + Math.max(0, now - this.playbackStartedAt)
+        const cycle = this.draft.loopMode === 'ping-pong' ? this.draft.durationMs * 2 : this.draft.durationMs
+        this.interruptionDeadline = (Math.floor(requested / Math.max(1, cycle)) + 1) * Math.max(1, cycle)
+      }
+      return false
     },
     writeChannelValue(value: number, interpolation: MotionInterpolation = 'linear') {
       if (!this.draft) return
@@ -199,6 +285,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       const result = writeMotionChannelValue(this.draft, this.selectedChannelId, this.playheadTimeMs, value, interpolation, {
         snapToFrames: this.snapToFrames,
         displayFps: this.draft.displayFps,
+        layerId: this.activeLayerId,
       })
       this.apply(result.asset, result.selectedKeyframeIds)
     },
@@ -235,6 +322,36 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.mutate(asset => setMotionKeyframeInterpolation(asset, ids, interpolation), ids)
     },
 
+    setSelectedTangents(inTangent: number, outTangent: number) {
+      if (!this.draft || !this.selectedKeyframeIds.length) return
+      const ids = [...this.selectedKeyframeIds]
+      this.mutate(asset => setMotionKeyframeTangents(asset, ids, inTangent, outTangent), ids)
+    },
+    mirrorDraft() { if (this.draft) this.mutate(asset => normalizeMotionAsset(mirrorMotionAsset(asset)).asset) },
+    applyPreset(preset: MotionPosePresetId) { if (this.draft) this.mutate(asset => normalizeMotionAsset(applyMotionPosePreset(asset, preset, Math.round(this.playheadTimeMs))).asset) },
+    addLayer(name: string, mode: MotionLayerMode) {
+      if (!this.draft) return
+      this.mutate(asset => addMotionLayer(asset, name, mode))
+      this.activeLayerId = this.draft.layers.at(-1)?.id || 'base'
+    },
+    updateLayer(layerId: string, patch: Parameters<typeof updateMotionLayer>[2]) { if (this.draft) this.mutate(asset => normalizeMotionAsset(updateMotionLayer(asset, layerId, patch)).asset) },
+    deleteLayer(layerId: string) { if (this.draft && layerId !== 'base') { this.mutate(asset => normalizeMotionAsset(removeMotionLayer(asset, layerId)).asset); this.activeLayerId = 'base' } },
+    assignSelectedChannelToLayer(layerId: string) { if (this.draft) { this.mutate(asset => normalizeMotionAsset(assignTrackToLayer(asset, this.selectedChannelId, layerId)).asset); this.activeLayerId = layerId } },
+    updateInterruptionPolicy(patch: Partial<MotionInterruptionPolicy>) { if (this.draft) this.mutate(asset => normalizeMotionAsset({ ...asset, interruptionPolicy: { ...asset.interruptionPolicy, ...patch }, updatedAt: Date.now() }).asset) },
+    applyFrontPawIk(side: 'left' | 'right', targetX: number, targetY: number) {
+      if (!this.draft) return
+      this.snapshot()
+      const ik = solveTwoBoneIk2D(targetX, targetY, .65, .55)
+      let asset = writeMotionChannelValue(this.draft, `frontPaw.${side}.rotation.z` as CloudFoxRigChannelId, this.playheadTimeMs, side === 'left' ? ik.upperAngle : -ik.upperAngle, 'smooth', { snapToFrames: this.snapToFrames, displayFps: this.draft.displayFps, layerId: this.activeLayerId }).asset
+      asset = writeMotionChannelValue(asset, `frontPaw.${side}.tip.rotation.x` as CloudFoxRigChannelId, this.playheadTimeMs, ik.lowerAngle, 'smooth', { snapToFrames: this.snapToFrames, displayFps: this.draft.displayFps, layerId: this.activeLayerId }).asset
+      this.apply(asset)
+    },
+    addAudioCue(cue: Omit<MotionAudioCue, 'id' | 'timeMs'>) {
+      if (!this.draft) return
+      const item: MotionAudioCue = { ...cue, id: `audio-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,5)}`, timeMs: Math.round(this.playheadTimeMs) }
+      this.mutate(asset => normalizeMotionAsset({ ...asset, audioCues: [...asset.audioCues, item], updatedAt: Date.now() }).asset)
+    },
+    removeAudioCue(id: string) { if (this.draft) this.mutate(asset => normalizeMotionAsset({ ...asset, audioCues: asset.audioCues.filter(cue => cue.id !== id), updatedAt: Date.now() }).asset) },
     addPropEvent(input: { propId: string; instanceId: string; kind: MotionPropEvent['kind']; mountId?: MotionPropMountId; transform?: MotionPropEvent['transform']; style?: MotionPropEvent['style'] }) {
       if (!this.draft) return
       this.snapshot()

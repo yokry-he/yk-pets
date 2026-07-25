@@ -18,22 +18,29 @@ import type { CloudFoxRigChannelId } from './cloud-fox-rig'
 export interface MotionKeyframeReference {
   trackId: string
   channelId: CloudFoxRigChannelId
+  layerId: string
   keyframeId: string
   timeMs: number
   value: number
   interpolation: MotionInterpolation
+  inTangent?: number
+  outTangent?: number
 }
 
 export interface MotionClipboardEntry {
   channelId: CloudFoxRigChannelId
+  layerId: string
   offsetMs: number
   value: number
   interpolation: MotionInterpolation
+  inTangent?: number
+  outTangent?: number
 }
 
 export interface MotionAuthoringOptions {
   snapToFrames?: boolean
   displayFps?: number
+  layerId?: string
 }
 
 export interface MotionMoveResult {
@@ -48,10 +55,13 @@ export function collectMotionKeyframes(assetInput: StudioMotionAssetV2): MotionK
   return asset.tracks.flatMap(track => track.keyframes.map(keyframe => ({
     trackId: track.id,
     channelId: track.channelId,
+    layerId: track.layerId,
     keyframeId: keyframe.id,
     timeMs: keyframe.timeMs,
     value: keyframe.value,
     interpolation: keyframe.interpolation,
+    ...(keyframe.inTangent !== undefined ? { inTangent: keyframe.inTangent } : {}),
+    ...(keyframe.outTangent !== undefined ? { outTangent: keyframe.outTangent } : {}),
   })))
 }
 
@@ -70,13 +80,15 @@ export function writeMotionChannelValue(
 ): MotionMoveResult {
   const asset = normalizeMotionAsset(assetInput).asset
   const resolvedTime = resolveMotionAuthoringTime(asset, timeMs, options)
-  const existing = asset.tracks.find(track => track.channelId === channelId)?.keyframes.find(keyframe => keyframe.timeMs === resolvedTime)
+  const targetLayerId = options.layerId || 'base'
+  const existing = asset.tracks.find(track => track.channelId === channelId && track.layerId === targetLayerId)?.keyframes.find(keyframe => keyframe.timeMs === resolvedTime)
   const result = insertMotionKeyframe(asset, {
     channelId,
     timeMs: resolvedTime,
     value,
     interpolation,
     keyframeId: existing?.id,
+    layerId: targetLayerId,
   })
   return { asset: result.asset, selectedKeyframeIds: [result.keyframeId] }
 }
@@ -104,15 +116,30 @@ export function setMotionKeyframeInterpolation(
   return normalizeMotionAsset({ ...asset, tracks, updatedAt: Date.now() }).asset
 }
 
+export function setMotionKeyframeTangents(
+  assetInput: StudioMotionAssetV2,
+  keyframeIds: readonly string[],
+  inTangent: number,
+  outTangent: number,
+): StudioMotionAssetV2 {
+  const selected = new Set(keyframeIds)
+  const asset = normalizeMotionAsset(assetInput).asset
+  const tracks = asset.tracks.map(track => ({ ...track, keyframes: track.keyframes.map(keyframe => selected.has(keyframe.id) ? { ...keyframe, inTangent, outTangent } : keyframe) }))
+  return normalizeMotionAsset({ ...asset, tracks, updatedAt: Date.now() }).asset
+}
+
 export function copyMotionKeyframes(assetInput: StudioMotionAssetV2, keyframeIds: readonly string[]): MotionClipboardEntry[] {
   const selected = new Set(keyframeIds)
   const references = collectMotionKeyframes(assetInput).filter(item => selected.has(item.keyframeId))
   const firstTime = references.length ? Math.min(...references.map(item => item.timeMs)) : 0
   return references.map(item => ({
     channelId: item.channelId,
+    layerId: item.layerId,
     offsetMs: item.timeMs - firstTime,
     value: item.value,
     interpolation: item.interpolation,
+    ...(item.inTangent !== undefined ? { inTangent: item.inTangent } : {}),
+    ...(item.outTangent !== undefined ? { outTangent: item.outTangent } : {}),
   }))
 }
 
@@ -135,6 +162,9 @@ export function pasteMotionKeyframes(
       value: entry.value,
       interpolation: entry.interpolation,
       keyframeId: id,
+      layerId: entry.layerId,
+      ...(entry.inTangent !== undefined ? { inTangent: entry.inTangent } : {}),
+      ...(entry.outTangent !== undefined ? { outTangent: entry.outTangent } : {}),
     })
     asset = result.asset
     selectedKeyframeIds.push(result.keyframeId)

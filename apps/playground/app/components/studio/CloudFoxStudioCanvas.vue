@@ -30,6 +30,8 @@ const props = withDefaults(defineProps<{
   propInstances?: readonly EvaluatedMotionPropInstance[]
   propAssets?: readonly import('~/domain/studio-workspace').StudioPropAssetMetadata[]
   preservePropMaterials?: boolean
+  onionPoses?: readonly EvaluatedCloudFoxPose[]
+  motionPathPoints?: readonly (readonly [number, number, number])[]
 }>(), {
   motionKey: 0,
   focus: 'full',
@@ -101,7 +103,7 @@ const sceneStyle = computed(() => ({
       <TresPointLight :position="vec3(scheme.scene.lights.primaryPosition)" :intensity="scheme.scene.lights.primaryIntensity" :color="appearance.palette.primaryGlow" />
       <TresPointLight :position="vec3(scheme.scene.lights.secondaryPosition)" :intensity="scheme.scene.lights.secondaryIntensity" :color="appearance.palette.secondaryGlow" />
       <PetSceneEffects :scene="activeScene" :behavior="behavior" />
-      <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" />
+      <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" />
     </TresCanvas>
     <div v-if="extensionScene" class="extension-glow" />
     <div class="label">

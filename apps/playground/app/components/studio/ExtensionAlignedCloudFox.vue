@@ -15,6 +15,7 @@ import ExtensionCloudFoxEnergyBall from './ExtensionCloudFoxEnergyBall.vue'
 import ExtensionCloudFoxMealOverlay from './ExtensionCloudFoxMealOverlay.vue'
 import ExtensionCloudFoxTail from './ExtensionCloudFoxTail.vue'
 import ExtensionCloudFoxMotionEffects from './ExtensionCloudFoxMotionEffects.vue'
+import ExtensionCloudFoxMotionGuides from './ExtensionCloudFoxMotionGuides.vue'
 import ExtensionCloudFoxPropInstances from './ExtensionCloudFoxPropInstances.vue'
 import ExtensionCloudFoxOrbit from './ExtensionCloudFoxOrbit.vue'
 import ProductionCloudFoxFireworks from './ProductionCloudFoxFireworks.vue'
@@ -39,6 +40,8 @@ const props = withDefaults(defineProps<{
   propInstances?: readonly EvaluatedMotionPropInstance[]
   propAssets?: readonly import('~/domain/studio-workspace').StudioPropAssetMetadata[]
   preservePropMaterials?: boolean
+  onionPoses?: readonly EvaluatedCloudFoxPose[]
+  motionPathPoints?: readonly (readonly [number, number, number])[]
 }>(), {
   pointer: () => ({ x: 0, y: 0 }),
   speaking: false,
@@ -241,6 +244,7 @@ loop.onBeforeRender(({ elapsed, delta }) => {
     <ExtensionCloudFoxMealOverlay :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" />
     <TresGroup ref="motion" :position="vector(scheme.model.rootPosition)">
       <ExtensionCloudFoxOrbit :appearance="appearance" :behavior="behavior" />
+      <ExtensionCloudFoxMotionGuides :appearance="appearance" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" />
       <ExtensionCloudFoxPropInstances :appearance="appearance" :instances="propInstances" :prop-assets="propAssets" :preserve-asset-materials="preservePropMaterials" />
       <ExtensionCloudFoxEnergyBall :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" />
       <ExtensionCloudFoxTail :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" :custom-pose="customPose" />

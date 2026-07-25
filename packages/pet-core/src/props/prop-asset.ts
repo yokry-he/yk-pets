@@ -56,6 +56,8 @@ export interface StudioPropAnchor {
   transform: StudioPropTransform
 }
 
+export interface StudioPropLocalModel { format: 'glb'; name: string; byteLength: number; dataUrl: string }
+
 export interface StudioPropAssetV2 {
   schemaVersion: typeof STUDIO_PROP_ASSET_SCHEMA_VERSION
   id: string
@@ -65,6 +67,7 @@ export interface StudioPropAssetV2 {
   defaultAnchor: MotionPropMountId
   components: StudioPropComponent[]
   anchors: StudioPropAnchor[]
+  localModel?: StudioPropLocalModel
   createdAt: number
   updatedAt: number
   extensions?: Record<string, unknown>
@@ -168,6 +171,9 @@ export function normalizePropAsset(input: unknown, options: { fallbackId?: strin
   const components = normalizeComponents(fallbackComponents.slice(0, STUDIO_PROP_COMPONENT_LIMIT), diagnostics)
   const anchors = normalizeAnchors(source.anchors, legacyAnchorIds, diagnostics)
   const defaultAnchor = MOUNTS.has(source.defaultAnchor as MotionPropMountId) ? source.defaultAnchor as MotionPropMountId : 'right-front-paw'
+  const localModelSource = isRecord(source.localModel) ? source.localModel : {}
+  const localDataUrl = typeof localModelSource.dataUrl === 'string' && localModelSource.dataUrl.startsWith('data:model/gltf-binary;base64,') && localModelSource.dataUrl.length <= 2_700_000 ? localModelSource.dataUrl : undefined
+  const localModel: StudioPropLocalModel | undefined = localDataUrl ? { format: 'glb', name: text(localModelSource.name, 'local.glb'), byteLength: Math.round(clamp(finite(localModelSource.byteLength), 0, 2_000_000)), dataUrl: localDataUrl } : undefined
   const extensions = collectExtensions(source)
   return {
     asset: {
@@ -179,6 +185,7 @@ export function normalizePropAsset(input: unknown, options: { fallbackId?: strin
       defaultAnchor,
       components,
       anchors,
+      ...(localModel ? { localModel } : {}),
       createdAt: Math.round(finite(source.createdAt, now)),
       updatedAt: Math.round(finite(source.updatedAt, now)),
       ...(Object.keys(extensions).length ? { extensions } : {}),
@@ -232,6 +239,11 @@ export function removePropComponent(assetInput: StudioPropAssetV2, componentId: 
   }
   const components = asset.components.filter(component => !descendants.has(component.id))
   return normalizePropAsset({ ...asset, components: components.length ? components : [createDefaultPropComponent('component-body')], updatedAt: Date.now() }).asset
+}
+
+export function setPropLocalModel(assetInput: StudioPropAssetV2, localModel?: StudioPropLocalModel): StudioPropAssetV2 {
+  const asset = normalizePropAsset(assetInput).asset
+  return normalizePropAsset({ ...asset, ...(localModel ? { localModel } : { localModel: undefined }), updatedAt: Date.now() }).asset
 }
 
 export function updatePropAnchor(assetInput: StudioPropAssetV2, anchorId: StudioPropAnchorId, transformValue: Partial<StudioPropTransform>): StudioPropAssetV2 {
@@ -329,7 +341,7 @@ function normalizeAnchors(input: unknown, legacyIds: unknown[], diagnostics: Pro
 }
 
 function collectExtensions(source: Record<string, unknown>): Record<string, unknown> {
-  const known = new Set(['schemaVersion', 'id', 'nameZh', 'nameEn', 'kind', 'defaultAnchor', 'anchorIds', 'components', 'anchors', 'createdAt', 'updatedAt', 'extensions'])
+  const known = new Set(['schemaVersion', 'id', 'nameZh', 'nameEn', 'kind', 'defaultAnchor', 'anchorIds', 'components', 'anchors', 'localModel', 'createdAt', 'updatedAt', 'extensions'])
   const extensions = isRecord(source.extensions) ? { ...source.extensions } : {}
   for (const [key, value] of Object.entries(source)) if (!known.has(key)) extensions[key] = value
   return extensions

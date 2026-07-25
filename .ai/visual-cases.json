@@ -142,6 +142,24 @@
         "grip-display-emitter-anchors-align",
         "no-depth-order-regression"
       ]
+    },
+    {
+      "id": "advanced-motion-guides-glb",
+      "route": "/studio/motion",
+      "automatedChecks": [
+        "smooth-bezier-curve-evaluation",
+        "motion-layer-weight-composition",
+        "semantic-onion-guide-single-scene",
+        "motion-path-sample-budget",
+        "local-glb-header-uri-validation"
+      ],
+      "manualChecks": [
+        "curve-controls-usable",
+        "onion-guides-readable-not-pet-clones",
+        "motion-path-does-not-obscure-pet",
+        "local-audio-user-gesture-works",
+        "safe-glb-renders-without-network"
+      ]
     }
   ]
 }

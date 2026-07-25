@@ -4,7 +4,7 @@
   Provides versioned prop entity component-tree, geometry, material, internal-anchor, import/export, and sole-scene mount preview editing.
 -->
 <script setup lang="ts">
-import type { EvaluatedMotionPropInstance, MotionPropMountId, StudioPropAnchorId, StudioPropComponent, StudioPropKind, StudioPropPrimitive } from '@yk-pets/pet-core'
+import { validateLocalGlb, type EvaluatedMotionPropInstance, type MotionPropMountId, type StudioPropAnchorId, type StudioPropComponent, type StudioPropKind, type StudioPropPrimitive } from '@yk-pets/pet-core'
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 import { useStudioAssetStore } from '~/stores/studio-assets'
@@ -19,6 +19,8 @@ const selected = computed(() => assets.props.find(item => item.id === session.se
 const selectedComponentId = ref('')
 const selectedAnchorId = ref<StudioPropAnchorId>('grip')
 const importInput = ref<HTMLInputElement | null>(null)
+const glbInput = ref<HTMLInputElement | null>(null)
+const glbStatus = ref('')
 const selectedComponent = computed(() => selected.value?.components.find(item => item.id === selectedComponentId.value) || selected.value?.components[0])
 const selectedAnchor = computed(() => selected.value?.anchors.find(item => item.id === selectedAnchorId.value))
 const anchorOptions: readonly [MotionPropMountId, string][] = [
@@ -129,6 +131,19 @@ async function importProp(event: Event) {
   try { const prop = assets.importProp(JSON.parse(await file.text())); selectProp(prop.id) }
   finally { (event.target as HTMLInputElement).value = '' }
 }
+async function importGlb(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file || !selected.value) return
+  const buffer = await file.arrayBuffer()
+  const validation = validateLocalGlb(buffer)
+  if (!validation.valid) { glbStatus.value = `GLB 被拒绝：${validation.diagnostics.join(' · ')}`; (event.target as HTMLInputElement).value = ''; return }
+  const bytes = new Uint8Array(buffer); let binary = ''
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+  assets.setPropLocalModel(selected.value.id, { format: 'glb', name: file.name, byteLength: bytes.byteLength, dataUrl: `data:model/gltf-binary;base64,${btoa(binary)}` })
+  glbStatus.value = `已加载本地 GLB：${file.name} · ${bytes.byteLength} bytes`
+  ;(event.target as HTMLInputElement).value = ''
+}
+function removeGlb() { if (selected.value) { assets.setPropLocalModel(selected.value.id); glbStatus.value = '已移除本地 GLB' } }
 function setView(view: typeof session.previewView) { session.setPreview(view, session.previewBackground) }
 
 onMounted(() => {
@@ -147,7 +162,7 @@ onMounted(() => {
       <button v-for="prop in assets.props" :key="prop.id" class="asset-item" :class="{active:prop.id===session.selectedPropId}" @click="selectProp(prop.id)"><strong>{{ prop.nameZh }}</strong><small>{{ prop.nameEn }} · {{ prop.kind }} · {{ prop.components.length }} components</small></button>
       <div v-if="!assets.props.length" class="empty">尚无自定义道具。可以创建组合道具或效果道具。</div>
       <div class="asset-actions"><button :disabled="!selected" @click="duplicateAsset">复制资产</button><button :disabled="!selected" @click="exportProp">导出 JSON</button><button @click="importInput?.click()">导入 JSON</button><button class="danger" :disabled="!selected" @click="deleteAsset">删除</button></div>
-      <input ref="importInput" hidden type="file" accept="application/json,.json" @change="importProp">
+      <input ref="importInput" hidden type="file" accept="application/json,.json" @change="importProp"><input ref="glbInput" hidden type="file" accept="model/gltf-binary,.glb" @change="importGlb">
     </aside>
 
     <div class="editor-area">
@@ -181,7 +196,7 @@ onMounted(() => {
           <header><h3>内部锚点</h3><div class="tabs"><button v-for="anchor in selected.anchors" :key="anchor.id" :class="{active:anchor.id===selectedAnchorId}" @click="selectedAnchorId=anchor.id">{{ anchor.id }}</button></div></header>
           <template v-if="selectedAnchor"><div v-for="field in ['position','rotation','scale'] as const" :key="field" class="vector-row"><b>{{ field }}</b><input v-for="axis in 3" :key="axis" :value="selectedAnchor.transform[field][axis-1]" type="number" step=".05" @change="patchAnchorVector(field,axis-1,$event)"></div></template>
         </section>
-        <NuxtLink :to="`/studio/motion?prop=${selected.id}`">在动作工坊中测试</NuxtLink><code>{{ selected.id }}</code>
+        <section class="editor-card"><header><h3>安全本地 GLB</h3><div><button @click="glbInput?.click()">导入 GLB</button><button v-if="selected.localModel" class="danger" @click="removeGlb">移除</button></div></header><p>仅接受 ≤2 MB、GLB v2、无外部 URI 的本地文件；不上传网络。</p><small v-if="selected.localModel">{{ selected.localModel.name }} · {{ selected.localModel.byteLength }} bytes</small><small v-if="glbStatus">{{ glbStatus }}</small></section><NuxtLink :to="`/studio/motion?prop=${selected.id}`">在动作工坊中测试</NuxtLink><code>{{ selected.id }}</code>
       </template>
       <div v-else class="empty">创建道具后可编辑组件树、几何、材质和内部锚点。</div>
     </aside>

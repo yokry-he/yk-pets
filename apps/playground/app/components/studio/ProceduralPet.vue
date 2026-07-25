@@ -20,6 +20,8 @@ const props = defineProps<{
   propInstances?: readonly EvaluatedMotionPropInstance[]
   propAssets?: readonly import('~/domain/studio-workspace').StudioPropAssetMetadata[]
   preservePropMaterials?: boolean
+  onionPoses?: readonly EvaluatedCloudFoxPose[]
+  motionPathPoints?: readonly (readonly [number, number, number])[]
 }>()
 const definition = computed(() => PET_SPECIES_REGISTRY[props.appearance.speciesId])
 const moonCatBehavior = computed(() => {
@@ -42,6 +44,8 @@ const moonCatBehavior = computed(() => {
     :prop-instances="propInstances"
     :prop-assets="propAssets"
     :preserve-prop-materials="preservePropMaterials"
+    :onion-poses="onionPoses"
+    :motion-path-points="motionPathPoints"
   />
   <MoonCat
     v-else-if="appearance.speciesId === 'moon-cat'"

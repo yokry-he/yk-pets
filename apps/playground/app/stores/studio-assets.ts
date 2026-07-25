@@ -14,6 +14,7 @@ import {
   normalizePropAsset,
   normalizePropAssetCollection,
   removePropComponent,
+  setPropLocalModel,
   updatePropAnchor,
   updatePropComponent,
 } from '@yk-pets/pet-core'
@@ -164,6 +165,11 @@ export const useStudioAssetStore = defineStore('studio-assets', {
       const prop = this.props.find(item => item.id === id)
       if (!prop) return
       return this.replaceProp(removePropComponent(prop, componentId))
+    },
+    setPropLocalModel(id: string, localModel?: Parameters<typeof setPropLocalModel>[1]) {
+      const prop = this.props.find(item => item.id === id)
+      if (!prop) return
+      return this.replaceProp(setPropLocalModel(prop, localModel))
     },
     updatePropAnchor(id: string, anchorId: StudioPropAnchorId, patch: Parameters<typeof updatePropAnchor>[2]) {
       const prop = this.props.find(item => item.id === id)

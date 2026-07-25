@@ -46,12 +46,19 @@ export function evaluateMotionAsset(input: unknown, timeMs: number): EvaluateMot
 export function evaluateNormalizedMotionAsset(asset: StudioMotionAssetV2, timeMs: number): EvaluatedCloudFoxPose {
   const resolved = resolveMotionTime(timeMs, asset.durationMs, asset.loopMode)
   const values = createNeutralCloudFoxPoseValues()
-  const authoredChannels: CloudFoxRigChannelId[] = []
+  const authoredChannels = new Set<CloudFoxRigChannelId>()
+  const layerById = new Map(asset.layers.map(layer => [layer.id, layer]))
+  const tracks = [...asset.tracks].sort((left, right) => (layerById.get(left.layerId)?.priority ?? 0) - (layerById.get(right.layerId)?.priority ?? 0))
 
-  for (const track of asset.tracks) {
-    if (track.muted || track.keyframes.length === 0) continue
-    values[track.channelId] = evaluateTrack(track, resolved.resolvedTimeMs)
-    authoredChannels.push(track.channelId)
+  for (const track of tracks) {
+    const layer = layerById.get(track.layerId)
+    if (track.muted || track.keyframes.length === 0 || layer?.enabled === false || (layer?.weight ?? 1) <= 0) continue
+    const trackValue = evaluateTrack(track, resolved.resolvedTimeMs)
+    const weight = layer?.weight ?? 1
+    values[track.channelId] = layer?.mode === 'additive'
+      ? values[track.channelId] + trackValue * weight
+      : values[track.channelId] + (trackValue - values[track.channelId]) * weight
+    authoredChannels.add(track.channelId)
   }
 
   return {
@@ -61,7 +68,7 @@ export function evaluateNormalizedMotionAsset(asset: StudioMotionAssetV2, timeMs
     direction: resolved.direction,
     iteration: resolved.iteration,
     values,
-    authoredChannels,
+    authoredChannels: [...authoredChannels],
   }
 }
 
@@ -79,6 +86,16 @@ export function evaluateTrack(track: MotionTrack, timeMs: number): number {
     if (timeMs >= next.timeMs) continue
     if (current.interpolation === 'step') return current.value
     const progress = (timeMs - current.timeMs) / Math.max(1, next.timeMs - current.timeMs)
+    if (current.interpolation === 'smooth') {
+      const smooth = progress * progress * (3 - 2 * progress)
+      return current.value + (next.value - current.value) * smooth
+    }
+    if (current.interpolation === 'bezier') {
+      const inverse = 1 - progress
+      const controlA = current.value + (current.outTangent ?? 0)
+      const controlB = next.value - (next.inTangent ?? 0)
+      return inverse ** 3 * current.value + 3 * inverse ** 2 * progress * controlA + 3 * inverse * progress ** 2 * controlB + progress ** 3 * next.value
+    }
     return current.value + (next.value - current.value) * progress
   }
 

@@ -56,7 +56,7 @@ function commit() { emit('write', Number(value.value), interpolation.value) }
       <input v-model.number="value" type="number" :min="definition.minimum" :max="definition.maximum" step="0.01" @keydown.enter="commit">
     </label>
     <label>插值
-      <select v-model="interpolation"><option value="linear">线性 Linear</option><option value="step">阶梯 Step</option></select>
+      <select v-model="interpolation"><option value="linear">线性 Linear</option><option value="step">阶梯 Step</option><option value="smooth">平滑 Smooth</option><option value="bezier">贝塞尔 Bézier</option></select>
     </label>
     <button class="primary" @click="commit">{{ autoKey ? '写入关键帧' : '写入当前通道' }}</button>
     <div class="toggles">
@@ -66,12 +66,12 @@ function commit() { emit('write', Number(value.value), interpolation.value) }
     <section class="selection-card">
       <strong>已选 {{ selectedKeyframeCount }} 个关键帧</strong>
       <div><button :disabled="!selectedKeyframeCount" @click="emit('copy')">复制</button><button @click="emit('paste')">粘贴</button><button :disabled="!selectedKeyframeCount" @click="emit('delete')">删除</button></div>
-      <div><button :disabled="!selectedKeyframeCount" @click="emit('interpolation','linear')">设为 Linear</button><button :disabled="!selectedKeyframeCount" @click="emit('interpolation','step')">设为 Step</button></div>
+      <div class="four"><button v-for="item in ['step','linear','smooth','bezier'] as MotionInterpolation[]" :key="item" :disabled="!selectedKeyframeCount" @click="emit('interpolation',item)">{{ item }}</button></div>
     </section>
     <small class="catalog">Rig 共 {{ CLOUD_FOX_RIG_CHANNELS.length }} 个稳定通道。</small>
   </section>
 </template>
 
 <style scoped>
-.pose-editor{display:grid;gap:9px;padding:10px;border:1px solid #ffffff12;border-radius:12px;background:#ffffff04}.pose-editor header{display:grid;gap:3px}.pose-editor header small{color:#727d9c;font:800 8px/1 ui-monospace,monospace;letter-spacing:.14em}.pose-editor h3{margin:0;font-size:13px}.pose-editor label{display:grid;gap:5px;color:#b8c0da;font-size:9px}.pose-editor select,.pose-editor input,.pose-editor button{min-height:33px;border:1px solid #ffffff1d;border-radius:8px;padding:0 8px;color:#fff;background:#090e1b}.pose-editor button{cursor:pointer}.pose-editor button:disabled{cursor:not-allowed;opacity:.35}.primary{border-color:#52e0d066!important;background:#52e0d018!important}.channel-meta{display:grid;gap:3px}.channel-meta code{overflow-wrap:anywhere;color:#7ae4d8;font-size:8px}.channel-meta span,.catalog{color:#6f7998;font-size:8px}.toggles{display:grid;grid-template-columns:1fr 1fr;gap:6px}.toggles label{display:flex;align-items:center;gap:5px}.toggles input{min-height:auto}.selection-card{display:grid;gap:7px;padding-top:8px;border-top:1px solid #ffffff12}.selection-card strong{font-size:9px}.selection-card div{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.selection-card div:last-child{grid-template-columns:1fr 1fr}
+.pose-editor{display:grid;gap:9px;padding:10px;border:1px solid #ffffff12;border-radius:12px;background:#ffffff04}.pose-editor header{display:grid;gap:3px}.pose-editor header small{color:#727d9c;font:800 8px/1 ui-monospace,monospace;letter-spacing:.14em}.pose-editor h3{margin:0;font-size:13px}.pose-editor label{display:grid;gap:5px;color:#b8c0da;font-size:9px}.pose-editor select,.pose-editor input,.pose-editor button{min-height:33px;border:1px solid #ffffff1d;border-radius:8px;padding:0 8px;color:#fff;background:#090e1b}.pose-editor button{cursor:pointer}.pose-editor button:disabled{cursor:not-allowed;opacity:.35}.primary{border-color:#52e0d066!important;background:#52e0d018!important}.channel-meta{display:grid;gap:3px}.channel-meta code{overflow-wrap:anywhere;color:#7ae4d8;font-size:8px}.channel-meta span,.catalog{color:#6f7998;font-size:8px}.toggles{display:grid;grid-template-columns:1fr 1fr;gap:6px}.toggles label{display:flex;align-items:center;gap:5px}.toggles input{min-height:auto}.selection-card{display:grid;gap:7px;padding-top:8px;border-top:1px solid #ffffff12}.selection-card strong{font-size:9px}.selection-card div{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.selection-card div:last-child{grid-template-columns:1fr 1fr}.selection-card .four{grid-template-columns:repeat(4,1fr)}
 </style>

@@ -16,6 +16,15 @@ import {
   type MotionPropEventTrack,
 } from './prop-events'
 import {
+  normalizeAdvancedInterpolation,
+  normalizeInterruptionPolicy,
+  normalizeMotionAudioCues,
+  normalizeMotionLayers,
+  type MotionAudioCue,
+  type MotionInterruptionPolicy,
+  type MotionLayer,
+} from './motion-advanced'
+import {
   normalizeDisplayFps,
   normalizeMotionDurationMs,
   normalizeMotionLoopMode,
@@ -23,18 +32,21 @@ import {
 } from './motion-time'
 
 export const STUDIO_MOTION_ASSET_SCHEMA_VERSION = 2 as const
-export type MotionInterpolation = 'step' | 'linear'
+export type MotionInterpolation = 'step' | 'linear' | 'smooth' | 'bezier'
 
 export interface MotionKeyframe {
   id: string
   timeMs: number
   value: number
   interpolation: MotionInterpolation
+  inTangent?: number
+  outTangent?: number
 }
 
 export interface MotionTrack {
   id: string
   channelId: CloudFoxRigChannelId
+  layerId: string
   muted: boolean
   keyframes: MotionKeyframe[]
 }
@@ -52,6 +64,9 @@ export interface StudioMotionAssetV2 {
   propIds: string[]
   tracks: MotionTrack[]
   propEventTracks: MotionPropEventTrack[]
+  layers: MotionLayer[]
+  interruptionPolicy: MotionInterruptionPolicy
+  audioCues: MotionAudioCue[]
   createdAt: number
   updatedAt: number
   extensions?: Record<string, unknown>
@@ -93,6 +108,9 @@ export interface InsertMotionKeyframeInput {
   interpolation?: MotionInterpolation
   keyframeId?: string
   trackId?: string
+  layerId?: string
+  inTangent?: number
+  outTangent?: number
 }
 
 const KNOWN_ASSET_KEYS = new Set([
@@ -109,6 +127,9 @@ const KNOWN_ASSET_KEYS = new Set([
   'propIds',
   'tracks',
   'propEventTracks',
+  'layers',
+  'interruptionPolicy',
+  'audioCues',
   'createdAt',
   'updatedAt',
   'extensions',
@@ -124,7 +145,7 @@ const finiteInteger = (value: unknown, fallback = 0) => Math.round(finiteNumber(
 const text = (value: unknown, fallback: string) => typeof value === 'string' && value.trim() ? value.trim() : fallback
 const optionalText = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : undefined
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
-const interpolation = (value: unknown): MotionInterpolation => value === 'step' ? 'step' : 'linear'
+const interpolation = (value: unknown): MotionInterpolation => normalizeAdvancedInterpolation(value)
 
 export function normalizeMotionAsset(input: unknown, options: NormalizeMotionAssetOptions = {}): NormalizeMotionAssetResult {
   const source = isRecord(input) ? input : {}
@@ -144,7 +165,8 @@ export function normalizeMotionAsset(input: unknown, options: NormalizeMotionAss
   if (rawDuration !== durationMs) diagnostics.push({ code: 'duration-clamped', path: 'durationMs' })
   if (rawFps !== displayFps) diagnostics.push({ code: 'fps-clamped', path: 'displayFps' })
 
-  const tracks = normalizeTracks(source.tracks, durationMs, diagnostics)
+  const layers = normalizeMotionLayers(source.layers)
+  const tracks = normalizeTracks(source.tracks, durationMs, diagnostics, new Set(layers.map(layer => layer.id)))
   const propEventTracks = normalizePropEventTracks(source.propEventTracks, durationMs)
   const legacyAppearanceId = optionalText(source.appearanceId)
   const authoringAppearanceId = optionalText(source.authoringAppearanceId) || legacyAppearanceId
@@ -164,6 +186,9 @@ export function normalizeMotionAsset(input: unknown, options: NormalizeMotionAss
       propIds: normalizeStringList(source.propIds),
       tracks,
       propEventTracks,
+      layers,
+      interruptionPolicy: normalizeInterruptionPolicy(source.interruptionPolicy),
+      audioCues: normalizeMotionAudioCues(source.audioCues, durationMs),
       createdAt: finiteInteger(source.createdAt, now),
       updatedAt: finiteInteger(source.updatedAt, now),
       ...(Object.keys(extensions).length ? { extensions } : {}),
@@ -193,40 +218,47 @@ export function normalizeMotionAssetCollection(input: unknown, options: Omit<Nor
 
 export function insertMotionKeyframe(assetInput: StudioMotionAssetV2, input: InsertMotionKeyframeInput): NormalizeMotionAssetResult & { keyframeId: string } {
   const source = normalizeMotionAsset(assetInput).asset
-  const existingTrack = source.tracks.find(track => track.channelId === input.channelId)
+  const targetLayerId = input.layerId || 'base'
+  const existingTrack = source.tracks.find(track => track.channelId === input.channelId && track.layerId === targetLayerId)
   const keyframeId = input.keyframeId || `key-${input.channelId.replaceAll('.', '-')}-${Math.round(input.timeMs)}-${existingTrack?.keyframes.length || 0}`
   const nextTrack: MotionTrack = existingTrack
     ? {
         ...existingTrack,
+        layerId: existingTrack.layerId || input.layerId || 'base',
         keyframes: [...existingTrack.keyframes, {
           id: keyframeId,
           timeMs: input.timeMs,
           value: input.value,
           interpolation: input.interpolation || 'linear',
+          ...(input.inTangent !== undefined ? { inTangent: input.inTangent } : {}),
+          ...(input.outTangent !== undefined ? { outTangent: input.outTangent } : {}),
         }],
       }
     : {
         id: input.trackId || `track-${input.channelId}`,
         channelId: input.channelId,
+        layerId: input.layerId || 'base',
         muted: false,
         keyframes: [{
           id: keyframeId,
           timeMs: input.timeMs,
           value: input.value,
           interpolation: input.interpolation || 'linear',
+          ...(input.inTangent !== undefined ? { inTangent: input.inTangent } : {}),
+          ...(input.outTangent !== undefined ? { outTangent: input.outTangent } : {}),
         }],
       }
 
   const tracks = existingTrack
-    ? source.tracks.map(track => track.channelId === input.channelId ? nextTrack : track)
+    ? source.tracks.map(track => track.channelId === input.channelId && track.layerId === targetLayerId ? nextTrack : track)
     : [...source.tracks, nextTrack]
   const result = normalizeMotionAsset({ ...source, tracks, updatedAt: Date.now() })
   return { ...result, keyframeId }
 }
 
-function normalizeTracks(input: unknown, durationMs: number, diagnostics: MotionNormalizationDiagnostic[]): MotionTrack[] {
+function normalizeTracks(input: unknown, durationMs: number, diagnostics: MotionNormalizationDiagnostic[], layerIds: Set<string>): MotionTrack[] {
   if (!Array.isArray(input)) return []
-  const merged = new Map<CloudFoxRigChannelId, { id: string; muted: boolean; keyframes: unknown[] }>()
+  const merged = new Map<string, { id: string; channelId: CloudFoxRigChannelId; layerId: string; muted: boolean; keyframes: unknown[] }>()
 
   for (let trackIndex = 0; trackIndex < input.length; trackIndex += 1) {
     const source = input[trackIndex]
@@ -235,31 +267,36 @@ function normalizeTracks(input: unknown, durationMs: number, diagnostics: Motion
       continue
     }
     const channelId = source.channelId
+    const layerId = typeof source.layerId === 'string' && layerIds.has(source.layerId) ? source.layerId : 'base'
+    const mergeKey = `${layerId}:${channelId}`
     const keyframes = Array.isArray(source.keyframes) ? source.keyframes : []
-    const existing = merged.get(channelId)
+    const existing = merged.get(mergeKey)
     if (existing) {
       diagnostics.push({ code: 'duplicate-channel-track-merged', path: `tracks.${trackIndex}.channelId`, detail: channelId })
       existing.keyframes.push(...keyframes)
       existing.muted = source.muted === true
     }
     else {
-      merged.set(channelId, {
+      merged.set(mergeKey, {
         id: text(source.id, `track-${channelId}`),
+        channelId,
+        layerId,
         muted: source.muted === true,
         keyframes: [...keyframes],
       })
     }
   }
 
-  return [...merged.entries()]
-    .map(([channelId, track]) => ({
+  return [...merged.values()]
+    .map(track => ({
       id: track.id,
-      channelId,
+      channelId: track.channelId,
+      layerId: track.layerId,
       muted: track.muted,
-      keyframes: normalizeKeyframes(track.keyframes, channelId, durationMs, diagnostics),
+      keyframes: normalizeKeyframes(track.keyframes, track.channelId, durationMs, diagnostics),
     }))
     .filter(track => track.keyframes.length > 0)
-    .sort((left, right) => (CHANNEL_INDEX.get(left.channelId) ?? 0) - (CHANNEL_INDEX.get(right.channelId) ?? 0))
+    .sort((left, right) => left.layerId.localeCompare(right.layerId) || (CHANNEL_INDEX.get(left.channelId) ?? 0) - (CHANNEL_INDEX.get(right.channelId) ?? 0))
 }
 
 function normalizeKeyframes(input: unknown[], channelId: CloudFoxRigChannelId, durationMs: number, diagnostics: MotionNormalizationDiagnostic[]): MotionKeyframe[] {
@@ -283,6 +320,8 @@ function normalizeKeyframes(input: unknown[], channelId: CloudFoxRigChannelId, d
       timeMs,
       value,
       interpolation: interpolation(source.interpolation),
+      ...(source.inTangent !== undefined ? { inTangent: clamp(finiteNumber(source.inTangent), -8, 8) } : {}),
+      ...(source.outTangent !== undefined ? { outTangent: clamp(finiteNumber(source.outTangent), -8, 8) } : {}),
     })
   }
 

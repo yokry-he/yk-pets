@@ -27,7 +27,12 @@
     "motionPropEventTracksComplete": true,
     "propAssetSchemaVersion": 2,
     "propEntityEditorComplete": true,
-    "propAnchorEditorComplete": true
+    "propAnchorEditorComplete": true,
+    "advancedMotionToolsComplete": true,
+    "motionLayersComplete": true,
+    "motionAudioTracksComplete": true,
+    "safeLocalGlbImportComplete": true,
+    "onionSkinUsesSemanticGuides": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -66,28 +71,38 @@
     "prop-grip-and-emitter-manipulators",
     "prop-json-import-export",
     "prop-resource-budgets",
-    "prop-model-shared-preview"
-  ],
-  "notCompleted": [
+    "prop-model-shared-preview",
     "motion-smooth-and-bezier-interpolation",
     "motion-curve-editor",
+    "motion-onion-skin",
+    "motion-path-visualization",
+    "motion-left-right-mirroring",
+    "motion-pose-presets",
+    "motion-layering-and-interruption",
+    "motion-two-bone-ik-assist",
+    "motion-local-audio-tracks",
+    "safe-local-glb-import"
+  ],
+  "notCompleted": [
     "browser-screenshot-baselines",
     "real-chrome-side-panel-manual-acceptance",
     "real-gpu-webgl-manual-acceptance"
   ],
-  "nextPhase": "advanced-motion-tools",
+  "nextPhase": "browser-acceptance-and-release-hardening",
   "latestCompletedBatch": {
-    "id": "prop-studio-entity-editing",
+    "id": "advanced-motion-tools",
     "domainPackage": "@yk-pets/pet-core",
     "rendererModified": true,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "legacy-prop-entity-migration",
-      "component-budget-and-hierarchy-normalization",
-      "geometry-and-material-ranges",
-      "anchor-transform-editing",
-      "same-scene-parametric-preview",
-      "local-json-round-trip"
+      "smooth-and-bezier-evaluation",
+      "weighted-motion-layer-composition",
+      "mirror-and-pose-presets",
+      "two-bone-ik",
+      "curve-editor-contract",
+      "semantic-onion-and-path-guides",
+      "local-audio-cue-normalization",
+      "safe-local-glb-validation"
     ]
   },
   "mandatoryDevelopmentPolicy": {

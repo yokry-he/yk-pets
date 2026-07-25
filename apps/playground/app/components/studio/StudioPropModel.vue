@@ -7,6 +7,7 @@
 import { Euler, Vector3 } from 'three'
 import type { MotionPropStyle, StudioPropAssetV2 } from '@yk-pets/pet-core'
 import StudioPropComponentNode from './StudioPropComponentNode.vue'
+import StudioPropLocalGlb from './StudioPropLocalGlb.vue'
 
 const props = defineProps<{ asset: StudioPropAssetV2; styleOverride?: MotionPropStyle }>()
 const roots = computed(() => props.asset.components.filter(component => !component.parentId))
@@ -18,6 +19,9 @@ const modelScale = computed(() => new Vector3(...display.value.scale.map(value =
 
 <template>
   <TresGroup :position="modelPosition" :rotation="modelRotation" :scale="modelScale">
-    <StudioPropComponentNode v-for="component in roots" :key="component.id" :component="component" :components="asset.components" :style-override="styleOverride" />
+    <StudioPropLocalGlb v-if="asset.localModel" :data-url="asset.localModel.dataUrl" />
+    <template v-else>
+      <StudioPropComponentNode v-for="component in roots" :key="component.id" :component="component" :components="asset.components" :style-override="styleOverride" />
+    </template>
   </TresGroup>
 </template>

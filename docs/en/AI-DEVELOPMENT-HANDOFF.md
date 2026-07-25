@@ -64,12 +64,19 @@ The complete Appearance Studio, shared navigation, local StudioSession, stable m
 - Budgets of 48 components, 240 particles, and bounded text.
 - Local JSON import/export and shared production-scene model preview.
 
+### Advanced animation tools
+
+- `smooth` and numeric-tangent `bezier` interpolation with a curve editor.
+- Lightweight semantic onion skins and root motion paths.
+- Left/right mirroring and pose presets.
+- Weighted, enabled `override`/`additive` layers and interruption policy.
+- Two-bone front-paw IK assistance.
+- Local tone and size-bounded local audio tracks.
+- Safe local GLB validation and same-scene parsing limited to 2 MB, GLB v2, and no external URI.
+
 ## 4. Explicitly incomplete
 
 - Advanced interpolation for prop events;
-- smooth/Bézier interpolation, curve editing, onion skinning, and motion paths;
-- mirroring, pose presets, motion layers, interruption policy, IK, and audio tracks;
-- security-reviewed local GLB import;
 - browser screenshot baselines;
 - real Chrome Side Panel, GPU, and WebGL manual acceptance.
 
@@ -81,14 +88,13 @@ Evaluate once per frame. Store pose offsets relative to base appearance mounts a
 
 ## 6. Next phase
 
-The next phase is `advanced-motion-tools`:
+The next phase is `browser-acceptance-and-release-hardening`:
 
-1. Smooth/Bézier interpolation and curve editing.
-2. Onion skinning and motion paths.
-3. Left/right mirroring, pose presets, motion layers, and interruption policy.
-4. Optional IK assistance and local audio tracks.
-5. Define safe local GLB import budgets, validation, and fallback.
-6. Preserve the sole production renderer and one long-running WebGL scene.
+1. Validate timeline, prop events, prop entities, and advanced tools in a real browser.
+2. Validate Chrome Side Panel, GPU/WebGL, depth ordering, audio user gestures, and complex GLB files.
+3. Establish browser screenshot baselines and multi-resolution regression.
+4. Fix issues found by real acceptance and update release documentation.
+5. The PR still must not be merged without explicit user instruction.
 
 ## 7. Manual acceptance still required
 
