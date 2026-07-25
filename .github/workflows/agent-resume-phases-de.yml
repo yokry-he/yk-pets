@@ -42,3 +42,5 @@ jobs:
           path: /tmp/yk-pets-release-report
           if-no-files-found: warn
           retention-days: 3
+
+# Connector-authored synchronization trigger after publisher-script repair.
