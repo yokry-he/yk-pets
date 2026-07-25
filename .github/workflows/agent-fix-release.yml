@@ -1,0 +1,103 @@
+name: Agent Fix Phase Release
+
+on:
+  push:
+    branches:
+      - agent/cloud-fox-studio-v0610
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: "${{ github.event.head_commit.message == 'chore(ci): install phase release self-fix' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout maintenance head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Fix publish workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/agent-inspect-blobs.yml')
+          text = workflow.read_text()
+
+          old_excludes = """            ':(exclude).github/workflows/agent-export-snapshot.yml' \\
+              ':(exclude).github/workflows/agent-inspect-blobs.yml'
+          """
+          new_excludes = """            ':(exclude).github/workflows/agent-export-snapshot.yml' \\
+              ':(exclude).github/workflows/agent-inspect-blobs.yml' \\
+              ':(exclude).github/workflows/agent-debug-release.yml'
+          """
+          if old_excludes not in text:
+              raise RuntimeError('release parent exclusion marker not found')
+          text = text.replace(old_excludes, new_excludes, 1)
+
+          apply_marker = """          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-B.patch
+          git commit -m 'feat(motion): complete timeline authoring and preview adapter'
+          """
+          apply_replacement = """          git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-B.patch
+          python - <<'PY_FIX_B'
+          from pathlib import Path
+
+          path = Path('apps/playground/app/stores/studio-motion-editor.ts')
+          source = path.read_text()
+          replacements = [
+              (
+                  '    apply(asset: StudioMotionAssetV2, selectedKeyframeIds = this.selectedKeyframeIds) {',
+                  '    apply(asset: StudioMotionAssetV2, selectedKeyframeIds?: string[]) {',
+              ),
+              (
+                  '      this.selectedKeyframeIds = selectedKeyframeIds',
+                  '      this.selectedKeyframeIds = selectedKeyframeIds ?? this.selectedKeyframeIds',
+              ),
+              (
+                  '    setPlayhead(timeMs: number, snap = this.snapToFrames) {',
+                  '    setPlayhead(timeMs: number, snap?: boolean) {',
+              ),
+              (
+                  '      if (!snap) this.playheadTimeMs = raw',
+                  '      const shouldSnap = snap ?? this.snapToFrames\\n      if (!shouldSnap) this.playheadTimeMs = raw',
+              ),
+          ]
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise RuntimeError(f'phase B typing marker count for {old!r}: {source.count(old)}')
+              source = source.replace(old, new, 1)
+          path.write_text(source)
+          PY_FIX_B
+          git add apps/playground/app/stores/studio-motion-editor.ts
+          git commit -m 'feat(motion): complete timeline authoring and preview adapter'
+          """
+          if apply_marker not in text:
+              raise RuntimeError('phase B apply marker not found')
+          text = text.replace(apply_marker, apply_replacement, 1)
+
+          cleanup_marker = """          git rm .github/workflows/agent-export-snapshot.yml
+          git rm .github/workflows/agent-inspect-blobs.yml
+          """
+          cleanup_replacement = """          git rm .github/workflows/agent-export-snapshot.yml
+          git rm .github/workflows/agent-inspect-blobs.yml
+          git rm .github/workflows/agent-debug-release.yml
+          """
+          if cleanup_marker not in text:
+              raise RuntimeError('temporary workflow cleanup marker not found')
+          text = text.replace(cleanup_marker, cleanup_replacement, 1)
+
+          workflow.write_text(text)
+          PY
+          git rm .github/workflows/agent-fix-release.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/agent-inspect-blobs.yml
+          git commit -m 'chore(ci): fix phase B release typing'
+          git push origin HEAD:refs/heads/agent/cloud-fox-studio-v0610
