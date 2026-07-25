@@ -1,29 +1,32 @@
 name: Agent Fix Phase Release
 
 on:
-  push:
-    branches:
-      - agent/cloud-fox-studio-v0610
+  pull_request:
+    types:
+      - synchronize
 
 permissions:
   contents: write
 
+env:
+  RELEASE_PARENT_SHA: ${{ github.event.pull_request.head.sha }}
+
 jobs:
   fix:
-    if: "${{ github.event.head_commit.message == 'chore(ci): install phase release self-fix' }}"
+    if: "${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/cloud-fox-studio-v0610' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout maintenance head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.RELEASE_PARENT_SHA }}
           fetch-depth: 0
       - name: Fix publish workflow
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_PARENT_SHA"
           python - <<'PY'
           from pathlib import Path
 
