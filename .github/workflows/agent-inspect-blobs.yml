@@ -15,7 +15,7 @@ env:
 
 jobs:
   publish:
-    if: "${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/cloud-fox-studio-v0610' }}"
+    if: "${{ false }}"
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -32,7 +32,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_PARENT_SHA"
           git diff --exit-code "$RELEASE_BASE_SHA" HEAD -- . \
             ':(exclude).github/workflows/agent-export-snapshot.yml' \
-            ':(exclude).github/workflows/agent-inspect-blobs.yml'
+            ':(exclude).github/workflows/agent-inspect-blobs.yml' \
+            ':(exclude).github/workflows/agent-debug-release.yml' \
+            ':(exclude).github/workflows/agent-fix-release.yml'
 
       - name: Reconstruct verified release bundle
         env:
@@ -196,6 +198,36 @@ jobs:
 
           git apply --check /tmp/yk-pets-release/phase-B.patch
           git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-B.patch
+          python - <<'PY_FIX_B'
+          from pathlib import Path
+
+          path = Path('apps/playground/app/stores/studio-motion-editor.ts')
+          source = path.read_text()
+          replacements = [
+              (
+                  '    apply(asset: StudioMotionAssetV2, selectedKeyframeIds = this.selectedKeyframeIds) {',
+                  '    apply(asset: StudioMotionAssetV2, selectedKeyframeIds?: string[]) {',
+              ),
+              (
+                  '      this.selectedKeyframeIds = selectedKeyframeIds',
+                  '      this.selectedKeyframeIds = selectedKeyframeIds ?? this.selectedKeyframeIds',
+              ),
+              (
+                  '    setPlayhead(timeMs: number, snap = this.snapToFrames) {',
+                  '    setPlayhead(timeMs: number, snap?: boolean) {',
+              ),
+              (
+                  '      if (!snap) this.playheadTimeMs = raw',
+                  '      const shouldSnap = snap ?? this.snapToFrames\n      if (!shouldSnap) this.playheadTimeMs = raw',
+              ),
+          ]
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise RuntimeError(f'phase B typing marker count for {old!r}: {source.count(old)}')
+              source = source.replace(old, new, 1)
+          path.write_text(source)
+          PY_FIX_B
+          git add apps/playground/app/stores/studio-motion-editor.ts
           git commit -m 'feat(motion): complete timeline authoring and preview adapter'
           validate_phase B
           push_phase B "$RELEASE_PARENT_SHA"
@@ -214,8 +246,6 @@ jobs:
 
           git apply --check /tmp/yk-pets-release/phase-E.patch
           git apply --index --whitespace=error-all /tmp/yk-pets-release/phase-E.patch
-          git rm .github/workflows/agent-export-snapshot.yml
-          git rm .github/workflows/agent-inspect-blobs.yml
           git commit -m 'feat(motion): complete advanced animation tools'
           validate_phase E
           push_phase E "$(awk '$1 == "D" {print $2}' /tmp/phase-commits.txt)"
