@@ -15,6 +15,8 @@ Automated CI cannot replace real-browser layout, navigation, and WebGL acceptanc
 - After free rotation, select Front, Left, Back, and Right in turn. Each selection must land directly on the exact canonical view without retaining the drag offset.
 - From any canonical view, drag again and click the already-active view button. It must still clear the offset and restore the exact view.
 - Confirm appearance hotspots, the Motion direct-control area, and the prop mount badge remain usable, with no horizontal overflow at narrow widths.
+- Confirm all three toolbars use the same two-level Canonical Views and Preview Transform grouping, with background, scale, X/Y/Z, and reset aligned consistently; only Motion Studio adds preview time.
+- At 760, 920, 1180, and 1920 pixels, verify clean wrapping without covering the pet or Motion direct controls and without horizontal scrolling.
 
 ## Motion Studio
 

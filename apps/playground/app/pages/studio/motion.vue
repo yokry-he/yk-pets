@@ -12,6 +12,7 @@ import StudioMotionPoseEditor from '~/components/studio/StudioMotionPoseEditor.v
 import StudioMotionTransformEditor from '~/components/studio/StudioMotionTransformEditor.vue'
 import StudioMotionTimeline from '~/components/studio/StudioMotionTimeline.vue'
 import StudioMotionPropEvents from '~/components/studio/StudioMotionPropEvents.vue'
+import StudioPreviewToolbar from '~/components/studio/StudioPreviewToolbar.vue'
 import { useStudioPreviewOrientation } from '~/composables/useStudioPreviewOrientation'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 import { useStudioAssetStore } from '~/stores/studio-assets'
@@ -52,21 +53,23 @@ const evaluatedProps = computed(() => draft.value ? evaluateMotionPropEvents(dra
 const status = ref('')
 const pendingMotionId = ref('')
 const propertyTab = ref<PropertyTab>('pose')
-const previewScale = ref(.72)
 const previewPosition = [0, .32, 0] as const
 const {
+  previewScale,
   previewRotation,
   previewRotationRadians,
   previewRotateSurface,
   previewDrag,
   updatePreviewRotation,
+  updatePreviewScale,
+  resetPreviewScale,
+  wheelPreview,
   selectPreviewView,
   beginPreviewRotate,
   movePreviewRotate,
   endPreviewRotate,
   cancelPreviewRotate,
-} = useStudioPreviewOrientation({ excludedSelector: '.preview-options,.direct-pad' })
-const viewOptions = [['front', '正面'], ['left', '左侧'], ['back', '背面'], ['right', '右侧']] as const
+} = useStudioPreviewOrientation({ excludedSelector: '.direct-pad', defaultScale: .72 })
 const propEventCount = computed(() => draft.value?.propEventTracks.reduce((sum, track) => sum + track.events.length, 0) || 0)
 const propertyTabs = computed<Array<{ id: PropertyTab; label: string; badge?: number }>>(() => [
   { id: 'basic', label: '基础' },
@@ -120,15 +123,8 @@ function setView(view: typeof session.previewView) {
   selectPreviewView(view, next => session.setPreview(next, session.previewBackground))
 }
 function setBackground(background: typeof session.previewBackground) { session.setPreview(session.previewView, background) }
-function clampPreviewScale(value: number) {
-  return Math.max(.4, Math.min(1.2, Number.isFinite(value) ? value : .72))
-}
-function updatePreviewScale(value: number) {
-  previewScale.value = Number(clampPreviewScale(value).toFixed(2))
-}
-function wheelPreview(event: WheelEvent) { updatePreviewScale(previewScale.value - Math.sign(event.deltaY) * .04) }
 function resetPreviewTransform() {
-  previewScale.value = .72
+  resetPreviewScale()
   setView('front')
 }
 function applyInterpolation(value: MotionInterpolation) { editor.setSelectedInterpolation(value) }
@@ -204,31 +200,36 @@ onBeforeUnmount(() => {
         </div>
       </header>
       <div class="preview-shell">
-        <ClientOnly>
-          <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" />
-        </ClientOnly>
-        <div
-          ref="previewRotateSurface"
-          class="preview-rotate-surface"
-          :class="{ dragging: previewDrag.active }"
-          @pointerdown="beginPreviewRotate"
-          @pointermove="movePreviewRotate"
-          @pointerup="endPreviewRotate"
-          @pointercancel="cancelPreviewRotate"
-          @wheel.prevent="wheelPreview"
-        ><span>拖动画布自由旋转 · 滚轮调整预览大小</span></div>
-        <StudioMotionDirectPad v-if="draft" />
-        <div class="preview-options">
-          <div class="view-buttons">
-            <button v-for="[id,label] in viewOptions" :key="id" :class="{active:session.previewView===id}" @click="setView(id)">{{ label }}</button>
-          </div>
-          <label class="background-control">背景<select :value="session.previewBackground" @change="setBackground(($event.target as HTMLSelectElement).value as typeof session.previewBackground)"><option value="dark">深色</option><option value="light">浅色</option><option value="web">网页</option></select></label>
-          <label class="scale-control">预览大小<input :value="previewScale" type="range" min=".4" max="1.2" step=".01" @input="updatePreviewScale(Number(($event.target as HTMLInputElement).value))"><output>{{ Math.round(previewScale * 100) }}%</output></label>
-          <label>俯仰<input :value="previewRotation.x" type="number" min="-180" max="180" step="1" @change="updatePreviewRotation('x', Number(($event.target as HTMLInputElement).value))">°</label>
-          <label>水平<input :value="previewRotation.y" type="number" min="-180" max="180" step="1" @change="updatePreviewRotation('y', Number(($event.target as HTMLInputElement).value))">°</label>
-          <label>倾斜<input :value="previewRotation.z" type="number" min="-180" max="180" step="1" @change="updatePreviewRotation('z', Number(($event.target as HTMLInputElement).value))">°</label>
-          <label>时间<input :value="Math.round(editor.playheadTimeMs)" type="number" min="0" :max="draft?.durationMs || 0" @change="editor.setPlayhead(Number(($event.target as HTMLInputElement).value), false)">毫秒</label>
-          <button class="reset-view" @click="resetPreviewTransform">复位视图</button>
+        <StudioPreviewToolbar
+          :view="session.previewView"
+          :background="session.previewBackground"
+          :scale="previewScale"
+          :rotation="previewRotation"
+          :show-time="true"
+          :time-ms="editor.playheadTimeMs"
+          :max-time-ms="draft?.durationMs || 0"
+          @view="setView"
+          @background="setBackground"
+          @scale="updatePreviewScale"
+          @rotation="(axis, value) => updatePreviewRotation(axis, value)"
+          @time="editor.setPlayhead($event, false)"
+          @reset="resetPreviewTransform"
+        />
+        <div class="preview-stage">
+          <ClientOnly>
+            <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" />
+          </ClientOnly>
+          <div
+            ref="previewRotateSurface"
+            class="preview-rotate-surface"
+            :class="{ dragging: previewDrag.active }"
+            @pointerdown="beginPreviewRotate"
+            @pointermove="movePreviewRotate"
+            @pointerup="endPreviewRotate"
+            @pointercancel="cancelPreviewRotate"
+            @wheel.prevent="wheelPreview"
+          ><span>拖动画布自由旋转 · 滚轮调整预览大小</span></div>
+          <StudioMotionDirectPad v-if="draft" />
         </div>
       </div>
       <StudioMotionTimeline
@@ -366,7 +367,7 @@ onBeforeUnmount(() => {
 h1,h2,h3,p{margin:0}
 .asset-panel h1,.editor-header h2,.property-panel h2{margin-top:5px;font-size:18px}
 .asset-panel p,.dependency-card p{color:#8993b2;font-size:10px;line-height:1.55}
-.asset-panel button,.header-actions button,.preview-options button{border:1px solid #ffffff1c;border-radius:8px;color:#dfe5ff;background:#ffffff07}
+.asset-panel button,.header-actions button{border:1px solid #ffffff1c;border-radius:8px;color:#dfe5ff;background:#ffffff07}
 .asset-panel header button{min-height:32px;padding:0 9px}
 .asset-item{display:grid;gap:3px;padding:9px;text-align:left}
 .asset-item.active{border-color:#52e0d066;background:#52e0d010}
@@ -380,11 +381,11 @@ h1,h2,h3,p{margin:0}
 .header-actions button.active{border-color:#ff5f8677;background:#ff5f8618}
 .header-actions .save{border-color:#52e0d066;background:#52e0d018}
 .header-actions button:disabled{opacity:.35}
-.preview-shell{position:relative;min-width:0;min-height:0;padding:9px;overflow:hidden}
+.preview-shell{display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px;min-width:0;min-height:0;padding:9px;overflow:hidden}.preview-stage{position:relative;min-width:0;min-height:0}.preview-stage :deep(.studio-canvas){min-height:100%}
 .preview-rotate-surface{
   position:absolute;
   z-index:5;
-  inset:9px;
+  inset:0;
   border-radius:22px;
   cursor:grab;
   touch-action:none;
@@ -407,32 +408,6 @@ h1,h2,h3,p{margin:0}
   pointer-events:none;
   backdrop-filter:blur(12px);
 }
-.preview-options{
-  position:absolute;
-  z-index:8;
-  top:18px;
-  right:18px;
-  display:grid;
-  grid-template-columns:auto auto minmax(145px,1fr) auto auto;
-  align-items:center;
-  gap:4px;
-  max-width:calc(100% - 238px);
-  padding:5px;
-  border:1px solid #ffffff18;
-  border-radius:10px;
-  background:#080b14d9;
-  backdrop-filter:blur(12px);
-}
-.view-buttons{display:flex;gap:4px}
-.preview-options button,.preview-options select,.preview-options input[type=number]{min-height:28px;padding:0 7px;border:1px solid #ffffff1d;border-radius:7px;color:#fff;background:#090e1b}
-.preview-options button.active{border-color:#52e0d066;background:#52e0d013}
-.preview-options label{display:flex;align-items:center;gap:4px;min-width:0;color:#aeb7d2;font-size:8px;white-space:nowrap}
-.preview-options label input[type=number]{width:54px}
-.preview-options .scale-control{grid-column:1/4;display:grid;grid-template-columns:auto minmax(90px,1fr) 38px;gap:6px}
-.preview-options .scale-control input{width:100%;accent-color:#52e0d0}
-.preview-options output{color:#cffff8;font:700 8px/1 ui-monospace,monospace;text-align:right}
-.preview-options .background-control select{width:70px}
-.preview-options .reset-view{min-height:28px;padding:0 8px;border-color:#52e0d04f}
 .property-panel header{margin-bottom:2px}
 .property-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px;border:1px solid #ffffff12;border-radius:10px;background:#090d18}
 .property-tabs button{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;min-height:31px;padding:0 5px;border:1px solid transparent;border-radius:7px;color:#8993b2;background:transparent;font-size:9px;cursor:pointer}
@@ -454,20 +429,14 @@ h1,h2,h3,p{margin:0}
 .empty{padding:12px;border:1px dashed #ffffff1d;border-radius:10px;color:#7f89a8;font-size:10px;line-height:1.5}
 .timeline-empty{margin:12px}
 @media(max-width:1480px){
-  .preview-options{grid-template-columns:auto auto minmax(130px,1fr) auto;max-width:calc(100% - 220px)}
-  .preview-options .scale-control{grid-column:1/3}
 }
 @media(max-width:1180px){
   .motion-workspace{grid-template-columns:190px minmax(0,1fr)}
   .property-panel{position:static;grid-column:1/-1;height:min(620px,calc(100dvh - 24px));max-height:620px}
-  .preview-options{max-width:calc(100% - 36px)}
 }
 @media(max-width:780px){
   .motion-workspace{grid-template-columns:minmax(0,1fr)}
-  .editor-area{grid-template-rows:auto 520px 350px}
-  .preview-options{position:relative;z-index:8;top:auto;right:auto;grid-template-columns:repeat(2,minmax(0,1fr));max-width:none;margin:6px}
-  .preview-options .scale-control{grid-column:1/-1}
-  .view-buttons{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+  .editor-area{grid-template-rows:auto 620px 350px}
   .metadata-grid{grid-template-columns:minmax(0,1fr)}
   .property-panel{height:620px;max-height:620px}
   .preview-rotate-surface span{display:none}

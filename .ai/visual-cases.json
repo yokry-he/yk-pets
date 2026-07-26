@@ -282,13 +282,18 @@
         "shared-preview-orientation-controller",
         "canonical-view-clears-free-rotation-offset",
         "three-studio-preview-rotation-wiring",
-        "foreground-interaction-layer-exclusions"
+        "foreground-interaction-layer-exclusions",
+        "shared-preview-toolbar-component",
+        "canonical-view-and-transform-grouping",
+        "three-studio-preview-scale-wiring"
       ],
       "manualChecks": [
         "drag-rotates-preview-in-all-three-studios",
         "front-left-back-right-ignore-previous-drag-offset",
         "active-view-button-clears-new-drag-offset",
-        "appearance-hotspots-and-prop-badge-remain-readable"
+        "appearance-hotspots-and-prop-badge-remain-readable",
+        "toolbar-does-not-cover-pet-or-motion-direct-pad",
+        "toolbar-wraps-without-horizontal-overflow"
       ]
     }
   ]

@@ -12,6 +12,7 @@ type PreviewViewApplier = (view: CloudFoxStudioView) => void
 interface StudioPreviewOrientationOptions {
   degreesPerPixel?: number
   excludedSelector?: string
+  defaultScale?: number
 }
 
 export function wrapStudioPreviewDegrees(value: number) {
@@ -22,6 +23,8 @@ export function wrapStudioPreviewDegrees(value: number) {
 export function useStudioPreviewOrientation(options: StudioPreviewOrientationOptions = {}) {
   const degreesPerPixel = options.degreesPerPixel ?? .42
   const excludedSelector = options.excludedSelector || ''
+  const defaultScale = options.defaultScale ?? 1
+  const previewScale = ref(defaultScale)
   const previewRotation = reactive({ x: 0, y: 0, z: 0 })
   const previewRotationRadians = computed<readonly [number, number, number]>(() => [
     previewRotation.x * Math.PI / 180,
@@ -39,6 +42,19 @@ export function useStudioPreviewOrientation(options: StudioPreviewOrientationOpt
     previewRotation.x = 0
     previewRotation.y = 0
     previewRotation.z = 0
+  }
+
+  function updatePreviewScale(value: number) {
+    const next = Number.isFinite(value) ? value : defaultScale
+    previewScale.value = Number(Math.max(.4, Math.min(1.2, next)).toFixed(2))
+  }
+
+  function resetPreviewScale() {
+    previewScale.value = defaultScale
+  }
+
+  function wheelPreview(event: WheelEvent) {
+    updatePreviewScale(previewScale.value - Math.sign(event.deltaY) * .04)
   }
 
   function selectPreviewView(view: CloudFoxStudioView, applyView: PreviewViewApplier) {
@@ -78,11 +94,15 @@ export function useStudioPreviewOrientation(options: StudioPreviewOrientationOpt
   }
 
   return {
+    previewScale,
     previewRotation,
     previewRotationRadians,
     previewRotateSurface,
     previewDrag,
     updatePreviewRotation,
+    updatePreviewScale,
+    resetPreviewScale,
+    wheelPreview,
     resetPreviewRotation,
     selectPreviewView,
     beginPreviewRotate,

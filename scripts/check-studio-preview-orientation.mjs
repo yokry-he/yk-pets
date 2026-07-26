@@ -11,6 +11,7 @@ const read = relativePath => existsSync(new URL(`../${relativePath}`, import.met
   : ''
 
 const orientation = read('apps/playground/app/composables/useStudioPreviewOrientation.ts')
+const toolbar = read('apps/playground/app/components/studio/StudioPreviewToolbar.vue')
 const motion = read('apps/playground/app/pages/studio/motion.vue')
 const appearance = read('apps/playground/app/components/studio/StudioAppearanceWorkspace.vue')
 const props = read('apps/playground/app/pages/studio/props.vue')
@@ -26,7 +27,7 @@ const checks = [
   ['all workspaces pass shared rotation into the canonical canvas', workspaces.every(source => source.includes(':preview-rotation="previewRotationRadians"'))],
   ['appearance workspace exposes drag rotation without replacing hotspot actions', appearance.includes('class="preview-rotate-surface"') && appearance.includes('@pointerdown="beginPreviewRotate"') && appearance.includes('.part-hotspots')],
   ['prop workspace exposes drag rotation and keeps its mount badge interactive', props.includes('class="preview-rotate-surface"') && props.includes('@pointerdown="beginPreviewRotate"') && props.includes('.anchor-badge')],
-  ['fixed view buttons in all workspaces use the resetting setView action', motion.includes('@click="setView(id)"') && appearance.includes('@click="setView(id)"') && props.includes('@click="setView(item)"')],
+  ['fixed view buttons in all workspaces use the resetting setView action', toolbar.includes("emit('view', id)") && workspaces.every(source => source.includes('@view="setView"'))],
   ['root typecheck includes the preview orientation contract', packageJson.includes('node scripts/check-studio-preview-orientation.mjs')],
 ]
 

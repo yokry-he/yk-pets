@@ -50,7 +50,9 @@
     "motionPropertyTabScrollComplete": true,
     "studioCanonicalViewResetComplete": true,
     "appearancePreviewDragRotationComplete": true,
-    "propPreviewDragRotationComplete": true
+    "propPreviewDragRotationComplete": true,
+    "sharedStudioPreviewToolbarComplete": true,
+    "studioPreviewScaleParityComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -121,7 +123,9 @@
     "motion-property-floating-action-safe-inset",
     "documentation-stack-guide-and-chinese-filenames",
     "studio-canonical-view-reset",
-    "appearance-and-prop-preview-drag-rotation"
+    "appearance-and-prop-preview-drag-rotation",
+    "shared-studio-preview-toolbar",
+    "appearance-and-prop-preview-scale-controls"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -131,17 +135,17 @@
   ],
   "nextPhase": "browser-acceptance-and-release-hardening",
   "latestCompletedBatch": {
-    "id": "studio-preview-orientation-unification",
+    "id": "shared-studio-preview-toolbar",
     "domainPackage": "apps/playground",
     "rendererModified": false,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "shared-preview-orientation-controller",
-      "canonical-view-clears-free-rotation-offset",
-      "appearance-preview-pointer-drag",
-      "motion-preview-pointer-drag-regression",
-      "prop-preview-pointer-drag",
-      "foreground-interaction-layer-exclusions"
+      "shared-preview-toolbar-component",
+      "canonical-view-and-transform-grouping",
+      "three-workspace-toolbar-reuse",
+      "shared-preview-scale-and-wheel-bounds",
+      "optional-motion-preview-time",
+      "appearance-toolbar-action-slot"
     ]
   },
   "mandatoryDevelopmentPolicy": {

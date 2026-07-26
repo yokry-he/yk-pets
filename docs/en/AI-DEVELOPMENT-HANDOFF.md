@@ -141,3 +141,12 @@ Trust order: actual code and runtime results > latest full CI > machine state > 
 - Clicking an already-active view also resets the drag offset, preventing canonical rotation from being combined with stale offsets.
 - Appearance part hotspots and the Prop Studio mount badge keep their foreground interaction layers; the drag surface is limited to each 3D preview.
 - `scripts/check-studio-preview-orientation.mjs` covers shared-controller semantics, all three integrations, canonical reset, and interaction-layer exclusions. Drag feel still requires the documented real GPU/WebGL acceptance pass.
+
+## 13. Shared preview toolbar batch
+
+- Added `StudioPreviewToolbar.vue`, removing separately maintained view and preview-transform forms from Appearance, Motion, and Prop Studio.
+- The toolbar uses two levels: canonical views, background, extension actions, and reset on the first; scale, X/Y/Z free rotation, and optional preview time on the second.
+- Motion Studio moves the toolbar out of the canvas overlay so it no longer covers the pet; its direct manipulation pad remains inside the canvas.
+- Appearance Studio preserves Part Hotspots and Compare Classic through the actions slot, while Prop Studio now receives the shared Chinese canonical-view labels.
+- `useStudioPreviewOrientation` now also owns 40%–120% scale bounds, wheel scaling, and workspace-specific default-scale reset.
+- `scripts/check-studio-preview-toolbar.mjs` covers grouping, three-workspace reuse, scale wiring, optional time, and extension-action contracts.

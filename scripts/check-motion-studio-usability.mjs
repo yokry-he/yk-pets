@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const motionPage = read('apps/playground/app/pages/studio/motion.vue')
+const previewToolbar = read('apps/playground/app/components/studio/StudioPreviewToolbar.vue')
 const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const proceduralPet = read('apps/playground/app/components/studio/ProceduralPet.vue')
 const transformEditor = read('apps/playground/app/components/studio/StudioMotionTransformEditor.vue')
@@ -19,7 +20,7 @@ const timeline = read('apps/playground/app/components/studio/StudioMotionTimelin
 const layout = read('apps/playground/app/layouts/studio.vue')
 
 const checks = [
-  ['motion preview defaults smaller and exposes a bounded scale control', motionPage.includes('const previewScale = ref(.72)') && motionPage.includes('min=".4" max="1.2"') && motionPage.includes('预览大小')],
+  ['motion preview defaults smaller and exposes a bounded scale control', motionPage.includes('defaultScale: .72') && previewToolbar.includes('min=".4" max="1.2"') && previewToolbar.includes('预览大小')],
   ['motion preview starts higher through the canonical preview wrapper', motionPage.includes('const previewPosition = [0, .32, 0] as const') && motionPage.includes(':preview-position="previewPosition"') && canvas.includes('previewPosition?: readonly [number, number, number]') && proceduralPet.includes('previewPositionVector') && proceduralPet.includes(':position="previewPositionVector"')],
   ['property settings are grouped into bounded tabs instead of one long stack', motionPage.includes("type PropertyTab = 'basic' | 'pose' | 'advanced' | 'props'") && motionPage.includes("const propertyTab = ref<PropertyTab>('pose')") && motionPage.includes('class="property-tabs"') && motionPage.includes('class="property-tab-body"') && motionPage.includes('grid-template-rows:auto auto minmax(0,1fr) auto')],
   ['desktop property panel aligns with the editor and uses the available viewport height', layout.includes(':global(.motion-workspace){') && layout.includes('height:calc(100dvh - 55px)!important') && layout.includes('align-items:stretch!important') && layout.includes(':global(.motion-workspace .property-panel){') && layout.includes('align-self:stretch!important') && layout.includes('height:100%!important') && layout.includes('max-height:100%!important')],
@@ -30,7 +31,7 @@ const checks = [
   ['right property panel explicitly prevents horizontal overflow', motionPage.includes('.property-panel{') && motionPage.includes('overflow-x:hidden') && motionPage.includes('.property-panel :deep(input)') && motionPage.includes('grid-template-columns:repeat(2,minmax(0,1fr))')],
   ['narrow direct controls use shrinkable columns', transformEditor.includes('grid-template-columns:minmax(0,1fr) 26px minmax(58px,72px) 26px 26px') && transformEditor.includes('overflow-x:hidden')],
   ['advanced layers and prop styles use shrinkable responsive grids', advancedTools.includes('grid-template-columns:minmax(0,1fr) minmax(0,78px) 58px') && propEvents.includes('grid-template-columns:repeat(2,minmax(0,1fr))') && propEvents.includes('overflow-x:hidden')],
-  ['primary motion UI is Chinese-first', motionPage.includes('<small>动作编辑器</small>') && motionPage.includes('正面') && transformEditor.includes('<small>直接操控</small>') && poseEditor.includes('<small>逐通道编辑</small>') && curveEditor.includes('入切线') && timeline.includes('>轨道<')],
+  ['primary motion UI is Chinese-first', motionPage.includes('<small>动作编辑器</small>') && previewToolbar.includes('正面') && transformEditor.includes('<small>直接操控</small>') && poseEditor.includes('<small>逐通道编辑</small>') && curveEditor.includes('入切线') && timeline.includes('>轨道<')],
   ['motion layer interpolation and prop event choices are localized', advancedTools.includes('>覆盖</option>') && advancedTools.includes('>叠加</option>') && poseEditor.includes("step: '阶梯'") && propEvents.includes("create: '创建'") && propEvents.includes("destroy: '销毁'")],
   ['Studio navigation uses Chinese descriptions instead of English subtitles', layout.includes('{{ item.description }}') && !layout.includes('{{ item.labelEn }}') && layout.includes('<span>工坊</span>')],
 ]
