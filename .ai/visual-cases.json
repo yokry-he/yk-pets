@@ -210,7 +210,7 @@
       "manualChecks": [
         "pet-fits-preview-at-default-scale",
         "drag-rotation-feels-continuous",
-        "wheel-and-slider-scale-remain-synchronized",
+        "wheel-does-not-scale-preview-and-slider-remains-functional",
         "right-panel-has-no-horizontal-scrollbar",
         "motion-editor-primary-copy-is-chinese"
       ]

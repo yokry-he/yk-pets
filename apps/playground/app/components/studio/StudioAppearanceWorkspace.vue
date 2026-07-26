@@ -50,7 +50,6 @@ const {
   updatePreviewRotation,
   updatePreviewScale,
   resetPreviewScale,
-  wheelPreview,
   selectPreviewView,
   beginPreviewRotate,
   movePreviewRotate,
@@ -153,7 +152,8 @@ onBeforeUnmount(()=>{restoreComparison();if(timer)clearTimeout(timer);if(noticeT
           <template #actions><button class="preview-toolbar-action" :class="{ active: showHotspots }" :aria-pressed="showHotspots" @click="showHotspots=!showHotspots">部位定位</button><button class="preview-toolbar-action" :class="{ active: compareActive }" :aria-pressed="compareActive" @click="toggleComparison">{{ compareActive?'返回当前':'对比经典' }}</button></template>
         </StudioPreviewToolbar>
         <div class="stage-status"><span>{{ focusLabel }}</span><small>{{ compareActive?`${changedGroupLabels.length} 组不同 · 只读经典预览`:`${recipe.parts.headShape} / ${recipe.parts.bodyShape}` }}</small></div>
-        <div class="canvas-shell"><ClientOnly><CloudFoxStudioCanvas :appearance="recipe" :behavior="behavior" :motion-key="motionKey" :view="view" :background="background" :focus="previewFocus" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" /><template #fallback><div class="loading">正在装配 Cloud Fox…</div></template></ClientOnly><div ref="previewRotateSurface" class="preview-rotate-surface" :class="{dragging:previewDrag.active}" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate" @wheel.prevent="wheelPreview"><span>拖动画布自由旋转 · 滚轮调整预览大小</span></div><div v-if="showHotspots" class="part-hotspots"><button class="face" @click="tab='face';showHotspots=false">头部</button><button class="body" @click="tab='body';showHotspots=false">身体</button><button class="limbs" @click="tab='limbs';showHotspots=false">四肢</button><button class="tail" @click="tab='tail';showHotspots=false">尾巴</button></div></div>
+        <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
+        <div class="canvas-shell"><ClientOnly><CloudFoxStudioCanvas :appearance="recipe" :behavior="behavior" :motion-key="motionKey" :view="view" :background="background" :focus="previewFocus" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" /><template #fallback><div class="loading">正在装配 Cloud Fox…</div></template></ClientOnly><div ref="previewRotateSurface" class="preview-rotate-surface" :class="{dragging:previewDrag.active}" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate"><span>拖动画布自由旋转</span></div><div v-if="showHotspots" class="part-hotspots"><button class="face" @click="tab='face';showHotspots=false">头部</button><button class="body" @click="tab='body';showHotspots=false">身体</button><button class="limbs" @click="tab='limbs';showHotspots=false">四肢</button><button class="tail" @click="tab='tail';showHotspots=false">尾巴</button></div></div>
         <StudioMotionToolbar :behavior="behavior" @play="play" />
       </section>
       <aside class="inspector"><header><div><strong>{{ recipe.identity.nameZh }} / {{ recipe.identity.nameEn }}</strong><small>{{ store.draftSavedAt?'本地草稿已自动保存':'正在编辑本地草稿' }}</small></div><b>{{ tabs.find(item=>item.id===tab)?.label }}</b></header>

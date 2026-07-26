@@ -120,7 +120,7 @@ Trust order: actual code and runtime results > latest full CI > machine state > 
 ## 10. Motion Studio preview and Chinese-first usability batch
 
 - Motion preview now defaults to a 72% view scale and supports continuous adjustment from 40% to 120%.
-- The preview canvas supports pitch/yaw drag rotation, wheel scaling, numeric three-axis rotation, and one-click reset.
+- The preview canvas supports pitch/yaw drag rotation, toolbar scaling, numeric three-axis rotation, and one-click reset; canvas wheel scaling is currently paused.
 - Preview transforms remain independent from the motion asset and never create keyframes implicitly; authored whole-pet scale and rotation still use semantic Rig controls.
 - The property sidebar, motion layers, curve editor, and prop-event forms use shrinkable grids and prevent horizontal overflow.
 - Primary Motion Studio headings, views, interpolation, layer modes, and prop-event labels are Chinese-first.
@@ -148,5 +148,5 @@ Trust order: actual code and runtime results > latest full CI > machine state > 
 - The toolbar uses two levels: canonical views, background, extension actions, and reset on the first; scale, X/Y/Z free rotation, and optional preview time on the second.
 - Motion Studio moves the toolbar out of the canvas overlay so it no longer covers the pet; its direct manipulation pad remains inside the canvas.
 - Appearance Studio preserves Part Hotspots and Compare Classic through the actions slot, while Prop Studio now receives the shared Chinese canonical-view labels.
-- `useStudioPreviewOrientation` now also owns 40%–120% scale bounds, wheel scaling, and workspace-specific default-scale reset.
+- `useStudioPreviewOrientation` owns 40%–120% scale bounds and workspace-specific default-scale reset; its wheel handler is retained, but none of the three workspaces binds a wheel event.
 - `scripts/check-studio-preview-toolbar.mjs` covers grouping, three-workspace reuse, scale wiring, optional time, and extension-action contracts.

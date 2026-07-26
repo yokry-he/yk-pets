@@ -143,7 +143,7 @@
       "shared-preview-toolbar-component",
       "canonical-view-and-transform-grouping",
       "three-workspace-toolbar-reuse",
-      "shared-preview-scale-and-wheel-bounds",
+      "shared-preview-scale-bounds-with-wheel-input-disabled",
       "optional-motion-preview-time",
       "appearance-toolbar-action-slot"
     ]

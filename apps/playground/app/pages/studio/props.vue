@@ -32,7 +32,6 @@ const {
   updatePreviewRotation,
   updatePreviewScale,
   resetPreviewScale,
-  wheelPreview,
   selectPreviewView,
   beginPreviewRotate,
   movePreviewRotate,
@@ -193,7 +192,8 @@ onMounted(() => {
       <div class="canvas-grid">
         <div class="pet-preview">
           <ClientOnly><CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="selected?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :prop-instances="previewInstances" :prop-assets="selected ? [selected] : []" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" preserve-prop-materials /></ClientOnly>
-          <div ref="previewRotateSurface" class="preview-rotate-surface" :class="{ dragging: previewDrag.active }" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate" @wheel.prevent="wheelPreview"><span>拖动画布自由旋转 · 滚轮调整预览大小</span></div>
+          <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
+          <div ref="previewRotateSurface" class="preview-rotate-surface" :class="{ dragging: previewDrag.active }" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate"><span>拖动画布自由旋转</span></div>
           <span class="anchor-badge">挂载预览：{{ selected?.defaultAnchor || '未选择' }}</span>
         </div>
         <section class="composition-stage">

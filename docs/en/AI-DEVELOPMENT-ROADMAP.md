@@ -50,5 +50,5 @@ Every phase must update the AI package in the same feature commit, run full CI, 
 ### Phase F.2: Motion Studio preview and Chinese-first UI polish
 
 - Status: Complete; manual browser acceptance required.
-- Complete: smaller default preview, continuous view scaling, three-axis free rotation, drag/wheel controls, view reset, property-sidebar horizontal-overflow repair, and Chinese-first primary copy.
+- Complete: smaller default preview, continuous toolbar scaling, three-axis free rotation, drag controls, view reset, property-sidebar horizontal-overflow repair, and Chinese-first primary copy; canvas wheel scaling is currently paused.
 - Preview transforms do not write into the motion asset; authored whole-pet rotation and scale remain semantic Rig keyframes.

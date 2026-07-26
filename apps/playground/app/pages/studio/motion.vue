@@ -63,7 +63,6 @@ const {
   updatePreviewRotation,
   updatePreviewScale,
   resetPreviewScale,
-  wheelPreview,
   selectPreviewView,
   beginPreviewRotate,
   movePreviewRotate,
@@ -219,6 +218,7 @@ onBeforeUnmount(() => {
           <ClientOnly>
             <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" />
           </ClientOnly>
+          <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
           <div
             ref="previewRotateSurface"
             class="preview-rotate-surface"
@@ -227,8 +227,7 @@ onBeforeUnmount(() => {
             @pointermove="movePreviewRotate"
             @pointerup="endPreviewRotate"
             @pointercancel="cancelPreviewRotate"
-            @wheel.prevent="wheelPreview"
-          ><span>拖动画布自由旋转 · 滚轮调整预览大小</span></div>
+          ><span>拖动画布自由旋转</span></div>
           <StudioMotionDirectPad v-if="draft" />
         </div>
       </div>
