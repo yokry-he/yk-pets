@@ -45,7 +45,9 @@
     "motionStudioHorizontalOverflowFixed": true,
     "motionStudioChineseUiComplete": true,
     "motionPreviewVerticalOffsetComplete": true,
-    "motionPropertyTabsComplete": true
+    "motionPropertyTabsComplete": true,
+    "motionPropertyPanelViewportAlignedComplete": true,
+    "motionPropertyTabScrollComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -110,7 +112,10 @@
     "motion-property-panel-horizontal-overflow-repair",
     "motion-studio-chinese-first-ui",
     "motion-preview-upward-default",
-    "motion-property-panel-tabbed-sections"
+    "motion-property-panel-tabbed-sections",
+    "motion-property-panel-top-alignment",
+    "motion-property-tab-scroll-restoration",
+    "motion-property-floating-action-safe-inset"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -120,16 +125,16 @@
   ],
   "nextPhase": "browser-acceptance-and-release-hardening",
   "latestCompletedBatch": {
-    "id": "motion-studio-preview-position-and-tabbed-properties",
+    "id": "motion-property-panel-scroll-and-alignment",
     "domainPackage": "apps/playground",
-    "rendererModified": true,
+    "rendererModified": false,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "canonical-preview-upward-offset",
-      "four-property-tab-contract",
-      "bounded-property-panel-height",
-      "tab-local-scroll-container",
-      "existing-preview-scale-and-rotation-preserved"
+      "desktop-workspace-viewport-height",
+      "property-panel-top-alignment",
+      "single-tab-scroll-container",
+      "floating-action-safe-bottom-inset",
+      "responsive-document-flow-fallback"
     ]
   },
   "mandatoryDevelopmentPolicy": {

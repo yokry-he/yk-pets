@@ -239,6 +239,30 @@
         "property-panel-does-not-extend-page-height",
         "each-tab-scrolls-independently-when-needed"
       ]
+    },
+    {
+      "id": "motion-property-panel-scroll-and-alignment",
+      "route": "/studio/motion",
+      "setup": {
+        "propertyTab": "advanced",
+        "viewport": [
+          1920,
+          1080
+        ],
+        "advancedContentExceedsPanel": true
+      },
+      "automatedChecks": [
+        "workspace-height-is-viewport-bounded",
+        "property-panel-aligns-with-editor-top",
+        "tab-body-is-only-vertical-scroll-container",
+        "tab-body-keeps-floating-action-safe-inset"
+      ],
+      "manualChecks": [
+        "advanced-tab-scrolls-to-last-control",
+        "property-header-and-tabs-remain-visible",
+        "panel-top-aligns-with-main-editor",
+        "floating-style-button-does-not-cover-last-control"
+      ]
     }
   ]
 }

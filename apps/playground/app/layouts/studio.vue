@@ -45,4 +45,39 @@ watch(workspace, next => session.setWorkspace(next), { immediate: true })
 
 <style scoped>
 .studio-shell{min-height:100dvh;background:#080b14;color:#eef1ff}.shell-bar{position:sticky;z-index:80;top:0;display:grid;grid-template-columns:auto minmax(420px,1fr) auto;align-items:center;gap:14px;padding:8px 18px;border-bottom:1px solid #ffffff17;background:#090d18f2;backdrop-filter:blur(18px)}.shell-brand{display:flex;align-items:center;gap:7px;white-space:nowrap}.shell-brand a{color:#75dfd1;text-decoration:none;font-weight:900;font-size:11px}.shell-brand span{padding:3px 6px;border:1px solid #ffffff1a;border-radius:6px;color:#8993b4;font:800 8px/1 ui-monospace,monospace;letter-spacing:.14em}.shell-bar nav{display:flex;justify-content:center;gap:5px;min-width:0}.shell-bar nav a{display:grid;min-width:104px;gap:2px;padding:7px 10px;border:1px solid transparent;border-radius:10px;color:#aeb7d2;text-decoration:none;text-align:center}.shell-bar nav a:hover{background:#ffffff07}.shell-bar nav a.active{border-color:#52e0d058;color:#fff;background:linear-gradient(135deg,#7066ff1d,#52e0d012)}.shell-bar nav strong{font-size:11px}.shell-bar nav small{overflow:hidden;color:#77819f;font-size:8px;text-overflow:ellipsis;white-space:nowrap}.shell-context{display:flex;justify-content:flex-end;gap:5px;min-width:0}.shell-context a{display:grid;min-width:88px;max-width:170px;padding:5px 8px;border:1px solid #ffffff12;border-radius:8px;color:#dce2f8;text-decoration:none;background:#ffffff05}.shell-context small{overflow:hidden;color:#6e7897;font-size:7px;text-overflow:ellipsis;white-space:nowrap}.shell-context strong{overflow:hidden;font-size:9px;text-overflow:ellipsis;white-space:nowrap}.shell-content{min-height:calc(100dvh - 55px)}@media(max-width:1180px){.shell-bar{grid-template-columns:auto 1fr}.shell-context{grid-column:1/-1;justify-content:flex-start}.shell-bar nav{justify-content:flex-end}}@media(max-width:760px){.shell-bar{position:relative;grid-template-columns:1fr;padding:8px}.shell-bar nav{display:grid;grid-template-columns:repeat(2,1fr)}.shell-bar nav a{min-width:0}.shell-context{display:grid;grid-template-columns:repeat(3,1fr)}.shell-context a{min-width:0;max-width:none}}
+
+/*
+ * 动作工坊桌面布局修复：三栏共享同一视口高度，右侧标题与页签保持可见，
+ * 仅当前页签内容滚动，并为右下悬浮入口预留安全空间。
+ */
+@media(min-width:1181px){
+  :global(.motion-workspace){
+    height:calc(100dvh - 55px)!important;
+    min-height:680px!important;
+    align-items:stretch!important;
+    overflow:hidden!important;
+  }
+  :global(.motion-workspace .property-panel){
+    position:relative!important;
+    top:auto!important;
+    align-self:stretch!important;
+    height:100%!important;
+    max-height:100%!important;
+    overflow:hidden!important;
+  }
+  :global(.motion-workspace .property-tab-body){
+    width:100%;
+    height:100%!important;
+    min-height:0!important;
+    max-height:100%!important;
+    overflow-x:hidden!important;
+    overflow-y:auto!important;
+    padding:0 6px 76px 0!important;
+    overscroll-behavior:contain;
+    scrollbar-gutter:stable;
+    scrollbar-width:thin;
+    touch-action:pan-y;
+    -webkit-overflow-scrolling:touch;
+  }
+}
 </style>

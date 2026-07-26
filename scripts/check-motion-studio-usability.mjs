@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * 文件职责 / File responsibility
- * 锁定动作工坊预览缩放、上移定位、自由旋转、分组属性页签、中文界面和窄侧栏无横向溢出的产品合同。
- * Locks Motion Studio preview scaling, upward positioning, free rotation, tabbed properties, Chinese UI, and narrow-sidebar no-horizontal-overflow contracts.
+ * 锁定动作工坊预览、属性页签、视口对齐、独立滚动、中文界面和窄侧栏无横向溢出的产品合同。
+ * Locks Motion Studio preview, property tabs, viewport alignment, local scrolling, Chinese UI, and narrow-sidebar no-horizontal-overflow contracts.
  */
 import { readFileSync } from 'node:fs'
 
@@ -21,7 +21,9 @@ const layout = read('apps/playground/app/layouts/studio.vue')
 const checks = [
   ['motion preview defaults smaller and exposes a bounded scale control', motionPage.includes('const previewScale = ref(.72)') && motionPage.includes('min=".4" max="1.2"') && motionPage.includes('预览大小')],
   ['motion preview starts higher through the canonical preview wrapper', motionPage.includes('const previewPosition = [0, .32, 0] as const') && motionPage.includes(':preview-position="previewPosition"') && canvas.includes('previewPosition?: readonly [number, number, number]') && proceduralPet.includes('previewPositionVector') && proceduralPet.includes(':position="previewPositionVector"')],
-  ['property settings are grouped into bounded tabs instead of one long stack', motionPage.includes("type PropertyTab = 'basic' | 'pose' | 'advanced' | 'props'") && motionPage.includes("const propertyTab = ref<PropertyTab>('pose')") && motionPage.includes('class="property-tabs"') && motionPage.includes('class="property-tab-body"') && motionPage.includes('grid-template-rows:auto auto minmax(0,1fr) auto') && motionPage.includes('height:calc(100dvh - 79px)')],
+  ['property settings are grouped into bounded tabs instead of one long stack', motionPage.includes("type PropertyTab = 'basic' | 'pose' | 'advanced' | 'props'") && motionPage.includes("const propertyTab = ref<PropertyTab>('pose')") && motionPage.includes('class="property-tabs"') && motionPage.includes('class="property-tab-body"') && motionPage.includes('grid-template-rows:auto auto minmax(0,1fr) auto')],
+  ['desktop property panel aligns with the editor and uses the available viewport height', layout.includes(':global(.motion-workspace){') && layout.includes('height:calc(100dvh - 55px)!important') && layout.includes('align-items:stretch!important') && layout.includes(':global(.motion-workspace .property-panel){') && layout.includes('align-self:stretch!important') && layout.includes('height:100%!important') && layout.includes('max-height:100%!important')],
+  ['tab content is the sole vertical scroller and reserves floating-action clearance', layout.includes(':global(.motion-workspace .property-tab-body){') && layout.includes('overflow-y:auto!important') && layout.includes('padding:0 6px 76px 0!important') && layout.includes('touch-action:pan-y') && layout.includes('-webkit-overflow-scrolling:touch')],
   ['motion preview supports drag rotation wheel scaling and reset', motionPage.includes('beginPreviewRotate') && motionPage.includes('movePreviewRotate') && motionPage.includes('@wheel.prevent="wheelPreview"') && motionPage.includes('resetPreviewTransform')],
   ['preview transform is view-only and passed through the canonical canvas', motionPage.includes(':preview-scale="previewScale"') && motionPage.includes(':preview-rotation="previewRotationRadians"') && canvas.includes('previewScale?: number') && canvas.includes('previewRotation?: readonly [number, number, number]')],
   ['one generic preview wrapper applies scale and Euler rotation without adding a canvas', proceduralPet.includes('previewScaleVector') && proceduralPet.includes('previewRotationEuler') && proceduralPet.includes('<TresGroup :position="previewPositionVector" :scale="previewScaleVector" :rotation="previewRotationEuler">') && !proceduralPet.includes('<TresCanvas')],
