@@ -20,9 +20,9 @@ const motionPage = read('apps/playground/app/pages/studio/motion.vue')
 const propPage = read('apps/playground/app/pages/studio/props.vue')
 const libraryPage = read('apps/playground/app/pages/studio/library.vue')
 const manifest = read('apps/extension/wxt.config.ts')
-const docsZh = read('docs/zh-CN/STUDIO-WORKSPACES.md')
+const docsZh = read('docs/zh-CN/工坊工作区.md')
 const docsEn = read('docs/en/STUDIO-WORKSPACES.md')
-const acceptanceZh = read('docs/zh-CN/STUDIO-WORKSPACES-ACCEPTANCE.md')
+const acceptanceZh = read('docs/zh-CN/工坊工作区验收.md')
 const acceptanceEn = read('docs/en/STUDIO-WORKSPACES-ACCEPTANCE.md')
 
 const routes = ['/studio/appearance', '/studio/motion', '/studio/props', '/studio/library']

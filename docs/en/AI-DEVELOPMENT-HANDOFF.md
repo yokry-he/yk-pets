@@ -125,3 +125,11 @@ Trust order: actual code and runtime results > latest full CI > machine state > 
 - The property sidebar, motion layers, curve editor, and prop-event forms use shrinkable grids and prevent horizontal overflow.
 - Primary Motion Studio headings, views, interpolation, layer modes, and prop-event labels are Chinese-first.
 - Final sizing, drag feel, and OS scrollbar behavior still require real-browser acceptance.
+
+## 11. Documentation system
+
+- Chinese topic documents and ADRs now use Chinese filenames, while English documents keep English filenames.
+- `技术栈.md` / `TECH-STACK.md` documents runtime, frontend, 3D, domain-package, Local Agent, OpenAI, and validation-tool boundaries.
+- Architecture, project status, development, and maintenance guides now reflect the current code and machine state.
+- `scripts/check-documentation.mjs` uses explicit bilingual filename pairs and validates Chinese filenames, required technology-stack sections, and repository-local Markdown links.
+- New or renamed documentation must update bilingual pairs, the documentation index, focused scripts, and `.ai` handoff paths together.

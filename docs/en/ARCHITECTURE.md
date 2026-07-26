@@ -1,196 +1,120 @@
 # YK-PETS Browser Agent Technical Architecture
 
-## 1. Product, pet, and implementation layers
+## 1. Architecture goals
 
-Starting from the `v0.6.10` platform branch, YK-PETS separates:
+YK-PETS models product brand, pet identity, pet species, and renderer implementation separately. The default pet is Zeph, a Cloud Fox, but audits, memory, network tooling, the Local Agent, and generic motion contracts do not depend on that name.
 
-```text
-Product brand: YK-PETS
-Pet identity: Zeph / 云灵
-Pet species: Cloud Fox / 云狐
-Current renderer: Vue + TresJS procedural 3D model
-```
-
-Product features and protocols must not depend on a pet's display name. Species-specific motions are allowed only behind explicit capabilities and fallback behavior.
+The architecture prioritizes reliable state across page and Service Worker restarts, independently testable domains, a strict browser-to-source trust boundary, one production 3D rendering path, and gradual compatibility for legacy `NOVA` identifiers.
 
 ## 2. Monorepo
 
 ```text
-yk-pets/
-├── apps/
-│   ├── extension/          WXT + Vue 3 + TresJS browser extension
-│   └── playground/         3D pet and audit lab
-├── packages/
-│   ├── shared/             Brand, pet identity, audit data, and protocols
-│   └── local-agent/        Node.js local-project Agent
-├── docs/                   Product, architecture, security, and development docs
-└── pnpm-workspace.yaml
+apps/extension             WXT + Vue 3 browser extension
+apps/playground            Nuxt Playground and Pet Studio
+packages/shared            Cross-runtime protocols, audit, network, and memory models
+packages/local-agent       Local WebSocket Agent
+packages/pet-core          Framework-neutral pet, motion, and prop domains
+packages/pet-vue-adapter   Vue renderer adapter
+packages/pet-web-component <yk-pet> Custom Element shell
+scripts                    Architecture contracts and focused regression gates
+docs                       Bilingual product and engineering documentation
+.ai                        Machine-readable state and session handoff
 ```
 
-The private `@nova/*` workspace scope remains only as a `v0.6.10` compatibility boundary. New public domain concepts use YK-PETS naming.
+See the [technology stack](./TECH-STACK.md) for dependency-level details.
 
-## 3. Shared domain layer
+## 3. Layers and dependency direction
 
-`packages/shared/src/brand.ts` defines:
+Presentation contains Vue pages, Side Panel components, and the content overlay. Application code orchestrates use cases and services. Domain code owns audit, network, motion, prop, recipe, and state contracts. Infrastructure adapts Chrome APIs, the DOM, WebSocket, file system, and Local Storage.
 
-- `YK_PETS_BRAND`;
-- `PetIdentity`;
-- `ZEPH_CLOUD_FOX_IDENTITY`;
-- localized pet-name and species formatting helpers.
-
-The current identity is:
-
-```text
-id          zeph
-speciesId   cloud-fox
-name        Zeph / 云灵
-species     Cloud Fox / 云狐
-```
-
-The canonical types in `packages/shared/src/messages.ts` are:
-
-- `YkPetAction`;
-- `YkPetBehavior`;
-- `YkPetVisualState`;
-- `YkPetVoicePreset`;
-- `YkPetsRuntimeMessage`.
-
-Deprecated `Nova*` aliases remain available. Existing `NOVA_*` wire values are intentionally stable for one compatibility cycle so the rebrand does not simultaneously break Background, Content Script, and Side Panel communication.
+Dependencies point inward. Domain code does not depend on Vue, Chrome APIs, the DOM, WebSocket, or the file system. External data is validated or normalized before entering a domain.
 
 ## 4. Browser extension
 
-### Background Service Worker
+The Background Service Worker manages Side Panel lifecycle, tab-scoped reports and actions, message routing, TTS, and extension commands. Durable state lives in `chrome.storage`, not only in Service Worker memory.
 
-Responsibilities:
+Content Scripts install performance and network observers, run DOM/accessibility/SEO/resource audits, mount Zeph and highlights in Shadow DOM, provide reversible previews, bridge Fetch/XHR across execution worlds, and receive Studio recipes.
 
-- open the Side Panel;
-- receive audit and network results;
-- persist reports and pending actions by tab;
-- relay state between Side Panel and Content Script;
-- provide TTS and extension-level capabilities.
+The Side Panel owns long-running engineering work: reports, Network Lab, Pet Memory, runtime preferences, Local Agent connection, source candidates, diffs, application, checks, and rollback. In-page pet actions are allowlisted and cannot bypass confirmation.
 
-It does not treat in-memory state as the single source of truth.
+Network Lab separates pure rule creation, matching, conflicts, and value cloning from Chrome repositories, page channels, composables, and Vue pages.
 
-### Content Script
+## 5. Playground and Pet Studio
 
-Responsibilities:
+The Nuxt Playground hosts audit experiments, pet interaction, and four Studio workspaces:
 
-- install performance observers at `document_start`;
-- audit DOM, resources, accessibility, and basic performance;
-- mount Zeph's 3D overlay in an isolated Shadow DOM;
-- manage finding navigation, highlighting, previews, and motion feedback;
-- delegate high-risk engineering operations to Background and Side Panel.
+- `/studio/appearance` for appearance recipes;
+- `/studio/motion` for motion assets, timeline, curves, layers, and direct manipulation;
+- `/studio/props` for parametric props, hierarchy, materials, anchors, and local GLB;
+- `/studio/library` for appearance, motion, and prop asset management.
 
-### YK-PETS brand compatibility layer
+Pinia stores local Studio sessions and versioned assets. Appearance, motion, and props retain independent identities. Motion poses do not mutate appearance recipes, and prop deletion cleans motion dependencies.
 
-`apps/extension/brand.ts` centralizes:
+## 6. Canonical 3D rendering path
 
-- replacement of legacy user-facing NOVA wording;
-- pet-specific display as Zeph（云灵）;
-- continuous observation of normal DOM and open Shadow Roots;
-- one-time migration from `nova:*` to `yk-pets:*`;
-- bidirectional storage-key mirroring during the compatibility period.
-
-This is an explicit transition boundary that can be removed after components are natively renamed.
-
-### In-page 3D Pet Overlay
-
-Responsibilities:
-
-- live in the bottom-right corner and support dragging;
-- translate click, double-click, context-menu, and hover into constrained pet actions;
-- run audits, navigate findings, highlight, preview, and undo in-page;
-- delegate Agent connection, patch generation, writes, verification, and rollback;
-- express system state through Zeph's mood, motion, voice, and readable text.
-
-### Side Panel
-
-Responsibilities:
-
-- display page health, metrics, and findings;
-- manage audit rules and Network Lab;
-- connect to the local WebSocket Agent;
-- present source candidates, diffs, apply, rollback, and check output;
-- synchronize execution state back to the in-page pet.
-
-## 5. Pet identity and motion model
-
-Generic system state and species-specific motions must be separated:
+`ExtensionAlignedCloudFox.vue` is the sole production Cloud Fox composition. `CloudFoxStudioCanvas.vue` is the canonical preview, and the extension reuses the production composition through a WXT alias. Species dispatch, scene effects, props, onion guides, and trajectories share one TresCanvas.
 
 ```text
-Generic states: idle, thinking, happy, confused, excited, listening
-Generic intents: greet, inspect, celebrate, warn, rest, play
-Cloud Fox motions: tail-tornado, antenna-charge, tail-glow, ...
+StudioMotionAssetV2
+  -> normalizeMotionAsset
+  -> resolveMotionTime
+  -> evaluateNormalizedMotionAsset
+  -> EvaluatedCloudFoxPose
+  -> CloudFoxStudioCanvas
+  -> ProceduralPet
+  -> ExtensionAlignedCloudFox
+  -> semantic part adapters
 ```
 
-`YkPetBehavior` still contains historical motion values for `v0.6.10` stability. The next phase should resolve generic intents through a pet definition:
+Evaluation occurs once per frame. Unauthored channels keep procedural breathing, blinking, gaze, and expression.
 
-```ts
-interface PetDefinition {
-  identity: PetIdentity
-  capabilities: readonly string[]
-  resolveIntent(intent: string): string
-  loadRenderer(): Promise<unknown>
-}
-```
+## 7. Shared domain packages
 
-## 6. Audit engine
+`pet-core` owns species definitions, versioned recipe envelopes, renderer registration, Studio sync, the semantic rig, motion time, keyframes, interpolation, layers, direct authoring commands, prop entities, and event tracks. Its critical behavior is deterministic without a browser.
 
-Current coverage includes accessibility, performance, SEO, DOM quality, viewport configuration, and mixed content. The score is an ordering and explanation aid, not a replacement for Lighthouse or real-user monitoring.
+`shared` owns brand and identity, audit reports, extension messages, Local Agent protocol, network rules, Pet Memory, and runtime preferences. The `@nova/shared` package name remains only as a `v0.6.10` compatibility boundary.
 
-## 7. Local Agent
+`pet-vue-adapter` connects renderer contracts to Vue, while `pet-web-component` exposes the `<yk-pet>` Custom Element shell. Adapters remain thin and do not duplicate domain rules.
 
-The Local Agent listens only on:
+## 8. Local Agent
 
-```text
-127.0.0.1:<port>
-```
+The Local Agent binds only to `127.0.0.1` and requires a token-authenticated `hello` message. It fixes the project root, detects allowed scripts, finds constrained source candidates, generates deterministic minimal patches, displays diffs, verifies SHA-256 before writes, creates backups, runs allowlisted checks, and rolls back only when hashes remain safe.
 
-At startup it:
+The browser cannot supply arbitrary shell commands, absolute file paths, or remote scripts.
 
-1. resolves and validates the project root;
-2. reads `.yk-pets/agent.json` first;
-3. migrates the token and port from `.nova/agent.json` when needed;
-4. detects package manager, framework, and allowed scripts;
-5. starts a token-authenticated WebSocket service.
-
-The primary CLI is `yk-pets-agent`; `nova-agent` remains a temporary alias.
-
-## 8. Security boundaries
-
-- The browser pet emits only constrained actions, never arbitrary commands or file paths.
-- The Local Agent accesses only the selected project root.
-- Writes validate paths and SHA-256 hashes.
-- Applying a patch always requires user confirmation.
-- Only `typecheck`, `test`, and `build` are permitted checks.
-- Backups are created before writes, and changed files are not overwritten or rolled back blindly.
-
-## 9. Data flow
+## 9. Primary data flow
 
 ```mermaid
 flowchart LR
-  User[User interacts with Zeph] --> Pet[Pet Overlay]
-  Page[Host page] --> Content[Content Script]
-  Pet -->|Audit / Highlight / Preview| Content
-  Content --> Background[Service Worker]
-  Background --> Side[Side Panel]
-  Side --> Agent[YK-PETS Local Agent]
-  Agent --> Source[Project source]
-  Source --> Agent
-  Agent --> Side
-  Side --> Content
-  Content --> Pet
+  Page[Host page] --> Content[Content Scripts]
+  User[User and Zeph] --> Overlay[Pet Overlay]
+  Overlay --> Content
+  Content <--> Background[Background Service Worker]
+  Background <--> Side[Side Panel]
+  Side <--> Agent[Local Agent]
+  Agent <--> Source[Project source]
+  Studio[Pet Studio] --> Recipe[Versioned pet recipe]
+  Recipe --> Content
+  Core[pet-core] --> Studio
+  Core --> Overlay
 ```
 
-## 10. Target platform packages
+## 10. State and persistence
 
-```text
-packages/
-├── pet-core/          Framework-independent state, events, scheduling, lifecycle
-├── pet-cloud-fox/     Cloud Fox capabilities, motions, assets, renderer
-├── pet-web/           DOM, Shadow DOM, and plain JavaScript API
-├── pet-web-component/ <yk-pet> standard component
-└── adapter-*/         Thin React, Vue, Svelte, and other adapters
-```
+- `chrome.storage`: extension reports, rules, memory, preferences, and compatibility mirrors;
+- Local Storage: Playground appearance, Studio session, motion, and prop assets;
+- `.yk-pets/agent.json`: Local Agent port and token;
+- `.nova/`: legacy configuration migration and current patch-backup compatibility boundary;
+- memory: playhead, temporary drafts, connection sessions, and unapplied patches.
 
-Zeph will become the first `PetDefinition`, not a permanent hard-coded singleton.
+Persistent format changes require normalization, migration, or compatibility reads.
+
+## 11. Security and failure boundaries
+
+Page and imported data is validated before domain use. Shadow DOM limits style conflicts but is not a security sandbox. Patch generation, application, validation, and rollback remain separate operations. Agent or extension restarts may invalidate in-memory sessions and must produce explicit feedback. Static checks do not replace real Chrome, Side Panel, GPU, WebGL, and audio acceptance.
+
+See the [security design and threat model](./SECURITY.md).
+
+## 12. Current evolution boundary
+
+The framework-neutral motion and prop domains, four-workspace Studio, canonical Cloud Fox renderer, extension recipe sync, and foundational Web Component are implemented. Current work focuses on browser acceptance, screenshot baselines, and release hardening. True model raycasting and a three-axis 3D gizmo remain incomplete.

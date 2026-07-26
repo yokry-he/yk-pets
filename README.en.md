@@ -83,6 +83,8 @@ During the `v0.6.10` migration, selected `Nova*`, `NOVA_*`, `@nova/*`, and `nova
 
 - [Complete documentation index](docs/README.md)
 - [Current project status](docs/en/PROJECT-STATUS.md)
+- [Technology stack](docs/en/TECH-STACK.md)
+- [Technical architecture](docs/en/ARCHITECTURE.md)
 - [Release and validation history](docs/en/RELEASE-HISTORY.md)
 - [User guide](docs/en/USER-GUIDE.md)
 - [Network Lab and Mock Workbench](docs/en/NETWORK-LAB-OPERATIONS.md)

@@ -16,39 +16,39 @@ const requiredFiles = [
   '.ai/project-state.json',
   '.ai/session-start.md',
   '.ai/visual-cases.json',
-  'docs/zh-CN/AI-DEVELOPMENT-HANDOFF.md',
+  'docs/zh-CN/AI开发交接.md',
   'docs/en/AI-DEVELOPMENT-HANDOFF.md',
-  'docs/zh-CN/KNOWN-ISSUES.md',
+  'docs/zh-CN/已知问题.md',
   'docs/en/KNOWN-ISSUES.md',
-  'docs/zh-CN/AI-DEVELOPMENT-ROADMAP.md',
+  'docs/zh-CN/AI开发路线图.md',
   'docs/en/AI-DEVELOPMENT-ROADMAP.md',
-  'docs/zh-CN/adr/0001-unified-studio-shell.md',
+  'docs/zh-CN/adr/0001-统一工坊框架.md',
   'docs/en/adr/0001-unified-studio-shell.md',
-  'docs/zh-CN/adr/0002-motion-asset-model.md',
+  'docs/zh-CN/adr/0002-动作资产模型.md',
   'docs/en/adr/0002-motion-asset-model.md',
-  'docs/zh-CN/adr/0003-prop-asset-model.md',
+  'docs/zh-CN/adr/0003-道具资产模型.md',
   'docs/en/adr/0003-prop-asset-model.md',
-  'docs/zh-CN/adr/0004-motion-keyframe-domain.md',
+  'docs/zh-CN/adr/0004-动作关键帧领域.md',
   'docs/en/adr/0004-motion-keyframe-domain.md',
-  'docs/zh-CN/adr/0005-motion-timeline-preview-adapter.md',
+  'docs/zh-CN/adr/0005-时间轴预览适配器.md',
   'docs/en/adr/0005-motion-timeline-preview-adapter.md',
-  'docs/zh-CN/adr/0006-motion-prop-event-tracks.md',
+  'docs/zh-CN/adr/0006-动作道具事件轨道.md',
   'docs/en/adr/0006-motion-prop-event-tracks.md',
-  'docs/zh-CN/adr/0007-prop-entity-editor.md',
+  'docs/zh-CN/adr/0007-道具实体编辑器.md',
   'docs/en/adr/0007-prop-entity-editor.md',
-  'docs/zh-CN/adr/0008-advanced-motion-tools.md',
+  'docs/zh-CN/adr/0008-高级动作工具.md',
   'docs/en/adr/0008-advanced-motion-tools.md',
-  'docs/zh-CN/adr/0009-motion-direct-manipulation.md',
+  'docs/zh-CN/adr/0009-动作直接操控.md',
   'docs/en/adr/0009-motion-direct-manipulation.md',
 ]
 const contextPaths = new Set([
   '.ai/session-start.md',
   '.ai/visual-cases.json',
-  'docs/zh-CN/AI-DEVELOPMENT-HANDOFF.md',
+  'docs/zh-CN/AI开发交接.md',
   'docs/en/AI-DEVELOPMENT-HANDOFF.md',
-  'docs/zh-CN/KNOWN-ISSUES.md',
+  'docs/zh-CN/已知问题.md',
   'docs/en/KNOWN-ISSUES.md',
-  'docs/zh-CN/AI-DEVELOPMENT-ROADMAP.md',
+  'docs/zh-CN/AI开发路线图.md',
   'docs/en/AI-DEVELOPMENT-ROADMAP.md',
 ])
 const failures = []
@@ -141,11 +141,11 @@ if (visualCases) {
 }
 
 const sessionStart = safeRead('.ai/session-start.md')
-const handoffZh = safeRead('docs/zh-CN/AI-DEVELOPMENT-HANDOFF.md')
+const handoffZh = safeRead('docs/zh-CN/AI开发交接.md')
 const handoffEn = safeRead('docs/en/AI-DEVELOPMENT-HANDOFF.md')
-const knownZh = safeRead('docs/zh-CN/KNOWN-ISSUES.md')
+const knownZh = safeRead('docs/zh-CN/已知问题.md')
 const knownEn = safeRead('docs/en/KNOWN-ISSUES.md')
-const roadmapZh = safeRead('docs/zh-CN/AI-DEVELOPMENT-ROADMAP.md')
+const roadmapZh = safeRead('docs/zh-CN/AI开发路线图.md')
 const roadmapEn = safeRead('docs/en/AI-DEVELOPMENT-ROADMAP.md')
 const packageJson = safeRead('package.json')
 

@@ -1,6 +1,6 @@
 # Network Lab and Mock Workbench Operations
 
-This guide focuses on interception, Mocking, response transformation, conflicts, and performance analysis. Start with the general [User Guide](./USER-GUIDE.md) when installing NOVA for the first time.
+This guide focuses on interception, mocking, response transformation, conflicts, and performance analysis. Start with the general [User Guide](./USER-GUIDE.md) when installing YK-PETS for the first time.
 
 ## 1. Execution scope
 

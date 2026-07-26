@@ -1,4 +1,4 @@
-# NOVA Local Agent WebSocket Protocol
+# YK-PETS Local Agent WebSocket Protocol
 
 Protocol version: `1`
 

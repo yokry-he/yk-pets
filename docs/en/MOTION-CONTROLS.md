@@ -1,4 +1,4 @@
-# NOVA Motion Controls and Idle Carousel Design
+# YK-PETS Motion Controls and Idle Carousel Design
 
 ## Goal
 

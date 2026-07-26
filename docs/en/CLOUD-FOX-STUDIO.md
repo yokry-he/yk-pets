@@ -150,14 +150,15 @@ After adjusting limbs, tail, or antennae, run all motion tests and check:
 - antennae do not intersect ears;
 - chest and back symbols remain readable in their corresponding views.
 
-## 9. Current boundary
+## 9. Current implementation and boundary
 
-This phase is the Cloud Fox Studio MVP:
+Cloud Fox Studio has evolved from an isolated MVP into the Appearance workspace of the unified Pet Studio:
 
-- the renderer currently lives in the Playground and does not replace the extension pet yet;
-- arbitrary GLB import is not supported;
-- unrestricted bone dragging is not supported;
-- multi-tail and left/right asymmetry are not supported;
-- community part packs are not supported.
+- Playground and extension reuse the sole production Cloud Fox composition, and versioned appearance recipes synchronize to the extension runtime;
+- species, recipe envelopes, renderer registration, and motion domains live in framework-neutral `pet-core`;
+- front and hind paws support constrained left/right-independent configuration;
+- motion and props are edited in `/studio/motion` and `/studio/props` while remaining independent from appearance assets;
+- the Prop workspace supports constrained safe local GLB, but Appearance does not accept arbitrary model replacement;
+- multi-tail pets, community part packs, true model raycasting, and a three-axis 3D gizmo are not implemented.
 
-The next phase will connect appearance recipes to the extension runtime and extract framework-independent pet definitions and renderer adapters.
+See [Unified Studio workspaces](./STUDIO-WORKSPACES.md) and [Current project status](./PROJECT-STATUS.md).

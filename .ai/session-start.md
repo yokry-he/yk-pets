@@ -7,9 +7,9 @@
 - `.ai/project-state.json`
 - `.ai/session-start.md`
 - `.ai/visual-cases.json`
-- `docs/zh-CN/AI-DEVELOPMENT-HANDOFF.md`
-- `docs/zh-CN/KNOWN-ISSUES.md`
-- `docs/zh-CN/AI-DEVELOPMENT-ROADMAP.md`
+- `docs/zh-CN/AI开发交接.md`
+- `docs/zh-CN/已知问题.md`
+- `docs/zh-CN/AI开发路线图.md`
 - `docs/zh-CN/adr/` 中与当前任务相关的决策记录
 - 对应英文文件，用于检查中英文含义是否一致
 

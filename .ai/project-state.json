@@ -115,7 +115,8 @@
     "motion-property-panel-tabbed-sections",
     "motion-property-panel-top-alignment",
     "motion-property-tab-scroll-restoration",
-    "motion-property-floating-action-safe-inset"
+    "motion-property-floating-action-safe-inset",
+    "documentation-stack-guide-and-chinese-filenames"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -151,11 +152,11 @@
     "requiredContextChoices": [
       ".ai/session-start.md",
       ".ai/visual-cases.json",
-      "docs/zh-CN/AI-DEVELOPMENT-HANDOFF.md",
+      "docs/zh-CN/AI开发交接.md",
       "docs/en/AI-DEVELOPMENT-HANDOFF.md",
-      "docs/zh-CN/KNOWN-ISSUES.md",
+      "docs/zh-CN/已知问题.md",
       "docs/en/KNOWN-ISSUES.md",
-      "docs/zh-CN/AI-DEVELOPMENT-ROADMAP.md",
+      "docs/zh-CN/AI开发路线图.md",
       "docs/en/AI-DEVELOPMENT-ROADMAP.md",
       "docs/zh-CN/adr/",
       "docs/en/adr/"
