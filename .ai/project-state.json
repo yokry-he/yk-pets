@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "lastReviewedDate": "2026-07-26",
+  "lastReviewedDate": "2026-07-27",
   "repository": "yokry-he/yk-pets",
   "developmentBranch": "agent/cloud-fox-studio-v0610",
   "pullRequest": 7,
@@ -47,7 +47,10 @@
     "motionPreviewVerticalOffsetComplete": true,
     "motionPropertyTabsComplete": true,
     "motionPropertyPanelViewportAlignedComplete": true,
-    "motionPropertyTabScrollComplete": true
+    "motionPropertyTabScrollComplete": true,
+    "studioCanonicalViewResetComplete": true,
+    "appearancePreviewDragRotationComplete": true,
+    "propPreviewDragRotationComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -116,7 +119,9 @@
     "motion-property-panel-top-alignment",
     "motion-property-tab-scroll-restoration",
     "motion-property-floating-action-safe-inset",
-    "documentation-stack-guide-and-chinese-filenames"
+    "documentation-stack-guide-and-chinese-filenames",
+    "studio-canonical-view-reset",
+    "appearance-and-prop-preview-drag-rotation"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -126,16 +131,17 @@
   ],
   "nextPhase": "browser-acceptance-and-release-hardening",
   "latestCompletedBatch": {
-    "id": "motion-property-panel-scroll-and-alignment",
+    "id": "studio-preview-orientation-unification",
     "domainPackage": "apps/playground",
     "rendererModified": false,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "desktop-workspace-viewport-height",
-      "property-panel-top-alignment",
-      "single-tab-scroll-container",
-      "floating-action-safe-bottom-inset",
-      "responsive-document-flow-fallback"
+      "shared-preview-orientation-controller",
+      "canonical-view-clears-free-rotation-offset",
+      "appearance-preview-pointer-drag",
+      "motion-preview-pointer-drag-regression",
+      "prop-preview-pointer-drag",
+      "foreground-interaction-layer-exclusions"
     ]
   },
   "mandatoryDevelopmentPolicy": {

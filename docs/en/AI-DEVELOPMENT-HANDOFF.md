@@ -133,3 +133,11 @@ Trust order: actual code and runtime results > latest full CI > machine state > 
 - Architecture, project status, development, and maintenance guides now reflect the current code and machine state.
 - `scripts/check-documentation.mjs` uses explicit bilingual filename pairs and validates Chinese filenames, required technology-stack sections, and repository-local Markdown links.
 - New or renamed documentation must update bilingual pairs, the documentation index, focused scripts, and `.ai` handoff paths together.
+
+## 12. Unified Studio preview orientation batch
+
+- Added `useStudioPreviewOrientation` as the shared free-rotation offset and pointer-drag lifecycle controller for Appearance, Motion, and Prop Studio.
+- Front, Left, Back, and Right are now absolute canonical views: selecting one clears free-rotation offsets before updating the shared Studio view.
+- Clicking an already-active view also resets the drag offset, preventing canonical rotation from being combined with stale offsets.
+- Appearance part hotspots and the Prop Studio mount badge keep their foreground interaction layers; the drag surface is limited to each 3D preview.
+- `scripts/check-studio-preview-orientation.mjs` covers shared-controller semantics, all three integrations, canonical reset, and interaction-layer exclusions. Drag feel still requires the documented real GPU/WebGL acceptance pass.

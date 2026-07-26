@@ -263,6 +263,33 @@
         "panel-top-aligns-with-main-editor",
         "floating-style-button-does-not-cover-last-control"
       ]
+    },
+    {
+      "id": "studio-shared-preview-orientation",
+      "route": "/studio/appearance",
+      "setup": {
+        "repeatRoutes": [
+          "/studio/motion",
+          "/studio/props"
+        ],
+        "dragOffsetDegrees": [
+          20,
+          -35,
+          0
+        ]
+      },
+      "automatedChecks": [
+        "shared-preview-orientation-controller",
+        "canonical-view-clears-free-rotation-offset",
+        "three-studio-preview-rotation-wiring",
+        "foreground-interaction-layer-exclusions"
+      ],
+      "manualChecks": [
+        "drag-rotates-preview-in-all-three-studios",
+        "front-left-back-right-ignore-previous-drag-offset",
+        "active-view-button-clears-new-drag-offset",
+        "appearance-hotspots-and-prop-badge-remain-readable"
+      ]
     }
   ]
 }

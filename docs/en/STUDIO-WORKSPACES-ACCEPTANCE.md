@@ -9,6 +9,13 @@ Automated CI cannot replace real-browser layout, navigation, and WebGL acceptanc
 - Review 760, 920, 1180, 1440, and 1920 pixel layouts.
 - Confirm complete appearance editing, import/export, undo/redo, and extension synchronization remain usable.
 
+## Preview orientation across all three studios
+
+- In Appearance, Motion, and Prop Studio, drag horizontally and vertically inside the pet preview and confirm continuous free rotation.
+- After free rotation, select Front, Left, Back, and Right in turn. Each selection must land directly on the exact canonical view without retaining the drag offset.
+- From any canonical view, drag again and click the already-active view button. It must still clear the offset and restore the exact view.
+- Confirm appearance hotspots, the Motion direct-control area, and the prop mount badge remain usable, with no horizontal overflow at narrow widths.
+
 ## Motion Studio
 
 - Create a motion and confirm a stable ID.

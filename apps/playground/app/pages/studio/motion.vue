@@ -12,6 +12,7 @@ import StudioMotionPoseEditor from '~/components/studio/StudioMotionPoseEditor.v
 import StudioMotionTransformEditor from '~/components/studio/StudioMotionTransformEditor.vue'
 import StudioMotionTimeline from '~/components/studio/StudioMotionTimeline.vue'
 import StudioMotionPropEvents from '~/components/studio/StudioMotionPropEvents.vue'
+import { useStudioPreviewOrientation } from '~/composables/useStudioPreviewOrientation'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 import { useStudioAssetStore } from '~/stores/studio-assets'
 import { useStudioMotionEditorStore } from '~/stores/studio-motion-editor'
@@ -53,14 +54,18 @@ const pendingMotionId = ref('')
 const propertyTab = ref<PropertyTab>('pose')
 const previewScale = ref(.72)
 const previewPosition = [0, .32, 0] as const
-const previewRotation = reactive({ x: 0, y: 0, z: 0 })
-const previewRotationRadians = computed<readonly [number, number, number]>(() => [
-  previewRotation.x * Math.PI / 180,
-  previewRotation.y * Math.PI / 180,
-  previewRotation.z * Math.PI / 180,
-])
-const previewRotateSurface = ref<HTMLElement>()
-const previewDrag = reactive({ active: false, pointerId: 0, startX: 0, startY: 0, rotationX: 0, rotationY: 0 })
+const {
+  previewRotation,
+  previewRotationRadians,
+  previewRotateSurface,
+  previewDrag,
+  updatePreviewRotation,
+  selectPreviewView,
+  beginPreviewRotate,
+  movePreviewRotate,
+  endPreviewRotate,
+  cancelPreviewRotate,
+} = useStudioPreviewOrientation({ excludedSelector: '.preview-options,.direct-pad' })
 const viewOptions = [['front', '正面'], ['left', '左侧'], ['back', '背面'], ['right', '右侧']] as const
 const propEventCount = computed(() => draft.value?.propEventTracks.reduce((sum, track) => sum + track.events.length, 0) || 0)
 const propertyTabs = computed<Array<{ id: PropertyTab; label: string; badge?: number }>>(() => [
@@ -111,48 +116,19 @@ function patchDisplayFps(event: Event) {
 function patchLoop(event: Event) {
   editor.updateMetadata({ loopMode: (event.target as HTMLSelectElement).value as StudioMotionLoopMode })
 }
-function setView(view: typeof session.previewView) { session.setPreview(view, session.previewBackground) }
-function setBackground(background: typeof session.previewBackground) { session.setPreview(session.previewView, background) }
-function wrapDegrees(value: number) {
-  const wrapped = ((value + 180) % 360 + 360) % 360 - 180
-  return Number(wrapped.toFixed(1))
+function setView(view: typeof session.previewView) {
+  selectPreviewView(view, next => session.setPreview(next, session.previewBackground))
 }
+function setBackground(background: typeof session.previewBackground) { session.setPreview(session.previewView, background) }
 function clampPreviewScale(value: number) {
   return Math.max(.4, Math.min(1.2, Number.isFinite(value) ? value : .72))
 }
 function updatePreviewScale(value: number) {
   previewScale.value = Number(clampPreviewScale(value).toFixed(2))
 }
-function updatePreviewRotation(axis: 'x' | 'y' | 'z', value: number) {
-  previewRotation[axis] = wrapDegrees(Number.isFinite(value) ? value : 0)
-}
-function beginPreviewRotate(event: PointerEvent) {
-  if ((event.target as HTMLElement).closest('.preview-options,.direct-pad')) return
-  previewDrag.active = true
-  previewDrag.pointerId = event.pointerId
-  previewDrag.startX = event.clientX
-  previewDrag.startY = event.clientY
-  previewDrag.rotationX = previewRotation.x
-  previewDrag.rotationY = previewRotation.y
-  previewRotateSurface.value?.setPointerCapture(event.pointerId)
-}
-function movePreviewRotate(event: PointerEvent) {
-  if (!previewDrag.active || event.pointerId !== previewDrag.pointerId) return
-  updatePreviewRotation('y', previewDrag.rotationY + (event.clientX - previewDrag.startX) * .42)
-  updatePreviewRotation('x', previewDrag.rotationX + (event.clientY - previewDrag.startY) * .42)
-}
-function endPreviewRotate(event: PointerEvent) {
-  if (!previewDrag.active || event.pointerId !== previewDrag.pointerId) return
-  previewDrag.active = false
-  previewRotateSurface.value?.releasePointerCapture(event.pointerId)
-}
-function cancelPreviewRotate() { previewDrag.active = false }
 function wheelPreview(event: WheelEvent) { updatePreviewScale(previewScale.value - Math.sign(event.deltaY) * .04) }
 function resetPreviewTransform() {
   previewScale.value = .72
-  previewRotation.x = 0
-  previewRotation.y = 0
-  previewRotation.z = 0
   setView('front')
 }
 function applyInterpolation(value: MotionInterpolation) { editor.setSelectedInterpolation(value) }

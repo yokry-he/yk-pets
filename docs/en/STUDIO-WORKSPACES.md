@@ -16,6 +16,7 @@ Motions never mutate appearance recipes. Motions reference stable prop IDs and d
 - Motion v2 assets, independent drafts, undo/redo, playhead, and playback controls.
 - Keyframe write, delete, copy, paste, move, multi-select, and `step`/`linear`.
 - Once-per-frame semantic pose evaluation through the sole production Cloud Fox renderer.
+- Appearance, Motion, and Prop Studio share one preview-orientation controller: canvas dragging applies a free rotation, while Front, Left, Back, or Right first clears that offset and then selects the exact canonical view.
 - Prop assets, kind, default mount, anchors, and hierarchy foundation.
 - Library viewing, contextual editing, and deletion.
 
