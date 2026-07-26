@@ -48,6 +48,16 @@ const motionPathPoints = computed(() => {
 const evaluatedProps = computed(() => draft.value ? evaluateMotionPropEvents(draft.value, editor.playheadTimeMs) : { instances: [], diagnostics: [] })
 const status = ref('')
 const pendingMotionId = ref('')
+const previewScale = ref(.72)
+const previewRotation = reactive({ x: 0, y: 0, z: 0 })
+const previewRotationRadians = computed<readonly [number, number, number]>(() => [
+  previewRotation.x * Math.PI / 180,
+  previewRotation.y * Math.PI / 180,
+  previewRotation.z * Math.PI / 180,
+])
+const previewRotateSurface = ref<HTMLElement>()
+const previewDrag = reactive({ active: false, pointerId: 0, startX: 0, startY: 0, rotationX: 0, rotationY: 0 })
+const viewOptions = [['front', '正面'], ['left', '左侧'], ['back', '背面'], ['right', '右侧']] as const
 let raf = 0
 
 function saveCurrent(message = '动作已保存') {
@@ -92,6 +102,48 @@ function patchLoop(event: Event) {
 }
 function setView(view: typeof session.previewView) { session.setPreview(view, session.previewBackground) }
 function setBackground(background: typeof session.previewBackground) { session.setPreview(session.previewView, background) }
+function wrapDegrees(value: number) {
+  const wrapped = ((value + 180) % 360 + 360) % 360 - 180
+  return Number(wrapped.toFixed(1))
+}
+function clampPreviewScale(value: number) {
+  return Math.max(.4, Math.min(1.2, Number.isFinite(value) ? value : .72))
+}
+function updatePreviewScale(value: number) {
+  previewScale.value = Number(clampPreviewScale(value).toFixed(2))
+}
+function updatePreviewRotation(axis: 'x' | 'y' | 'z', value: number) {
+  previewRotation[axis] = wrapDegrees(Number.isFinite(value) ? value : 0)
+}
+function beginPreviewRotate(event: PointerEvent) {
+  if ((event.target as HTMLElement).closest('.preview-options,.direct-pad')) return
+  previewDrag.active = true
+  previewDrag.pointerId = event.pointerId
+  previewDrag.startX = event.clientX
+  previewDrag.startY = event.clientY
+  previewDrag.rotationX = previewRotation.x
+  previewDrag.rotationY = previewRotation.y
+  previewRotateSurface.value?.setPointerCapture(event.pointerId)
+}
+function movePreviewRotate(event: PointerEvent) {
+  if (!previewDrag.active || event.pointerId !== previewDrag.pointerId) return
+  updatePreviewRotation('y', previewDrag.rotationY + (event.clientX - previewDrag.startX) * .42)
+  updatePreviewRotation('x', previewDrag.rotationX + (event.clientY - previewDrag.startY) * .42)
+}
+function endPreviewRotate(event: PointerEvent) {
+  if (!previewDrag.active || event.pointerId !== previewDrag.pointerId) return
+  previewDrag.active = false
+  previewRotateSurface.value?.releasePointerCapture(event.pointerId)
+}
+function cancelPreviewRotate() { previewDrag.active = false }
+function wheelPreview(event: WheelEvent) { updatePreviewScale(previewScale.value - Math.sign(event.deltaY) * .04) }
+function resetPreviewTransform() {
+  previewScale.value = .72
+  previewRotation.x = 0
+  previewRotation.y = 0
+  previewRotation.z = 0
+  setView('front')
+}
 function applyInterpolation(value: MotionInterpolation) { editor.setSelectedInterpolation(value) }
 function frame(now: number) {
   editor.advancePlayback(now)
@@ -147,17 +199,17 @@ onBeforeUnmount(() => {
 <template>
   <section class="motion-workspace">
     <aside class="asset-panel">
-      <header><div><small>MOTION ASSETS</small><h1>动作工坊</h1></div><button @click="createMotion">新建动作</button></header>
+      <header><div><small>动作资产</small><h1>动作工坊</h1></div><button @click="createMotion">新建动作</button></header>
       <p>动作资产使用语义 Rig；时间轴只保存相对于外观的姿态偏移，不修改外观配方。</p>
       <button v-for="motion in assets.motions" :key="motion.id" class="asset-item" :class="{ active: motion.id === session.selectedMotionId }" @click="selectMotion(motion.id)">
-        <strong>{{ motion.nameZh }}</strong><small>{{ motion.nameEn }} · {{ motion.durationMs }} ms · {{ motion.displayFps }} FPS</small>
+        <strong>{{ motion.nameZh }}</strong><small>{{ motion.durationMs }} 毫秒 · {{ motion.displayFps }} 帧/秒</small>
       </button>
       <div v-if="!assets.motions.length" class="empty">尚无自定义动作。创建后即可写入语义关键帧。</div>
     </aside>
 
     <div class="editor-area">
       <header class="editor-header">
-        <div><small>MOTION STUDIO</small><h2>{{ draft?.nameZh || '请选择或创建动作' }}</h2><span>{{ editor.isDirty ? '未保存草稿' : '已保存' }} · 撤销 {{ editor.undoStack.length }} / 重做 {{ editor.redoStack.length }}</span></div>
+        <div><small>动作编辑器</small><h2>{{ draft?.nameZh || '请选择或创建动作' }}</h2><span>{{ editor.isDirty ? '未保存草稿' : '已保存' }} · 撤销 {{ editor.undoStack.length }} / 重做 {{ editor.redoStack.length }}</span></div>
         <div class="header-actions">
           <button :disabled="!editor.canUndo" @click="editor.undo">撤销</button><button :disabled="!editor.canRedo" @click="editor.redo">重做</button>
           <button :class="{ active: editor.playing }" @click="editor.togglePlayback()">{{ editor.playing ? '暂停' : '播放' }}</button><button @click="editor.stopPlayback">停止</button>
@@ -166,13 +218,30 @@ onBeforeUnmount(() => {
       </header>
       <div class="preview-shell">
         <ClientOnly>
-          <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" />
+          <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" />
         </ClientOnly>
+        <div
+          ref="previewRotateSurface"
+          class="preview-rotate-surface"
+          :class="{ dragging: previewDrag.active }"
+          @pointerdown="beginPreviewRotate"
+          @pointermove="movePreviewRotate"
+          @pointerup="endPreviewRotate"
+          @pointercancel="cancelPreviewRotate"
+          @wheel.prevent="wheelPreview"
+        ><span>拖动画布自由旋转 · 滚轮调整预览大小</span></div>
         <StudioMotionDirectPad v-if="draft" />
         <div class="preview-options">
-          <button v-for="item in ['front','left','back','right'] as const" :key="item" :class="{active:session.previewView===item}" @click="setView(item)">{{ item }}</button>
-          <select :value="session.previewBackground" @change="setBackground(($event.target as HTMLSelectElement).value as typeof session.previewBackground)"><option value="dark">深色</option><option value="light">浅色</option><option value="web">网页</option></select>
-          <label>时间 <input :value="Math.round(editor.playheadTimeMs)" type="number" min="0" :max="draft?.durationMs || 0" @change="editor.setPlayhead(Number(($event.target as HTMLInputElement).value), false)"> ms</label>
+          <div class="view-buttons">
+            <button v-for="[id,label] in viewOptions" :key="id" :class="{active:session.previewView===id}" @click="setView(id)">{{ label }}</button>
+          </div>
+          <label class="background-control">背景<select :value="session.previewBackground" @change="setBackground(($event.target as HTMLSelectElement).value as typeof session.previewBackground)"><option value="dark">深色</option><option value="light">浅色</option><option value="web">网页</option></select></label>
+          <label class="scale-control">预览大小<input :value="previewScale" type="range" min=".4" max="1.2" step=".01" @input="updatePreviewScale(Number(($event.target as HTMLInputElement).value))"><output>{{ Math.round(previewScale * 100) }}%</output></label>
+          <label>俯仰<input :value="previewRotation.x" type="number" min="-180" max="180" step="1" @change="updatePreviewRotation('x', Number(($event.target as HTMLInputElement).value))">°</label>
+          <label>水平<input :value="previewRotation.y" type="number" min="-180" max="180" step="1" @change="updatePreviewRotation('y', Number(($event.target as HTMLInputElement).value))">°</label>
+          <label>倾斜<input :value="previewRotation.z" type="number" min="-180" max="180" step="1" @change="updatePreviewRotation('z', Number(($event.target as HTMLInputElement).value))">°</label>
+          <label>时间<input :value="Math.round(editor.playheadTimeMs)" type="number" min="0" :max="draft?.durationMs || 0" @change="editor.setPlayhead(Number(($event.target as HTMLInputElement).value), false)">毫秒</label>
+          <button class="reset-view" @click="resetPreviewTransform">复位视图</button>
         </div>
       </div>
       <StudioMotionTimeline
@@ -189,7 +258,7 @@ onBeforeUnmount(() => {
     </div>
 
     <aside class="property-panel">
-      <header><small>PROPERTIES</small><h2>动作属性</h2></header>
+      <header><small>属性面板</small><h2>动作属性</h2></header>
       <template v-if="draft">
         <label>中文名称<input :value="draft.nameZh" @change="patchName('nameZh',$event)"></label>
         <label>英文名称<input :value="draft.nameEn" @change="patchName('nameEn',$event)"></label>
@@ -228,7 +297,7 @@ onBeforeUnmount(() => {
         />
         <p v-if="evaluatedProps.diagnostics.length" class="diagnostics">道具事件：{{ evaluatedProps.diagnostics.slice(-2).map(item => item.code).join(' · ') }}</p>
         <p v-if="editor.lastDiagnostics.length" class="diagnostics">规范化：{{ editor.lastDiagnostics.slice(-3).join(' · ') }}</p>
-        <code>{{ draft.rigId }}</code><code>{{ draft.id }}</code>
+        <details class="technical-info"><summary>技术信息</summary><code>{{ draft.rigId }}</code><code>{{ draft.id }}</code></details>
       </template>
       <div v-else class="empty">创建动作后可编辑完整时间轴和姿态。</div>
       <small v-if="status" class="status">{{ status }}</small>
@@ -237,5 +306,142 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.motion-workspace{display:grid;grid-template-columns:220px minmax(620px,1fr) 310px;gap:12px;min-height:calc(100dvh - 55px);padding:12px}.asset-panel,.editor-area,.property-panel{min-height:0;border:1px solid #ffffff17;border-radius:16px;background:#0d1120}.asset-panel,.property-panel{display:flex;flex-direction:column;gap:9px;padding:12px;overflow:auto}.asset-panel header,.editor-header{display:flex;align-items:center;justify-content:space-between;gap:10px}.asset-panel small,.editor-header small,.property-panel small{color:#747f9f;font:800 8px/1 ui-monospace,monospace;letter-spacing:.15em}h1,h2,h3,p{margin:0}.asset-panel h1,.editor-header h2,.property-panel h2{margin-top:5px;font-size:18px}.asset-panel p,.dependency-card p{color:#8993b2;font-size:10px;line-height:1.55}.asset-panel button,.header-actions button,.preview-options button{border:1px solid #ffffff1c;border-radius:8px;color:#dfe5ff;background:#ffffff07}.asset-panel header button{min-height:32px;padding:0 9px}.asset-item{display:grid;gap:3px;padding:9px;text-align:left}.asset-item.active{border-color:#52e0d066;background:#52e0d010}.asset-item small{font:400 8px/1.3 system-ui;color:#7883a3}.editor-area{display:grid;grid-template-rows:auto minmax(380px,1fr) minmax(300px,.8fr);overflow:hidden}.editor-header{padding:10px 12px;border-bottom:1px solid #ffffff13}.editor-header>div:first-child{display:grid;gap:3px}.editor-header span{color:#76809e;font-size:8px}.header-actions{display:flex;gap:5px}.header-actions button{min-height:30px;padding:0 8px}.header-actions button.active{border-color:#ff5f8677;background:#ff5f8618}.header-actions .save{border-color:#52e0d066;background:#52e0d018}.header-actions button:disabled{opacity:.35}.preview-shell{position:relative;min-height:0;padding:9px}.preview-options{position:absolute;z-index:6;top:18px;right:18px;display:flex;align-items:center;gap:4px;padding:5px;border:1px solid #ffffff18;border-radius:10px;background:#080b14bd;backdrop-filter:blur(12px)}.preview-options button,.preview-options select,.preview-options input{min-height:28px;padding:0 7px;border:1px solid #ffffff1d;border-radius:7px;color:#fff;background:#090e1b}.preview-options button.active{border-color:#52e0d066;background:#52e0d013}.preview-options label{display:flex;align-items:center;gap:4px;color:#aeb7d2;font-size:8px}.preview-options input{width:72px}.property-panel header{margin-bottom:2px}.property-panel>label,.metadata-grid label{display:grid;gap:5px;color:#b8c0da;font-size:10px}.property-panel input,.property-panel select{min-height:36px;padding:0 8px;border:1px solid #ffffff1d;border-radius:8px;color:#fff;background:#090e1b}.metadata-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.dependency-card{display:grid;gap:6px;padding:9px;border:1px solid #ffffff12;border-radius:10px;background:#ffffff04}.dependency-card a{color:#72dfd1;font-size:10px}.property-panel code{overflow-wrap:anywhere;color:#6e7898;font-size:8px}.advanced-channel-editor{display:grid;gap:7px;border:1px solid #ffffff12;border-radius:10px;background:#ffffff03}.advanced-channel-editor>summary{padding:9px;color:#8c96b4;font-size:9px;cursor:pointer}.advanced-channel-editor[open]>summary{border-bottom:1px solid #ffffff10;color:#c8d0e8}.advanced-channel-editor :deep(.pose-editor){border:0;border-radius:0;background:transparent}.diagnostics{color:#ffcb6b;font-size:8px;line-height:1.4}.status{position:sticky;bottom:0;padding:7px;border:1px solid #52e0d044;border-radius:8px;color:#cffff8!important;background:#0b1720}.empty{padding:12px;border:1px dashed #ffffff1d;border-radius:10px;color:#7f89a8;font-size:10px;line-height:1.5}.timeline-empty{margin:12px}@media(max-width:1180px){.motion-workspace{grid-template-columns:190px 1fr}.property-panel{grid-column:1/-1;max-height:none}}@media(max-width:780px){.motion-workspace{grid-template-columns:1fr}.editor-area{grid-template-rows:auto 520px 350px}.header-actions{flex-wrap:wrap}.preview-options{position:static;margin-bottom:6px}.metadata-grid{grid-template-columns:1fr}}
+.motion-workspace{
+  box-sizing:border-box;
+  display:grid;
+  grid-template-columns:220px minmax(620px,1fr) 310px;
+  gap:12px;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  min-height:calc(100dvh - 55px);
+  padding:12px;
+  overflow-x:hidden;
+}
+.asset-panel,.editor-area,.property-panel{
+  box-sizing:border-box;
+  min-width:0;
+  min-height:0;
+  border:1px solid #ffffff17;
+  border-radius:16px;
+  background:#0d1120;
+}
+.asset-panel,.property-panel{
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+  padding:12px;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+}
+.property-panel>*{box-sizing:border-box;min-width:0;max-width:100%}
+.property-panel :deep(*){box-sizing:border-box;min-width:0}
+.property-panel :deep(input),.property-panel :deep(select),.property-panel :deep(button),.property-panel :deep(textarea){max-width:100%}
+.asset-panel header,.editor-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.asset-panel small,.editor-header small,.property-panel small{color:#747f9f;font:800 8px/1 ui-monospace,monospace;letter-spacing:.08em}
+h1,h2,h3,p{margin:0}
+.asset-panel h1,.editor-header h2,.property-panel h2{margin-top:5px;font-size:18px}
+.asset-panel p,.dependency-card p{color:#8993b2;font-size:10px;line-height:1.55}
+.asset-panel button,.header-actions button,.preview-options button{border:1px solid #ffffff1c;border-radius:8px;color:#dfe5ff;background:#ffffff07}
+.asset-panel header button{min-height:32px;padding:0 9px}
+.asset-item{display:grid;gap:3px;padding:9px;text-align:left}
+.asset-item.active{border-color:#52e0d066;background:#52e0d010}
+.asset-item small{font:400 8px/1.3 system-ui;color:#7883a3}
+.editor-area{display:grid;grid-template-rows:auto minmax(380px,1fr) minmax(300px,.8fr);overflow:hidden}
+.editor-header{padding:10px 12px;border-bottom:1px solid #ffffff13}
+.editor-header>div:first-child{display:grid;gap:3px;min-width:0}
+.editor-header span{color:#76809e;font-size:8px}
+.header-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px}
+.header-actions button{min-height:30px;padding:0 8px}
+.header-actions button.active{border-color:#ff5f8677;background:#ff5f8618}
+.header-actions .save{border-color:#52e0d066;background:#52e0d018}
+.header-actions button:disabled{opacity:.35}
+.preview-shell{position:relative;min-width:0;min-height:0;padding:9px;overflow:hidden}
+.preview-rotate-surface{
+  position:absolute;
+  z-index:5;
+  inset:9px;
+  border-radius:22px;
+  cursor:grab;
+  touch-action:none;
+  user-select:none;
+}
+.preview-rotate-surface.dragging{cursor:grabbing}
+.preview-rotate-surface span{
+  position:absolute;
+  left:50%;
+  bottom:20px;
+  transform:translateX(-50%);
+  padding:6px 9px;
+  border:1px solid #ffffff18;
+  border-radius:999px;
+  color:#7f89a8;
+  background:#080b14a3;
+  font-size:8px;
+  white-space:nowrap;
+  opacity:.72;
+  pointer-events:none;
+  backdrop-filter:blur(12px);
+}
+.preview-options{
+  position:absolute;
+  z-index:8;
+  top:18px;
+  right:18px;
+  display:grid;
+  grid-template-columns:auto auto minmax(145px,1fr) auto auto;
+  align-items:center;
+  gap:4px;
+  max-width:calc(100% - 238px);
+  padding:5px;
+  border:1px solid #ffffff18;
+  border-radius:10px;
+  background:#080b14d9;
+  backdrop-filter:blur(12px);
+}
+.view-buttons{display:flex;gap:4px}
+.preview-options button,.preview-options select,.preview-options input[type=number]{min-height:28px;padding:0 7px;border:1px solid #ffffff1d;border-radius:7px;color:#fff;background:#090e1b}
+.preview-options button.active{border-color:#52e0d066;background:#52e0d013}
+.preview-options label{display:flex;align-items:center;gap:4px;min-width:0;color:#aeb7d2;font-size:8px;white-space:nowrap}
+.preview-options label input[type=number]{width:54px}
+.preview-options .scale-control{grid-column:1/4;display:grid;grid-template-columns:auto minmax(90px,1fr) 38px;gap:6px}
+.preview-options .scale-control input{width:100%;accent-color:#52e0d0}
+.preview-options output{color:#cffff8;font:700 8px/1 ui-monospace,monospace;text-align:right}
+.preview-options .background-control select{width:70px}
+.preview-options .reset-view{min-height:28px;padding:0 8px;border-color:#52e0d04f}
+.property-panel header{margin-bottom:2px}
+.property-panel>label,.metadata-grid label{display:grid;gap:5px;color:#b8c0da;font-size:10px}
+.property-panel input,.property-panel select{width:100%;min-height:36px;padding:0 8px;border:1px solid #ffffff1d;border-radius:8px;color:#fff;background:#090e1b}
+.metadata-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.dependency-card{display:grid;gap:6px;padding:9px;border:1px solid #ffffff12;border-radius:10px;background:#ffffff04;overflow:hidden}
+.dependency-card a{overflow:hidden;color:#72dfd1;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.property-panel code{display:block;max-width:100%;overflow-wrap:anywhere;color:#6e7898;font-size:8px}.technical-info{max-width:100%;overflow:hidden;border:1px solid #ffffff10;border-radius:8px}.technical-info summary{padding:7px;color:#77819e;font-size:8px;cursor:pointer}.technical-info code{padding:4px 7px}.technical-info code:last-child{padding-bottom:7px}
+.advanced-channel-editor{display:grid;gap:7px;max-width:100%;overflow:hidden;border:1px solid #ffffff12;border-radius:10px;background:#ffffff03}
+.advanced-channel-editor>summary{padding:9px;color:#8c96b4;font-size:9px;cursor:pointer}
+.advanced-channel-editor[open]>summary{border-bottom:1px solid #ffffff10;color:#c8d0e8}
+.advanced-channel-editor :deep(.pose-editor){border:0;border-radius:0;background:transparent}
+.diagnostics{overflow-wrap:anywhere;color:#ffcb6b;font-size:8px;line-height:1.4}
+.status{position:sticky;bottom:0;padding:7px;border:1px solid #52e0d044;border-radius:8px;color:#cffff8!important;background:#0b1720}
+.empty{padding:12px;border:1px dashed #ffffff1d;border-radius:10px;color:#7f89a8;font-size:10px;line-height:1.5}
+.timeline-empty{margin:12px}
+@media(max-width:1480px){
+  .preview-options{grid-template-columns:auto auto minmax(130px,1fr) auto;max-width:calc(100% - 220px)}
+  .preview-options .scale-control{grid-column:1/3}
+}
+@media(max-width:1180px){
+  .motion-workspace{grid-template-columns:190px minmax(0,1fr)}
+  .property-panel{grid-column:1/-1;max-height:none}
+  .preview-options{max-width:calc(100% - 36px)}
+}
+@media(max-width:780px){
+  .motion-workspace{grid-template-columns:minmax(0,1fr)}
+  .editor-area{grid-template-rows:auto 520px 350px}
+  .preview-options{position:relative;z-index:8;top:auto;right:auto;grid-template-columns:repeat(2,minmax(0,1fr));max-width:none;margin:6px}
+  .preview-options .scale-control{grid-column:1/-1}
+  .view-buttons{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+  .metadata-grid{grid-template-columns:minmax(0,1fr)}
+  .preview-rotate-surface span{display:none}
+}
 </style>

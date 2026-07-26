@@ -109,7 +109,7 @@ const marqueeStyle = computed(() => {
     </header>
     <div class="timeline-grid">
       <div class="labels">
-        <span class="ruler-label">TRACKS</span>
+        <span class="ruler-label">轨道</span>
         <span v-for="group in rows" :key="group.id">{{ group.labelZh }}<small>{{ group.channelIds.length }}</small></span>
       </div>
       <div ref="surface" class="surface">

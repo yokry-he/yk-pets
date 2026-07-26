@@ -117,3 +117,11 @@ Trust order: actual code and runtime results > latest full CI > machine state > 
 - Added symmetry, reset, numeric stepping, W/E/R/S/Q/K shortcuts, and a preview drag pad.
 - Whole-clip edits use a separate additive `clip-adjustment` layer and do not rewrite authored keyframes.
 - True model raycast picking and three-axis 3D gizmos remain a later real-browser batch.
+## 10. Motion Studio preview and Chinese-first usability batch
+
+- Motion preview now defaults to a 72% view scale and supports continuous adjustment from 40% to 120%.
+- The preview canvas supports pitch/yaw drag rotation, wheel scaling, numeric three-axis rotation, and one-click reset.
+- Preview transforms remain independent from the motion asset and never create keyframes implicitly; authored whole-pet scale and rotation still use semantic Rig controls.
+- The property sidebar, motion layers, curve editor, and prop-event forms use shrinkable grids and prevent horizontal overflow.
+- Primary Motion Studio headings, views, interpolation, layer modes, and prop-event labels are Chinese-first.
+- Final sizing, drag feel, and OS scrollbar behavior still require real-browser acceptance.

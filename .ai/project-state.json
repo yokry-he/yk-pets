@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "lastReviewedDate": "2026-07-25",
+  "lastReviewedDate": "2026-07-26",
   "repository": "yokry-he/yk-pets",
   "developmentBranch": "agent/cloud-fox-studio-v0610",
   "pullRequest": 7,
@@ -39,7 +39,11 @@
     "motionDirectAuthoringPadComplete": true,
     "motionAuthoringScopesComplete": true,
     "motionWholeClipCorrectionLayerComplete": true,
-    "motionSymmetryEditingComplete": true
+    "motionSymmetryEditingComplete": true,
+    "motionPreviewScaleControlComplete": true,
+    "motionPreviewFreeRotationComplete": true,
+    "motionStudioHorizontalOverflowFixed": true,
+    "motionStudioChineseUiComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -97,7 +101,12 @@
     "motion-direct-authoring-pad",
     "motion-root-and-body-uniform-scale",
     "motion-symmetry-editing",
-    "motion-appearance-style-property-panel"
+    "motion-appearance-style-property-panel",
+    "motion-preview-default-fit",
+    "motion-preview-scale-control",
+    "motion-preview-free-rotation",
+    "motion-property-panel-horizontal-overflow-repair",
+    "motion-studio-chinese-first-ui"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -107,19 +116,17 @@
   ],
   "nextPhase": "browser-acceptance-and-release-hardening",
   "latestCompletedBatch": {
-    "id": "motion-direct-manipulation-and-routing-repair",
+    "id": "motion-studio-preview-and-localization-polish",
     "domainPackage": "@yk-pets/pet-core",
-    "rendererModified": false,
+    "rendererModified": true,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "body-part-and-control-registry",
-      "current-frame-authoring",
-      "selected-keyframe-batch-editing",
-      "whole-clip-additive-correction",
-      "uniform-root-and-body-scale",
-      "left-right-symmetry",
-      "studio-index-route-rendering",
-      "nuxt-layout-root-rendering"
+      "smaller-motion-preview-default",
+      "bounded-preview-scale",
+      "three-axis-preview-rotation",
+      "pointer-drag-and-wheel-preview-controls",
+      "narrow-property-panel-overflow-contract",
+      "chinese-motion-studio-copy"
     ]
   },
   "mandatoryDevelopmentPolicy": {

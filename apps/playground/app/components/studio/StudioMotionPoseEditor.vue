@@ -33,6 +33,9 @@ const emit = defineEmits<{
   autoKey: [enabled: boolean]
 }>()
 
+const interpolationLabels: Record<MotionInterpolation, string> = { step: '阶梯', linear: '线性', smooth: '平滑', bezier: '贝塞尔' }
+const unitLabels: Record<string, string> = { normalized: '归一化', radians: '弧度', ratio: '比例', distance: '局部距离' }
+const blendLabels: Record<string, string> = { additive: '叠加', override: '覆盖', 'relative-scale': '相对缩放' }
 const interpolation = ref<MotionInterpolation>('linear')
 const evaluated = computed(() => evaluateNormalizedMotionAsset(props.asset, props.playheadTimeMs))
 const definition = computed(() => getCloudFoxRigChannel(props.selectedChannelId))
@@ -43,7 +46,7 @@ function commit() { emit('write', Number(value.value), interpolation.value) }
 
 <template>
   <section class="pose-editor">
-    <header><small>POSE AUTHORING</small><h3>语义姿态</h3></header>
+    <header><small>逐通道编辑</small><h3>语义姿态</h3></header>
     <label>轨道通道
       <select :value="selectedChannelId" @change="emit('channel', ($event.target as HTMLSelectElement).value as CloudFoxRigChannelId)">
         <optgroup v-for="group in CLOUD_FOX_RIG_TRACK_GROUPS" :key="group.id" :label="group.labelZh">
@@ -51,22 +54,22 @@ function commit() { emit('write', Number(value.value), interpolation.value) }
         </optgroup>
       </select>
     </label>
-    <div class="channel-meta"><code>{{ definition.id }}</code><span>{{ definition.unit }} · {{ definition.blendMode }}</span></div>
+    <div class="channel-meta"><code>{{ definition.id }}</code><span>{{ unitLabels[definition.unit] || definition.unit }} · {{ blendLabels[definition.blendMode] || definition.blendMode }}</span></div>
     <label>当前值
       <input v-model.number="value" type="number" :min="definition.minimum" :max="definition.maximum" step="0.01" @keydown.enter="commit">
     </label>
     <label>插值
-      <select v-model="interpolation"><option value="linear">线性 Linear</option><option value="step">阶梯 Step</option><option value="smooth">平滑 Smooth</option><option value="bezier">贝塞尔 Bézier</option></select>
+      <select v-model="interpolation"><option value="linear">线性</option><option value="step">阶梯</option><option value="smooth">平滑</option><option value="bezier">贝塞尔</option></select>
     </label>
     <button class="primary" @click="commit">{{ autoKey ? '写入关键帧' : '写入当前通道' }}</button>
     <div class="toggles">
       <label><input type="checkbox" :checked="snapToFrames" @change="emit('snap', ($event.target as HTMLInputElement).checked)"> FPS 吸附</label>
-      <label><input type="checkbox" :checked="autoKey" @change="emit('autoKey', ($event.target as HTMLInputElement).checked)"> Auto Key</label>
+      <label><input type="checkbox" :checked="autoKey" @change="emit('autoKey', ($event.target as HTMLInputElement).checked)"> 自动关键帧</label>
     </div>
     <section class="selection-card">
       <strong>已选 {{ selectedKeyframeCount }} 个关键帧</strong>
       <div><button :disabled="!selectedKeyframeCount" @click="emit('copy')">复制</button><button @click="emit('paste')">粘贴</button><button :disabled="!selectedKeyframeCount" @click="emit('delete')">删除</button></div>
-      <div class="four"><button v-for="item in ['step','linear','smooth','bezier'] as MotionInterpolation[]" :key="item" :disabled="!selectedKeyframeCount" @click="emit('interpolation',item)">{{ item }}</button></div>
+      <div class="four"><button v-for="item in ['step','linear','smooth','bezier'] as MotionInterpolation[]" :key="item" :disabled="!selectedKeyframeCount" @click="emit('interpolation',item)">{{ interpolationLabels[item] }}</button></div>
     </section>
     <small class="catalog">Rig 共 {{ CLOUD_FOX_RIG_CHANNELS.length }} 个稳定通道。</small>
   </section>

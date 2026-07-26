@@ -184,6 +184,36 @@
         "selected-keyframe-scope-only-edits-selection",
         "undo-restores-one-complete-drag-gesture"
       ]
+    },
+    {
+      "id": "motion-preview-transform-and-chinese-ui",
+      "route": "/studio/motion",
+      "setup": {
+        "previewScale": 0.72,
+        "previewRotationDegrees": [
+          18,
+          -35,
+          8
+        ],
+        "viewport": [
+          1920,
+          1080
+        ]
+      },
+      "automatedChecks": [
+        "canonical-preview-transform-wrapper",
+        "preview-scale-bounds",
+        "pointer-drag-rotation-contract",
+        "property-panel-no-horizontal-overflow",
+        "chinese-first-motion-copy"
+      ],
+      "manualChecks": [
+        "pet-fits-preview-at-default-scale",
+        "drag-rotation-feels-continuous",
+        "wheel-and-slider-scale-remain-synchronized",
+        "right-panel-has-no-horizontal-scrollbar",
+        "motion-editor-primary-copy-is-chinese"
+      ]
     }
   ]
 }

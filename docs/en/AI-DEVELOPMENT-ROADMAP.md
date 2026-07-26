@@ -47,3 +47,8 @@ Every phase must update the AI package in the same feature commit, run full CI, 
 - Status: Complete; manual browser acceptance required
 - Completed the body-part tree, appearance-style numeric panel, current/selected/whole scopes, whole-pet and body scaling, symmetry, and preview drag pad.
 - True model raycast picking and three-axis 3D gizmos remain after real-browser acceptance.
+### Phase F.2: Motion Studio preview and Chinese-first UI polish
+
+- Status: Complete; manual browser acceptance required.
+- Complete: smaller default preview, continuous view scaling, three-axis free rotation, drag/wheel controls, view reset, property-sidebar horizontal-overflow repair, and Chinese-first primary copy.
+- Preview transforms do not write into the motion asset; authored whole-pet rotation and scale remain semantic Rig keyframes.

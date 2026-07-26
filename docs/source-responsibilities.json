@@ -110,5 +110,9 @@
   "scripts/check-motion-direct-controls.mjs": {
     "zh": "锁定动作直接操控、对称和整段修正层架构。",
     "en": "Locks direct motion controls, symmetry, and whole-clip correction architecture."
+  },
+  "scripts/check-motion-studio-usability.mjs": {
+    "zh": "锁定动作工坊预览缩放、自由旋转、中文界面与窄侧栏无横向溢出合同。",
+    "en": "Locks Motion Studio preview scale, free rotation, Chinese-first UI, and narrow-sidebar no-horizontal-overflow contracts."
   }
 }

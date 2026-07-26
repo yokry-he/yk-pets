@@ -7,6 +7,15 @@
 - Fix: move the redirect to `pages/studio/index.vue`, restore `NuxtLayout` at the app root, and disable Pinia Store auto-scanning because all stores are explicitly imported.
 - Recheck: restart the dev server, open all four Studio routes directly, and confirm the repeated layout and duplicate `actions` import warnings are gone.
 
+## MOTION-006: Motion Studio preview and narrow-sidebar usability are repaired; browser recheck remains
+
+- Status: Implemented; browser recheck required.
+- Complete: a 72% default preview fit, 40%–120% view scaling, three-axis free rotation, canvas drag rotation, wheel scaling, and one-click reset.
+- Complete: shrinkable grids and horizontal-overflow prevention for the property panel, layers, curves, and prop-event forms.
+- Complete: Chinese-first labels for primary Motion Studio headings, views, interpolation, layers, and prop events.
+- Boundary: preview scale and rotation only change the viewing transform; use the whole-pet motion controls to author scale or rotation into the motion.
+- Not manually verified: real-browser mouse, trackpad, narrow-layout, and OS scrollbar behavior.
+
 ## MOTION-005: Direct body-part manipulation is implemented; true 3D gizmos remain
 
 - Status: Implemented; manual acceptance required
