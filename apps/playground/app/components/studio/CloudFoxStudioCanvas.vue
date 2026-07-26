@@ -34,11 +34,13 @@ const props = withDefaults(defineProps<{
   motionPathPoints?: readonly (readonly [number, number, number])[]
   previewScale?: number
   previewRotation?: readonly [number, number, number]
+  previewPosition?: readonly [number, number, number]
 }>(), {
   motionKey: 0,
   focus: 'full',
   previewScale: 1,
   previewRotation: () => [0, 0, 0],
+  previewPosition: () => [0, 0, 0],
 })
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vec3 = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
@@ -107,7 +109,7 @@ const sceneStyle = computed(() => ({
       <TresPointLight :position="vec3(scheme.scene.lights.primaryPosition)" :intensity="scheme.scene.lights.primaryIntensity" :color="appearance.palette.primaryGlow" />
       <TresPointLight :position="vec3(scheme.scene.lights.secondaryPosition)" :intensity="scheme.scene.lights.secondaryIntensity" :color="appearance.palette.secondaryGlow" />
       <PetSceneEffects :scene="activeScene" :behavior="behavior" />
-      <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotation" />
+      <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotation" :preview-position="previewPosition" />
     </TresCanvas>
     <div v-if="extensionScene" class="extension-glow" />
     <div class="label">

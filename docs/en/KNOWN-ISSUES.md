@@ -10,7 +10,8 @@
 ## MOTION-006: Motion Studio preview and narrow-sidebar usability are repaired; browser recheck remains
 
 - Status: Implemented; browser recheck required.
-- Complete: a 72% default preview fit, 40%–120% view scaling, three-axis free rotation, canvas drag rotation, wheel scaling, and one-click reset.
+- Complete: a 72% default preview fit, a +0.32 default vertical offset, 40%–120% view scaling, three-axis free rotation, canvas drag rotation, wheel scaling, and one-click reset.
+- Complete: the property panel is divided into four tabs—Basic, Pose, Advanced, and Props—with a viewport-bounded desktop height and tab-local vertical scrolling.
 - Complete: shrinkable grids and horizontal-overflow prevention for the property panel, layers, curves, and prop-event forms.
 - Complete: Chinese-first labels for primary Motion Studio headings, views, interpolation, layers, and prop events.
 - Boundary: preview scale and rotation only change the viewing transform; use the whole-pet motion controls to author scale or rotation into the motion.

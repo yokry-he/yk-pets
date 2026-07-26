@@ -43,7 +43,9 @@
     "motionPreviewScaleControlComplete": true,
     "motionPreviewFreeRotationComplete": true,
     "motionStudioHorizontalOverflowFixed": true,
-    "motionStudioChineseUiComplete": true
+    "motionStudioChineseUiComplete": true,
+    "motionPreviewVerticalOffsetComplete": true,
+    "motionPropertyTabsComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -106,7 +108,9 @@
     "motion-preview-scale-control",
     "motion-preview-free-rotation",
     "motion-property-panel-horizontal-overflow-repair",
-    "motion-studio-chinese-first-ui"
+    "motion-studio-chinese-first-ui",
+    "motion-preview-upward-default",
+    "motion-property-panel-tabbed-sections"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -116,17 +120,16 @@
   ],
   "nextPhase": "browser-acceptance-and-release-hardening",
   "latestCompletedBatch": {
-    "id": "motion-studio-preview-and-localization-polish",
-    "domainPackage": "@yk-pets/pet-core",
+    "id": "motion-studio-preview-position-and-tabbed-properties",
+    "domainPackage": "apps/playground",
     "rendererModified": true,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "smaller-motion-preview-default",
-      "bounded-preview-scale",
-      "three-axis-preview-rotation",
-      "pointer-drag-and-wheel-preview-controls",
-      "narrow-property-panel-overflow-contract",
-      "chinese-motion-studio-copy"
+      "canonical-preview-upward-offset",
+      "four-property-tab-contract",
+      "bounded-property-panel-height",
+      "tab-local-scroll-container",
+      "existing-preview-scale-and-rotation-preserved"
     ]
   },
   "mandatoryDevelopmentPolicy": {

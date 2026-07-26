@@ -214,6 +214,31 @@
         "right-panel-has-no-horizontal-scrollbar",
         "motion-editor-primary-copy-is-chinese"
       ]
+    },
+    {
+      "id": "motion-preview-upward-tabbed-properties",
+      "route": "/studio/motion",
+      "setup": {
+        "previewScale": 0.72,
+        "previewPositionY": 0.32,
+        "propertyTab": "pose",
+        "viewport": [
+          1920,
+          1080
+        ]
+      },
+      "automatedChecks": [
+        "preview-position-canonical-wrapper",
+        "four-property-tab-contract",
+        "desktop-sidebar-height-bound",
+        "tab-content-local-scroll"
+      ],
+      "manualChecks": [
+        "pet-appears-vertically-centered-above-bottom-edge",
+        "switching-tabs-does-not-change-the-playhead",
+        "property-panel-does-not-extend-page-height",
+        "each-tab-scrolls-independently-when-needed"
+      ]
     }
   ]
 }

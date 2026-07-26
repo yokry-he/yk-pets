@@ -18,6 +18,8 @@ import { useStudioMotionEditorStore } from '~/stores/studio-motion-editor'
 import { useStudioSessionStore } from '~/stores/studio-session'
 import type { StudioMotionLoopMode } from '~/domain/studio-workspace'
 
+type PropertyTab = 'basic' | 'pose' | 'advanced' | 'props'
+
 definePageMeta({ layout: 'studio' })
 const route = useRoute()
 const appearance = usePetAppearanceStore()
@@ -48,7 +50,9 @@ const motionPathPoints = computed(() => {
 const evaluatedProps = computed(() => draft.value ? evaluateMotionPropEvents(draft.value, editor.playheadTimeMs) : { instances: [], diagnostics: [] })
 const status = ref('')
 const pendingMotionId = ref('')
+const propertyTab = ref<PropertyTab>('pose')
 const previewScale = ref(.72)
+const previewPosition = [0, .32, 0] as const
 const previewRotation = reactive({ x: 0, y: 0, z: 0 })
 const previewRotationRadians = computed<readonly [number, number, number]>(() => [
   previewRotation.x * Math.PI / 180,
@@ -58,6 +62,13 @@ const previewRotationRadians = computed<readonly [number, number, number]>(() =>
 const previewRotateSurface = ref<HTMLElement>()
 const previewDrag = reactive({ active: false, pointerId: 0, startX: 0, startY: 0, rotationX: 0, rotationY: 0 })
 const viewOptions = [['front', '正面'], ['left', '左侧'], ['back', '背面'], ['right', '右侧']] as const
+const propEventCount = computed(() => draft.value?.propEventTracks.reduce((sum, track) => sum + track.events.length, 0) || 0)
+const propertyTabs = computed<Array<{ id: PropertyTab; label: string; badge?: number }>>(() => [
+  { id: 'basic', label: '基础' },
+  { id: 'pose', label: '姿态', badge: editor.selectedKeyframeCount },
+  { id: 'advanced', label: '高级', badge: Math.max(0, (draft.value?.layers.length || 1) - 1) },
+  { id: 'props', label: '道具', badge: propEventCount.value },
+])
 let raf = 0
 
 function saveCurrent(message = '动作已保存') {
@@ -218,7 +229,7 @@ onBeforeUnmount(() => {
       </header>
       <div class="preview-shell">
         <ClientOnly>
-          <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" />
+          <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" />
         </ClientOnly>
         <div
           ref="previewRotateSurface"
@@ -259,46 +270,70 @@ onBeforeUnmount(() => {
 
     <aside class="property-panel">
       <header><small>属性面板</small><h2>动作属性</h2></header>
-      <template v-if="draft">
-        <label>中文名称<input :value="draft.nameZh" @change="patchName('nameZh',$event)"></label>
-        <label>英文名称<input :value="draft.nameEn" @change="patchName('nameEn',$event)"></label>
-        <div class="metadata-grid"><label>总时长（毫秒）<input :value="draft.durationMs" type="number" min="100" max="60000" step="50" @change="patchDuration"></label><label>显示网格（FPS）<input :value="draft.displayFps" type="number" min="1" max="240" step="1" @change="patchDisplayFps"></label></div>
-        <label>循环模式<select :value="draft.loopMode" @change="patchLoop"><option value="once">播放一次</option><option value="loop">循环</option><option value="ping-pong">往返循环</option></select></label>
-        <StudioMotionTransformEditor />
-        <details class="advanced-channel-editor">
-          <summary>高级：逐通道编辑</summary>
-        <StudioMotionPoseEditor
-          :asset="draft"
-          :playhead-time-ms="editor.playheadTimeMs"
-          :selected-channel-id="editor.selectedChannelId"
-          :selected-keyframe-count="editor.selectedKeyframeCount"
-          :snap-to-frames="editor.snapToFrames"
-          :auto-key="editor.autoKey"
-          @channel="editor.setSelectedChannel"
-          @write="editor.writeChannelValue"
-          @interpolation="applyInterpolation"
-          @copy="editor.copySelected"
-          @paste="editor.pasteAtPlayhead"
-          @delete="editor.deleteSelected"
-          @snap="editor.snapToFrames=$event"
-          @auto-key="editor.autoKey=$event"
-        />
-        </details>
-        <StudioMotionAdvancedTools />
-        <section class="dependency-card"><h3>道具依赖</h3><p v-if="!availableProps.length">当前动作尚未引用道具。</p><NuxtLink v-for="prop in availableProps" :key="prop.id" :to="`/studio/props?prop=${prop.id}`">{{ prop.nameZh }}</NuxtLink></section>
-        <StudioMotionPropEvents
-          :asset="draft"
-          :playhead-time-ms="editor.playheadTimeMs"
-          :prop-assets="assets.props"
-          :selected-event-ids="editor.selectedPropEventIds"
-          @add="editor.addPropEvent"
-          @select="editor.selectPropEvent"
-          @delete="editor.deletePropEvents"
-        />
-        <p v-if="evaluatedProps.diagnostics.length" class="diagnostics">道具事件：{{ evaluatedProps.diagnostics.slice(-2).map(item => item.code).join(' · ') }}</p>
-        <p v-if="editor.lastDiagnostics.length" class="diagnostics">规范化：{{ editor.lastDiagnostics.slice(-3).join(' · ') }}</p>
-        <details class="technical-info"><summary>技术信息</summary><code>{{ draft.rigId }}</code><code>{{ draft.id }}</code></details>
-      </template>
+      <nav v-if="draft" class="property-tabs" role="tablist" aria-label="动作属性分类">
+        <button
+          v-for="item in propertyTabs"
+          :key="item.id"
+          type="button"
+          role="tab"
+          :aria-selected="propertyTab === item.id"
+          :class="{ active: propertyTab === item.id }"
+          @click="propertyTab = item.id"
+        >
+          {{ item.label }}<span v-if="item.badge">{{ item.badge }}</span>
+        </button>
+      </nav>
+      <div v-if="draft" class="property-tab-body">
+        <section v-if="propertyTab === 'basic'" class="property-section">
+          <label>中文名称<input :value="draft.nameZh" @change="patchName('nameZh',$event)"></label>
+          <label>英文名称<input :value="draft.nameEn" @change="patchName('nameEn',$event)"></label>
+          <div class="metadata-grid"><label>总时长（毫秒）<input :value="draft.durationMs" type="number" min="100" max="60000" step="50" @change="patchDuration"></label><label>显示网格（帧/秒）<input :value="draft.displayFps" type="number" min="1" max="240" step="1" @change="patchDisplayFps"></label></div>
+          <label>循环模式<select :value="draft.loopMode" @change="patchLoop"><option value="once">播放一次</option><option value="loop">循环</option><option value="ping-pong">往返循环</option></select></label>
+          <details class="technical-info"><summary>技术信息</summary><code>{{ draft.rigId }}</code><code>{{ draft.id }}</code></details>
+        </section>
+
+        <section v-else-if="propertyTab === 'pose'" class="property-section">
+          <StudioMotionTransformEditor />
+          <details class="advanced-channel-editor">
+            <summary>高级：逐通道编辑</summary>
+            <StudioMotionPoseEditor
+              :asset="draft"
+              :playhead-time-ms="editor.playheadTimeMs"
+              :selected-channel-id="editor.selectedChannelId"
+              :selected-keyframe-count="editor.selectedKeyframeCount"
+              :snap-to-frames="editor.snapToFrames"
+              :auto-key="editor.autoKey"
+              @channel="editor.setSelectedChannel"
+              @write="editor.writeChannelValue"
+              @interpolation="applyInterpolation"
+              @copy="editor.copySelected"
+              @paste="editor.pasteAtPlayhead"
+              @delete="editor.deleteSelected"
+              @snap="editor.snapToFrames=$event"
+              @auto-key="editor.autoKey=$event"
+            />
+          </details>
+          <p v-if="editor.lastDiagnostics.length" class="diagnostics">规范化：{{ editor.lastDiagnostics.slice(-3).join(' · ') }}</p>
+        </section>
+
+        <section v-else-if="propertyTab === 'advanced'" class="property-section">
+          <StudioMotionAdvancedTools />
+        </section>
+
+        <section v-else class="property-section">
+          <section class="dependency-card"><h3>道具依赖</h3><p v-if="!availableProps.length">当前动作尚未引用道具。</p><NuxtLink v-for="prop in availableProps" :key="prop.id" :to="`/studio/props?prop=${prop.id}`">{{ prop.nameZh }}</NuxtLink></section>
+          <StudioMotionPropEvents
+            :asset="draft"
+            :playhead-time-ms="editor.playheadTimeMs"
+            :prop-assets="assets.props"
+            :selected-event-ids="editor.selectedPropEventIds"
+            @add="editor.addPropEvent"
+            @select="editor.selectPropEvent"
+            @delete="editor.deletePropEvents"
+          />
+          <p v-if="evaluatedProps.diagnostics.length" class="diagnostics">道具事件：{{ evaluatedProps.diagnostics.slice(-2).map(item => item.code).join(' · ') }}</p>
+        </section>
+      </div>
       <div v-else class="empty">创建动作后可编辑完整时间轴和姿态。</div>
       <small v-if="status" class="status">{{ status }}</small>
     </aside>
@@ -326,7 +361,7 @@ onBeforeUnmount(() => {
   border-radius:16px;
   background:#0d1120;
 }
-.asset-panel,.property-panel{
+.asset-panel{
   display:flex;
   flex-direction:column;
   gap:9px;
@@ -335,6 +370,17 @@ onBeforeUnmount(() => {
   overflow-y:auto;
   overscroll-behavior:contain;
   scrollbar-gutter:stable;
+}
+.property-panel{
+  position:sticky;
+  top:67px;
+  display:grid;
+  grid-template-rows:auto auto minmax(0,1fr) auto;
+  gap:9px;
+  height:calc(100dvh - 79px);
+  max-height:calc(100dvh - 79px);
+  padding:12px;
+  overflow:hidden;
 }
 .property-panel>*{box-sizing:border-box;min-width:0;max-width:100%}
 .property-panel :deep(*){box-sizing:border-box;min-width:0}
@@ -412,7 +458,12 @@ h1,h2,h3,p{margin:0}
 .preview-options .background-control select{width:70px}
 .preview-options .reset-view{min-height:28px;padding:0 8px;border-color:#52e0d04f}
 .property-panel header{margin-bottom:2px}
-.property-panel>label,.metadata-grid label{display:grid;gap:5px;color:#b8c0da;font-size:10px}
+.property-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px;border:1px solid #ffffff12;border-radius:10px;background:#090d18}
+.property-tabs button{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;min-height:31px;padding:0 5px;border:1px solid transparent;border-radius:7px;color:#8993b2;background:transparent;font-size:9px;cursor:pointer}
+.property-tabs button:hover{color:#dbe2f8;background:#ffffff06}.property-tabs button.active{border-color:#52e0d055;color:#dffffa;background:#52e0d012}.property-tabs span{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;color:#cffff8;background:#52e0d01f;font:700 7px/1 ui-monospace,monospace}
+.property-tab-body{display:grid;align-content:start;gap:9px;min-height:0;overflow-x:hidden;overflow-y:auto;padding-right:2px;overscroll-behavior:contain;scrollbar-gutter:stable}
+.property-section{display:grid;align-content:start;gap:9px;min-width:0}
+.property-section>label,.metadata-grid label{display:grid;gap:5px;color:#b8c0da;font-size:10px}
 .property-panel input,.property-panel select{width:100%;min-height:36px;padding:0 8px;border:1px solid #ffffff1d;border-radius:8px;color:#fff;background:#090e1b}
 .metadata-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 .dependency-card{display:grid;gap:6px;padding:9px;border:1px solid #ffffff12;border-radius:10px;background:#ffffff04;overflow:hidden}
@@ -423,7 +474,7 @@ h1,h2,h3,p{margin:0}
 .advanced-channel-editor[open]>summary{border-bottom:1px solid #ffffff10;color:#c8d0e8}
 .advanced-channel-editor :deep(.pose-editor){border:0;border-radius:0;background:transparent}
 .diagnostics{overflow-wrap:anywhere;color:#ffcb6b;font-size:8px;line-height:1.4}
-.status{position:sticky;bottom:0;padding:7px;border:1px solid #52e0d044;border-radius:8px;color:#cffff8!important;background:#0b1720}
+.status{display:block;padding:7px;border:1px solid #52e0d044;border-radius:8px;color:#cffff8!important;background:#0b1720}
 .empty{padding:12px;border:1px dashed #ffffff1d;border-radius:10px;color:#7f89a8;font-size:10px;line-height:1.5}
 .timeline-empty{margin:12px}
 @media(max-width:1480px){
@@ -432,7 +483,7 @@ h1,h2,h3,p{margin:0}
 }
 @media(max-width:1180px){
   .motion-workspace{grid-template-columns:190px minmax(0,1fr)}
-  .property-panel{grid-column:1/-1;max-height:none}
+  .property-panel{position:static;grid-column:1/-1;height:min(620px,calc(100dvh - 24px));max-height:620px}
   .preview-options{max-width:calc(100% - 36px)}
 }
 @media(max-width:780px){
@@ -442,6 +493,7 @@ h1,h2,h3,p{margin:0}
   .preview-options .scale-control{grid-column:1/-1}
   .view-buttons{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
   .metadata-grid{grid-template-columns:minmax(0,1fr)}
+  .property-panel{height:620px;max-height:620px}
   .preview-rotate-surface span{display:none}
 }
 </style>

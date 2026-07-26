@@ -25,6 +25,7 @@ const props = defineProps<{
   motionPathPoints?: readonly (readonly [number, number, number])[]
   previewScale?: number
   previewRotation?: readonly [number, number, number]
+  previewPosition?: readonly [number, number, number]
 }>()
 const definition = computed(() => PET_SPECIES_REGISTRY[props.appearance.speciesId])
 const previewScaleVector = computed(() => {
@@ -36,6 +37,10 @@ const previewRotationEuler = computed(() => {
   const value = props.previewRotation || [0, 0, 0]
   return new Euler(value[0] || 0, value[1] || 0, value[2] || 0)
 })
+const previewPositionVector = computed(() => {
+  const value = props.previewPosition || [0, 0, 0]
+  return new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
+})
 const moonCatBehavior = computed(() => {
   const supported: readonly CloudFoxStudioBehavior[] = ['idle', 'greeting', 'jumping', 'stretching', 'resting']
   const requested = supported.includes(props.behavior as CloudFoxStudioBehavior)
@@ -46,7 +51,7 @@ const moonCatBehavior = computed(() => {
 </script>
 
 <template>
-  <TresGroup :scale="previewScaleVector" :rotation="previewRotationEuler">
+  <TresGroup :position="previewPositionVector" :scale="previewScaleVector" :rotation="previewRotationEuler">
     <ExtensionAlignedCloudFox
       v-if="appearance.speciesId === 'cloud-fox'"
       :appearance="appearance"
