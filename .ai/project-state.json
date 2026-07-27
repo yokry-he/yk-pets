@@ -62,7 +62,8 @@
     "studioGlobalModelModeComplete": true,
     "studioComplexDraftAutomationComplete": true,
     "studioComplexPreviewAdapterBoundaryComplete": true,
-    "bipedPetRigProfileContractComplete": true
+    "bipedPetRigProfileContractComplete": true,
+    "bipedPetModelRecipeComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -145,7 +146,8 @@
     "studio-global-model-mode",
     "studio-complex-draft-automation",
     "studio-complex-preview-adapter-boundary",
-    "biped-pet-rig-profile-contract"
+    "biped-pet-rig-profile-contract",
+    "biped-pet-model-recipe"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

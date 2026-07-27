@@ -5,7 +5,137 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { BIPED_PET_RIG_PROFILE, validateRigProfile } from '../src/index.ts'
+import {
+  applyBipedPetBodyStyle,
+  BIPED_PET_RIG_PROFILE,
+  createBipedPetModelRecipe,
+  normalizeBipedPetModelRecipe,
+  validateRigProfile,
+} from '../src/index.ts'
+
+test('双足萌宠模型配方提供固定的领域身份默认值', () => {
+  const recipe = createBipedPetModelRecipe(200)
+
+  assert.equal(recipe.schemaVersion, 1)
+  assert.equal(recipe.rigProfileId, 'biped-pet/v1')
+  assert.equal(recipe.generatorVersion, 'biped-pet-generator/v1')
+  assert.equal(recipe.updatedAt, 200)
+})
+
+test('双足萌宠模型配方会确定性地修复损坏输入', () => {
+  const input = {
+    bodyStyle: 'unknown',
+    proportions: { height: 99, headRatio: Number.NaN, armLength: -4 },
+    appendages: { tail: { enabled: true, segments: 999, length: 0 } },
+    updatedAt: -1,
+  }
+
+  const normalized = normalizeBipedPetModelRecipe(input, 200)
+
+  assert.equal(normalized.bodyStyle, 'soft')
+  assert.equal(normalized.proportions.height, 1.35)
+  assert.equal(normalized.proportions.headRatio, 0.34)
+  assert.equal(normalized.proportions.armLength, 0.82)
+  assert.equal(normalized.appendages.tail.segments, 8)
+  assert.equal(normalized.updatedAt, 200)
+  assert.deepEqual(normalized.proportions, {
+    height: 1.35,
+    headRatio: 0.34,
+    shoulderWidth: 0.78,
+    hipWidth: 0.66,
+    torsoLength: 0.72,
+    armLength: 0.82,
+    legLength: 0.94,
+    handSize: 0.22,
+    footSize: 0.28,
+  })
+  assert.ok(Object.values(normalized.proportions).every(Number.isFinite))
+})
+
+test('体型预设只调整比例并保留其余配方信息', () => {
+  const recipe = normalizeBipedPetModelRecipe({
+    appendages: { tail: { enabled: false, segments: 7, length: 0.9 } },
+    material: { baseColor: '#112233', secondaryColor: '#445566', roughness: 0.2, metalness: 0.6 },
+    updatedAt: 123,
+  }, 200)
+  const styled = applyBipedPetBodyStyle(recipe, 'athletic')
+
+  assert.notDeepEqual(styled.proportions, recipe.proportions)
+  assert.deepEqual(styled.appendages, recipe.appendages)
+  assert.deepEqual(styled.material, recipe.material)
+  assert.equal(styled.schemaVersion, recipe.schemaVersion)
+  assert.equal(styled.generatorVersion, recipe.generatorVersion)
+  assert.equal(styled.rigProfileId, recipe.rigProfileId)
+  assert.equal(styled.updatedAt, recipe.updatedAt)
+  assert.notEqual(styled.proportions, recipe.proportions)
+  assert.notEqual(styled.appendages, recipe.appendages)
+  assert.notEqual(styled.appendages.tail, recipe.appendages.tail)
+  assert.notEqual(styled.material, recipe.material)
+  styled.appendages.tail.length = 0.12
+  styled.material.baseColor = '#FFFFFF'
+  assert.equal(recipe.appendages.tail.length, 0.9)
+  assert.equal(recipe.material.baseColor, '#112233'.toUpperCase())
+})
+
+test('模型配方颜色、边界和归一化均稳定且不突变输入', () => {
+  const input = {
+    proportions: {
+      height: Infinity,
+      headRatio: -Infinity,
+      shoulderWidth: Infinity,
+      hipWidth: -Infinity,
+      torsoLength: Infinity,
+      armLength: -Infinity,
+      legLength: Infinity,
+      handSize: -Infinity,
+      footSize: Infinity,
+    },
+    appendages: {
+      ears: { enabled: 'yes', segments: Infinity, length: -1 },
+      tail: { enabled: false, segments: -2.5, length: Infinity },
+      antennae: { enabled: true, segments: Number.NaN, length: Infinity },
+    },
+    material: { baseColor: '#12345', secondaryColor: 'red', roughness: -2, metalness: 3 },
+  }
+  const snapshot = structuredClone(input)
+  const first = normalizeBipedPetModelRecipe(input, 200)
+  const second = normalizeBipedPetModelRecipe(input, 200)
+
+  assert.deepEqual(input, snapshot)
+  assert.deepEqual(first, second)
+  assert.equal(first.material.baseColor, '#F3F7FF')
+  assert.equal(first.material.secondaryColor, '#7AE7DF')
+  assert.deepEqual(first.proportions, {
+    height: 1.35,
+    headRatio: 0.34,
+    shoulderWidth: 0.78,
+    hipWidth: 0.66,
+    torsoLength: 0.72,
+    armLength: 0.82,
+    legLength: 0.94,
+    handSize: 0.22,
+    footSize: 0.28,
+  })
+  assert.equal(first.appendages.ears.segments, 2)
+  assert.equal(first.appendages.tail.segments, 1)
+  assert.equal(first.appendages.ears.length, 0.08)
+  assert.equal(first.appendages.tail.length, 0.62)
+  assert.equal(first.appendages.antennae.segments, 2)
+  assert.equal(first.appendages.antennae.length, 0.22)
+  assert.equal(first.material.roughness, 0)
+  assert.equal(first.material.metalness, 1)
+  assert.ok([
+    ...Object.values(first.proportions),
+    first.appendages.ears.segments,
+    first.appendages.ears.length,
+    first.appendages.tail.segments,
+    first.appendages.tail.length,
+    first.appendages.antennae.segments,
+    first.appendages.antennae.length,
+    first.material.roughness,
+    first.material.metalness,
+  ].every(Number.isFinite))
+})
 
 const createValidProfile = () => ({
   id: 'biped-pet/v1',
