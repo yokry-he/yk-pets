@@ -206,3 +206,13 @@
 - 运行时 `dispose()` 可重复调用，并释放 geometry、material 与 skeleton；创建中途失败也会清理已经取得的资源。
 - `ComplexBipedPetRenderer.vue` 是不创建 Canvas 的独立 Vue/Tres 适配器：每次先归一化配方，并让编译和材质创建消费同一份归一化结果；深度观察后仅在编译 hash/status/diagnostics 处理键变化时才释放旧运行时、创建对象或 emit，因此 `updatedAt` 变化和父层同摘要回写不会触发重复创建。它以 `primitive dispose=false` 交给上层既有场景，并将运行时异常转为诊断，防止 Store 回写触发渲染循环。
 - 本批尚未接入 `CloudFoxStudioCanvas` 或外观、动作、道具三个工坊，尚未新增参数 UI、动作、IK、足底锁定、Root Motion、确定性特效或真实 GPU/WebGL 验收；不得把独立适配器或静态/Node 验证描述为正式复杂模型预览完成。
+
+## 21. 复杂模型统一工坊预览接线批次
+
+- `CloudFoxStudioCanvas` 仍只创建一个既有 `TresCanvas`：复杂模式且当前宠物存在配方时，`ComplexBipedPetRenderer` 在该场景内替换简单渲染器；简单模式与无配方场景继续使用既有 `ProceduralPet`，不会叠加两套宠物。
+- 复杂 renderer 的真实 `compilation` 事件由 Canvas 统一转发为 `complex-compiled`。外观工坊仅在复杂模式、当前宠物配方存在且事件哈希与当前配方重新编译结果一致时，才调用 `commitComplexCompilation`；Store 继续负责最终的持久化复核。
+- 编译期间显示“正在生成复杂模型”，成功后显示“复杂模型已就绪”。编译或 Three 运行时被阻塞时，Canvas 显示“生成失败，已回退简单模型”并在当前会话内实际回退简单渲染，不改变用户持久化的复杂模式选择。
+- 外观、动作、道具三个工坊按相同 `petId` 读取同一持久化复杂配方；只有外观工坊提交编译摘要。动作与道具工坊没有新增配方表单、编译提交或独立配方。
+- 资产库在配方存在时展示 `biped-pet/v1`、`biped-pet-generator/v1`、最后编译状态、诊断数量与完成度；不存在配方时明确显示“未创建”，不会伪装为就绪。
+- `scripts/check-studio-complex-biped-model.mjs` 已扩展为结构化 Vue 脚本/模板门禁，检查单 Canvas 的互斥 renderer、事件转发、三个工坊共享配方及资产摘要；`check-studio-model-mode.mjs` 同步删除过期兼容预览断言并保留模式与简单路径契约。
+- 本批仅完成 Task6 预览接线。Task7 复杂模型参数编辑器，以及复杂模型语义动作、IK、足底锁定、Root Motion、确定性特效和真实 GPU/WebGL 人工验收仍未完成。

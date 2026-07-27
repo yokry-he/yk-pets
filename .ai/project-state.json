@@ -67,7 +67,8 @@
     "bipedPetCharacterCompilerComplete": true,
     "bipedPetAutomaticSkinFoundationComplete": true,
     "bipedPetModelPersistenceComplete": true,
-    "bipedPetThreeRuntimeRendererAdapterComplete": true
+    "bipedPetThreeRuntimeRendererAdapterComplete": true,
+    "bipedPetWorkshopPreviewWiringComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -155,14 +156,16 @@
     "biped-pet-character-compiler",
     "biped-pet-automatic-skin-foundation",
     "biped-pet-model-persistence",
-    "biped-pet-three-runtime-renderer-adapter"
+    "biped-pet-three-runtime-renderer-adapter",
+    "studio-complex-model-workshop-preview-wiring"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
     "real-chrome-side-panel-manual-acceptance",
     "real-gpu-webgl-manual-acceptance",
     "true-3d-raycast-gizmo-manipulation",
-    "in-site-parametric-biped-model-and-renderer",
+    "complex-model-parameter-editor-task7",
+    "complex-model-semantic-motion-task8",
     "parametric-rig-skin-and-socket-validation",
     "semantic-motion-solving-ik-foot-lock-root-motion",
     "motion-driven-deterministic-vfx",
@@ -170,10 +173,10 @@
   ],
   "nextPhase": "in-site-parametric-biped-rig",
   "latestCompletedBatch": {
-    "id": "biped-pet-three-runtime-renderer-adapter",
+    "id": "studio-complex-model-workshop-preview-wiring",
     "domainPackage": "apps/playground",
     "rendererModified": true,
-    "visualCasesModified": false,
+    "visualCasesModified": true,
     "automatedCoverage": [
       "complex-biped-pet-runtime-object",
       "geometry-skin-attribute-types",
@@ -181,7 +184,9 @@
       "idempotent-three-resource-disposal",
       "malformed-mesh-and-socket-rejection",
       "normalized-recipe-runtime-key-deduplication",
-      "complex-biped-runtime-static-gate"
+      "complex-biped-runtime-static-gate",
+      "complex-model-canvas-replacement-and-fallback-gate",
+      "three-workshop-shared-recipe-wiring"
     ]
   },
   "mandatoryDevelopmentPolicy": {

@@ -356,9 +356,11 @@
       "manualChecks": [
         "selecting-complex-creates-draft-without-extra-dialog",
         "mode-persists-across-all-studio-routes-and-refresh",
-        "compatibility-preview-label-does-not-block-drag",
+        "复杂模式会用实际双足模型替换简单兼容预览，且不叠加两个模型",
+        "三个工坊读取同一宠物的持久化复杂配方，切换路由后配方保持一致",
+        "人为触发编译或运行时失败时显示“生成失败，已回退简单模型”，简单预览仍可拖拽旋转",
         "asset-library-reports-real-simple-and-complex-status",
-        "header-has-no-horizontal-overflow-at-760px"
+        "1440×900 与 760×900 下工具栏、状态和资产详情均无横向溢出"
       ]
     }
   ]

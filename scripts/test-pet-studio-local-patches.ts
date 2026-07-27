@@ -6,6 +6,13 @@ import { normalizeMultiSpeciesAppearance } from '../apps/playground/app/domain/p
 
 const rawOriginal = createExtensionClassicAppearance()
 const original = normalizeCustomizableAppearance(rawOriginal)
+for (const [rawPetId, normalizedPetId] of [[' My Pet ', 'my-pet'], ['M@y P!et', 'm-y-p-et'], ['   ', 'zeph']] as const) {
+  const normalized = normalizeCustomizableAppearance({
+    ...rawOriginal,
+    identity: { ...rawOriginal.identity, petId: rawPetId },
+  })
+  assert.equal(normalized.identity.petId, normalizedPetId)
+}
 type JsonRecord = Record<string, unknown>
 function snapshotExcept(value: unknown, paths: string[]) {
   const clone = JSON.parse(JSON.stringify(value)) as JsonRecord

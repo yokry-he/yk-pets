@@ -18,6 +18,7 @@ import StudioPartColorEditor from '~/components/studio/StudioPartColorEditor.vue
 import StudioPreviewToolbar from '~/components/studio/StudioPreviewToolbar.vue'
 import StudioSymbolEditor from '~/components/studio/StudioSymbolEditor.vue'
 import StudioTailEditor from '~/components/studio/StudioTailEditor.vue'
+import type { CompiledCharacterModel } from '@yk-pets/pet-core'
 import { useStudioPreviewOrientation } from '~/composables/useStudioPreviewOrientation'
 import { CLOUD_FOX_BODY_SHAPES, CLOUD_FOX_HEAD_SHAPES, derivePetMonogram } from '~/domain/cloud-fox-appearance'
 import { PET_STUDIO_PART_OPTIONS as PARTS } from '~/domain/pet-studio-phase2'
@@ -27,6 +28,7 @@ import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-
 import type { StudioControlPath } from '~/domain/studio-control-registry'
 import { createExtensionClassicAppearance } from '~/domain/extension-cloud-fox-default'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
+import { useStudioModelVariantsStore } from '~/stores/studio-model-variants'
 import { useStudioSessionStore } from '~/stores/studio-session'
 
 type Tab = 'identity' | 'face' | 'body' | 'limbs' | 'belly' | 'tail' | 'antenna' | 'colors' | 'glow' | 'symbols' | 'audit'
@@ -37,7 +39,11 @@ interface SearchEntry { label: string; tab: Tab; keywords: string }
 useHead({ bodyAttrs: { class: 'yk-pets-studio-page' } })
 const store = usePetAppearanceStore()
 const session = useStudioSessionStore()
+const modelVariants = useStudioModelVariantsStore()
 const recipe = computed(() => store.recipe)
+const activeModelPetId = ref('active-appearance')
+const complexRecipe = computed(() => modelVariants.byPetId[activeModelPetId.value]?.complex.recipe)
+type ComplexCompilationPayload = Pick<CompiledCharacterModel, 'hash' | 'status' | 'diagnostics'>
 const tab = ref<Tab>('face')
 const behavior = ref<ExtensionCloudFoxMotionId>('idle')
 const motionKey = ref(0)
@@ -114,28 +120,48 @@ function setView(next: CloudFoxStudioView) {
 }
 function setBackground(next: CloudFoxStudioBackground) { background.value = next }
 function resetPreviewTransform() { resetPreviewScale(); setView('front') }
+function syncActiveModelPetId() {
+  const normalizedPetId = normalizeCustomizableAppearance(recipe.value).identity.petId
+  if (recipe.value.identity.petId !== normalizedPetId) {
+    recipe.value.identity.petId = normalizedPetId
+    store.markDirty()
+  }
+  activeModelPetId.value = normalizedPetId
+  modelVariants.ensurePet(normalizedPetId)
+  if (session.modelMode === 'complex') modelVariants.ensureComplexDraft(normalizedPetId)
+}
+function commitPetId() { syncActiveModelPetId() }
+function commitComplexCompilation(payload: ComplexCompilationPayload) {
+  const complex = modelVariants.byPetId[activeModelPetId.value]?.complex
+  if (session.modelMode !== 'complex' || !complex?.recipe) return
+  const compiledAt = Date.now()
+  modelVariants.commitComplexCompilation(activeModelPetId.value, { ...payload, compiledAt }, compiledAt)
+}
 function show(message:string){notice.value=message;if(noticeTimer)clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{notice.value=''},2600)}
 function setPart(key:PartKey,value:string){if(compareActive.value)return;store.checkpoint();store.patchParts({[key]:value} as Partial<typeof recipe.value.parts>)}
 function setProportion(key:ProportionKey,value:number){if(compareActive.value)return;recipe.value.proportions[key]=value}
 function play(next:ExtensionCloudFoxMotionId){if(timer)clearTimeout(timer);behavior.value=next;motionKey.value+=1;const duration=getExtensionCloudFoxMotionDurationMs(next);if(duration>0)timer=setTimeout(()=>{behavior.value='idle';motionKey.value+=1},duration)}
 function syncName(){if(compareActive.value)return;store.checkpoint();const monogram=derivePetMonogram(recipe.value.identity.nameEn);recipe.value.identity.monogram=monogram;recipe.value.symbols.chest.text=monogram;store.markDirty()}
 function save(){if(compareActive.value)return;store.save();show('正式外观已保存，可继续同步到 Chrome 扩展')}
-function reset(){if(compareActive.value||!confirm('恢复经典默认外观？当前草稿会进入撤销历史。'))return;store.reset();show('已恢复经典默认外观')}
+function undo(){if(compareActive.value)return;store.undo();syncActiveModelPetId()}
+function redo(){if(compareActive.value)return;store.redo();syncActiveModelPetId()}
+function reset(){if(compareActive.value||!confirm('恢复经典默认外观？当前草稿会进入撤销历史。'))return;store.reset();syncActiveModelPetId();show('已恢复经典默认外观')}
+function randomize(){if(compareActive.value)return;store.randomize();syncActiveModelPetId();show('已随机生成')}
 function exportRecipe(){const url=URL.createObjectURL(new Blob([store.exportJson()],{type:'application/json'}));const anchor=document.createElement('a');anchor.href=url;anchor.download=`${recipe.value.identity.petId}-appearance-v4.json`;anchor.click();URL.revokeObjectURL(url)}
-async function importRecipe(event:Event){if(compareActive.value)return;const input=event.target as HTMLInputElement;const file=input.files?.[0];input.value='';if(!file)return;try{store.replace(JSON.parse(await file.text()));show('配方已导入并完成兼容迁移')}catch{show('JSON 配方无效')}}
+async function importRecipe(event:Event){if(compareActive.value)return;const input=event.target as HTMLInputElement;const file=input.files?.[0];input.value='';if(!file)return;try{store.replace(JSON.parse(await file.text()));syncActiveModelPetId();show('配方已导入并完成兼容迁移')}catch{show('JSON 配方无效')}}
 function selectSearchResult(entry:SearchEntry){tab.value=entry.tab;searchQuery.value='';searchFocused.value=false}
 function onSearchBlur(){if(searchBlurTimer)clearTimeout(searchBlurTimer);searchBlurTimer=setTimeout(()=>{searchFocused.value=false},100)}
 function toggleComparison(){if(compareActive.value)return restoreComparison();compareSnapshot.value=JSON.stringify(recipe.value);store.recipe=normalizeCustomizableAppearance(createExtensionClassicAppearance());show('正在只读预览经典外观')}
 function restoreComparison(){if(!compareSnapshot.value)return;store.recipe=normalizeCustomizableAppearance(JSON.parse(compareSnapshot.value));compareSnapshot.value=''}
 function saveScheme(){const name=schemeName.value.trim();if(!name)return show('请输入本地方案名称');restoreComparison();store.saveCustomScheme(name);schemeName.value='';show('外观已保存到本地方案库')}
-function applyScheme(id:string){restoreComparison();store.applyCustomScheme(id);show('已应用本地方案')}
+function applyScheme(id:string){restoreComparison();store.applyCustomScheme(id);syncActiveModelPetId();show('已应用本地方案')}
 function removeScheme(id:string){store.deleteCustomScheme(id);show('本地方案已删除')}
 function onKeydown(event:KeyboardEvent){const target=event.target as HTMLElement|null;const editing=target?.matches('input,textarea,select,[contenteditable=true]');if(event.key==='/'&&!editing){event.preventDefault();searchInput.value?.focus()}if(event.key==='Escape'){searchQuery.value='';searchFocused.value=false;showHotspots.value=false;restoreComparison()}}
 function eyeIcon(id:string){return id==='spark'?'✦':id==='diamond'?'◆':id==='visor'?'▰':id==='sleepy'?'⌒':id==='oval'?'⬭':'●'}
 function noseIcon(id:string){return id==='triangle'?'▲':id==='sensor'?'▰':id==='heart'?'♥':'●'}
 function shapeIcon(id:string){return id.includes('cube')?'▣':id==='capsule'?'▯':id==='pear'?'♟':id==='bean'?'◒':id.includes('oval')||id==='ellipsoid'?'⬭':'●'}
 function changedGroups(input:unknown){const current=normalizeCustomizableAppearance(input);const classic=normalizeCustomizableAppearance(createExtensionClassicAppearance());const groups:Array<[string,boolean]>=[['头部',JSON.stringify(current.parts)!==JSON.stringify(classic.parts)||JSON.stringify(current.customization.mouth)!==JSON.stringify(classic.customization.mouth)],['身体',current.parts.bodyShape!==classic.parts.bodyShape||current.proportions.bodyWidth!==classic.proportions.bodyWidth||current.proportions.bodyHeight!==classic.proportions.bodyHeight||current.proportions.bodyDepth!==classic.proportions.bodyDepth],['四肢',JSON.stringify(current.frontPawDesign)!==JSON.stringify(classic.frontPawDesign)||JSON.stringify(current.hindPawDesign)!==JSON.stringify(classic.hindPawDesign)],['颜色',JSON.stringify(current.customization.colors)!==JSON.stringify(classic.customization.colors)],['肚皮',JSON.stringify(current.customization.belly)!==JSON.stringify(classic.customization.belly)],['尾巴',JSON.stringify(current.tailDesign)!==JSON.stringify(classic.tailDesign)],['触角',JSON.stringify(current.antennaDesign)!==JSON.stringify(classic.antennaDesign)],['发光轨道',JSON.stringify(current.glow)!==JSON.stringify(classic.glow)||JSON.stringify(current.orbitDesign)!==JSON.stringify(classic.orbitDesign)],['标志',JSON.stringify(current.symbols)!==JSON.stringify(classic.symbols)]];return groups.filter(([,changed])=>changed).map(([label])=>label)}
-onMounted(()=>{store.hydrate();session.hydrate();window.addEventListener('keydown',onKeydown)})
+onMounted(()=>{store.hydrate();session.hydrate();modelVariants.hydrate();syncActiveModelPetId();window.addEventListener('keydown',onKeydown)})
 onBeforeUnmount(()=>{restoreComparison();if(timer)clearTimeout(timer);if(noticeTimer)clearTimeout(noticeTimer);if(searchBlurTimer)clearTimeout(searchBlurTimer);store.endTransaction();window.removeEventListener('keydown',onKeydown)})
 </script>
 
@@ -145,7 +171,7 @@ onBeforeUnmount(()=>{restoreComparison();if(timer)clearTimeout(timer);if(noticeT
       <div class="brand-block"><NuxtLink to="/">← YK-PETS</NuxtLink><span>PET STUDIO</span><h1>创建属于你的云灵</h1><p>所有可配置部位均拥有独立工作区；草稿仅保存在本机。</p></div>
       <div class="studio-search"><label><span>⌕</span><input ref="searchInput" v-model="searchQuery" type="search" placeholder="搜索部位或参数" @focus="searchFocused=true" @blur="onSearchBlur"><kbd>/</kbd></label><div v-if="showSearchResults" class="search-results"><button v-for="entry in searchResults" :key="entry.label" @mousedown.prevent="selectSearchResult(entry)"><strong>{{ entry.label }}</strong><small>{{ tabs.find(item=>item.id===entry.tab)?.label }}</small></button><p v-if="!searchResults.length">没有匹配项</p></div></div>
       <div class="save-block"><b :class="{dirty:store.dirty}">{{ store.dirty?'草稿未正式保存':'正式外观已保存' }}</b><button class="primary" :disabled="compareActive" @click="save">保存并用于同步</button></div>
-      <div class="header-actions"><button :disabled="compareActive||!store.canUndo" @click="store.undo">撤销</button><button :disabled="compareActive||!store.canRedo" @click="store.redo">重做</button><button :disabled="compareActive" @click="store.randomize();show('已随机生成')">随机</button><button :disabled="compareActive" @click="reset">恢复默认</button><button :disabled="compareActive" @click="fileInput?.click()">导入</button><button @click="exportRecipe">导出</button><input ref="fileInput" hidden type="file" accept=".json,application/json" @change="importRecipe"></div>
+      <div class="header-actions"><button :disabled="compareActive||!store.canUndo" @click="undo">撤销</button><button :disabled="compareActive||!store.canRedo" @click="redo">重做</button><button :disabled="compareActive" @click="randomize">随机</button><button :disabled="compareActive" @click="reset">恢复默认</button><button :disabled="compareActive" @click="fileInput?.click()">导入</button><button @click="exportRecipe">导出</button><input ref="fileInput" hidden type="file" accept=".json,application/json" @change="importRecipe"></div>
     </header>
     <section class="studio-workspace">
       <nav class="part-nav" aria-label="宠物部位"><button v-for="item in tabs" :key="item.id" :class="{active:tab===item.id}" @click="tab=item.id"><i>{{ item.icon }}</i><span><strong>{{ item.label }}</strong><small>{{ item.hint }}</small></span><b v-if="item.id==='audit'&&store.findings.some(f=>f.severity==='warning')">!</b></button></nav>
@@ -155,12 +181,12 @@ onBeforeUnmount(()=>{restoreComparison();if(timer)clearTimeout(timer);if(noticeT
         </StudioPreviewToolbar>
         <div class="stage-status"><span>{{ focusLabel }}</span><small>{{ compareActive?`${changedGroupLabels.length} 组不同 · 只读经典预览`:`${recipe.parts.headShape} / ${recipe.parts.bodyShape}` }}</small></div>
         <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
-        <div class="canvas-shell"><ClientOnly><CloudFoxStudioCanvas :appearance="recipe" :behavior="behavior" :motion-key="motionKey" :view="view" :background="background" :focus="previewFocus" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :model-mode="session.modelMode" /><template #fallback><div class="loading">正在装配 Cloud Fox…</div></template></ClientOnly><div ref="previewRotateSurface" class="preview-rotate-surface" :class="{dragging:previewDrag.active}" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate"><span>拖动画布自由旋转</span></div><div v-if="showHotspots" class="part-hotspots"><button class="face" @click="tab='face';showHotspots=false">头部</button><button class="body" @click="tab='body';showHotspots=false">身体</button><button class="limbs" @click="tab='limbs';showHotspots=false">四肢</button><button class="tail" @click="tab='tail';showHotspots=false">尾巴</button></div></div>
+        <div class="canvas-shell"><ClientOnly><CloudFoxStudioCanvas :appearance="recipe" :behavior="behavior" :motion-key="motionKey" :view="view" :background="background" :focus="previewFocus" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :model-mode="session.modelMode" :complex-pet-id="activeModelPetId" :complex-recipe="complexRecipe" @complex-compiled="commitComplexCompilation" /><template #fallback><div class="loading">正在装配 Cloud Fox…</div></template></ClientOnly><div ref="previewRotateSurface" class="preview-rotate-surface" :class="{dragging:previewDrag.active}" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate"><span>拖动画布自由旋转</span></div><div v-if="showHotspots" class="part-hotspots"><button class="face" @click="tab='face';showHotspots=false">头部</button><button class="body" @click="tab='body';showHotspots=false">身体</button><button class="limbs" @click="tab='limbs';showHotspots=false">四肢</button><button class="tail" @click="tab='tail';showHotspots=false">尾巴</button></div></div>
         <StudioMotionToolbar :behavior="behavior" @play="play" />
       </section>
       <aside class="inspector"><header><div><strong>{{ recipe.identity.nameZh }} / {{ recipe.identity.nameEn }}</strong><small>{{ store.draftSavedAt?'本地草稿已自动保存':'正在编辑本地草稿' }}</small></div><b>{{ tabs.find(item=>item.id===tab)?.label }}</b></header>
         <div class="controls" :class="{readonly:compareActive}">
-          <template v-if="tab==='identity'"><section class="section-heading"><small>IDENTITY</small><h2>身份信息</h2><p>身份、方案名称与导出文件标识。</p></section><label>中文名字<input v-model="recipe.identity.nameZh" @focus="store.checkpoint" @input="store.markDirty"></label><label>英文名字<input v-model="recipe.identity.nameEn" @focus="store.checkpoint" @input="store.markDirty" @blur="syncName"></label><label>宠物 ID<input v-model="recipe.identity.petId" @focus="store.checkpoint" @input="store.markDirty"></label></template>
+          <template v-if="tab==='identity'"><section class="section-heading"><small>IDENTITY</small><h2>身份信息</h2><p>身份、方案名称与导出文件标识。</p></section><label>中文名字<input v-model="recipe.identity.nameZh" @focus="store.checkpoint" @input="store.markDirty"></label><label>英文名字<input v-model="recipe.identity.nameEn" @focus="store.checkpoint" @input="store.markDirty" @blur="syncName"></label><label>宠物 ID<input v-model="recipe.identity.petId" @focus="store.checkpoint" @input="store.markDirty" @blur="commitPetId"></label></template>
           <template v-else-if="tab==='face'"><section class="section-heading"><small>HEAD & FACE</small><h2>头部和表情</h2><p>头型独立于身体；左右侧视检查鼻嘴贴合。</p></section><section class="option-section"><h3>头部形状</h3><p>切换身体不会修改这里的选择。</p><div class="option-grid"><button v-for="item in CLOUD_FOX_HEAD_SHAPES" :key="item.id" :class="{active:recipe.parts.headShape===item.id}" @click="setPart('headShape',item.id)"><i>{{ shapeIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.description }}</small></button></div></section><StudioEarEditor /><section class="option-section"><h3>眼睛</h3><div class="option-grid"><button v-for="item in PARTS.eyes" :key="item.id" :class="{active:recipe.parts.eyes===item.id}" @click="setPart('eyes',item.id)"><i>{{ eyeIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.labelEn }}</small></button></div></section><section class="option-section"><h3>鼻子</h3><div class="option-grid"><button v-for="item in PARTS.noses" :key="item.id" :class="{active:recipe.parts.nose===item.id}" @click="setPart('nose',item.id)"><i>{{ noseIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.labelEn }}</small></button></div></section><StudioMouthEditor /><section class="sub-card"><h3>头部比例</h3><StudioNumericControl v-for="[path,key] in faceControls" :key="path" :path="path" :model-value="recipe.proportions[key]" @update:model-value="setProportion(key,$event)" /></section></template>
           <template v-else-if="tab==='body'"><section class="section-heading"><small>BODY</small><h2>身体</h2><p>身体只改变躯干轮廓，不再联动头型。</p></section><section class="option-section"><h3>身体形状</h3><div class="option-grid"><button v-for="item in CLOUD_FOX_BODY_SHAPES" :key="item.id" :class="{active:recipe.parts.bodyShape===item.id}" @click="setPart('bodyShape',item.id)"><i>{{ shapeIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.description }}</small></button></div></section><section class="sub-card"><h3>身体比例</h3><StudioNumericControl v-for="[path,key] in bodyControls" :key="path" :path="path" :model-value="recipe.proportions[key]" @update:model-value="setProportion(key,$event)" /></section></template>
           <template v-else-if="tab==='limbs'"><StudioFrontPawEditor /><StudioHindPawEditor /></template>

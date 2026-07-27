@@ -6,6 +6,7 @@
 <script setup lang="ts">
 import { TresCanvas } from '@tresjs/core'
 import { Vector3 } from 'three'
+import ComplexBipedPetRenderer from './ComplexBipedPetRenderer.vue'
 import ProceduralPet from './ProceduralPet.vue'
 import PetSceneEffects from './PetSceneEffects.vue'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
@@ -13,7 +14,7 @@ import { calculatePetStudioVisualBounds } from '~/domain/pet-studio-phase2'
 import { getCloudFoxBodyProfile, getCloudFoxHeadProfile } from '~/domain/cloud-fox-shape-profile'
 import { createExtensionClassicAppearance, createExtensionClassicScene, isExtensionClassicScene } from '~/domain/extension-cloud-fox-default'
 import { createDefaultPetScene, getPetScenePreset, resolveSceneContrast, type PetSceneRecipe } from '~/domain/pet-scene'
-import type { EvaluatedCloudFoxPose, EvaluatedMotionPropInstance } from '@yk-pets/pet-core'
+import { normalizeBipedPetModelRecipe, type CharacterModelRecipeV1, type CompiledCharacterModel, type EvaluatedCloudFoxPose, type EvaluatedMotionPropInstance } from '@yk-pets/pet-core'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
@@ -37,6 +38,8 @@ const props = withDefaults(defineProps<{
   previewRotation?: readonly [number, number, number]
   previewPosition?: readonly [number, number, number]
   modelMode?: StudioModelMode
+  complexRecipe?: CharacterModelRecipeV1
+  complexPetId?: string
 }>(), {
   motionKey: 0,
   focus: 'full',
@@ -44,10 +47,21 @@ const props = withDefaults(defineProps<{
   previewRotation: () => [0, 0, 0],
   previewPosition: () => [0, 0, 0],
   modelMode: 'simple',
+  complexPetId: 'active-appearance',
 })
+type ComplexCompilationPayload = Pick<CompiledCharacterModel, 'hash' | 'status' | 'diagnostics'>
+const emit = defineEmits<{
+  'complex-compiled': [payload: ComplexCompilationPayload]
+}>()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vec3 = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
+const CANONICAL_VIEW_YAW: Readonly<Record<CloudFoxStudioView, number>> = {
+  front: 0,
+  left: Math.PI / 2,
+  back: Math.PI,
+  right: -Math.PI / 2,
+}
 const legacyScene = computed(() => props.background === 'light'
   ? { ...createDefaultPetScene(), background: '#eef1ff', backgroundSecondary: '#ffffff', contrastMode: 'light' as const }
   : props.background === 'web'
@@ -60,6 +74,44 @@ const contrast = computed(() => resolveSceneContrast(activeScene.value, prefersD
 const clearColor = computed(() => activeScene.value.transparent ? '#000000' : activeScene.value.background)
 const extensionScene = computed(() => isExtensionClassicScene(activeScene.value))
 const canvasDpr = computed<[number, number]>(() => [scheme.scene.camera.normalDpr[0], scheme.scene.camera.normalDpr[1]])
+const complexCompilation = shallowRef<ComplexCompilationPayload>()
+const complexPreviewBlocked = ref(false)
+function complexRecipeSignature(recipe: CharacterModelRecipeV1 | undefined) {
+  if (!recipe) return ''
+  const normalized = normalizeBipedPetModelRecipe(recipe)
+  const { updatedAt: _updatedAt, ...stableRecipe } = normalized
+  return JSON.stringify(stableRecipe)
+}
+// 宠物身份与轻量配方签名共同决定预览状态；同配方摘要回写不会重置，新宠物或真实配方变化才会重置。 / Pet identity plus a lightweight recipe signature owns preview state; summary writes for the same recipe do not reset it, while a new pet or real recipe change does.
+const complexPreviewKey = computed(() => `${props.complexPetId.trim() || 'active-appearance'}:${complexRecipeSignature(props.complexRecipe)}`)
+// 固定视角提供绝对朝向；拖拽产生的自由旋转只作为该朝向上的偏移。 / Canonical views set the absolute yaw, while pointer drag contributes only an offset on that yaw.
+const complexPreviewRotation = computed<readonly [number, number, number]>(() => [
+  props.previewRotation[0],
+  CANONICAL_VIEW_YAW[props.view] + props.previewRotation[1],
+  props.previewRotation[2],
+])
+const showComplexRenderer = computed(() => props.modelMode === 'complex' && Boolean(props.complexRecipe) && !complexPreviewBlocked.value)
+const complexPreviewStatus = computed(() => {
+  if (props.modelMode !== 'complex' || !props.complexRecipe) return undefined
+  if (complexPreviewBlocked.value) return { title: '复杂模型生成失败', detail: '生成失败，已回退简单模型', blocked: true }
+  if (complexCompilation.value?.status === 'ready') return { title: '复杂模型已就绪', detail: '正在显示复杂双足萌宠', blocked: false }
+  return { title: '正在生成复杂模型', detail: '正在编译站内双足萌宠配方', blocked: false }
+})
+
+function onComplexCompilation(payload: ComplexCompilationPayload) {
+  complexCompilation.value = {
+    hash: payload.hash,
+    status: payload.status,
+    diagnostics: payload.diagnostics.map(diagnostic => ({ ...diagnostic })),
+  }
+  if (payload.status === 'blocked') complexPreviewBlocked.value = true
+  emit('complex-compiled', complexCompilation.value)
+}
+
+watch(() => [props.modelMode, complexPreviewKey.value] as const, () => {
+  complexCompilation.value = undefined
+  complexPreviewBlocked.value = false
+})
 
 function resolvedBounds(appearance: MultiSpeciesAppearanceRecipe) {
   const base = calculatePetStudioVisualBounds(appearance as never)
@@ -112,12 +164,15 @@ const sceneStyle = computed(() => ({
       <TresPointLight :position="vec3(scheme.scene.lights.primaryPosition)" :intensity="scheme.scene.lights.primaryIntensity" :color="appearance.palette.primaryGlow" />
       <TresPointLight :position="vec3(scheme.scene.lights.secondaryPosition)" :intensity="scheme.scene.lights.secondaryIntensity" :color="appearance.palette.secondaryGlow" />
       <PetSceneEffects :scene="activeScene" :behavior="behavior" />
-      <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotation" :preview-position="previewPosition" />
+      <TresGroup v-if="showComplexRenderer" :position="vec3(previewPosition)" :rotation="vec3(complexPreviewRotation)" :scale="vec3([previewScale, previewScale, previewScale])">
+        <ComplexBipedPetRenderer :key="complexPreviewKey" :recipe="complexRecipe!" @compilation="onComplexCompilation" />
+      </TresGroup>
+      <ProceduralPet v-else :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotation" :preview-position="previewPosition" />
     </TresCanvas>
     <div v-if="extensionScene" class="extension-glow" />
-    <div v-if="modelMode === 'complex'" class="model-preview-status" aria-label="复杂模型预览状态">
-      <strong class="model-preview-status-title">复杂模型草稿</strong>
-      <span class="model-preview-status-detail">当前使用简单模型兼容预览</span>
+    <div v-if="complexPreviewStatus" class="model-preview-status" :class="{ 'model-preview-status--blocked': complexPreviewStatus.blocked }" aria-label="复杂模型预览状态">
+      <strong class="model-preview-status-title">{{ complexPreviewStatus.title }}</strong>
+      <span class="model-preview-status-detail">{{ complexPreviewStatus.detail }}</span>
     </div>
     <div class="label">
       <strong>{{ appearance.identity.nameZh }} · {{ appearance.identity.nameEn }}</strong>
@@ -127,5 +182,5 @@ const sceneStyle = computed(() => ({
 </template>
 
 <style scoped>
-.studio-canvas{position:relative;width:100%;height:100%;min-height:520px;overflow:hidden;border:1px solid #ffffff1f;border-radius:22px;background:transparent;box-shadow:0 28px 80px #0006}.scene-surface{position:absolute;inset:0;background:linear-gradient(145deg,var(--scene-a),var(--scene-b))}.scene-gradient{position:absolute;inset:0;background:radial-gradient(circle at 70% 15%,color-mix(in srgb,var(--scene-b) 76%,transparent),transparent 38%)}.studio-canvas--extension .scene-surface{background:var(--extension-surface)}.studio-canvas--extension .scene-gradient{display:none}.extension-nebula{position:absolute;inset:2% 4% 8%;border-radius:50%;background:var(--extension-nebula);filter:blur(10px);opacity:.92;pointer-events:none}.extension-glow{position:absolute;z-index:3;inset:auto 14% -18px;height:78px;background:var(--extension-glow);filter:blur(16px);pointer-events:none}.studio-canvas :deep(canvas){position:absolute!important;inset:0;z-index:2;width:100%!important;height:100%!important;background:transparent!important}.model-preview-status{position:absolute;z-index:5;top:14px;left:14px;display:grid;gap:3px;max-width:calc(100% - 28px);padding:8px 10px;border:1px solid #e5c76248;border-radius:10px;background:#090d18d9;backdrop-filter:blur(14px);pointer-events:none}.model-preview-status-title{color:#f0d78c;font-size:9px}.model-preview-status-detail{color:#9ba6c1;font-size:8px}.label{position:absolute;z-index:4;left:18px;bottom:18px;display:flex;flex-direction:column;gap:4px;max-width:calc(100% - 36px);padding:9px 12px;border:1px solid #ffffff24;border-radius:12px;color:#f5f7ff;background:#080b14a8;backdrop-filter:blur(16px)}.studio-canvas--light .label{color:#17192b;background:#ffffffe0}.label span{overflow:hidden;color:#aeb7d8;font-size:11px;text-overflow:ellipsis;white-space:nowrap}@media(max-width:980px){.studio-canvas{min-height:460px}}
+.studio-canvas{position:relative;width:100%;height:100%;min-height:520px;overflow:hidden;border:1px solid #ffffff1f;border-radius:22px;background:transparent;box-shadow:0 28px 80px #0006}.scene-surface{position:absolute;inset:0;background:linear-gradient(145deg,var(--scene-a),var(--scene-b))}.scene-gradient{position:absolute;inset:0;background:radial-gradient(circle at 70% 15%,color-mix(in srgb,var(--scene-b) 76%,transparent),transparent 38%)}.studio-canvas--extension .scene-surface{background:var(--extension-surface)}.studio-canvas--extension .scene-gradient{display:none}.extension-nebula{position:absolute;inset:2% 4% 8%;border-radius:50%;background:var(--extension-nebula);filter:blur(10px);opacity:.92;pointer-events:none}.extension-glow{position:absolute;z-index:3;inset:auto 14% -18px;height:78px;background:var(--extension-glow);filter:blur(16px);pointer-events:none}.studio-canvas :deep(canvas){position:absolute!important;inset:0;z-index:2;width:100%!important;height:100%!important;background:transparent!important}.model-preview-status{position:absolute;z-index:5;top:14px;left:14px;display:grid;gap:3px;max-width:calc(100% - 28px);padding:8px 10px;border:1px solid #e5c76248;border-radius:10px;background:#090d18d9;backdrop-filter:blur(14px);pointer-events:none}.model-preview-status--blocked{border-color:#ff7f9d62}.model-preview-status-title{color:#f0d78c;font-size:9px}.model-preview-status--blocked .model-preview-status-title{color:#ff9bb3}.model-preview-status-detail{color:#9ba6c1;font-size:8px}.label{position:absolute;z-index:4;left:18px;bottom:18px;display:flex;flex-direction:column;gap:4px;max-width:calc(100% - 36px);padding:9px 12px;border:1px solid #ffffff24;border-radius:12px;color:#f5f7ff;background:#080b14a8;backdrop-filter:blur(16px)}.studio-canvas--light .label{color:#17192b;background:#ffffffe0}.label span{overflow:hidden;color:#aeb7d8;font-size:11px;text-overflow:ellipsis;white-space:nowrap}@media(max-width:980px){.studio-canvas{min-height:460px}}
 </style>

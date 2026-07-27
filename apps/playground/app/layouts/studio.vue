@@ -28,7 +28,7 @@ const selectedMotion = computed(() => assets.motions.find(item => item.id === se
 const selectedProp = computed(() => assets.props.find(item => item.id === session.selectedPropId))
 const motionPath = computed(() => session.selectedMotionId ? `/studio/motion?motion=${encodeURIComponent(session.selectedMotionId)}` : '/studio/motion')
 const propPath = computed(() => session.selectedPropId ? `/studio/props?prop=${encodeURIComponent(session.selectedPropId)}` : '/studio/props')
-const currentPetId = computed(() => appearance.recipe.identity.petId || session.selectedAppearanceId)
+const currentPetId = computed(() => appearance.recipe.identity.petId.trim() || session.selectedAppearanceId || 'active-appearance')
 const currentModelVariants = computed(() => modelVariants.byPetId[currentPetId.value] || createStudioPetModelVariants(currentPetId.value))
 const showModelNotice = ref(true)
 watch(workspace, next => session.setWorkspace(next), { immediate: true })
@@ -64,7 +64,7 @@ onMounted(() => {
     </header>
     <ClientOnly>
       <section v-if="session.modelMode === 'complex' && currentModelVariants.complex.status === 'draft' && showModelNotice" class="complex-model-notice" aria-live="polite">
-        <div class="complex-model-notice-copy"><strong class="complex-model-notice-title">复杂模型草稿已自动建立</strong><span class="complex-model-notice-detail">骨骼渲染器完成前，三个工坊继续使用简单模型兼容预览；现有简单模型数据不会被覆盖。</span></div>
+        <div class="complex-model-notice-copy"><strong class="complex-model-notice-title">复杂模型草稿已自动建立</strong><span class="complex-model-notice-detail">简单与复杂模式共享工坊，复杂模型由站内配方自动生成；现有简单模型数据不会被覆盖。</span></div>
         <button type="button" class="complex-model-notice-close" aria-label="关闭复杂模型草稿说明" @click="showModelNotice = false">×</button>
       </section>
     </ClientOnly>

@@ -10,6 +10,7 @@ import StudioPreviewToolbar from '~/components/studio/StudioPreviewToolbar.vue'
 import { useStudioPreviewOrientation } from '~/composables/useStudioPreviewOrientation'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 import { useStudioAssetStore } from '~/stores/studio-assets'
+import { useStudioModelVariantsStore } from '~/stores/studio-model-variants'
 import { useStudioSessionStore } from '~/stores/studio-session'
 
 definePageMeta({ layout: 'studio' })
@@ -17,6 +18,9 @@ const route = useRoute()
 const appearance = usePetAppearanceStore()
 const assets = useStudioAssetStore()
 const session = useStudioSessionStore()
+const modelVariants = useStudioModelVariantsStore()
+const currentPetId = computed(() => appearance.recipe.identity.petId.trim() || session.selectedAppearanceId || 'active-appearance')
+const complexRecipe = computed(() => modelVariants.byPetId[currentPetId.value]?.complex.recipe)
 const selected = computed(() => assets.props.find(item => item.id === session.selectedPropId))
 const selectedComponentId = ref('')
 const selectedAnchorId = ref<StudioPropAnchorId>('grip')
@@ -168,7 +172,7 @@ function setBackground(background: typeof session.previewBackground) { session.s
 function resetPreviewTransform() { resetPreviewScale(); setView('front') }
 
 onMounted(() => {
-  appearance.hydrate(); assets.hydrate(); session.hydrate()
+  appearance.hydrate(); assets.hydrate(); session.hydrate(); modelVariants.hydrate()
   const requested = typeof route.query.prop === 'string' ? route.query.prop : ''
   if (requested && assets.props.some(item => item.id === requested)) session.selectProp(requested)
   else if (!session.selectedPropId && assets.props[0]) session.selectProp(assets.props[0].id)
@@ -191,7 +195,7 @@ onMounted(() => {
       <StudioPreviewToolbar class="props-preview-toolbar" :view="session.previewView" :background="session.previewBackground" :scale="previewScale" :rotation="previewRotation" @view="setView" @background="setBackground" @scale="updatePreviewScale" @rotation="(axis, value) => updatePreviewRotation(axis, value)" @reset="resetPreviewTransform" />
       <div class="canvas-grid">
         <div class="pet-preview">
-          <ClientOnly><CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="selected?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :prop-instances="previewInstances" :prop-assets="selected ? [selected] : []" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :model-mode="session.modelMode" preserve-prop-materials /></ClientOnly>
+          <ClientOnly><CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="selected?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :prop-instances="previewInstances" :prop-assets="selected ? [selected] : []" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :model-mode="session.modelMode" :complex-pet-id="currentPetId" :complex-recipe="complexRecipe" preserve-prop-materials /></ClientOnly>
           <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
           <div ref="previewRotateSurface" class="preview-rotate-surface" :class="{ dragging: previewDrag.active }" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate"><span>拖动画布自由旋转</span></div>
           <span class="anchor-badge">挂载预览：{{ selected?.defaultAnchor || '未选择' }}</span>

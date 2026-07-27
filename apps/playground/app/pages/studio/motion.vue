@@ -17,6 +17,7 @@ import { useStudioPreviewOrientation } from '~/composables/useStudioPreviewOrien
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 import { useStudioAssetStore } from '~/stores/studio-assets'
 import { useStudioMotionEditorStore } from '~/stores/studio-motion-editor'
+import { useStudioModelVariantsStore } from '~/stores/studio-model-variants'
 import { useStudioSessionStore } from '~/stores/studio-session'
 import type { StudioMotionLoopMode } from '~/domain/studio-workspace'
 import { BUILT_IN_STUDIO_PROPS } from '~/domain/studio-built-in-props'
@@ -29,6 +30,9 @@ const appearance = usePetAppearanceStore()
 const assets = useStudioAssetStore()
 const editor = useStudioMotionEditorStore()
 const session = useStudioSessionStore()
+const modelVariants = useStudioModelVariantsStore()
+const currentPetId = computed(() => appearance.recipe.identity.petId.trim() || session.selectedAppearanceId || 'active-appearance')
+const complexRecipe = computed(() => modelVariants.byPetId[currentPetId.value]?.complex.recipe)
 const saved = computed(() => assets.motions.find(item => item.id === session.selectedMotionId))
 const draft = computed(() => editor.draft)
 const allPropAssets = computed(() => [...BUILT_IN_STUDIO_PROPS, ...assets.props])
@@ -164,7 +168,7 @@ watch(() => route.query.prop, propId => {
   editor.updateMetadata({ propIds: [...draft.value.propIds, propId] })
 })
 onMounted(() => {
-  appearance.hydrate(); assets.hydrate(); session.hydrate()
+  appearance.hydrate(); assets.hydrate(); session.hydrate(); modelVariants.hydrate()
   const requested = typeof route.query.motion === 'string' ? route.query.motion : ''
   if (requested && assets.motions.some(item => item.id === requested)) session.selectMotion(requested)
   else if (!session.selectedMotionId && assets.motions[0]) session.selectMotion(assets.motions[0].id)
@@ -218,7 +222,7 @@ onBeforeUnmount(() => {
         />
         <div class="preview-stage">
           <ClientOnly>
-            <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="allPropAssets" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" :model-mode="session.modelMode" />
+            <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="allPropAssets" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" :model-mode="session.modelMode" :complex-pet-id="currentPetId" :complex-recipe="complexRecipe" />
           </ClientOnly>
           <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
           <div
