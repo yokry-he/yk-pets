@@ -63,7 +63,9 @@
     "studioComplexDraftAutomationComplete": true,
     "studioComplexPreviewAdapterBoundaryComplete": true,
     "bipedPetRigProfileContractComplete": true,
-    "bipedPetModelRecipeComplete": true
+    "bipedPetModelRecipeComplete": true,
+    "bipedPetCharacterCompilerComplete": true,
+    "bipedPetAutomaticSkinFoundationComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -147,7 +149,9 @@
     "studio-complex-draft-automation",
     "studio-complex-preview-adapter-boundary",
     "biped-pet-rig-profile-contract",
-    "biped-pet-model-recipe"
+    "biped-pet-model-recipe",
+    "biped-pet-character-compiler",
+    "biped-pet-automatic-skin-foundation"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -162,16 +166,16 @@
   ],
   "nextPhase": "in-site-parametric-biped-rig",
   "latestCompletedBatch": {
-    "id": "studio-dual-model-foundation",
-    "domainPackage": "apps/playground",
+    "id": "biped-pet-character-compiler-foundation",
+    "domainPackage": "packages/pet-core",
     "rendererModified": false,
-    "visualCasesModified": true,
+    "visualCasesModified": false,
     "automatedCoverage": [
-      "dual-model-domain-normalization",
-      "non-destructive-complex-draft-creation",
-      "global-model-mode-contract",
-      "three-workspace-model-mode-wiring",
-      "canonical-renderer-preservation"
+      "deterministic-biped-pet-compilation",
+      "four-weight-skinning-output",
+      "optional-appendage-bone-chains",
+      "recipe-hash-stability",
+      "compiled-reference-validation"
     ]
   },
   "mandatoryDevelopmentPolicy": {

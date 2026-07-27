@@ -8,6 +8,7 @@ import test from 'node:test'
 import {
   applyBipedPetBodyStyle,
   BIPED_PET_RIG_PROFILE,
+  compileBipedPetCharacter,
   createBipedPetModelRecipe,
   normalizeBipedPetModelRecipe,
   validateRigProfile,
@@ -287,4 +288,272 @@ test('Rig Profile 校验 Profile、骨骼和附属集合的运行时枚举与唯
   ]
 
   for (const item of cases) assert.deepEqual(validateRigProfile(item.profile), item.diagnostics, item.name)
+})
+
+test('双足萌宠编译器生成确定性、可蒙皮且可直接渲染的模型数据', () => {
+  const recipe = createBipedPetModelRecipe(200)
+  const first = compileBipedPetCharacter(recipe)
+  const second = compileBipedPetCharacter(recipe)
+
+  assert.equal(first.status, 'ready')
+  assert.equal(first.hash, second.hash)
+  assert.deepEqual(first.mesh, second.mesh)
+  assert.equal(first.profileId, 'biped-pet/v1')
+  assert.equal(first.generatorVersion, 'biped-pet-generator/v1')
+  assert.ok(first.mesh.positions.length > 300)
+  assert.equal(first.mesh.positions.length % 3, 0)
+  assert.equal(first.mesh.vertexCount, first.mesh.positions.length / 3)
+  assert.equal(first.mesh.skinIndices.length, first.mesh.vertexCount * 4)
+  assert.equal(first.mesh.skinWeights.length, first.mesh.vertexCount * 4)
+  assert.equal(first.diagnostics.some(item => item.severity === 'error'), false)
+
+  for (let vertex = 0; vertex < first.mesh.vertexCount; vertex++) {
+    const offset = vertex * 4
+    const weights = first.mesh.skinWeights.slice(offset, offset + 4)
+    assert.ok(weights.every(weight => Number.isFinite(weight) && weight >= 0))
+    assert.ok(Math.abs(weights.reduce((total, weight) => total + weight, 0) - 1) < 1e-6)
+  }
+})
+
+test('双足萌宠编译器输出引用均安全且骨骼按父子顺序排列', () => {
+  const compiled = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+  assert.equal(compiled.status, 'ready')
+  assert.ok([...compiled.mesh.positions, ...compiled.mesh.indices, ...compiled.mesh.skinIndices, ...compiled.mesh.skinWeights].every(Number.isFinite))
+  assert.ok(compiled.mesh.indices.every(index => Number.isInteger(index) && index >= 0 && index < compiled.mesh.vertexCount))
+  assert.ok(compiled.mesh.skinIndices.every(index => Number.isInteger(index) && index >= 0 && index < compiled.bones.length))
+  assert.ok(compiled.bones.every((bone, index) => bone.parentIndex === -1 || bone.parentIndex < index))
+  assert.ok(compiled.contacts.filter(contact => contact.kind === 'foot').length >= 2)
+  const boneIds = new Set(compiled.bones.map(bone => bone.id))
+  assert.ok(compiled.jointLimits.every(limit => boneIds.has(limit.boneId)))
+  assert.ok(compiled.contacts.every(contact => boneIds.has(contact.boneId)))
+  assert.ok(compiled.sockets.every(socket => boneIds.has(socket.boneId)))
+})
+
+test('所有体型预设和配方边界都能稳定编译', () => {
+  const defaults = createBipedPetModelRecipe(200)
+  const bounds = {
+    height: [0.9, 1.8], headRatio: [0.2, 0.5], shoulderWidth: [0.42, 1.2], hipWidth: [0.38, 1.2],
+    torsoLength: [0.38, 1.2], armLength: [0.42, 1.2], legLength: [0.5, 1.4], handSize: [0.1, 0.42], footSize: [0.14, 0.5],
+  } as const
+  for (const bodyStyle of ['soft', 'athletic', 'round', 'slender'] as const) {
+    const styled = applyBipedPetBodyStyle(defaults, bodyStyle)
+    const compiled = compileBipedPetCharacter(styled)
+    assert.equal(compiled.status, 'ready', bodyStyle)
+    assert.equal(compiled.diagnostics.some(item => item.severity === 'error'), false, bodyStyle)
+    assert.equal(compiled.hash, compileBipedPetCharacter(styled).hash, bodyStyle)
+  }
+  for (const edge of [0, 1] as const) {
+    const proportions = Object.fromEntries(Object.entries(bounds).map(([key, value]) => [key, value[edge]]))
+    const compiled = compileBipedPetCharacter({ ...defaults, proportions })
+    assert.equal(compiled.status, 'ready', `边界 ${edge}`)
+    assert.equal(compiled.diagnostics.some(item => item.severity === 'error'), false, `边界 ${edge}`)
+  }
+})
+
+test('可选附属链遵循启用状态与分段数，并维持稳定的骨骼 ID', () => {
+  const defaults = createBipedPetModelRecipe(200)
+  const base = compileBipedPetCharacter({
+    ...defaults,
+    appendages: {
+      ears: { ...defaults.appendages.ears, enabled: false },
+      tail: { ...defaults.appendages.tail, enabled: false },
+      antennae: { ...defaults.appendages.antennae, enabled: false },
+    },
+  })
+  const optional = compileBipedPetCharacter({
+    ...defaults,
+    appendages: {
+      ears: { enabled: true, segments: 3, length: .3 },
+      tail: { enabled: true, segments: 5, length: .8 },
+      antennae: { enabled: true, segments: 4, length: .28 },
+    },
+  })
+  const ids = optional.bones.map(bone => bone.id)
+  assert.equal(ids.some(id => id.startsWith('ear.left.')), true)
+  assert.equal(ids.some(id => id.startsWith('ear.right.')), true)
+  assert.equal(ids.filter(id => id.startsWith('tail.')).length, 5)
+  assert.equal(ids.filter(id => id.startsWith('antenna.left.')).length, 4)
+  assert.equal(ids.filter(id => id.startsWith('antenna.right.')).length, 4)
+  assert.equal(base.bones.some(bone => /^(ear|tail|antenna)\./.test(bone.id)), false)
+  assert.ok(optional.bones.length > base.bones.length)
+  const shortTail = compileBipedPetCharacter({
+    ...defaults,
+    appendages: {
+      ears: { ...defaults.appendages.ears, enabled: false },
+      tail: { enabled: true, segments: 2, length: .8 },
+      antennae: { ...defaults.appendages.antennae, enabled: false },
+    },
+  })
+  assert.equal(shortTail.bones.filter(bone => bone.id.startsWith('tail.')).length, 2)
+  assert.equal(ids.filter(id => id.startsWith('tail.')).length, 5)
+})
+
+test('角色哈希忽略更新时间、识别几何变化且编译不会突变输入', () => {
+  const recipe = createBipedPetModelRecipe(200)
+  const snapshot = structuredClone(recipe)
+  const updated = { ...recipe, updatedAt: 999 }
+  const changed = { ...recipe, proportions: { ...recipe.proportions, legLength: recipe.proportions.legLength + .1 } }
+  const first = compileBipedPetCharacter(recipe)
+
+  assert.deepEqual(recipe, snapshot)
+  assert.equal(first.hash, compileBipedPetCharacter(updated).hash)
+  assert.notEqual(first.hash, compileBipedPetCharacter(changed).hash)
+})
+
+test('编译器会阻止并诊断损坏的 Profile 接触点与关节限制，同时保留可检查输出', () => {
+  const profile = BIPED_PET_RIG_PROFILE as unknown as {
+    contacts: Array<{ boneId: string }>
+    jointLimits: Array<{ minimum: [number, number, number] }>
+  }
+  const originalContactBoneId = profile.contacts[0]!.boneId
+  const originalMinimum = profile.jointLimits[0]!.minimum
+  try {
+    profile.contacts[0]!.boneId = 'missing-contact-bone'
+    profile.jointLimits[0]!.minimum = [Number.NaN, 0, 0]
+    const compiled = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+
+    assert.equal(compiled.status, 'blocked')
+    assert.ok(compiled.diagnostics.some(item => item.id.startsWith('profile-validation-') && item.severity === 'error'))
+    assert.equal(compiled.bones.length, 0)
+    assert.equal(compiled.mesh.vertexCount, 0)
+  } finally {
+    profile.contacts[0]!.boneId = originalContactBoneId
+    profile.jointLimits[0]!.minimum = originalMinimum
+  }
+})
+
+test('尾巴首节保留配方分段长度，单节尾巴的长度变化会改变末端与网格哈希', () => {
+  const defaults = createBipedPetModelRecipe(200)
+  const compileTail = (length: number) => compileBipedPetCharacter({
+    ...defaults,
+    appendages: {
+      ears: { ...defaults.appendages.ears, enabled: false },
+      tail: { enabled: true, segments: 1, length },
+      antennae: { ...defaults.appendages.antennae, enabled: false },
+    },
+  })
+  const short = compileTail(.2)
+  const long = compileTail(1.2)
+  const shortTail = short.bones.find(bone => bone.id === 'tail.1')!
+  const longTail = long.bones.find(bone => bone.id === 'tail.1')!
+
+  assert.equal(shortTail.position[2], -.2)
+  assert.equal(longTail.position[2], -1.2)
+  assert.notEqual(short.hash, long.hash)
+  assert.notDeepEqual(short.mesh.positions, long.mesh.positions)
+})
+
+test('编译器在 Profile 父级或 Socket 变换损坏时会在克隆前阻止输出', () => {
+  const profile = BIPED_PET_RIG_PROFILE as unknown as {
+    bones: Array<{ parentId?: string }>
+    sockets: Array<{ localRotation: number[] }>
+  }
+  const originalParentId = profile.bones[1]!.parentId
+  const originalSocketRotation = profile.sockets[0]!.localRotation
+  try {
+    profile.bones[1]!.parentId = 'missing-parent'
+    profile.sockets[0]!.localRotation = []
+    const first = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+    const second = compileBipedPetCharacter(createBipedPetModelRecipe(999))
+
+    assert.equal(first.status, 'blocked')
+    assert.equal(first.hash, second.hash)
+    assert.ok(first.diagnostics.some(item => item.id.startsWith('profile-validation-') && item.severity === 'error'))
+    assert.equal(first.bones.length, 0)
+  } finally {
+    profile.bones[1]!.parentId = originalParentId
+    profile.sockets[0]!.localRotation = originalSocketRotation
+  }
+})
+
+test('接触点与 Socket 会随足、头、躯干比例缩放且不共享 Profile 引用', () => {
+  const defaults = createBipedPetModelRecipe(200)
+  const small = compileBipedPetCharacter({
+    ...defaults,
+    proportions: { ...defaults.proportions, footSize: .14, headRatio: .2, shoulderWidth: .42, torsoLength: .38, hipWidth: .38 },
+  })
+  const large = compileBipedPetCharacter({
+    ...defaults,
+    proportions: { ...defaults.proportions, footSize: .5, headRatio: .5, shoulderWidth: 1.2, torsoLength: 1.2, hipWidth: 1.2 },
+  })
+  const find = <T extends { id: string }>(items: readonly T[], id: string) => items.find(item => item.id === id)!
+
+  assert.equal(find(small.contacts, 'foot.left').localPosition[1], -.14 * .65)
+  assert.equal(find(large.contacts, 'foot.left').localPosition[1], -.5 * .65)
+  assert.notDeepEqual(find(small.sockets, 'foot.left').localPosition, find(large.sockets, 'foot.left').localPosition)
+  assert.notDeepEqual(find(small.sockets, 'head').localPosition, find(large.sockets, 'head').localPosition)
+  assert.notDeepEqual(find(small.sockets, 'back').localPosition, find(large.sockets, 'back').localPosition)
+  assert.notDeepEqual(find(small.sockets, 'tail.base').localPosition, find(large.sockets, 'tail.base').localPosition)
+  find(small.sockets, 'head').localPosition[1] = 99
+  assert.notEqual(BIPED_PET_RIG_PROFILE.sockets.find(socket => socket.id === 'head')!.localPosition[1], 99)
+})
+
+test('刚性椭球极点不生成零面积三角形', () => {
+  const mesh = compileBipedPetCharacter(createBipedPetModelRecipe(200)).mesh
+  const point = (index: number) => mesh.positions.slice(index * 3, index * 3 + 3)
+  for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+    const [a, b, c] = [point(mesh.indices[offset]!), point(mesh.indices[offset + 1]!), point(mesh.indices[offset + 2]!)]
+    const cross = [
+      (b[1]! - a[1]!) * (c[2]! - a[2]!) - (b[2]! - a[2]!) * (c[1]! - a[1]!),
+      (b[2]! - a[2]!) * (c[0]! - a[0]!) - (b[0]! - a[0]!) * (c[2]! - a[2]!),
+      (b[0]! - a[0]!) * (c[1]! - a[1]!) - (b[1]! - a[1]!) * (c[0]! - a[0]!),
+    ]
+    assert.ok(Math.hypot(...cross) > 1e-8, `三角形 ${offset / 3} 面积为零`)
+  }
+})
+
+test('管段与刚性椭球的三角形绕序均朝向外侧', () => {
+  const compiled = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+  const { bones, mesh } = compiled
+  const worlds: [number, number, number][] = []
+  for (const bone of bones) worlds.push(bone.parentIndex === -1
+    ? [...bone.position]
+    : [
+      worlds[bone.parentIndex]![0] + bone.position[0],
+      worlds[bone.parentIndex]![1] + bone.position[1],
+      worlds[bone.parentIndex]![2] + bone.position[2],
+    ])
+  const point = (index: number) => mesh.positions.slice(index * 3, index * 3 + 3)
+  const normal = (a: number[], b: number[], c: number[]) => [
+    (b[1]! - a[1]!) * (c[2]! - a[2]!) - (b[2]! - a[2]!) * (c[1]! - a[1]!),
+    (b[2]! - a[2]!) * (c[0]! - a[0]!) - (b[0]! - a[0]!) * (c[2]! - a[2]!),
+    (b[0]! - a[0]!) * (c[1]! - a[1]!) - (b[1]! - a[1]!) * (c[0]! - a[0]!),
+  ]
+  const dot = (left: number[], right: number[]) => left[0]! * right[0]! + left[1]! * right[1]! + left[2]! * right[2]!
+  const centroid = (a: number[], b: number[], c: number[]) => [(a[0]! + b[0]! + c[0]!) / 3, (a[1]! + b[1]! + c[1]!) / 3, (a[2]! + b[2]! + c[2]!) / 3]
+  const ellipsoidVertexCount = 42
+  const ellipsoidTriangleCount = 80
+  const ellipsoidCount = 5
+  const pipeVertexCount = 40
+  const pipeTriangleCount = 64
+  const firstEllipsoidVertex = mesh.vertexCount - ellipsoidCount * ellipsoidVertexCount
+  const pipeCount = firstEllipsoidVertex / pipeVertexCount
+  assert.ok(Number.isInteger(pipeCount))
+
+  for (let pipe = 0; pipe < pipeCount; pipe++) {
+    const vertex = pipe * pipeVertexCount
+    const start = worlds[mesh.skinIndices[vertex * 4]!]!
+    const end = worlds[mesh.skinIndices[vertex * 4 + 1]!]!
+    const axis = [end[0] - start[0], end[1] - start[1], end[2] - start[2]]
+    const axisSquared = dot(axis, axis)
+    for (let triangle = 0; triangle < pipeTriangleCount; triangle++) {
+      const offset = (pipe * pipeTriangleCount + triangle) * 3
+      const [a, b, c] = [point(mesh.indices[offset]!), point(mesh.indices[offset + 1]!), point(mesh.indices[offset + 2]!)]
+      const center = centroid(a, b, c)
+      const projection = dot([center[0]! - start[0], center[1]! - start[1], center[2]! - start[2]], axis) / axisSquared
+      const closest = [start[0] + axis[0]! * projection, start[1] + axis[1]! * projection, start[2] + axis[2]! * projection]
+      assert.ok(dot(normal(a, b, c), [center[0]! - closest[0]!, center[1]! - closest[1]!, center[2]! - closest[2]!]) > 1e-8, `管段 ${pipe} 三角形 ${triangle} 朝内`)
+    }
+  }
+  const firstEllipsoidTriangle = pipeCount * pipeTriangleCount
+  for (let ellipsoid = 0; ellipsoid < ellipsoidCount; ellipsoid++) {
+    const vertex = firstEllipsoidVertex + ellipsoid * ellipsoidVertexCount
+    const center = worlds[mesh.skinIndices[vertex * 4]!]!
+    for (let triangle = 0; triangle < ellipsoidTriangleCount; triangle++) {
+      const offset = (firstEllipsoidTriangle + ellipsoid * ellipsoidTriangleCount + triangle) * 3
+      const [a, b, c] = [point(mesh.indices[offset]!), point(mesh.indices[offset + 1]!), point(mesh.indices[offset + 2]!)]
+      const surface = centroid(a, b, c)
+      assert.ok(dot(normal(a, b, c), [surface[0]! - center[0], surface[1]! - center[1], surface[2]! - center[2]]) > 1e-8, `椭球 ${ellipsoid} 三角形 ${triangle} 朝内`)
+    }
+  }
 })
