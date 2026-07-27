@@ -72,6 +72,7 @@
     "bipedPetBeginnerParameterEditorComplete": true,
     "bipedPetPhase1DeliveryComplete": true,
     "bipedPetComplexPropSocketPreviewComplete": true,
+    "studioModelVariantLazyHydrationReviewComplete": true,
     "bipedPetSemanticMotionCompilerComplete": false,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
@@ -169,7 +170,8 @@
     "studio-complex-model-workshop-preview-wiring",
     "studio-complex-model-beginner-parameter-editor",
     "biped-pet-phase1-delivery",
-    "biped-pet-complex-prop-socket-preview"
+    "biped-pet-complex-prop-socket-preview",
+    "studio-model-variant-lazy-hydration-review"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -192,19 +194,18 @@
   ],
   "nextPhase": "biped-pet-motion-and-browser-acceptance",
   "latestCompletedBatch": {
-    "id": "biped-pet-complex-prop-socket-preview",
-    "domainPackage": "packages/pet-core + apps/playground",
-    "rendererModified": true,
+    "id": "studio-model-variant-lazy-hydration-review",
+    "domainPackage": "apps/playground",
+    "rendererModified": false,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "corepack pnpm --filter @yk-pets/pet-core test",
       "corepack pnpm run test:studio-model-variants",
       "node scripts/check-studio-model-mode.mjs",
-      "corepack pnpm run test:studio-complex-biped-runtime",
       "corepack pnpm run check:studio-complex-biped-model",
+      "corepack pnpm --filter @nova/playground typecheck",
       "node scripts/check-documentation.mjs",
       "node scripts/check-ai-handoff.mjs",
-      "corepack pnpm --filter @nova/playground typecheck"
+      "git diff --check"
     ]
   },
   "mandatoryDevelopmentPolicy": {

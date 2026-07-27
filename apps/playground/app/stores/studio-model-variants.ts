@@ -89,7 +89,10 @@ function createCompilation(result: CompilationResult, status: StudioComplexModel
 
 function draftForPet(existing: StudioPetModelVariantsV1 | undefined, requestedPetId: string, now: number) {
   const normalized = existing
-    ? normalizeStudioPetModelVariants({ ...existing, petId: requestedPetId }, requestedPetId, now, false)
+    ? normalizeStudioPetModelVariants({ ...existing, petId: requestedPetId }, requestedPetId, {
+        now,
+        compilationTrust: 'preserve-verified-memory',
+      })
     : createStudioPetModelVariants(requestedPetId, now)
   return createComplexModelDraft(normalized, now)
 }
@@ -101,7 +104,7 @@ export const useStudioModelVariantsStore = defineStore('studio-model-variants', 
       if (!import.meta.client || this.hydrated) return
       try {
         const stored = JSON.parse(localStorage.getItem(STUDIO_MODEL_VARIANTS_STORAGE_KEY) || '{}')
-        this.byPetId = normalizeStudioPetModelVariantCollection(stored)
+        this.byPetId = normalizeStudioPetModelVariantCollection(stored, { mode: 'hydration' })
       }
       catch {
         this.byPetId = {}
@@ -116,7 +119,10 @@ export const useStudioModelVariantsStore = defineStore('studio-model-variants', 
       const requestedPetId = petId.trim() || 'active-appearance'
       const existing = this.byPetId[requestedPetId]
       const normalized = existing
-        ? normalizeStudioPetModelVariants({ ...existing, petId: requestedPetId }, requestedPetId, now, false)
+        ? normalizeStudioPetModelVariants({ ...existing, petId: requestedPetId }, requestedPetId, {
+            now,
+            compilationTrust: 'preserve-verified-memory',
+          })
         : createStudioPetModelVariants(requestedPetId, now)
       this.byPetId[requestedPetId] = normalized
       if (!existing) this.persist()

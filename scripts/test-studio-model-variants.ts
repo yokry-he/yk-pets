@@ -4,6 +4,7 @@
  * Verifies dual-model defaults, complex-draft creation, damaged-input migration, and non-overwrite semantics.
  */
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { createPinia, setActivePinia } from '../apps/playground/node_modules/pinia/dist/pinia.js'
 import {
   createComplexModelDraft,
@@ -37,7 +38,7 @@ const normalized = normalizeStudioPetModelVariants({
   petId: '',
   simple: { updatedAt: -4 },
   complex: { status: 'broken', completion: 999, pendingCapabilities: ['skin', 'skin', 'unknown'] },
-}, 'fallback', 400)
+}, 'fallback', { now: 400 })
 assert.equal(normalized.petId, 'fallback')
 assert.equal(normalized.simple.updatedAt, 400)
 assert.equal(normalized.complex.status, 'missing')
@@ -52,11 +53,82 @@ const collection = normalizeStudioPetModelVariantCollection({
   zeph: draft,
   '': createStudioPetModelVariants('invalid', 300),
   broken: null,
-}, 500)
+}, { mode: 'hydration', now: 500 })
 assert.deepEqual(Object.keys(collection), ['zeph', 'broken'])
 assert.equal(collection.zeph?.complex.status, 'draft')
 assert.equal(collection.broken?.petId, 'broken')
 assert.equal(collection.broken?.complex.status, 'missing')
+
+// 集合水合只做轻量安全归一化；历史摘要必须等待当前宠物真正进入 renderer 后重新编译。
+const historicalRecipe = createBipedPetModelRecipe(501)
+const forgedHistoricalCompilation = {
+  ...compileBipedPetCharacter(historicalRecipe),
+  status: 'ready' as const,
+  diagnostics: [{ id: 'forged-ready', severity: 'info' as const, message: '历史摘要不可直接信任。' }],
+  compiledAt: 502,
+}
+const historicalCollectionInput = Object.fromEntries(Array.from({ length: 100 }, (_, index) => [
+  `history-${index}`,
+  {
+    petId: `forged-${index}`,
+    simple: { kind: 'procedural', status: 'ready', updatedAt: 500 + index },
+    complex: {
+      kind: 'skinned',
+      status: index % 2 === 0 ? 'ready' : 'blocked',
+      completion: 100,
+      pendingCapabilities: [],
+      recipe: historicalRecipe,
+      compilation: index % 2 === 0
+        ? forgedHistoricalCompilation
+        : {
+            ...forgedHistoricalCompilation,
+            status: 'blocked',
+            diagnostics: [{ id: 'forged-blocked', severity: 'error', message: '伪造的阻塞摘要。' }],
+          },
+      updatedAt: 600 + index,
+    },
+  },
+]))
+const hydratedHistory = normalizeStudioPetModelVariantCollection(historicalCollectionInput, {
+  mode: 'hydration',
+  now: 700,
+})
+assert.equal(Object.keys(hydratedHistory).length, 100)
+for (const [key, variants] of Object.entries(hydratedHistory)) {
+  assert.equal(variants.petId, key)
+  assert.equal(variants.simple.status, 'ready')
+  assert.equal(variants.complex.status, 'draft')
+  assert.equal(variants.complex.completion, 5)
+  assert.equal(variants.complex.compilation, undefined)
+  assert.equal(variants.complex.recipe?.rigProfileId, historicalRecipe.rigProfileId)
+}
+
+const summarylessHistoricalClaims = normalizeStudioPetModelVariantCollection({
+  'ready-without-compilation': {
+    complex: { status: 'ready', completion: 100, recipe: historicalRecipe },
+  },
+  'blocked-without-compilation': {
+    complex: { status: 'blocked', completion: 100, recipe: historicalRecipe },
+  },
+  'draft-without-compilation': {
+    complex: { status: 'draft', completion: 44, recipe: historicalRecipe },
+  },
+}, { mode: 'hydration', now: 701 })
+assert.equal(summarylessHistoricalClaims['ready-without-compilation']?.complex.status, 'draft')
+assert.equal(summarylessHistoricalClaims['ready-without-compilation']?.complex.completion, 5)
+assert.equal(summarylessHistoricalClaims['ready-without-compilation']?.complex.compilation, undefined)
+assert.equal(summarylessHistoricalClaims['blocked-without-compilation']?.complex.status, 'draft')
+assert.equal(summarylessHistoricalClaims['blocked-without-compilation']?.complex.completion, 5)
+assert.equal(summarylessHistoricalClaims['blocked-without-compilation']?.complex.compilation, undefined)
+assert.equal(summarylessHistoricalClaims['draft-without-compilation']?.complex.status, 'draft')
+assert.equal(summarylessHistoricalClaims['draft-without-compilation']?.complex.completion, 44)
+
+const variantDomainSource = readFileSync(new URL('../apps/playground/app/domain/studio-model-variants.ts', import.meta.url), 'utf8')
+const collectionNormalizerSource = variantDomainSource.match(/export function normalizeStudioPetModelVariantCollection[\s\S]*?\n}/)?.[0] || ''
+assert.match(collectionNormalizerSource, /StudioPetModelVariantCollectionNormalizationOptions/)
+assert.match(collectionNormalizerSource, /compilationTrust:\s*'discard-unverified'/)
+assert.doesNotMatch(collectionNormalizerSource, /compileBipedPetCharacter\s*\(/)
+assert.match(variantDomainSource, /compilationTrust\s*===\s*'verify-persisted'[\s\S]{0,80}compileBipedPetCharacter\(recipe\)/)
 
 setActivePinia(createPinia())
 const store = useStudioModelVariantsStore()
@@ -102,6 +174,9 @@ assert.equal(committed.complex.status, 'ready')
 assert.equal(committed.complex.completion, 100)
 assert.deepEqual(committed.complex.pendingCapabilities, [])
 assert.equal(committed.complex.compilation?.hash, readyCompilation.hash)
+const ensuredReady = complexStore.ensurePet('nova', 1_051)
+assert.equal(ensuredReady.complex.status, 'ready')
+assert.equal(ensuredReady.complex.compilation?.hash, readyCompilation.hash)
 
 const stale = complexStore.commitComplexCompilation('nova', {
   ...readyCompilation,
@@ -120,6 +195,9 @@ const blocked = complexStore.commitComplexCompilation('nova', {
 assert.equal(blocked.complex.status, 'blocked')
 assert.equal(blocked.complex.recipe?.appendages.antennae.enabled, true)
 assert.ok(blocked.complex.compilation?.diagnostics.some(item => item.id === 'runtime-blocked'))
+const ensuredBlocked = complexStore.ensurePet('nova', 1_080)
+assert.equal(ensuredBlocked.complex.status, 'blocked')
+assert.ok(ensuredBlocked.complex.compilation?.diagnostics.some(item => item.id === 'runtime-blocked'))
 
 const staleBlocked = complexStore.commitComplexCompilation('nova', {
   ...compileBipedPetCharacter(blockedRecipe),
@@ -144,7 +222,7 @@ const hydratedDamaged = normalizeStudioPetModelVariants({
     },
     compilation: { hash: 4, status: 'ready', diagnostics: 'broken', compiledAt: -1 },
   },
-}, 'fallback', 1_100)
+}, 'fallback', { now: 1_100 })
 assert.equal(hydratedDamaged.complex.status, 'draft')
 assert.equal(hydratedDamaged.complex.compilation, undefined)
 assert.equal(hydratedDamaged.complex.recipe?.bodyStyle, 'soft')
@@ -158,7 +236,7 @@ const unknownStatusWithRecipe = normalizeStudioPetModelVariants({
     recipe: { bodyStyle: 'round', proportions: { height: 1.2 } },
     compilation: { hash: 'broken', status: 'unknown', diagnostics: [], compiledAt: 1_101 },
   },
-}, 'fallback', 1_102)
+}, 'fallback', { now: 1_102 })
 assert.equal(unknownStatusWithRecipe.complex.status, 'draft')
 assert.equal(unknownStatusWithRecipe.complex.recipe?.bodyStyle, 'round')
 assert.equal(unknownStatusWithRecipe.complex.compilation, undefined)
@@ -172,7 +250,7 @@ const staleHydratedCompilation = normalizeStudioPetModelVariants({
     recipe: normalizedReadyRecipe,
     compilation: { ...normalizedReadyCompilation, hash: 'totally-stale', compiledAt: 1_104 },
   },
-}, 'fallback', 1_105)
+}, 'fallback', { now: 1_105 })
 assert.equal(staleHydratedCompilation.complex.status, 'draft')
 assert.equal(staleHydratedCompilation.complex.completion, 5)
 assert.equal(staleHydratedCompilation.complex.compilation, undefined)
@@ -184,7 +262,7 @@ const validHydratedCompilation = normalizeStudioPetModelVariants({
     recipe: normalizedReadyRecipe,
     compilation: { ...normalizedReadyCompilation, compiledAt: 1_106 },
   },
-}, 'fallback', 1_107)
+}, 'fallback', { now: 1_107 })
 assert.equal(validHydratedCompilation.complex.status, 'ready')
 assert.equal(validHydratedCompilation.complex.completion, 100)
 assert.equal(validHydratedCompilation.complex.compilation?.hash, normalizedReadyCompilation.hash)
@@ -200,7 +278,7 @@ const readyHydratedWithForgedDiagnostic = normalizeStudioPetModelVariants({
       compiledAt: 1_107,
     },
   },
-}, 'fallback', 1_108)
+}, 'fallback', { now: 1_108 })
 assert.equal(readyHydratedWithForgedDiagnostic.complex.status, 'ready')
 assert.equal(readyHydratedWithForgedDiagnostic.complex.compilation?.diagnostics.some(item => item.id === 'forged-error'), false)
 
@@ -216,13 +294,32 @@ const validBlockedHydratedCompilation = normalizeStudioPetModelVariants({
       compiledAt: 1_108,
     },
   },
-}, 'fallback', 1_109)
+}, 'fallback', { now: 1_109 })
 assert.equal(validBlockedHydratedCompilation.complex.status, 'blocked')
 assert.equal(validBlockedHydratedCompilation.complex.compilation?.diagnostics[0]?.id, 'runtime-blocked')
 
+setActivePinia(createPinia())
+const recompileAfterHydrationStore = useStudioModelVariantsStore()
+recompileAfterHydrationStore.byPetId = normalizeStudioPetModelVariantCollection({
+  current: {
+    petId: 'current',
+    complex: {
+      status: 'ready',
+      completion: 100,
+      recipe: normalizedReadyRecipe,
+      compilation: { ...normalizedReadyCompilation, compiledAt: 1_109 },
+    },
+  },
+}, { mode: 'hydration', now: 1_110 })
+assert.equal(recompileAfterHydrationStore.byPetId.current?.complex.status, 'draft')
+assert.equal(recompileAfterHydrationStore.byPetId.current?.complex.compilation, undefined)
+const reviewedCurrent = recompileAfterHydrationStore.commitComplexCompilation('current', normalizedReadyCompilation, 1_111)
+assert.equal(reviewedCurrent.complex.status, 'ready')
+assert.equal(reviewedCurrent.complex.compilation?.hash, normalizedReadyCompilation.hash)
+
 const keyAuthoritativeCollection = normalizeStudioPetModelVariantCollection({
   outer: { petId: 'inner', complex: { status: 'draft', recipe: { bodyStyle: 'slender' } } },
-}, 1_109)
+}, { mode: 'hydration', now: 1_109 })
 assert.equal(keyAuthoritativeCollection.outer?.petId, 'outer')
 assert.equal(keyAuthoritativeCollection.inner, undefined)
 complexStore.byPetId['key-authoritative'] = {
@@ -238,7 +335,7 @@ const simpleBefore = complexStore.ensurePet('simple-only', 1_110).simple
 complexStore.ensureComplexDraft('nova', 1_120)
 assert.deepEqual(complexStore.byPetId['simple-only']?.simple, simpleBefore)
 
-const roundTrip = normalizeStudioPetModelVariantCollection(JSON.parse(JSON.stringify(complexStore.byPetId)), 1_130)
+const roundTrip = normalizeStudioPetModelVariantCollection(JSON.parse(JSON.stringify(complexStore.byPetId)), { mode: 'hydration', now: 1_130 })
 assert.deepEqual(roundTrip.nova?.complex.recipe, complexStore.byPetId.nova?.complex.recipe)
 assert.deepEqual(roundTrip['simple-only']?.simple, simpleBefore)
 

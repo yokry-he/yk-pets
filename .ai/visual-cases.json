@@ -459,6 +459,28 @@
         "pending: 分离为 world 空间后旋转或缩放整体预览，确认道具仍处于角色根空间且不错误落到全局场景",
         "pending: 切换 preserve materials 并重复编辑、切换模式与路由，确认材质策略一致且控制台无资源或父子关系错误"
       ]
+    },
+    {
+      "id": "studio-model-variant-lazy-hydration-review",
+      "route": "/studio/appearance",
+      "setup": {
+        "modelMode": "complex",
+        "historicalPetCounts": [10, 50, 100],
+        "storedSummaryStatuses": ["ready", "blocked"],
+        "viewports": [[1440, 900], [760, 900]]
+      },
+      "automatedChecks": [
+        "collection-hydration-discards-unverified-compilation-summaries",
+        "hundred-entry-structural-scale-regression",
+        "authoritative-collection-key-preserved",
+        "verified-in-memory-state-preserved",
+        "current-renderer-compilation-can-commit-ready"
+      ],
+      "manualChecks": [
+        "pending: 注入含 100 个历史复杂宠物与伪造 ready/blocked 摘要的本地数据并刷新，确认页面可交互且历史条目显示为待重新生成",
+        "pending: 进入当前宠物的复杂 renderer，确认它完成真实编译后回写为就绪，其他未访问历史宠物仍保持草稿",
+        "pending: 在 1440×900 与 760×900 检查模式切换、简单模型、控制台错误和刷新后状态；本批自动测试不替代浏览器复测"
+      ]
     }
   ]
 }

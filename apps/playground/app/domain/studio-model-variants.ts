@@ -14,6 +14,17 @@ import {
 export type StudioModelMode = 'simple' | 'complex'
 export type StudioModelVariantStatus = 'missing' | 'draft' | 'ready' | 'blocked'
 export type ComplexModelCapability = 'renderer' | 'skeleton' | 'skin' | 'rig-mapping'
+export type StudioCompilationTrust = 'verify-persisted' | 'preserve-verified-memory' | 'discard-unverified'
+
+export interface StudioPetModelVariantNormalizationOptions {
+  now?: number
+  compilationTrust?: StudioCompilationTrust
+}
+
+export interface StudioPetModelVariantCollectionNormalizationOptions {
+  mode: 'hydration'
+  now?: number
+}
 
 /** 仅保存运行时可复核的编译摘要，网格与骨骼数据由当前配方按需重新生成。 */
 export interface StudioComplexModelCompilation {
@@ -112,8 +123,13 @@ export function createStudioPetModelVariants(requestedPetId: string, now = Date.
   }
 }
 
-export function normalizeStudioPetModelVariants(input: unknown, fallbackPetId: string, now = Date.now(), verifyCompilation = true): StudioPetModelVariantsV1 {
-  const safeNow = timestamp(now, Date.now())
+export function normalizeStudioPetModelVariants(
+  input: unknown,
+  fallbackPetId: string,
+  options: StudioPetModelVariantNormalizationOptions = {},
+): StudioPetModelVariantsV1 {
+  const safeNow = timestamp(options.now, Date.now())
+  const compilationTrust = options.compilationTrust ?? 'verify-persisted'
   const source = record(input)
   const simpleSource = record(source.simple)
   const complexSource = record(source.complex)
@@ -144,14 +160,18 @@ export function normalizeStudioPetModelVariants(input: unknown, fallbackPetId: s
   // 老版本草稿没有 recipe 时自动补齐默认配方；已有配方始终经过 core 的确定性归一化。 / Legacy drafts receive a default recipe, while stored recipes always use core's deterministic normalization.
   const recipe = normalizeBipedPetModelRecipe(complexSource.recipe ?? createBipedPetModelRecipe(safeNow), safeNow)
   const normalizedCompilation = compilation(complexSource.compilation, safeNow)
-  // 持久化摘要不携带网格，水合边界必须用当前规范化配方重新编译后再信任它；内存内已规范化数据可跳过这项昂贵复核。 / At hydration, recompile before trusting a summary; already-normalized in-memory state may skip this expensive verification.
-  const currentCompilation = normalizedCompilation && verifyCompilation ? compileBipedPetCharacter(recipe) : undefined
-  const verifiedCompilation = normalizedCompilation
-    && (!verifyCompilation || (
+  // 只有显式的单条持久化复核才执行完整编译；集合水合丢弃未复核摘要，已验证的内存状态则原样保留。 / Only explicit single-entry verification performs a full compile; collection hydration discards unverified summaries, while verified in-memory state is preserved.
+  const currentCompilation = normalizedCompilation && compilationTrust === 'verify-persisted'
+    ? compileBipedPetCharacter(recipe)
+    : undefined
+  const verifiedCompilation = normalizedCompilation && (
+    compilationTrust === 'preserve-verified-memory'
+    || (compilationTrust === 'verify-persisted' && (
       currentCompilation
       && normalizedCompilation.hash === currentCompilation.hash
       && (normalizedCompilation.status === 'blocked' || currentCompilation.status === 'ready')
     ))
+  )
     ? normalizedCompilation
     : undefined
   // ready 的诊断必须来自本次 core 编译，不能让持久化摘要伪造“已就绪但含错误”的矛盾状态。 / Ready diagnostics must come from this core compilation, never from a persisted contradictory summary.
@@ -163,6 +183,8 @@ export function normalizeStudioPetModelVariants(input: unknown, fallbackPetId: s
     : trustedCompilation?.status === 'blocked'
       ? 'blocked'
       : 'draft'
+  const discardedUnverifiedClaim = compilationTrust === 'discard-unverified'
+    && (complexSource.compilation !== undefined || requestedStatus === 'ready' || requestedStatus === 'blocked')
   return {
     schemaVersion: 1,
     petId: petId(source.petId, fallbackPetId),
@@ -170,7 +192,11 @@ export function normalizeStudioPetModelVariants(input: unknown, fallbackPetId: s
     complex: {
       kind: 'skinned',
       status: normalizedStatus,
-      completion: normalizedStatus === 'ready' ? 100 : Math.min(95, completion(complexSource.completion) || 5),
+      completion: normalizedStatus === 'ready'
+        ? 100
+        : discardedUnverifiedClaim
+          ? 5
+          : Math.min(95, completion(complexSource.completion) || 5),
       pendingCapabilities: normalizedStatus === 'ready' ? [] : draftCapabilities(),
       recipe,
       ...(trustedCompilation ? { compilation: trustedCompilation } : {}),
@@ -201,13 +227,24 @@ export function normalizeStudioModelMode(input: unknown): StudioModelMode {
   return input === 'complex' ? 'complex' : 'simple'
 }
 
-export function normalizeStudioPetModelVariantCollection(input: unknown, now = Date.now()) {
+export function normalizeStudioPetModelVariantCollection(
+  input: unknown,
+  options: StudioPetModelVariantCollectionNormalizationOptions = { mode: 'hydration' },
+) {
+  const safeNow = timestamp(options.now, Date.now())
   const source = record(input)
   const result: Record<string, StudioPetModelVariantsV1> = {}
   for (const [requestedPetId, value] of Object.entries(source)) {
     const normalizedPetId = requestedPetId.trim()
     if (!normalizedPetId) continue
-    const normalized = normalizeStudioPetModelVariants({ ...record(value), petId: normalizedPetId }, normalizedPetId, now)
+    const normalized = normalizeStudioPetModelVariants(
+      { ...record(value), petId: normalizedPetId },
+      normalizedPetId,
+      {
+        now: safeNow,
+        compilationTrust: 'discard-unverified',
+      },
+    )
     result[normalizedPetId] = normalized
   }
   return result
