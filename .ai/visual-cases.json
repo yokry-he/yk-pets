@@ -455,7 +455,8 @@
         "socket-groups-detach-on-runtime-dispose"
       ],
       "manualChecks": [
-        "pending: 在复杂模式播放或预览含前爪、后爪、头顶、口鼻、尾尖和角色根挂点的道具事件，确认道具可见并随对应骨骼移动",
+        "passed-2026-07-28-chrome-functional: 在复杂模式把高对比青色方块挂到 right-front-paw，确认完整 Mesh 子树重挂到真实 hand.right Socket 后仍可见；控制台无应用错误、父子关系警告或 hydration mismatch，1440 宽度无横向溢出",
+        "pending: 逐个播放或预览前爪、后爪、头顶、口鼻、尾尖和角色根挂点的道具事件，确认所有道具随对应骨骼动作",
         "pending: 分离为 world 空间后旋转或缩放整体预览，确认道具仍处于角色根空间且不错误落到全局场景",
         "pending: 切换 preserve materials 并重复编辑、切换模式与路由，确认材质策略一致且控制台无资源或父子关系错误"
       ]
@@ -477,9 +478,9 @@
         "current-renderer-compilation-can-commit-ready"
       ],
       "manualChecks": [
-        "pending: 注入含 100 个历史复杂宠物与伪造 ready/blocked 摘要的本地数据并刷新，确认页面可交互且历史条目显示为待重新生成",
-        "pending: 进入当前宠物的复杂 renderer，确认它完成真实编译后回写为就绪，其他未访问历史宠物仍保持草稿",
-        "pending: 在 1440×900 与 760×900 检查模式切换、简单模型、控制台错误和刷新后状态；本批自动测试不替代浏览器复测"
+        "passed-2026-07-28-chrome-functional: 刷新含未验证复杂摘要的本地状态后进入当前宠物 renderer，确认真实编译回写 ready、completion=100 和 compilation hash；控制台无应用错误或 hydration mismatch，1440 宽度无横向溢出",
+        "pending: 分别注入 10、50、100 个历史复杂宠物与伪造 ready/blocked 摘要，确认除当前访问项外的历史条目保持待重新生成且页面交互流畅",
+        "pending: 在 760×900 复核该懒水合批次的模式切换、简单模型、控制台和刷新状态；自动测试与本次 1440 功能复测不替代窄屏和跨浏览器 GPU/WebGL 验收"
       ]
     }
   ]

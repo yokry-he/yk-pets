@@ -163,8 +163,10 @@ if (visualCases) {
   expect(JSON.stringify(phaseOneCase?.setup?.viewports) === JSON.stringify([[1440, 900], [760, 900]]), '第一阶段人工案例必须覆盖 1440×900 与 760×900 / Phase 1 manual case must cover 1440×900 and 760×900')
   expect(['soft', 'athletic', 'round', 'slender'].every(style => phaseOneCase?.setup?.bodyStyles?.includes(style)), '第一阶段人工案例必须覆盖四个体型模板 / Phase 1 manual case must cover four body styles')
   expect((phaseOneCase?.manualChecks || []).length >= 5 && phaseOneCase.manualChecks.every(check => check.startsWith('manual:')), '未自动覆盖的双足萌宠检查必须显式标记 manual / Non-automated biped-pet checks must be explicitly marked manual')
-  expect(Boolean(propSocketCase) && (propSocketCase?.manualChecks || []).every(check => check.startsWith('pending:')), '复杂模型语义道具挂点必须保留待复测的浏览器案例 / Complex-model semantic prop mounts must retain pending browser cases')
-  expect(Boolean(lazyHydrationCase) && (lazyHydrationCase?.manualChecks || []).every(check => check.startsWith('pending:')), '复杂模型历史数据懒复核必须保留待复测浏览器案例 / Lazy historical model review must retain pending browser cases')
+  const propSocketManualChecks = propSocketCase?.manualChecks || []
+  const lazyHydrationManualChecks = lazyHydrationCase?.manualChecks || []
+  expect(Boolean(propSocketCase) && propSocketManualChecks.some(check => check.startsWith('passed-')) && propSocketManualChecks.some(check => check.startsWith('pending:')), '复杂模型语义道具挂点必须同时记录已完成的功能复测与剩余浏览器案例 / Complex-model semantic prop mounts must record both the completed functional recheck and remaining browser cases')
+  expect(Boolean(lazyHydrationCase) && lazyHydrationManualChecks.some(check => check.startsWith('passed-')) && lazyHydrationManualChecks.some(check => check.startsWith('pending:')), '复杂模型历史数据懒复核必须同时记录已完成的功能复测与剩余浏览器案例 / Lazy historical model review must record both the completed functional recheck and remaining browser cases')
 }
 
 const sessionStart = safeRead('.ai/session-start.md')

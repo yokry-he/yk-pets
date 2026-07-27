@@ -245,7 +245,7 @@
 - 旧语义严格映射：左右前爪分别使用 `hand.left`/`hand.right`，左右后爪分别使用 `foot.left`/`foot.right`，头顶使用 `head` Socket。第一阶段 Profile 尚无独立口鼻和尾尖 Socket，因此 `muzzle` 明确保守跟随 `head` 骨骼，`tail-tip` 跟随最后一节真实尾骨；无尾骨时才保守回退 `tail.base` Socket。整个链路未使用简单模型的体型几何估算。
 - `pet-root` 使用真实 `root` 骨骼；`space: world` 与 `world` 挂点保留在角色根空间，而不是提升到全局 Tres 场景，因此整体预览的平移、旋转和缩放仍会统一作用于道具。
 - runtime 释放时会解除 Socket Group 与旧骨骼的父子关系；实例卸载只在自身 Group 仍属于目标节点时移除，避免配方更新、模式切换或卸载后残留父子引用。自动测试覆盖包含真实 Mesh 子节点的 Group 在 reparent 前后保持完整、全部旧挂点映射、幂等资源释放和 Canvas 传参。
-- 本修复尚待主代理按 `.ai/visual-cases.json` 在真实浏览器复测道具可见性、随骨骼运动、world 空间、材质策略和控制台；不得把该待复测项描述为已完成的跨浏览器 GPU/WebGL 验收。本阶段仍保持默认姿态，不包含复杂动作求解。
+- 主代理已完成 1440 宽度下的 Chrome 功能复测：高对比青色方块在 `right-front-paw` 经完整 Tres 子树重挂后仍可见并定位到真实 `hand.right` Socket；控制台无应用错误、父子关系警告或 hydration mismatch，页面无横向溢出。其余挂点随复杂动作、`world` 空间、材质保留策略、760 窄屏与跨浏览器 GPU/WebGL 仍按 `.ai/visual-cases.json` 保持待验收；本阶段仍使用默认姿态，不包含复杂动作求解。
 
 ## 25. 复杂模型历史数据懒复核批次
 
@@ -253,4 +253,4 @@
 - 持久化的 `ready`/`blocked` 仅是轻量摘要，水合时不再被直接信任：摘要会被清除，复杂变体安全降为 `draft` 且完成度回到 5；配方和以集合键为准的 `petId` 保留。
 - `ensurePet`、配方更新和编译提交继续使用“已验证内存状态”语义，不会让当前会话中已经复核的 ready/blocked 状态因普通 Store 操作退化。当前宠物真正进入既有复杂 renderer 后才重新编译，并继续由 `commitComplexCompilation` 对哈希和状态做最终复核后回写 ready。
 - 100 条历史记录回归使用结构和状态断言，不依赖机器速度或绝对毫秒阈值；损坏输入修复、简单模型与 authoritative key 契约保持覆盖。
-- `.ai/visual-cases.json` 已新增 10/50/100 条历史数据的浏览器待复测案例。本批尚未执行该真实浏览器复测，也不改变语义道具挂点、复杂动作、IK、足底锁定、Root Motion、特效或跨浏览器 GPU/WebGL 未完成边界。
+- 主代理已完成 1440 宽度下的 Chrome 功能复测：刷新未验证复杂摘要后，当前访问宠物由 renderer 完成真实编译并回写 `ready`、100% 和 compilation hash；控制台无应用错误或 hydration mismatch，页面无横向溢出。`.ai/visual-cases.json` 仍保留 10/50/100 历史集合规模、760 窄屏和跨浏览器 GPU/WebGL 的后续验收，本批不改变复杂动作、IK、足底锁定、Root Motion 或特效边界。
