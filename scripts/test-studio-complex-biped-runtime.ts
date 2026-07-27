@@ -2,13 +2,14 @@
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { Bone, SkinnedMesh } from '../apps/playground/node_modules/three/build/three.module.js'
+import { Bone, BoxGeometry, Group, Mesh, MeshBasicMaterial, SkinnedMesh } from '../apps/playground/node_modules/three/build/three.module.js'
 import { compileBipedPetCharacter, createBipedPetModelRecipe } from '../packages/pet-core/src/index.ts'
 
 const runtimePath = resolve(import.meta.dirname, '../apps/playground/app/three/create-complex-biped-pet-object.ts')
 assert.ok(existsSync(runtimePath), '复杂双足萌宠 Three 运行时模块必须存在。')
 
 const { createComplexBipedPetObject } = await import('../apps/playground/app/three/create-complex-biped-pet-object.ts')
+const { resolveComplexBipedPropMount } = await import('../apps/playground/app/three/complex-biped-prop-mounts.ts')
 const compiled = compileBipedPetCharacter(createBipedPetModelRecipe(1_000))
 assert.equal(compiled.status, 'ready')
 
@@ -29,7 +30,56 @@ assert.equal(runtime.bonesById.get('pelvis')?.parent, runtime.bonesById.get('roo
 assert.deepEqual(runtime.object.material.color.getHexString(), '112233')
 assert.ok(runtime.object.geometry.boundingBox)
 assert.ok(runtime.object.geometry.boundingSphere)
-for (const socket of Object.values(runtime.sockets)) assert.equal(socket.bone, runtime.bonesById.get(socket.boneId))
+for (const socket of Object.values(runtime.sockets)) {
+  assert.equal(socket.bone, runtime.bonesById.get(socket.boneId))
+  assert.ok(socket.mount instanceof Group)
+  assert.equal(socket.mount.parent, socket.bone)
+  assert.deepEqual(socket.mount.position.toArray(), socket.localPosition.toArray())
+  assert.deepEqual(socket.mount.quaternion.toArray(), socket.localRotation.toArray())
+}
+
+const mountInstance = (mountId: import('../packages/pet-core/src/index.ts').MotionPropMountId, space: 'mount' | 'world' = 'mount') => ({
+  instanceId: `instance-${mountId}`,
+  propId: 'prop-test',
+  exists: true,
+  visible: true,
+  mountId,
+  space,
+  transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+  style: { color: '#ffffff', opacity: 1, glow: 0, particleRate: 0 },
+} as const)
+
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('left-front-paw')).object, runtime.sockets['hand.left']?.mount)
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('right-front-paw')).object, runtime.sockets['hand.right']?.mount)
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('left-hind-paw')).object, runtime.sockets['foot.left']?.mount)
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('right-hind-paw')).object, runtime.sockets['foot.right']?.mount)
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('head-top')).object, runtime.sockets.head?.mount)
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('muzzle')).object, runtime.bonesById.get('head'))
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('tail-tip')).object, runtime.bonesById.get('tail.4'))
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('muzzle')).conservative, true)
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('tail-tip')).conservative, true)
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('pet-root')).object, runtime.bonesById.get('root'))
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('left-front-paw', 'world')).object, runtime.object)
+assert.equal(resolveComplexBipedPropMount(runtime, mountInstance('world')).object, runtime.object)
+const declarativeProp = new Group()
+const declarativePropGeometry = new BoxGeometry(1, 1, 1)
+const declarativePropMaterial = new MeshBasicMaterial({ color: '#66e8ff' })
+const declarativePropMesh = new Mesh(declarativePropGeometry, declarativePropMaterial)
+declarativeProp.add(declarativePropMesh)
+const obsoleteParent = new Group()
+obsoleteParent.add(declarativeProp)
+const declarativeTarget = resolveComplexBipedPropMount(runtime, mountInstance('left-front-paw')).object
+declarativeTarget.add(declarativeProp)
+assert.equal(declarativeProp.parent, runtime.sockets['hand.left']!.mount, 'mounted 后 reparent 必须真实重设 Three 父子关系')
+assert.equal(obsoleteParent.children.includes(declarativeProp), false)
+assert.equal(declarativeProp.children[0], declarativePropMesh, '包含 Mesh 的完整道具子树在 reparent 后不得丢失')
+if (declarativeProp.parent === declarativeTarget) declarativeTarget.remove(declarativeProp)
+if (declarativeProp.parent === declarativeTarget) declarativeTarget.remove(declarativeProp)
+assert.equal(declarativeProp.parent, null, '清理条件必须幂等解除挂载且不残留父级')
+assert.equal(declarativeProp.children[0], declarativePropMesh, '解除挂载不得销毁或丢失道具 Mesh 子树')
+declarativePropGeometry.dispose()
+declarativePropMaterial.dispose()
+const socketMounts = Object.values(runtime.sockets).map(socket => socket.mount)
 
 let geometryDisposals = 0
 let materialDisposals = 0
@@ -45,6 +95,7 @@ runtime.dispose()
 assert.equal(geometryDisposals, 1)
 assert.equal(materialDisposals, 1)
 assert.equal(skeletonDisposals, 1)
+assert.ok(socketMounts.every(mount => mount.parent === null), 'dispose 后不得保留 Socket mount 到旧骨骼的引用')
 
 assert.throws(
   () => createComplexBipedPetObject({ ...compiled, status: 'blocked' }, { baseColor: '#000000' }),
@@ -88,6 +139,13 @@ assert.throws(
     sockets: compiled.sockets.map((socket, index) => index === 0 ? { ...socket, localRotation: [0, 0, 0, 0] } : socket),
   }, { baseColor: '#000000' }),
   /四元数/,
+)
+assert.throws(
+  () => createComplexBipedPetObject({
+    ...compiled,
+    sockets: compiled.sockets.filter(socket => socket.id !== 'hand.left'),
+  }, { baseColor: '#000000' }),
+  /缺少必需 Socket.*hand\.left/,
 )
 
 const failureRuntime = createComplexBipedPetObject(compiled, { baseColor: '#000000' })

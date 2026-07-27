@@ -96,7 +96,7 @@ if (state) {
   expect(state.architecture?.motionPreviewFreeRotationComplete === true, '动作预览自由旋转必须标记完成 / Motion preview free rotation must be marked complete')
   expect(state.architecture?.motionStudioHorizontalOverflowFixed === true, '动作侧栏横向溢出修复必须标记完成 / Motion sidebar horizontal overflow repair must be marked complete')
   expect(state.architecture?.motionStudioChineseUiComplete === true, '动作工坊中文界面必须标记完成 / Motion Studio Chinese-first UI must be marked complete')
-  for (const key of ['bipedPetRigProfileContractComplete', 'bipedPetModelRecipeComplete', 'bipedPetCharacterCompilerComplete', 'bipedPetAutomaticSkinFoundationComplete', 'bipedPetModelPersistenceComplete', 'bipedPetThreeRuntimeRendererAdapterComplete', 'bipedPetWorkshopPreviewWiringComplete', 'bipedPetBeginnerParameterEditorComplete', 'bipedPetPhase1DeliveryComplete']) expect(state.architecture?.[key] === true, `双足萌宠第一阶段状态缺失 / Missing completed biped-pet Phase 1 state: ${key}`)
+  for (const key of ['bipedPetRigProfileContractComplete', 'bipedPetModelRecipeComplete', 'bipedPetCharacterCompilerComplete', 'bipedPetAutomaticSkinFoundationComplete', 'bipedPetModelPersistenceComplete', 'bipedPetThreeRuntimeRendererAdapterComplete', 'bipedPetWorkshopPreviewWiringComplete', 'bipedPetBeginnerParameterEditorComplete', 'bipedPetPhase1DeliveryComplete', 'bipedPetComplexPropSocketPreviewComplete']) expect(state.architecture?.[key] === true, `双足萌宠第一阶段状态缺失 / Missing completed biped-pet Phase 1 state: ${key}`)
   for (const key of ['bipedPetSemanticMotionCompilerComplete', 'bipedPetRuntimeIkComplete', 'bipedPetFootLockComplete', 'bipedPetRootMotionComplete', 'bipedPetMotionVfxComplete', 'crossBrowserGpuManualAcceptanceComplete']) expect(state.architecture?.[key] === false, `双足萌宠未完成边界错误 / Incorrect incomplete biped-pet boundary: ${key}`)
   expect(state.mandatoryDevelopmentPolicy?.updateAiPackageForEveryFeatureCommit === true, '必须启用每个功能提交更新 AI 包 / Per-feature-commit AI update policy must be enabled')
   expect((state.completed || []).includes('motion-semantic-rig'), '必须标记语义 Rig 领域已完成 / Semantic Rig domain must be marked complete')
@@ -120,25 +120,23 @@ if (state) {
   expect((state.completed || []).includes('motion-property-panel-horizontal-overflow-repair'), '必须标记动作属性栏横向溢出修复完成 / Motion property-panel horizontal overflow repair must be marked complete')
   expect((state.completed || []).includes('motion-studio-chinese-first-ui'), '必须标记动作工坊中文优先界面完成 / Motion Studio Chinese-first UI must be marked complete')
   expect((state.completed || []).includes('biped-pet-phase1-delivery'), '必须标记双足萌宠第一阶段交付完成 / Biped-pet Phase 1 delivery must be marked complete')
+  expect((state.completed || []).includes('biped-pet-complex-prop-socket-preview'), '必须标记复杂模型语义道具挂点预览完成 / Complex-model semantic prop-mount preview must be marked complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
   expect((state.notCompleted || []).includes('browser-screenshot-baselines'), '必须保留浏览器截图基线未完成 / Browser screenshot baselines must remain incomplete')
   for (const key of ['biped-pet-quaternion-motion-compiler', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-root-motion', 'biped-pet-complex-motion-library', 'biped-pet-motion-vfx', 'biped-pet-profile-runtime-expansion', 'cross-browser-gpu-manual-acceptance']) expect((state.notCompleted || []).includes(key), `必须保留双足萌宠后续边界 / Biped-pet future boundary must remain incomplete: ${key}`)
   expect(state.nextPhase === 'biped-pet-motion-and-browser-acceptance', '下一阶段必须是双足萌宠动作与浏览器验收 / Next phase must be biped-pet motion and browser acceptance')
-  const phaseOneCoverage = [
+  const propSocketCoverage = [
     'corepack pnpm --filter @yk-pets/pet-core test',
     'corepack pnpm run test:studio-model-variants',
     'node scripts/check-studio-model-mode.mjs',
     'corepack pnpm run test:studio-complex-biped-runtime',
     'corepack pnpm run check:studio-complex-biped-model',
-    'node scripts/check-studio-workspace-shell.mjs',
-    'node scripts/check-unified-cloud-fox-renderer.mjs',
     'node scripts/check-documentation.mjs',
     'node scripts/check-ai-handoff.mjs',
     'corepack pnpm --filter @nova/playground typecheck',
-    'corepack pnpm --filter @nova/playground build',
   ]
-  expect(state.latestCompletedBatch?.id === 'biped-pet-phase1-delivery', '最新批次必须是双足萌宠第一阶段交付 / Latest batch must be biped-pet Phase 1 delivery')
-  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(phaseOneCoverage), '第一阶段 automatedCoverage 必须且只能列出真实验证命令 / Phase 1 automatedCoverage must contain only the actual verification commands')
+  expect(state.latestCompletedBatch?.id === 'biped-pet-complex-prop-socket-preview', '最新批次必须是复杂模型语义道具挂点预览 / Latest batch must be complex-model semantic prop-mount preview')
+  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(propSocketCoverage), '语义道具挂点 automatedCoverage 必须且只能列出真实验证命令 / Semantic prop-mount automatedCoverage must contain only the actual verification commands')
 }
 
 for (const routeFile of ['appearance.vue', 'motion.vue', 'props.vue', 'library.vue']) expect(existsSync(path.join(root, 'apps/playground/app/pages/studio', routeFile)), `缺少 Studio 路由文件 / Missing Studio route file: ${routeFile}`)
@@ -158,10 +156,12 @@ if (visualCases) {
     expect(Array.isArray(item.manualChecks) && item.manualChecks.length > 0, `视觉案例缺少人工检查 / Missing manual checks: ${item.id}`)
   }
   const phaseOneCase = visualCases.cases.find(item => item.id === 'biped-pet-phase1-browser-acceptance')
+  const propSocketCase = visualCases.cases.find(item => item.id === 'biped-pet-complex-prop-socket-preview')
   expect(Boolean(phaseOneCase), '缺少双足萌宠第一阶段人工验收案例 / Missing biped-pet Phase 1 manual acceptance case')
   expect(JSON.stringify(phaseOneCase?.setup?.viewports) === JSON.stringify([[1440, 900], [760, 900]]), '第一阶段人工案例必须覆盖 1440×900 与 760×900 / Phase 1 manual case must cover 1440×900 and 760×900')
   expect(['soft', 'athletic', 'round', 'slender'].every(style => phaseOneCase?.setup?.bodyStyles?.includes(style)), '第一阶段人工案例必须覆盖四个体型模板 / Phase 1 manual case must cover four body styles')
   expect((phaseOneCase?.manualChecks || []).length >= 5 && phaseOneCase.manualChecks.every(check => check.startsWith('manual:')), '未自动覆盖的双足萌宠检查必须显式标记 manual / Non-automated biped-pet checks must be explicitly marked manual')
+  expect(Boolean(propSocketCase) && (propSocketCase?.manualChecks || []).every(check => check.startsWith('pending:')), '复杂模型语义道具挂点必须保留待复测的浏览器案例 / Complex-model semantic prop mounts must retain pending browser cases')
 }
 
 const sessionStart = safeRead('.ai/session-start.md')

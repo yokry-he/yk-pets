@@ -7,6 +7,9 @@ import { resolve } from 'node:path'
 const root = resolve(import.meta.dirname, '..')
 const runtimePath = resolve(root, 'apps/playground/app/three/create-complex-biped-pet-object.ts')
 const rendererPath = resolve(root, 'apps/playground/app/components/studio/ComplexBipedPetRenderer.vue')
+const propInstancesPath = resolve(root, 'apps/playground/app/components/studio/ComplexBipedPropInstances.vue')
+const propInstancePath = resolve(root, 'apps/playground/app/components/studio/ComplexBipedPropInstance.vue')
+const propMountsPath = resolve(root, 'apps/playground/app/three/complex-biped-prop-mounts.ts')
 const canvasPath = resolve(root, 'apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const appearancePath = resolve(root, 'apps/playground/app/components/studio/StudioAppearanceWorkspace.vue')
 const editorPath = resolve(root, 'apps/playground/app/components/studio/StudioComplexModelEditor.vue')
@@ -17,6 +20,9 @@ const layoutPath = resolve(root, 'apps/playground/app/layouts/studio.vue')
 const packagePath = resolve(root, 'package.json')
 const runtime = existsSync(runtimePath) ? readFileSync(runtimePath, 'utf8') : ''
 const renderer = existsSync(rendererPath) ? readFileSync(rendererPath, 'utf8') : ''
+const propInstances = existsSync(propInstancesPath) ? readFileSync(propInstancesPath, 'utf8') : ''
+const propInstance = existsSync(propInstancePath) ? readFileSync(propInstancePath, 'utf8') : ''
+const propMounts = existsSync(propMountsPath) ? readFileSync(propMountsPath, 'utf8') : ''
 const canvas = existsSync(canvasPath) ? readFileSync(canvasPath, 'utf8') : ''
 const appearance = existsSync(appearancePath) ? readFileSync(appearancePath, 'utf8') : ''
 const editor = existsSync(editorPath) ? readFileSync(editorPath, 'utf8') : ''
@@ -131,13 +137,21 @@ const checks = [
   ['运行时计算法线和包围体', runtime.includes('computeVertexNormals') && runtime.includes('computeBoundingBox') && runtime.includes('computeBoundingSphere')],
   ['运行时更新世界矩阵后绑定骨架', runtime.includes('updateMatrixWorld(true)') && runtime.includes('.bind(')],
   ['运行时释放 geometry、material 与 skeleton', ['geometry', 'material', 'skeleton'].every(resource => new RegExp(`${resource}(?:\\?\\.)?dispose\\(\\)`).test(runtime))],
+  ['运行时为每个真实 Socket 创建跟随骨骼的 Group', /\bGroup\b/.test(runtime) && /mount:\s*Group/.test(runtime) && /bone\.add\(mount\)/.test(runtime)],
   ['Vue 适配器编译配方并保持非深代理运行时', renderer.includes('compileBipedPetCharacter') && renderer.includes('shallowRef') && renderer.includes('watch') && renderer.includes('onBeforeUnmount')],
   ['Vue 适配器使用同一规范化配方编译与创建材质', renderer.includes('normalizeBipedPetModelRecipe') && renderer.includes('normalizedRecipe')],
   ['Vue 适配器以稳定运行时键避免重复销毁和重建', renderer.includes('lastRuntimeKey')],
   ['Vue primitive 禁用自动释放，避免重复 dispose', renderer.includes('<primitive') && renderer.includes(':dispose="false"')],
+  ['复杂渲染器接收并消费道具实例、资产与材质保留参数', /propInstances\??:/.test(renderer) && /propAssets\??:/.test(renderer) && /preservePropMaterials\??:/.test(renderer) && /ComplexBipedPropInstances/.test(renderer)],
+  ['复杂道具实例必须与自闭合 primitive 同级渲染，不能依赖 primitive 默认插槽', /<primitive\b[^>]*v-if="runtime"[^>]*:object="runtime\.object"[^>]*:dispose="false"[^>]*\/>/.test(template(renderer)) && /<ComplexBipedPropInstances\b[^>]*v-if="runtime"/.test(template(renderer)) && !template(renderer).includes('</primitive>')],
+  ['复杂道具列表以 runtime、空间和挂点为 key 创建独立实例组件', /ComplexBipedPropInstance/.test(propInstances) && /runtime\.object\.uuid/.test(propInstances) && /instance\.space/.test(propInstances) && /instance\.mountId/.test(propInstances)],
+  ['复杂道具实例先正常创建模型子树，再在 mounted nextTick 后整体 reparent 到语义目标', /StudioPropModel/.test(propInstance) && /resolveComplexBipedPropMount/.test(propInstance) && /onMounted/.test(propInstance) && /await\s+nextTick\(\)/.test(propInstance) && /target\.add\(group\)/.test(propInstance) && /group\.parent\s*===\s*target/.test(propInstance) && /preservePropMaterials\s*\?\s*undefined\s*:\s*instance\.style/.test(propInstance)],
+  ['复杂道具禁止 Tres custom attach，避免跨组件子树丢失 host children', !`${propInstances}\n${propInstance}\n${propMounts}`.includes(':attach=') && !`${propInstances}\n${propInstance}\n${propMounts}`.includes('AttachFnType') && !propMounts.includes('attachComplexBipedPropObject')],
+  ['旧挂点严格映射前后爪并显式保守映射口鼻与尾尖', ['left-front-paw', 'right-front-paw', 'left-hind-paw', 'right-hind-paw', 'hand.left', 'hand.right', 'foot.left', 'foot.right', 'muzzle', 'tail-tip', 'tail.base'].every(token => propMounts.includes(token)) && /instance\.space\s*===\s*['"]world['"]/.test(propMounts)],
   ['运行时与适配器不走网络或 GLB 导入', !/\bfetch\s*\(/.test(`${runtime}\n${renderer}`) && !`${runtime}\n${renderer}`.includes('GLTFLoader')],
   ['适配器只在编译摘要实质变化时 emit', renderer.includes('hash') && renderer.includes('status') && renderer.includes('diagnostics') && renderer.includes('lastEmitted')],
   ['统一 Canvas 以单个 TresCanvas 互斥替换复杂与简单 renderer，并转发真实编译事件', hasCanvasReplacementStructure(canvas)],
+  ['统一 Canvas 向复杂 renderer 转发道具实例、资产与材质策略', /<ComplexBipedPetRenderer\b[^>]*:prop-instances="propInstances"[^>]*:prop-assets="propAssets"[^>]*:preserve-prop-materials="preservePropMaterials"/.test(template(canvas))],
   ['外观工坊在 blur 后以外观领域规范化宠物身份，并由 Store 原子复核编译结果', /const\s+activeModelPetId\s*=\s*ref/.test(script(appearance)) && /function\s+commitPetId\s*\(/.test(script(appearance)) && /@blur="commitPetId"/.test(template(appearance)) && /const\s+normalizedPetId\s*=\s*normalizeCustomizableAppearance\(recipe\.value\)\.identity\.petId/.test(script(appearance)) && /recipe\.value\.identity\.petId\s*=\s*normalizedPetId/.test(script(appearance)) && !/watch\(\[currentPetId/.test(script(appearance)) && !/compileBipedPetCharacter/.test(script(appearance)) && /modelVariants\.commitComplexCompilation\(activeModelPetId\.value/.test(script(appearance)) && /:complex-pet-id="activeModelPetId"/.test(template(appearance))],
   ['复杂模式只在存在配方时接入新手模型编辑器，并通过 Store 原子更新配方', /StudioComplexModelEditor/.test(script(appearance)) && /function\s+applyComplexBodyStyle\s*\(/.test(script(appearance)) && /applyBipedPetBodyStyle/.test(script(appearance)) && /function\s+updateComplexProportion\s*\(/.test(script(appearance)) && /function\s+updateComplexAppendage\s*\(/.test(script(appearance)) && /function\s+restoreComplexSafeDefaults\s*\(/.test(script(appearance)) && /modelVariants\.updateComplexRecipe\(activeModelPetId\.value/.test(script(appearance)) && /watch\(\(\)\s*=>\s*session\.modelMode/.test(script(appearance)) && /:disabled="session\.modelMode === 'complex'"/.test(template(appearance)) && /v-if="session\.modelMode === 'complex' && complexRecipe"/.test(template(appearance)) && /<StudioComplexModelEditor\b/.test(template(appearance))],
   ['复杂模型编辑器提供受控新手范围、模板、比例、附属物与只读高级信息', hasBeginnerComplexModelEditor(editor)],

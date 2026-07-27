@@ -7,6 +7,7 @@ import {
   Bone,
   BufferGeometry,
   Float32BufferAttribute,
+  Group,
   MeshStandardMaterial,
   Quaternion,
   Skeleton,
@@ -31,6 +32,8 @@ export interface ComplexBipedPetSocket {
   bone: Bone
   localPosition: Vector3
   localRotation: Quaternion
+  /** 跟随真实骨骼的声明式道具挂载节点，不包含任何 GPU 资源。 */
+  mount: Group
 }
 
 export interface ComplexBipedPetObject {
@@ -77,6 +80,9 @@ function assertReadyCompilation(compiled: CompiledCharacterModel) {
     if (!socket.localPosition.every(Number.isFinite) || !socket.localRotation.every(Number.isFinite) || quaternionLength <= 1e-8 || Math.abs(quaternionLength - 1) > 1e-4) throw new Error(`复杂双足萌宠 Socket ${socket.id} 的局部四元数无效。`)
     socketIds.add(socket.id)
   }
+  for (const requiredSocketId of ['hand.left', 'hand.right', 'foot.left', 'foot.right', 'head', 'tail.base']) {
+    if (!socketIds.has(requiredSocketId)) throw new Error(`复杂双足萌宠运行时缺少必需 Socket：${requiredSocketId}。`)
+  }
 }
 
 /**
@@ -88,6 +94,7 @@ export function createComplexBipedPetObject(compiled: CompiledCharacterModel, co
   let geometry: BufferGeometry | undefined
   let material: MeshStandardMaterial | undefined
   let skeleton: Skeleton | undefined
+  let socketMounts: Group[] = []
   let disposed = false
 
   const disposeResources = () => {
@@ -100,6 +107,10 @@ export function createComplexBipedPetObject(compiled: CompiledCharacterModel, co
     release('geometry', () => geometry?.dispose())
     release('material', () => material?.dispose())
     release('skeleton', () => skeleton?.dispose())
+    release('socket-mounts', () => {
+      for (const mount of socketMounts) mount.removeFromParent()
+      socketMounts = []
+    })
     // 所有资源均已尝试释放后才封存状态，失败也不能让下一次调用重复释放。 / Mark disposed only after every resource is attempted, even when one release fails.
     disposed = true
     if (failedResources.length) throw new Error(`复杂双足萌宠运行时资源释放失败：${failedResources.join('、')}。`)
@@ -147,13 +158,26 @@ export function createComplexBipedPetObject(compiled: CompiledCharacterModel, co
     object.updateMatrixWorld(true)
     object.bind(skeleton)
 
-    const sockets = Object.fromEntries(compiled.sockets.map(socket => [socket.id, {
-      id: socket.id,
-      boneId: socket.boneId,
-      bone: bonesById.get(socket.boneId)!,
-      localPosition: new Vector3(...socket.localPosition),
-      localRotation: new Quaternion(...socket.localRotation),
-    }]))
+    const sockets = Object.fromEntries(compiled.sockets.map(socket => {
+      const bone = bonesById.get(socket.boneId)!
+      const localPosition = new Vector3(...socket.localPosition)
+      const localRotation = new Quaternion(...socket.localRotation)
+      const mount = new Group()
+      mount.name = `socket:${socket.id}`
+      mount.position.copy(localPosition)
+      mount.quaternion.copy(localRotation)
+      bone.add(mount)
+      socketMounts.push(mount)
+      return [socket.id, {
+        id: socket.id,
+        boneId: socket.boneId,
+        bone,
+        localPosition,
+        localRotation,
+        mount,
+      }]
+    }))
+    object.updateMatrixWorld(true)
 
     return {
       object,

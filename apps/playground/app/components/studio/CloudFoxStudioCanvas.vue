@@ -167,7 +167,7 @@ const sceneStyle = computed(() => ({
       <TresPointLight :position="vec3(scheme.scene.lights.secondaryPosition)" :intensity="scheme.scene.lights.secondaryIntensity" :color="appearance.palette.secondaryGlow" />
       <PetSceneEffects :scene="activeScene" :behavior="behavior" />
       <TresGroup v-if="showComplexRenderer" :position="vec3(previewPosition)" :rotation="complexPreviewEuler" :scale="vec3([previewScale, previewScale, previewScale])">
-        <ComplexBipedPetRenderer :key="complexPreviewKey" :recipe="complexRecipe!" @compilation="onComplexCompilation" />
+        <ComplexBipedPetRenderer :key="complexPreviewKey" :recipe="complexRecipe!" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" @compilation="onComplexCompilation" />
       </TresGroup>
       <ProceduralPet v-else :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotation" :preview-position="previewPosition" />
     </TresCanvas>

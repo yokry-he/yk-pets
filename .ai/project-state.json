@@ -71,6 +71,7 @@
     "bipedPetWorkshopPreviewWiringComplete": true,
     "bipedPetBeginnerParameterEditorComplete": true,
     "bipedPetPhase1DeliveryComplete": true,
+    "bipedPetComplexPropSocketPreviewComplete": true,
     "bipedPetSemanticMotionCompilerComplete": false,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
@@ -167,7 +168,8 @@
     "biped-pet-three-runtime-renderer-adapter",
     "studio-complex-model-workshop-preview-wiring",
     "studio-complex-model-beginner-parameter-editor",
-    "biped-pet-phase1-delivery"
+    "biped-pet-phase1-delivery",
+    "biped-pet-complex-prop-socket-preview"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -190,7 +192,7 @@
   ],
   "nextPhase": "biped-pet-motion-and-browser-acceptance",
   "latestCompletedBatch": {
-    "id": "biped-pet-phase1-delivery",
+    "id": "biped-pet-complex-prop-socket-preview",
     "domainPackage": "packages/pet-core + apps/playground",
     "rendererModified": true,
     "visualCasesModified": true,
@@ -200,12 +202,9 @@
       "node scripts/check-studio-model-mode.mjs",
       "corepack pnpm run test:studio-complex-biped-runtime",
       "corepack pnpm run check:studio-complex-biped-model",
-      "node scripts/check-studio-workspace-shell.mjs",
-      "node scripts/check-unified-cloud-fox-renderer.mjs",
       "node scripts/check-documentation.mjs",
       "node scripts/check-ai-handoff.mjs",
-      "corepack pnpm --filter @nova/playground typecheck",
-      "corepack pnpm --filter @nova/playground build"
+      "corepack pnpm --filter @nova/playground typecheck"
     ]
   },
   "mandatoryDevelopmentPolicy": {

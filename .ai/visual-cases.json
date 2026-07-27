@@ -426,6 +426,39 @@
         "manual: 人为触发复杂编译或运行时失败，确认提示“生成失败，已回退简单模型”，简单模型可继续显示与旋转，且复杂配方没有被删除",
         "manual: 检查浏览器控制台无未处理错误，并记录 GPU/WebGL、跨浏览器渲染和最终像素验收；这些项目在主代理实际验收前均不得标记完成"
       ]
+    },
+    {
+      "id": "biped-pet-complex-prop-socket-preview",
+      "route": "/studio/motion",
+      "setup": {
+        "modelMode": "complex",
+        "repeatRoutes": [
+          "/studio/props"
+        ],
+        "mounts": [
+          "left-front-paw",
+          "right-front-paw",
+          "left-hind-paw",
+          "right-hind-paw",
+          "head-top",
+          "muzzle",
+          "tail-tip",
+          "pet-root",
+          "world"
+        ]
+      },
+      "automatedChecks": [
+        "complex-runtime-socket-groups-follow-bones",
+        "legacy-paw-mounts-map-to-hand-and-foot-sockets",
+        "world-space-remains-in-character-root-space",
+        "complex-renderer-reuses-studio-prop-model",
+        "socket-groups-detach-on-runtime-dispose"
+      ],
+      "manualChecks": [
+        "pending: 在复杂模式播放或预览含前爪、后爪、头顶、口鼻、尾尖和角色根挂点的道具事件，确认道具可见并随对应骨骼移动",
+        "pending: 分离为 world 空间后旋转或缩放整体预览，确认道具仍处于角色根空间且不错误落到全局场景",
+        "pending: 切换 preserve materials 并重复编辑、切换模式与路由，确认材质策略一致且控制台无资源或父子关系错误"
+      ]
     }
   ]
 }

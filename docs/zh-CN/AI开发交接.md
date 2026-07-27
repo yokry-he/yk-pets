@@ -237,3 +237,12 @@
 - 真实浏览器发现的两项阻塞已作最小修复并加静态回归：复杂 `TresGroup.rotation` 以 `Euler`（而非 `Vector3`）接收固定视角与自由旋转组合；Studio 布局的四个 Store 只在 `onMounted` 后 hydration，工作区 watch 仅在 `session.hydrated` 后写入，恢复完成后才显式持久化当前路由工作区，避免默认 `simple` 覆盖已保存的复杂模式或抢先改变子页面 hydration 输入。
 - 主代理已完成本批真实浏览器复测：新标签页无 error 或 hydration mismatch；复杂模式刷新后保持；运动模板与附属特征持久化；简单模型回退正常；`motion`、`props`、`library` 共享同一复杂配方且 Canvas 为 ready；资产库显示 `biped-pet/v1`、`biped-pet-generator/v1` 与 0 条诊断；在 760×900 下 `clientWidth === scrollWidth === 760`，四模板、九比例和三附属控件均存在。此证据完成本批 Studio 功能性浏览器验收，但不替代仍未完成的跨浏览器 GPU/WebGL 最终验收。
 - `.ai/visual-cases.json` 将 1440×900、760×900、四模板、持久化、三个工坊、简单回退、键盘、无横向溢出、控制台和 GPU 检查列为人工验收。本批 Studio 功能性浏览器复测已经完成；`cross-browser-gpu-manual-acceptance` 及跨浏览器 GPU/WebGL、最终像素相关项目仍须保持未完成，直至后续完成对应图形验收。
+
+## 24. 复杂模型语义道具挂点修复
+
+- `CloudFoxStudioCanvas` 现在也向复杂 renderer 传递 `propInstances`、`propAssets` 与 `preservePropMaterials`；复杂模式不再静默丢失动作工坊或道具工坊的道具预览。
+- 复杂 runtime 为每个已编译 Socket 创建跟随真实骨骼的 `Group`。每个复杂道具实例先在普通 Tres 父树中完整创建 `StudioPropModel` 子树，再于 `onMounted` 的下一次 Vue tick 将整个 Group 重挂到语义节点；不使用会在跨组件子树中丢失 host children 的 Tres custom attach。参数化道具、站内本地模型与材质保留策略继续和简单模式复用同一实现。
+- 旧语义严格映射：左右前爪分别使用 `hand.left`/`hand.right`，左右后爪分别使用 `foot.left`/`foot.right`，头顶使用 `head` Socket。第一阶段 Profile 尚无独立口鼻和尾尖 Socket，因此 `muzzle` 明确保守跟随 `head` 骨骼，`tail-tip` 跟随最后一节真实尾骨；无尾骨时才保守回退 `tail.base` Socket。整个链路未使用简单模型的体型几何估算。
+- `pet-root` 使用真实 `root` 骨骼；`space: world` 与 `world` 挂点保留在角色根空间，而不是提升到全局 Tres 场景，因此整体预览的平移、旋转和缩放仍会统一作用于道具。
+- runtime 释放时会解除 Socket Group 与旧骨骼的父子关系；实例卸载只在自身 Group 仍属于目标节点时移除，避免配方更新、模式切换或卸载后残留父子引用。自动测试覆盖包含真实 Mesh 子节点的 Group 在 reparent 前后保持完整、全部旧挂点映射、幂等资源释放和 Canvas 传参。
+- 本修复尚待主代理按 `.ai/visual-cases.json` 在真实浏览器复测道具可见性、随骨骼运动、world 空间、材质策略和控制台；不得把该待复测项描述为已完成的跨浏览器 GPU/WebGL 验收。本阶段仍保持默认姿态，不包含复杂动作求解。

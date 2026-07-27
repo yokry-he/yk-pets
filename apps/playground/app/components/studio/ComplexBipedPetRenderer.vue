@@ -11,13 +11,21 @@ import {
   type CharacterCompilationDiagnostic,
   type CharacterModelRecipeV1,
   type CompiledCharacterModel,
+  type EvaluatedMotionPropInstance,
+  type StudioPropAssetV2,
 } from '@yk-pets/pet-core'
 import {
   createComplexBipedPetObject,
   type ComplexBipedPetObject,
 } from '~/three/create-complex-biped-pet-object'
+import ComplexBipedPropInstances from './ComplexBipedPropInstances.vue'
 
-const props = defineProps<{ recipe: CharacterModelRecipeV1 }>()
+const props = defineProps<{
+  recipe: CharacterModelRecipeV1
+  propInstances?: readonly EvaluatedMotionPropInstance[]
+  propAssets?: readonly StudioPropAssetV2[]
+  preservePropMaterials?: boolean
+}>()
 const emit = defineEmits<{
   compilation: [payload: Pick<CompiledCharacterModel, 'hash' | 'status' | 'diagnostics'>]
 }>()
@@ -109,5 +117,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <primitive v-if="runtime" :object="runtime.object" :dispose="false" />
+  <primitive v-if="runtime" :key="runtime.object.uuid" :object="runtime.object" :dispose="false" />
+  <!-- primitive 不渲染 Vue 默认插槽；道具组件必须作为同级节点实例化，再由自定义 attach 直挂 runtime Socket。 -->
+  <ComplexBipedPropInstances v-if="runtime" :runtime="runtime" :instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" />
 </template>
