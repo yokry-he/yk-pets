@@ -198,3 +198,11 @@
 - 配方更新只接受可编辑字段并进行安全深合并，比例、耳朵/尾巴/触角和材质的局部修改不会丢失同级字段；更新后自动清除旧编译摘要并回到待编译草稿。
 - 提交编译结果时 Store 会重新编译当前配方；只有提交哈希、提交状态和当前编译状态三者一致且均为 `ready` 才标记完成。陈旧哈希会记录诊断并保持非就绪状态，损坏持久化配方或编译摘要会在归一化时安全修复或降级为草稿。
 - Three runtime、复杂模型正式预览、工坊参数面板、语义动作映射、IK、足底锁定、Root Motion、确定性特效与真实 GPU/WebGL 验收仍未完成；本批只建立可恢复的 Store 数据边界，不宣称已展示复杂模型。
+
+## 20. 双足萌宠 Three 运行时与独立适配器批次
+
+- `createComplexBipedPetObject` 只接收 `ready` 的框架无关编译结果，并创建 `BufferGeometry`、`SkinnedMesh`、按编译顺序组装的 `Bone`/`Skeleton` 与可按 `boneId` 解析的运行时 Socket；阻塞编译结果、错误父级、多个根、越界索引和坏 Socket 都会以中文领域错误安全拒绝。
+- 几何显式包含 `position`、`skinIndex`、`skinWeight` 与索引缓冲，计算法线和包围体；索引根据顶点范围在 `Uint16`/`Uint32` 间选择。材质的基础色来自配方，次级色只作为极弱自发光，不伪造顶点色。
+- 运行时 `dispose()` 可重复调用，并释放 geometry、material 与 skeleton；创建中途失败也会清理已经取得的资源。
+- `ComplexBipedPetRenderer.vue` 是不创建 Canvas 的独立 Vue/Tres 适配器：每次先归一化配方，并让编译和材质创建消费同一份归一化结果；深度观察后仅在编译 hash/status/diagnostics 处理键变化时才释放旧运行时、创建对象或 emit，因此 `updatedAt` 变化和父层同摘要回写不会触发重复创建。它以 `primitive dispose=false` 交给上层既有场景，并将运行时异常转为诊断，防止 Store 回写触发渲染循环。
+- 本批尚未接入 `CloudFoxStudioCanvas` 或外观、动作、道具三个工坊，尚未新增参数 UI、动作、IK、足底锁定、Root Motion、确定性特效或真实 GPU/WebGL 验收；不得把独立适配器或静态/Node 验证描述为正式复杂模型预览完成。

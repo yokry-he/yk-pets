@@ -66,7 +66,8 @@
     "bipedPetModelRecipeComplete": true,
     "bipedPetCharacterCompilerComplete": true,
     "bipedPetAutomaticSkinFoundationComplete": true,
-    "bipedPetModelPersistenceComplete": true
+    "bipedPetModelPersistenceComplete": true,
+    "bipedPetThreeRuntimeRendererAdapterComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -153,7 +154,8 @@
     "biped-pet-model-recipe",
     "biped-pet-character-compiler",
     "biped-pet-automatic-skin-foundation",
-    "biped-pet-model-persistence"
+    "biped-pet-model-persistence",
+    "biped-pet-three-runtime-renderer-adapter"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -168,19 +170,18 @@
   ],
   "nextPhase": "in-site-parametric-biped-rig",
   "latestCompletedBatch": {
-    "id": "biped-pet-model-persistence",
+    "id": "biped-pet-three-runtime-renderer-adapter",
     "domainPackage": "apps/playground",
-    "rendererModified": false,
+    "rendererModified": true,
     "visualCasesModified": false,
     "automatedCoverage": [
-      "deterministic-biped-pet-compilation",
-      "four-weight-skinning-output",
-      "optional-appendage-bone-chains",
-      "recipe-hash-stability",
-      "compiled-reference-validation",
-      "complex-recipe-deep-merge-and-normalization",
-      "compilation-hash-staleness-protection",
-      "simple-model-isolation-and-roundtrip"
+      "complex-biped-pet-runtime-object",
+      "geometry-skin-attribute-types",
+      "bone-hierarchy-and-socket-resolution",
+      "idempotent-three-resource-disposal",
+      "malformed-mesh-and-socket-rejection",
+      "normalized-recipe-runtime-key-deduplication",
+      "complex-biped-runtime-static-gate"
     ]
   },
   "mandatoryDevelopmentPolicy": {
