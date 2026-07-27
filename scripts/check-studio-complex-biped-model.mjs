@@ -9,6 +9,7 @@ const runtimePath = resolve(root, 'apps/playground/app/three/create-complex-bipe
 const rendererPath = resolve(root, 'apps/playground/app/components/studio/ComplexBipedPetRenderer.vue')
 const canvasPath = resolve(root, 'apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const appearancePath = resolve(root, 'apps/playground/app/components/studio/StudioAppearanceWorkspace.vue')
+const editorPath = resolve(root, 'apps/playground/app/components/studio/StudioComplexModelEditor.vue')
 const motionPath = resolve(root, 'apps/playground/app/pages/studio/motion.vue')
 const propsPath = resolve(root, 'apps/playground/app/pages/studio/props.vue')
 const libraryPath = resolve(root, 'apps/playground/app/pages/studio/library.vue')
@@ -18,6 +19,7 @@ const runtime = existsSync(runtimePath) ? readFileSync(runtimePath, 'utf8') : ''
 const renderer = existsSync(rendererPath) ? readFileSync(rendererPath, 'utf8') : ''
 const canvas = existsSync(canvasPath) ? readFileSync(canvasPath, 'utf8') : ''
 const appearance = existsSync(appearancePath) ? readFileSync(appearancePath, 'utf8') : ''
+const editor = existsSync(editorPath) ? readFileSync(editorPath, 'utf8') : ''
 const motion = existsSync(motionPath) ? readFileSync(motionPath, 'utf8') : ''
 const props = existsSync(propsPath) ? readFileSync(propsPath, 'utf8') : ''
 const library = existsSync(libraryPath) ? readFileSync(libraryPath, 'utf8') : ''
@@ -71,6 +73,42 @@ function hasSharedRecipeReadOnlyWiring(source) {
     && !/ensureComplexDraft/.test(sourceScript)
 }
 
+function hasBeginnerComplexModelEditor(source) {
+  const sourceScript = script(source)
+  const sourceTemplate = template(source)
+  return /CharacterModelRecipeV1/.test(sourceScript)
+    && /BIPED_PET_MODEL_RECIPE_LIMITS/.test(sourceScript)
+    && /apply-style/.test(sourceScript)
+    && /update-proportion/.test(sourceScript)
+    && /update-appendage/.test(sourceScript)
+    && /restore-safe-defaults/.test(sourceScript)
+    && ['soft', 'athletic', 'round', 'slender'].every(style => new RegExp(`bodyStyle:\\s*['\"]${style}['\"]`).test(sourceScript))
+    && ['height', 'headRatio', 'shoulderWidth', 'hipWidth', 'torsoLength', 'armLength', 'legLength', 'handSize', 'footSize'].every(key => sourceScript.includes(`key: '${key}'`))
+    && ['ears', 'tail', 'antennae'].every(key => sourceScript.includes(`key: '${key}'`))
+    && /aria-pressed/.test(sourceTemplate)
+    && /aria-label/.test(sourceTemplate)
+    && /@change=/.test(sourceTemplate)
+    && /readonly\??:\s*boolean/.test(sourceScript)
+    && /:disabled="readonly"/.test(sourceTemplate)
+    && /@pointercancel=/.test(sourceTemplate)
+    && /function\s+commitNumberProportion\s*\(/.test(sourceScript)
+    && /valueAsNumber/.test(sourceScript)
+    && /\.value\.trim\(\)/.test(sourceScript)
+    && /@change="commitNumberProportion\(item\.key, \$event\)"/.test(sourceTemplate)
+    && /@blur="cancelProportion\(item\.key, \$event\)"/.test(sourceTemplate)
+    && /<details\b/.test(sourceTemplate)
+    && /骨骼数/.test(sourceTemplate)
+    && /顶点数/.test(sourceTemplate)
+    && /诊断/.test(sourceTemplate)
+    && /安全范围/.test(sourceTemplate)
+    && !/导入\s*GLB/.test(source)
+    && !/骨骼绑定/.test(source)
+    && !/权重画笔/.test(source)
+    && /@media\s*\(max-width:\s*760px\)/.test(source)
+    && /\.complex-model-[\w-]+/.test(source)
+    && !/\.complex-model-[\w-]+\s+(?:small|strong|span|input|summary|h2|h3|p|dt|dd)\b/.test(source)
+}
+
 const checks = [
   ['运行时创建 Bone、Skeleton 与 SkinnedMesh', /\bBone\b/.test(runtime) && /\bSkeleton\b/.test(runtime) && /\bSkinnedMesh\b/.test(runtime)],
   ['运行时提供 position、skinIndex、skinWeight 与 index 属性', ['position', 'skinIndex', 'skinWeight', 'setIndex'].every(token => runtime.includes(token))],
@@ -85,6 +123,8 @@ const checks = [
   ['适配器只在编译摘要实质变化时 emit', renderer.includes('hash') && renderer.includes('status') && renderer.includes('diagnostics') && renderer.includes('lastEmitted')],
   ['统一 Canvas 以单个 TresCanvas 互斥替换复杂与简单 renderer，并转发真实编译事件', hasCanvasReplacementStructure(canvas)],
   ['外观工坊在 blur 后以外观领域规范化宠物身份，并由 Store 原子复核编译结果', /const\s+activeModelPetId\s*=\s*ref/.test(script(appearance)) && /function\s+commitPetId\s*\(/.test(script(appearance)) && /@blur="commitPetId"/.test(template(appearance)) && /const\s+normalizedPetId\s*=\s*normalizeCustomizableAppearance\(recipe\.value\)\.identity\.petId/.test(script(appearance)) && /recipe\.value\.identity\.petId\s*=\s*normalizedPetId/.test(script(appearance)) && !/watch\(\[currentPetId/.test(script(appearance)) && !/compileBipedPetCharacter/.test(script(appearance)) && /modelVariants\.commitComplexCompilation\(activeModelPetId\.value/.test(script(appearance)) && /:complex-pet-id="activeModelPetId"/.test(template(appearance))],
+  ['复杂模式只在存在配方时接入新手模型编辑器，并通过 Store 原子更新配方', /StudioComplexModelEditor/.test(script(appearance)) && /function\s+applyComplexBodyStyle\s*\(/.test(script(appearance)) && /applyBipedPetBodyStyle/.test(script(appearance)) && /function\s+updateComplexProportion\s*\(/.test(script(appearance)) && /function\s+updateComplexAppendage\s*\(/.test(script(appearance)) && /function\s+restoreComplexSafeDefaults\s*\(/.test(script(appearance)) && /modelVariants\.updateComplexRecipe\(activeModelPetId\.value/.test(script(appearance)) && /watch\(\(\)\s*=>\s*session\.modelMode/.test(script(appearance)) && /:disabled="session\.modelMode === 'complex'"/.test(template(appearance)) && /v-if="session\.modelMode === 'complex' && complexRecipe"/.test(template(appearance)) && /<StudioComplexModelEditor\b/.test(template(appearance))],
+  ['复杂模型编辑器提供受控新手范围、模板、比例、附属物与只读高级信息', hasBeginnerComplexModelEditor(editor)],
   ['动作与道具工坊只读取同一持久化复杂配方和最终宠物身份', hasSharedRecipeReadOnlyWiring(motion) && hasSharedRecipeReadOnlyWiring(props) && /:complex-pet-id="currentPetId"/.test(template(motion)) && /:complex-pet-id="currentPetId"/.test(template(props))],
   ['资产库在客户端稳定区域展示中文复杂模型状态并使用统一 petId 回退', /currentPetId\s*=\s*computed\(\(\)\s*=>\s*appearance\.recipe\.identity\.petId\.trim\(\)\s*\|\|\s*session\.selectedAppearanceId\s*\|\|\s*'active-appearance'/.test(script(library)) && /<ClientOnly>/.test(template(library)) && /复杂模型状态加载中/.test(template(library)) && /function\s+formatCompilationStatus\s*\(/.test(script(library)) && /status\s*===\s*'ready'/.test(script(library)) && /status\s*===\s*'blocked'/.test(script(library)) && /status\s*===\s*'draft'/.test(script(library)) && /biped-pet\/v1/.test(template(library)) && /biped-pet-generator\/v1/.test(template(library)) && /complex\.compilation\?\.diagnostics\.length/.test(template(library)) && /complex\.completion/.test(template(library))],
   ['Studio 布局不再声明复杂模式的简单兼容预览', !layout.includes('骨骼渲染器完成前') && !layout.includes('简单模型兼容预览') && layout.includes('复杂模型由站内配方自动生成')],

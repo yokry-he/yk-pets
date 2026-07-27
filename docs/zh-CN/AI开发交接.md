@@ -79,6 +79,7 @@
 - 道具事件的高级曲线插值；
 - 浏览器截图基线；
 - 真实 Chrome Side Panel、GPU 与 WebGL 人工验收。
+- 复杂模型的语义动作、IK、足底锁定、Root Motion、导出与发布流程。
 
 ## 5. 动作消费链路
 
@@ -215,4 +216,12 @@
 - 外观、动作、道具三个工坊按相同 `petId` 读取同一持久化复杂配方；只有外观工坊提交编译摘要。动作与道具工坊没有新增配方表单、编译提交或独立配方。
 - 资产库在配方存在时展示 `biped-pet/v1`、`biped-pet-generator/v1`、最后编译状态、诊断数量与完成度；不存在配方时明确显示“未创建”，不会伪装为就绪。
 - `scripts/check-studio-complex-biped-model.mjs` 已扩展为结构化 Vue 脚本/模板门禁，检查单 Canvas 的互斥 renderer、事件转发、三个工坊共享配方及资产摘要；`check-studio-model-mode.mjs` 同步删除过期兼容预览断言并保留模式与简单路径契约。
-- 本批仅完成 Task6 预览接线。Task7 复杂模型参数编辑器，以及复杂模型语义动作、IK、足底锁定、Root Motion、确定性特效和真实 GPU/WebGL 人工验收仍未完成。
+- 本批仅完成 Task6 预览接线。复杂模型语义动作、IK、足底锁定、Root Motion、确定性特效和真实 GPU/WebGL 人工验收仍未完成。
+
+## 22. 新手复杂模型编辑器批次
+
+- 外观工坊在复杂模式且当前宠物已有配方时显示 `StudioComplexModelEditor`；普通区域仅提供柔软、运动、圆润、纤细四个体型模板，九项安全比例与耳朵、尾巴、触角开关。
+- 编辑器由父层受控：模板先调用 `applyBipedPetBodyStyle`，再通过 `studio-model-variants.updateComplexRecipe` 原子提交；比例只提交局部 patch，附属物只写入 `enabled`，因此会保留长度与分段。任何配方变更都会清除旧编译摘要，并由既有复杂模型运行时重新编译后提交结果。
+- 比例滑块在 `input` 阶段仅更新本地草稿，在 `change` 阶段只提交一次；数值框使用 `valueAsNumber`，空值或非法值会恢复当前配方而不提交。外部配方更新不会覆盖正在拖动的本地值。当前复杂模型容器没有撤销历史，禁止伪造拖动合并能力；静态门禁只检查该事件契约，单次拖动写入仍由 `.ai/visual-cases.json` 的人工验收确认。
+- 高级信息折叠区只读显示 Profile、generator、骨骼数、顶点数、诊断与安全范围；不向新手暴露手工骨骼、绑定或权重编辑。760px 以下改为单列，模板使用 `aria-pressed`，开关具有稳定标签与键盘焦点。
+- 本批只完成 Task7 编辑器接入；复杂模型语义动作、IK、足底锁定、Root Motion、确定性特效、导出与真实 GPU/WebGL 人工验收仍未完成。

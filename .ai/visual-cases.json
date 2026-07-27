@@ -362,6 +362,27 @@
         "asset-library-reports-real-simple-and-complex-status",
         "1440×900 与 760×900 下工具栏、状态和资产详情均无横向溢出"
       ]
+    },
+    {
+      "id": "studio-complex-beginner-editor",
+      "route": "/studio/appearance",
+      "setup": {
+        "modelMode": "complex",
+        "viewports": [[1440, 900], [760, 900]],
+        "initialBodyStyle": "soft"
+      },
+      "automatedChecks": [
+        "complex-model-beginner-editor-static-gate",
+        "recipe-limit-driven-proportion-controls",
+        "complex-recipe-atomic-patch-clears-stale-compilation"
+      ],
+      "manualChecks": [
+        "切换复杂模式后自动生成默认模型并显示新手编辑器",
+        "用三步完成一次编辑：选择模板、拖动身高后松开、开关尾巴",
+        "每次滑块拖动只产生一次配方写入，尾巴长度和分段保持不变",
+        "展开只读高级信息可看到 Profile、生成器、骨骼数、顶点数、诊断和安全范围",
+        "1440×900 与 760×900 均为单列可操作布局且没有横向滚动"
+      ]
     }
   ]
 }

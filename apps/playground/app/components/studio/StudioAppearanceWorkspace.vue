@@ -7,6 +7,7 @@
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
 import StudioAntennaEditor from '~/components/studio/StudioAntennaEditor.vue'
 import StudioBellyPatchEditor from '~/components/studio/StudioBellyPatchEditor.vue'
+import StudioComplexModelEditor from '~/components/studio/StudioComplexModelEditor.vue'
 import StudioEarEditor from '~/components/studio/StudioEarEditor.vue'
 import StudioFrontPawEditor from '~/components/studio/StudioFrontPawEditor.vue'
 import StudioHindPawEditor from '~/components/studio/StudioHindPawEditor.vue'
@@ -18,7 +19,7 @@ import StudioPartColorEditor from '~/components/studio/StudioPartColorEditor.vue
 import StudioPreviewToolbar from '~/components/studio/StudioPreviewToolbar.vue'
 import StudioSymbolEditor from '~/components/studio/StudioSymbolEditor.vue'
 import StudioTailEditor from '~/components/studio/StudioTailEditor.vue'
-import type { CompiledCharacterModel } from '@yk-pets/pet-core'
+import { applyBipedPetBodyStyle, createBipedPetModelRecipe, type BipedPetAppendages, type BipedPetBodyStyle, type BipedPetProportions, type CompiledCharacterModel } from '@yk-pets/pet-core'
 import { useStudioPreviewOrientation } from '~/composables/useStudioPreviewOrientation'
 import { CLOUD_FOX_BODY_SHAPES, CLOUD_FOX_HEAD_SHAPES, derivePetMonogram } from '~/domain/cloud-fox-appearance'
 import { PET_STUDIO_PART_OPTIONS as PARTS } from '~/domain/pet-studio-phase2'
@@ -28,7 +29,7 @@ import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-
 import type { StudioControlPath } from '~/domain/studio-control-registry'
 import { createExtensionClassicAppearance } from '~/domain/extension-cloud-fox-default'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
-import { useStudioModelVariantsStore } from '~/stores/studio-model-variants'
+import { useStudioModelVariantsStore, type StudioComplexRecipePatch } from '~/stores/studio-model-variants'
 import { useStudioSessionStore } from '~/stores/studio-session'
 
 type Tab = 'identity' | 'face' | 'body' | 'limbs' | 'belly' | 'tail' | 'antenna' | 'colors' | 'glow' | 'symbols' | 'audit'
@@ -43,6 +44,7 @@ const modelVariants = useStudioModelVariantsStore()
 const recipe = computed(() => store.recipe)
 const activeModelPetId = ref('active-appearance')
 const complexRecipe = computed(() => modelVariants.byPetId[activeModelPetId.value]?.complex.recipe)
+const complexCompilation = computed(() => modelVariants.byPetId[activeModelPetId.value]?.complex.compilation)
 type ComplexCompilationPayload = Pick<CompiledCharacterModel, 'hash' | 'status' | 'diagnostics'>
 const tab = ref<Tab>('face')
 const behavior = ref<ExtensionCloudFoxMotionId>('idle')
@@ -115,6 +117,7 @@ watch(tab,next=>{
   if (next==='symbols') setView('back')
   showHotspots.value=false
 })
+watch(() => session.modelMode, mode => { if (mode === 'complex') restoreComparison() })
 function setView(next: CloudFoxStudioView) {
   selectPreviewView(next, selected => { view.value = selected })
 }
@@ -136,6 +139,33 @@ function commitComplexCompilation(payload: ComplexCompilationPayload) {
   if (session.modelMode !== 'complex' || !complex?.recipe) return
   const compiledAt = Date.now()
   modelVariants.commitComplexCompilation(activeModelPetId.value, { ...payload, compiledAt }, compiledAt)
+}
+function updateComplexRecipe(patch: StudioComplexRecipePatch, now = Date.now()) {
+  if (!complexRecipe.value || compareActive.value) return
+  modelVariants.updateComplexRecipe(activeModelPetId.value, patch, now)
+}
+function applyComplexBodyStyle(style: BipedPetBodyStyle) {
+  const current = complexRecipe.value
+  if (!current) return
+  const styled = applyBipedPetBodyStyle(current, style)
+  updateComplexRecipe({ bodyStyle: styled.bodyStyle, proportions: styled.proportions })
+}
+function updateComplexProportion(key: keyof BipedPetProportions, value: number) {
+  updateComplexRecipe({ proportions: { [key]: value } })
+}
+function updateComplexAppendage(key: keyof BipedPetAppendages, enabled: boolean) {
+  // 只补丁 enabled，Store 的安全深合并会保留用户当前的长度和分段。
+  updateComplexRecipe({ appendages: { [key]: { enabled } } })
+}
+function restoreComplexSafeDefaults() {
+  const now = Date.now()
+  const safeDefaults = createBipedPetModelRecipe(now)
+  updateComplexRecipe({
+    bodyStyle: safeDefaults.bodyStyle,
+    proportions: safeDefaults.proportions,
+    appendages: safeDefaults.appendages,
+    material: safeDefaults.material,
+  }, now)
 }
 function show(message:string){notice.value=message;if(noticeTimer)clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{notice.value=''},2600)}
 function setPart(key:PartKey,value:string){if(compareActive.value)return;store.checkpoint();store.patchParts({[key]:value} as Partial<typeof recipe.value.parts>)}
@@ -177,15 +207,16 @@ onBeforeUnmount(()=>{restoreComparison();if(timer)clearTimeout(timer);if(noticeT
       <nav class="part-nav" aria-label="宠物部位"><button v-for="item in tabs" :key="item.id" :class="{active:tab===item.id}" @click="tab=item.id"><i>{{ item.icon }}</i><span><strong>{{ item.label }}</strong><small>{{ item.hint }}</small></span><b v-if="item.id==='audit'&&store.findings.some(f=>f.severity==='warning')">!</b></button></nav>
       <section class="preview-panel">
         <StudioPreviewToolbar class="appearance-preview-toolbar" :view="view" :background="background" :scale="previewScale" :rotation="previewRotation" @view="setView" @background="setBackground" @scale="updatePreviewScale" @rotation="(axis, value) => updatePreviewRotation(axis, value)" @reset="resetPreviewTransform">
-          <template #actions><button class="preview-toolbar-action" :class="{ active: showHotspots }" :aria-pressed="showHotspots" @click="showHotspots=!showHotspots">部位定位</button><button class="preview-toolbar-action" :class="{ active: compareActive }" :aria-pressed="compareActive" @click="toggleComparison">{{ compareActive?'返回当前':'对比经典' }}</button></template>
+          <template #actions><button class="preview-toolbar-action" :class="{ active: showHotspots }" :aria-pressed="showHotspots" @click="showHotspots=!showHotspots">部位定位</button><button class="preview-toolbar-action" :class="{ active: compareActive }" :aria-pressed="compareActive" :disabled="session.modelMode === 'complex'" @click="toggleComparison">{{ compareActive?'返回当前':'对比经典' }}</button></template>
         </StudioPreviewToolbar>
         <div class="stage-status"><span>{{ focusLabel }}</span><small>{{ compareActive?`${changedGroupLabels.length} 组不同 · 只读经典预览`:`${recipe.parts.headShape} / ${recipe.parts.bodyShape}` }}</small></div>
         <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
         <div class="canvas-shell"><ClientOnly><CloudFoxStudioCanvas :appearance="recipe" :behavior="behavior" :motion-key="motionKey" :view="view" :background="background" :focus="previewFocus" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :model-mode="session.modelMode" :complex-pet-id="activeModelPetId" :complex-recipe="complexRecipe" @complex-compiled="commitComplexCompilation" /><template #fallback><div class="loading">正在装配 Cloud Fox…</div></template></ClientOnly><div ref="previewRotateSurface" class="preview-rotate-surface" :class="{dragging:previewDrag.active}" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate"><span>拖动画布自由旋转</span></div><div v-if="showHotspots" class="part-hotspots"><button class="face" @click="tab='face';showHotspots=false">头部</button><button class="body" @click="tab='body';showHotspots=false">身体</button><button class="limbs" @click="tab='limbs';showHotspots=false">四肢</button><button class="tail" @click="tab='tail';showHotspots=false">尾巴</button></div></div>
         <StudioMotionToolbar :behavior="behavior" @play="play" />
       </section>
-      <aside class="inspector"><header><div><strong>{{ recipe.identity.nameZh }} / {{ recipe.identity.nameEn }}</strong><small>{{ store.draftSavedAt?'本地草稿已自动保存':'正在编辑本地草稿' }}</small></div><b>{{ tabs.find(item=>item.id===tab)?.label }}</b></header>
-        <div class="controls" :class="{readonly:compareActive}">
+      <aside class="inspector"><header><div><strong>{{ recipe.identity.nameZh }} / {{ recipe.identity.nameEn }}</strong><small>{{ store.draftSavedAt?'本地草稿已自动保存':'正在编辑本地草稿' }}</small></div><b>{{ session.modelMode === 'complex' && complexRecipe ? '复杂模型' : tabs.find(item=>item.id===tab)?.label }}</b></header>
+        <StudioComplexModelEditor v-if="session.modelMode === 'complex' && complexRecipe" :recipe="complexRecipe" :compilation="complexCompilation" :readonly="compareActive" @apply-style="applyComplexBodyStyle" @update-proportion="updateComplexProportion" @update-appendage="updateComplexAppendage" @restore-safe-defaults="restoreComplexSafeDefaults" />
+        <div v-else class="controls" :class="{readonly:compareActive}">
           <template v-if="tab==='identity'"><section class="section-heading"><small>IDENTITY</small><h2>身份信息</h2><p>身份、方案名称与导出文件标识。</p></section><label>中文名字<input v-model="recipe.identity.nameZh" @focus="store.checkpoint" @input="store.markDirty"></label><label>英文名字<input v-model="recipe.identity.nameEn" @focus="store.checkpoint" @input="store.markDirty" @blur="syncName"></label><label>宠物 ID<input v-model="recipe.identity.petId" @focus="store.checkpoint" @input="store.markDirty" @blur="commitPetId"></label></template>
           <template v-else-if="tab==='face'"><section class="section-heading"><small>HEAD & FACE</small><h2>头部和表情</h2><p>头型独立于身体；左右侧视检查鼻嘴贴合。</p></section><section class="option-section"><h3>头部形状</h3><p>切换身体不会修改这里的选择。</p><div class="option-grid"><button v-for="item in CLOUD_FOX_HEAD_SHAPES" :key="item.id" :class="{active:recipe.parts.headShape===item.id}" @click="setPart('headShape',item.id)"><i>{{ shapeIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.description }}</small></button></div></section><StudioEarEditor /><section class="option-section"><h3>眼睛</h3><div class="option-grid"><button v-for="item in PARTS.eyes" :key="item.id" :class="{active:recipe.parts.eyes===item.id}" @click="setPart('eyes',item.id)"><i>{{ eyeIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.labelEn }}</small></button></div></section><section class="option-section"><h3>鼻子</h3><div class="option-grid"><button v-for="item in PARTS.noses" :key="item.id" :class="{active:recipe.parts.nose===item.id}" @click="setPart('nose',item.id)"><i>{{ noseIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.labelEn }}</small></button></div></section><StudioMouthEditor /><section class="sub-card"><h3>头部比例</h3><StudioNumericControl v-for="[path,key] in faceControls" :key="path" :path="path" :model-value="recipe.proportions[key]" @update:model-value="setProportion(key,$event)" /></section></template>
           <template v-else-if="tab==='body'"><section class="section-heading"><small>BODY</small><h2>身体</h2><p>身体只改变躯干轮廓，不再联动头型。</p></section><section class="option-section"><h3>身体形状</h3><div class="option-grid"><button v-for="item in CLOUD_FOX_BODY_SHAPES" :key="item.id" :class="{active:recipe.parts.bodyShape===item.id}" @click="setPart('bodyShape',item.id)"><i>{{ shapeIcon(item.id) }}</i><strong>{{ item.label }}</strong><small>{{ item.description }}</small></button></div></section><section class="sub-card"><h3>身体比例</h3><StudioNumericControl v-for="[path,key] in bodyControls" :key="path" :path="path" :model-value="recipe.proportions[key]" @update:model-value="setProportion(key,$event)" /></section></template>
@@ -198,7 +229,7 @@ onBeforeUnmount(()=>{restoreComparison();if(timer)clearTimeout(timer);if(noticeT
           <StudioSymbolEditor v-else-if="tab==='symbols'" />
           <template v-else><section class="section-heading"><small>GEOMETRY AUDIT</small><h2>外观检查</h2><p>在四个视角检查头身、肚皮、前后爪、尾巴和嘴巴连接。</p></section><article v-for="finding in store.findings" :key="finding.id" class="finding" :data-severity="finding.severity"><strong>{{ finding.severity==='warning'?'需要检查':finding.severity==='error'?'错误':'提示' }}</strong><p>{{ finding.message }}</p><code v-if="finding.path">{{ finding.path }}</code></article></template>
         </div>
-        <details class="advanced-panel" :open="advancedOpen" @toggle="advancedOpen=($event.target as HTMLDetailsElement).open"><summary><span><small>LOCAL WORKSPACE</small><strong>方案与最近修改</strong></span><i>{{ advancedOpen?'收起':'展开' }}</i></summary><div class="advanced-content"><p>{{ historyLabel }}</p><div class="scheme-form"><input v-model="schemeName" maxlength="32" placeholder="本地方案名称" @keydown.enter="saveScheme"><button @click="saveScheme">保存</button></div><div class="change-groups"><span v-for="group in changedGroupLabels" :key="group">{{ group }}</span><small v-if="!changedGroupLabels.length">当前与经典外观一致</small></div><div class="scheme-list"><article v-for="scheme in store.customSchemes" :key="scheme.id"><div><strong>{{ scheme.name }}</strong><small>{{ new Date(scheme.createdAt).toLocaleString() }}</small></div><span><button @click="applyScheme(scheme.id)">应用</button><button class="danger" @click="removeScheme(scheme.id)">删除</button></span></article><p v-if="!store.customSchemes.length">还没有本地方案。</p></div></div></details>
+        <details v-if="!(session.modelMode === 'complex' && complexRecipe)" class="advanced-panel" :open="advancedOpen" @toggle="advancedOpen=($event.target as HTMLDetailsElement).open"><summary><span><small>LOCAL WORKSPACE</small><strong>方案与最近修改</strong></span><i>{{ advancedOpen?'收起':'展开' }}</i></summary><div class="advanced-content"><p>{{ historyLabel }}</p><div class="scheme-form"><input v-model="schemeName" maxlength="32" placeholder="本地方案名称" @keydown.enter="saveScheme"><button @click="saveScheme">保存</button></div><div class="change-groups"><span v-for="group in changedGroupLabels" :key="group">{{ group }}</span><small v-if="!changedGroupLabels.length">当前与经典外观一致</small></div><div class="scheme-list"><article v-for="scheme in store.customSchemes" :key="scheme.id"><div><strong>{{ scheme.name }}</strong><small>{{ new Date(scheme.createdAt).toLocaleString() }}</small></div><span><button @click="applyScheme(scheme.id)">应用</button><button class="danger" @click="removeScheme(scheme.id)">删除</button></span></article><p v-if="!store.customSchemes.length">还没有本地方案。</p></div></div></details>
       </aside>
     </section><p v-if="notice" class="toast" role="status">{{ notice }}</p>
   </main>

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "lastReviewedDate": "2026-07-27",
+  "lastReviewedDate": "2026-07-28",
   "repository": "yokry-he/yk-pets",
   "developmentBranch": "agent/cloud-fox-studio-v0610",
   "pullRequest": 7,
@@ -68,7 +68,8 @@
     "bipedPetAutomaticSkinFoundationComplete": true,
     "bipedPetModelPersistenceComplete": true,
     "bipedPetThreeRuntimeRendererAdapterComplete": true,
-    "bipedPetWorkshopPreviewWiringComplete": true
+    "bipedPetWorkshopPreviewWiringComplete": true,
+    "bipedPetBeginnerParameterEditorComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -157,14 +158,14 @@
     "biped-pet-automatic-skin-foundation",
     "biped-pet-model-persistence",
     "biped-pet-three-runtime-renderer-adapter",
-    "studio-complex-model-workshop-preview-wiring"
+    "studio-complex-model-workshop-preview-wiring",
+    "studio-complex-model-beginner-parameter-editor"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
     "real-chrome-side-panel-manual-acceptance",
     "real-gpu-webgl-manual-acceptance",
     "true-3d-raycast-gizmo-manipulation",
-    "complex-model-parameter-editor-task7",
     "complex-model-semantic-motion-task8",
     "parametric-rig-skin-and-socket-validation",
     "semantic-motion-solving-ik-foot-lock-root-motion",
@@ -173,7 +174,7 @@
   ],
   "nextPhase": "in-site-parametric-biped-rig",
   "latestCompletedBatch": {
-    "id": "studio-complex-model-workshop-preview-wiring",
+    "id": "studio-complex-model-beginner-parameter-editor",
     "domainPackage": "apps/playground",
     "rendererModified": true,
     "visualCasesModified": true,
@@ -186,7 +187,8 @@
       "normalized-recipe-runtime-key-deduplication",
       "complex-biped-runtime-static-gate",
       "complex-model-canvas-replacement-and-fallback-gate",
-      "three-workshop-shared-recipe-wiring"
+      "three-workshop-shared-recipe-wiring",
+      "complex-model-beginner-editor-static-gate"
     ]
   },
   "mandatoryDevelopmentPolicy": {
