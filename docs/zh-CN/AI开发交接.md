@@ -169,3 +169,10 @@
 - 下一阶段调整为 `in-site-parametric-biped-rig`：不导入宠物 GLB，由站内模型配方自动生成 `biped-pet/v1` 骨架、网格、蒙皮权重、Socket 和语义映射；
 - 长期通过版本化 Rig Profile 支持人形、四足和机甲，但第一版只正式实现双足萌宠；
 - `browser-acceptance-and-release-hardening` 仍是复杂运行时完成后的必要阶段，不得把本轮静态检查描述为真实 GPU/WebGL 验收。
+
+## 16. 双足萌宠 Rig Profile 契约批次
+
+- `@yk-pets/pet-core` 已新增框架无关的 `CharacterRigProfile` 契约与稳定诊断校验，覆盖骨骼唯一性、单根拓扑、父级与循环引用、语义引用、关节限制、接触点、Socket 及有限 Vector3/Quaternion；
+- `biped-pet/v1` 已定义基础双足骨架：根节点、骨盆、三段脊柱、胸腔、颈部、头部、完整左右手臂与腿部，并声明耳朵、尾巴、触角三个可选生成链；
+- 双脚接触点及左右手、左右脚、头部、背部和尾根 Socket 已进入领域契约；
+- 渲染器、程序化网格、自动蒙皮、Quaternion 动作、运行时 IK、足底锁定和 Root Motion 仍未完成，不能将本批静态领域契约描述为复杂模型运行时或真实 GPU/WebGL 验收完成。

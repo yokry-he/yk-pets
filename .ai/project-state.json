@@ -61,7 +61,8 @@
     "studioDualModelContainerComplete": true,
     "studioGlobalModelModeComplete": true,
     "studioComplexDraftAutomationComplete": true,
-    "studioComplexPreviewAdapterBoundaryComplete": true
+    "studioComplexPreviewAdapterBoundaryComplete": true,
+    "bipedPetRigProfileContractComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -143,7 +144,8 @@
     "studio-dual-model-container",
     "studio-global-model-mode",
     "studio-complex-draft-automation",
-    "studio-complex-preview-adapter-boundary"
+    "studio-complex-preview-adapter-boundary",
+    "biped-pet-rig-profile-contract"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
