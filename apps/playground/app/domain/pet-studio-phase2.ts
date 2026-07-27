@@ -21,8 +21,18 @@ export type { CloudFoxStudioBackground, CloudFoxStudioBehavior, CloudFoxStudioVi
 const extra = <T extends string>(id: T, label: string, labelEn: string) => ({ id, label, labelEn })
 export const PET_STUDIO_PART_OPTIONS = {
   ears: [...CLOUD_FOX_PART_OPTIONS.ears, extra('floppy', '糯米垂耳', 'Mochi Flop'), extra('petal', '花瓣耳', 'Petal Ear')],
-  eyes: [...CLOUD_FOX_PART_OPTIONS.eyes, extra('sleepy', '月牙眯眼', 'Sleepy Crescent'), extra('diamond', '水晶菱眼', 'Crystal Diamond')],
-  noses: [...CLOUD_FOX_PART_OPTIONS.noses, extra('button', '纽扣鼻', 'Button Nose'), extra('heart', '爱心鼻', 'Heart Nose')],
+  eyes: [
+    ...CLOUD_FOX_PART_OPTIONS.eyes,
+    extra('sleepy', '月牙眯眼', 'Sleepy Crescent'), extra('diamond', '水晶菱眼', 'Crystal Diamond'),
+    extra('happy-crescent', '开心弯月眼', 'Happy Crescent'), extra('angry', '生气锐角眼', 'Angry Sharp'),
+    extra('sad', '委屈下垂眼', 'Sad Droop'), extra('surprised', '惊讶圆睁眼', 'Surprised'),
+    extra('heart', '爱心眼', 'Heart Eyes'), extra('spiral', '眩晕旋涡眼', 'Dizzy Spiral'),
+  ],
+  noses: [
+    ...CLOUD_FOX_PART_OPTIONS.noses,
+    extra('button', '纽扣鼻', 'Button Nose'), extra('heart', '爱心鼻', 'Heart Nose'),
+    extra('cat', '猫系鼻', 'Cat Nose'), extra('crystal', '水晶鼻', 'Crystal Nose'), extra('starlight', '星光鼻', 'Starlight Nose'),
+  ],
   mouths: [...CLOUD_FOX_PART_OPTIONS.mouths, extra('open', '开心张嘴', 'Happy Open'), extra('pout', '软萌嘟嘴', 'Soft Pout')],
   tails: CLOUD_FOX_PART_OPTIONS.tails,
   antennas: CLOUD_FOX_PART_OPTIONS.antennas,

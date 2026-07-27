@@ -295,6 +295,71 @@
         "toolbar-does-not-cover-pet-or-motion-direct-pad",
         "toolbar-wraps-without-horizontal-overflow"
       ]
+    },
+    {
+      "id": "studio-expression-motion-and-built-in-assets",
+      "route": "/studio/appearance",
+      "setup": {
+        "repeatRoutes": ["/studio/motion", "/studio/library"],
+        "viewport": [1920, 1080]
+      },
+      "automatedChecks": [
+        "expression-eye-and-nose-registration",
+        "motion-safe-channel-clamping",
+        "built-in-prop-and-motion-id-uniqueness",
+        "built-in-motion-prop-dependency-resolution"
+      ],
+      "manualChecks": [
+        "new-eyes-fit-all-head-shapes-from-front-and-side",
+        "new-noses-follow-muzzle-surface-and-glow",
+        "safe-deformation-returns-to-base-appearance",
+        "staff-and-glow-sticks-render-during-template-playback",
+        "library-copies-do-not-mutate-read-only-templates"
+      ]
+    },
+    {
+      "id": "studio-long-form-complex-motion-choreography",
+      "route": "/studio/library",
+      "setup": {
+        "repeatRoutes": ["/studio/motion"],
+        "viewport": [1440, 900]
+      },
+      "automatedChecks": [
+        "six-motion-duration-range",
+        "minimum-semantic-channel-and-keyframe-density",
+        "seamless-loop-boundaries",
+        "all-values-within-semantic-rig-ranges"
+      ],
+      "manualChecks": [
+        "play-all-six-copied-motion-templates",
+        "observe-preparation-main-transition-climax-and-recovery",
+        "confirm-gaze-limbs-tail-and-expression-coordination",
+        "confirm-staff-and-glow-stick-accent-events",
+        "confirm-no-horizontal-overflow-at-760px"
+      ]
+    },
+    {
+      "id": "studio-global-dual-model-mode",
+      "route": "/studio/appearance",
+      "setup": {
+        "repeatRoutes": ["/studio/motion", "/studio/props", "/studio/library"],
+        "viewports": [[1440, 900], [760, 900]],
+        "initialComplexStatus": "missing"
+      },
+      "automatedChecks": [
+        "dual-model-domain-normalization",
+        "non-destructive-complex-draft-creation",
+        "global-model-mode-session-persistence",
+        "three-workspace-model-mode-wiring",
+        "canonical-renderer-preservation"
+      ],
+      "manualChecks": [
+        "selecting-complex-creates-draft-without-extra-dialog",
+        "mode-persists-across-all-studio-routes-and-refresh",
+        "compatibility-preview-label-does-not-block-drag",
+        "asset-library-reports-real-simple-and-complex-status",
+        "header-has-no-horizontal-overflow-at-760px"
+      ]
     }
   ]
 }

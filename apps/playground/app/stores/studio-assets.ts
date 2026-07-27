@@ -19,6 +19,8 @@ import {
   updatePropComponent,
 } from '@yk-pets/pet-core'
 import { defineStore } from 'pinia'
+import { getBuiltInStudioMotion } from '~/domain/studio-built-in-motions'
+import { getBuiltInStudioProp } from '~/domain/studio-built-in-props'
 import {
   STUDIO_ASSET_LEGACY_STORAGE_KEY,
   STUDIO_ASSET_STORAGE_KEY,
@@ -101,6 +103,15 @@ export const useStudioAssetStore = defineStore('studio-assets', {
       this.persist()
       return this.motions.find(item => item.id === asset.id)
     },
+    copyBuiltInMotion(id: string) {
+      const source = getBuiltInStudioMotion(id)
+      if (!source) return
+      const now = Date.now()
+      const copy = normalizeMotionAsset({ ...structuredClone(source), id: createStudioAssetId('motion'), nameZh: `${source.nameZh} 副本`, nameEn: `${source.nameEn} Copy`, createdAt: now, updatedAt: now }).asset
+      this.motions.unshift(copy)
+      this.persist()
+      return copy
+    },
     deleteMotion(id: string) {
       this.motions = this.motions.filter(item => item.id !== id)
       this.persist()
@@ -137,6 +148,15 @@ export const useStudioAssetStore = defineStore('studio-assets', {
     },
     duplicateProp(id: string) {
       const source = this.props.find(item => item.id === id)
+      if (!source) return
+      const now = Date.now()
+      const copy = normalizePropAsset({ ...structuredClone(source), id: createStudioAssetId('prop'), nameZh: `${source.nameZh} 副本`, nameEn: `${source.nameEn} Copy`, createdAt: now, updatedAt: now }).asset
+      this.props.unshift(copy)
+      this.persist()
+      return copy
+    },
+    copyBuiltInProp(id: string) {
+      const source = getBuiltInStudioProp(id)
       if (!source) return
       const now = Date.now()
       const copy = normalizePropAsset({ ...structuredClone(source), id: createStudioAssetId('prop'), nameZh: `${source.nameZh} 副本`, nameEn: `${source.nameEn} Copy`, createdAt: now, updatedAt: now }).asset

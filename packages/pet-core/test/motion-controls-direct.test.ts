@@ -51,6 +51,9 @@ test('body-part and control registries remain unique and only reference semantic
   assert.ok(getMotionBodyPartControls('root', 'translate').length === 3)
   assert.ok(getMotionBodyPartControls('root', 'scale').some(item => item.id === 'root.scale.uniform'))
   assert.ok(getMotionBodyPartControls('face', 'semantic').length >= 5)
+  assert.ok(MOTION_BODY_PARTS.some(item => item.id === 'nose' && item.parentId === 'face'))
+  assert.ok(getMotionBodyPartControls('nose', 'semantic').some(item => item.channelIds.includes('nose.sniff')))
+  assert.ok(getMotionBodyPartControls('tail-root', 'scale').some(item => item.channelIds.includes('tail.fluff')))
   assert.ok(MOTION_CONTROLS.every(item => item.channelIds.every(channelId => !channelId.includes('mesh') && !channelId.includes('/'))))
 })
 

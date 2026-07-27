@@ -51,6 +51,8 @@ YK-PETS is the product brand. The current default pet is a Cloud Fox named Zeph�
 | Studio acceptance | [工坊工作区人工验收](./zh-CN/工坊工作区验收.md) | [Studio workspace acceptance](./en/STUDIO-WORKSPACES-ACCEPTANCE.md) |
 | Advanced Studio | [宠物工坊高级功能](./zh-CN/宠物工坊高级功能.md) | [Advanced Pet Studio](./en/PET-STUDIO-ADVANCED.md) |
 | Advanced acceptance | [宠物工坊高级验收](./zh-CN/宠物工坊高级验收.md) | [Advanced Studio acceptance](./en/PET-STUDIO-ADVANCED-ACCEPTANCE.md) |
+| Dual-model Studio design | [双模型工坊与复杂动作交互设计](./zh-CN/双模型工坊与复杂动作交互设计.md) | 中文设计为当前权威版本 |
+| Dual-model Studio phase 1 plan | [双模型工坊第一阶段实施计划](./zh-CN/双模型工坊第一阶段实施计划.md) | 中文计划为当前权威版本 |
 | Customization | [宠物自定义](./zh-CN/宠物自定义.md) | [Pet customization](./en/PET-CUSTOMIZATION.md) |
 | Customization acceptance | [宠物自定义验收](./zh-CN/宠物自定义验收.md) | [Customization acceptance](./en/PET-CUSTOMIZATION-ACCEPTANCE.md) |
 | Canonical renderer | [统一云狐渲染器](./zh-CN/统一云狐渲染器.md) | [Unified Cloud Fox renderer](./en/UNIFIED-CLOUD-FOX-RENDERER.md) |

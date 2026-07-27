@@ -24,11 +24,27 @@ test('semantic Rig channels are stable, unique, and renderer independent', () =>
   const ids = CLOUD_FOX_RIG_CHANNELS.map(channel => channel.id)
   assert.equal(ids.length, new Set(ids).size)
   assert.equal(ids[0], 'root.position.x')
-  assert.equal(ids.at(-1), 'antenna.right.length')
+  assert.equal(ids.at(-1), 'antenna.glow')
   assert.ok(ids.includes('mouth.open'))
   assert.ok(ids.includes('tail.tip.rotation.z'))
   assert.ok(CLOUD_FOX_RIG_CHANNELS.every(channel => !/mesh|three|color|shape/i.test(channel.id)))
   assert.deepEqual(createNeutralCloudFoxPoseValues(), createNeutralCloudFoxPoseValues())
+})
+
+test('动作安全形变通道保持中性并钳制越界关键帧', () => {
+  const ids = [
+    'head.scale', 'eye.scale', 'eye.spacing', 'eye.pupilScale', 'eye.expressionTilt',
+    'nose.scale.x', 'nose.scale.y', 'nose.scale.z', 'nose.offset.y', 'nose.sniff',
+    'nose.glow', 'mouth.curve', 'tail.length', 'tail.fluff', 'antenna.glow',
+  ] as const
+  const neutral = createNeutralCloudFoxPoseValues()
+  for (const id of ids) assert.equal(neutral[id], 0)
+
+  const result = normalizeMotionAsset({
+    id: 'safe-deformation', nameZh: '安全形变', nameEn: 'Safe deformation', durationMs: 1000,
+    tracks: [{ id: 'nose-scale', channelId: 'nose.scale.x', keyframes: [{ id: 'high', timeMs: 0, value: 99, interpolation: 'linear' }] }],
+  })
+  assert.equal(result.asset.tracks[0]?.keyframes[0]?.value, 1)
 })
 
 test('FPS is a display grid and does not replace millisecond storage', () => {

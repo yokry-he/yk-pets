@@ -27,6 +27,7 @@ import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-
 import type { StudioControlPath } from '~/domain/studio-control-registry'
 import { createExtensionClassicAppearance } from '~/domain/extension-cloud-fox-default'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
+import { useStudioSessionStore } from '~/stores/studio-session'
 
 type Tab = 'identity' | 'face' | 'body' | 'limbs' | 'belly' | 'tail' | 'antenna' | 'colors' | 'glow' | 'symbols' | 'audit'
 type PartKey = 'headShape' | 'eyes' | 'nose' | 'bodyShape'
@@ -35,6 +36,7 @@ interface SearchEntry { label: string; tab: Tab; keywords: string }
 
 useHead({ bodyAttrs: { class: 'yk-pets-studio-page' } })
 const store = usePetAppearanceStore()
+const session = useStudioSessionStore()
 const recipe = computed(() => store.recipe)
 const tab = ref<Tab>('face')
 const behavior = ref<ExtensionCloudFoxMotionId>('idle')
@@ -133,7 +135,7 @@ function eyeIcon(id:string){return id==='spark'?'✦':id==='diamond'?'◆':id===
 function noseIcon(id:string){return id==='triangle'?'▲':id==='sensor'?'▰':id==='heart'?'♥':'●'}
 function shapeIcon(id:string){return id.includes('cube')?'▣':id==='capsule'?'▯':id==='pear'?'♟':id==='bean'?'◒':id.includes('oval')||id==='ellipsoid'?'⬭':'●'}
 function changedGroups(input:unknown){const current=normalizeCustomizableAppearance(input);const classic=normalizeCustomizableAppearance(createExtensionClassicAppearance());const groups:Array<[string,boolean]>=[['头部',JSON.stringify(current.parts)!==JSON.stringify(classic.parts)||JSON.stringify(current.customization.mouth)!==JSON.stringify(classic.customization.mouth)],['身体',current.parts.bodyShape!==classic.parts.bodyShape||current.proportions.bodyWidth!==classic.proportions.bodyWidth||current.proportions.bodyHeight!==classic.proportions.bodyHeight||current.proportions.bodyDepth!==classic.proportions.bodyDepth],['四肢',JSON.stringify(current.frontPawDesign)!==JSON.stringify(classic.frontPawDesign)||JSON.stringify(current.hindPawDesign)!==JSON.stringify(classic.hindPawDesign)],['颜色',JSON.stringify(current.customization.colors)!==JSON.stringify(classic.customization.colors)],['肚皮',JSON.stringify(current.customization.belly)!==JSON.stringify(classic.customization.belly)],['尾巴',JSON.stringify(current.tailDesign)!==JSON.stringify(classic.tailDesign)],['触角',JSON.stringify(current.antennaDesign)!==JSON.stringify(classic.antennaDesign)],['发光轨道',JSON.stringify(current.glow)!==JSON.stringify(classic.glow)||JSON.stringify(current.orbitDesign)!==JSON.stringify(classic.orbitDesign)],['标志',JSON.stringify(current.symbols)!==JSON.stringify(classic.symbols)]];return groups.filter(([,changed])=>changed).map(([label])=>label)}
-onMounted(()=>{store.hydrate();window.addEventListener('keydown',onKeydown)})
+onMounted(()=>{store.hydrate();session.hydrate();window.addEventListener('keydown',onKeydown)})
 onBeforeUnmount(()=>{restoreComparison();if(timer)clearTimeout(timer);if(noticeTimer)clearTimeout(noticeTimer);if(searchBlurTimer)clearTimeout(searchBlurTimer);store.endTransaction();window.removeEventListener('keydown',onKeydown)})
 </script>
 
@@ -153,7 +155,7 @@ onBeforeUnmount(()=>{restoreComparison();if(timer)clearTimeout(timer);if(noticeT
         </StudioPreviewToolbar>
         <div class="stage-status"><span>{{ focusLabel }}</span><small>{{ compareActive?`${changedGroupLabels.length} 组不同 · 只读经典预览`:`${recipe.parts.headShape} / ${recipe.parts.bodyShape}` }}</small></div>
         <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
-        <div class="canvas-shell"><ClientOnly><CloudFoxStudioCanvas :appearance="recipe" :behavior="behavior" :motion-key="motionKey" :view="view" :background="background" :focus="previewFocus" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" /><template #fallback><div class="loading">正在装配 Cloud Fox…</div></template></ClientOnly><div ref="previewRotateSurface" class="preview-rotate-surface" :class="{dragging:previewDrag.active}" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate"><span>拖动画布自由旋转</span></div><div v-if="showHotspots" class="part-hotspots"><button class="face" @click="tab='face';showHotspots=false">头部</button><button class="body" @click="tab='body';showHotspots=false">身体</button><button class="limbs" @click="tab='limbs';showHotspots=false">四肢</button><button class="tail" @click="tab='tail';showHotspots=false">尾巴</button></div></div>
+        <div class="canvas-shell"><ClientOnly><CloudFoxStudioCanvas :appearance="recipe" :behavior="behavior" :motion-key="motionKey" :view="view" :background="background" :focus="previewFocus" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :model-mode="session.modelMode" /><template #fallback><div class="loading">正在装配 Cloud Fox…</div></template></ClientOnly><div ref="previewRotateSurface" class="preview-rotate-surface" :class="{dragging:previewDrag.active}" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate"><span>拖动画布自由旋转</span></div><div v-if="showHotspots" class="part-hotspots"><button class="face" @click="tab='face';showHotspots=false">头部</button><button class="body" @click="tab='body';showHotspots=false">身体</button><button class="limbs" @click="tab='limbs';showHotspots=false">四肢</button><button class="tail" @click="tab='tail';showHotspots=false">尾巴</button></div></div>
         <StudioMotionToolbar :behavior="behavior" @play="play" />
       </section>
       <aside class="inspector"><header><div><strong>{{ recipe.identity.nameZh }} / {{ recipe.identity.nameEn }}</strong><small>{{ store.draftSavedAt?'本地草稿已自动保存':'正在编辑本地草稿' }}</small></div><b>{{ tabs.find(item=>item.id===tab)?.label }}</b></header>

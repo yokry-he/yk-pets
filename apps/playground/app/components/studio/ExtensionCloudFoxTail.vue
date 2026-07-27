@@ -12,7 +12,7 @@ import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME, type VisualCurve } from '~/domain/c
 import { createExtensionCloudFoxMotionFrame, smoothStep } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
-import { customPoseValue } from '~/domain/custom-motion-pose'
+import { customPoseScale, customPoseValue } from '~/domain/custom-motion-pose'
 
 const props = defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
@@ -52,10 +52,11 @@ const midSegment = computed(() => segments.value[1] || {
 const tipSegment = computed(() => segments.value[2] || {
   length: .52, width: .16, offsetX: 0, offsetY: 0, offsetZ: 0, rotationX: 0, rotationY: 0, rotationZ: .16,
 })
-const tailWidth = computed(() => props.appearance.proportions.tailWidth)
-const baseLengthFactor = computed(() => props.appearance.proportions.tailLength * (baseSegment.value.length / .58))
-const midLengthFactor = computed(() => props.appearance.proportions.tailLength * (midSegment.value.length / .58))
-const tipLengthFactor = computed(() => props.appearance.proportions.tailLength * (tipSegment.value.length / .52))
+const tailWidth = computed(() => props.appearance.proportions.tailWidth * customPoseScale(props.customPose, 'tail.fluff'))
+const animatedTailLength = computed(() => props.appearance.proportions.tailLength * customPoseScale(props.customPose, 'tail.length'))
+const baseLengthFactor = computed(() => animatedTailLength.value * (baseSegment.value.length / .58))
+const midLengthFactor = computed(() => animatedTailLength.value * (midSegment.value.length / .58))
+const tipLengthFactor = computed(() => animatedTailLength.value * (tipSegment.value.length / .52))
 const baseCurve = computed(() => scaledCurve(scheme.model.tail.baseCurve, baseLengthFactor.value))
 const midCurve = computed(() => scaledCurve(scheme.model.tail.midCurve, midLengthFactor.value))
 const tipCurve = computed(() => scaledCurve(scheme.model.tail.tipCurve, tipLengthFactor.value))

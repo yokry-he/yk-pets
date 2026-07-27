@@ -91,6 +91,7 @@ export const CLOUD_FOX_RIG_CHANNELS = Object.freeze([
   rotation('head.rotation.x', '头部旋转 X', 'Head rotation X', -Math.PI, Math.PI),
   rotation('head.rotation.y', '头部旋转 Y', 'Head rotation Y', -Math.PI, Math.PI),
   rotation('head.rotation.z', '头部旋转 Z', 'Head rotation Z', -Math.PI, Math.PI),
+  ratio('head.scale', '头部动态比例', 'Animated head scale', -.35, .6),
 
   rotation('frontPaw.left.rotation.x', '左前爪旋转 X', 'Left front paw rotation X', -Math.PI, Math.PI),
   rotation('frontPaw.left.rotation.y', '左前爪旋转 Y', 'Left front paw rotation Y', -Math.PI, Math.PI),
@@ -123,7 +124,18 @@ export const CLOUD_FOX_RIG_CHANNELS = Object.freeze([
   normalized('eye.right.closure', '右眼闭合', 'Right eye closure'),
   normalized('eye.gaze.x', '视线 X', 'Eye gaze X', -1, 1),
   normalized('eye.gaze.y', '视线 Y', 'Eye gaze Y', -1, 1),
+  ratio('eye.scale', '眼睛动态比例', 'Animated eye scale', -.6, 1),
+  distance('eye.spacing', '眼距动态偏移', 'Animated eye spacing', -.5, .5),
+  ratio('eye.pupilScale', '瞳孔比例', 'Pupil scale', -.75, 1),
+  normalized('eye.expressionTilt', '眼部表情倾斜', 'Eye expression tilt', -1, 1),
+  ratio('nose.scale.x', '鼻子缩放 X', 'Nose scale X', -.6, 1),
+  ratio('nose.scale.y', '鼻子缩放 Y', 'Nose scale Y', -.6, 1),
+  ratio('nose.scale.z', '鼻子缩放 Z', 'Nose scale Z', -.6, 1),
+  distance('nose.offset.y', '鼻子上下偏移', 'Nose offset Y', -.4, .4),
+  normalized('nose.sniff', '鼻子嗅闻', 'Nose sniff'),
+  normalized('nose.glow', '鼻子发光', 'Nose glow'),
   normalized('mouth.open', '嘴部开合', 'Mouth opening'),
+  normalized('mouth.curve', '嘴部表情曲线', 'Mouth expression curve', -1, 1),
 
   rotation('tail.root.rotation.x', '尾根旋转 X', 'Tail root rotation X', -Math.PI, Math.PI),
   rotation('tail.root.rotation.y', '尾根旋转 Y', 'Tail root rotation Y', -Math.PI, Math.PI),
@@ -134,6 +146,8 @@ export const CLOUD_FOX_RIG_CHANNELS = Object.freeze([
   rotation('tail.tip.rotation.x', '尾尖旋转 X', 'Tail tip rotation X', -Math.PI, Math.PI),
   rotation('tail.tip.rotation.y', '尾尖旋转 Y', 'Tail tip rotation Y', -Math.PI, Math.PI),
   rotation('tail.tip.rotation.z', '尾尖旋转 Z', 'Tail tip rotation Z', -Math.PI, Math.PI),
+  ratio('tail.length', '尾巴动态长度', 'Animated tail length', -.4, .8),
+  ratio('tail.fluff', '尾巴蓬松比例', 'Tail fluff', -.4, 1),
 
   rotation('antenna.left.rotation.x', '左触角旋转 X', 'Left antenna rotation X', -Math.PI, Math.PI),
   rotation('antenna.left.rotation.y', '左触角旋转 Y', 'Left antenna rotation Y', -Math.PI, Math.PI),
@@ -143,6 +157,7 @@ export const CLOUD_FOX_RIG_CHANNELS = Object.freeze([
   rotation('antenna.right.rotation.y', '右触角旋转 Y', 'Right antenna rotation Y', -Math.PI, Math.PI),
   rotation('antenna.right.rotation.z', '右触角旋转 Z', 'Right antenna rotation Z', -Math.PI, Math.PI),
   ratio('antenna.right.length', '右触角长度偏移', 'Right antenna length offset', -.5, 1),
+  normalized('antenna.glow', '触角发光', 'Antenna glow'),
 ] as const)
 
 export type CloudFoxRigChannelId = typeof CLOUD_FOX_RIG_CHANNELS[number]['id']
@@ -165,7 +180,7 @@ export const CLOUD_FOX_RIG_TRACK_GROUPS: readonly CloudFoxRigTrackGroup[] = Obje
   { id: 'front-paws', labelZh: '前爪', labelEn: 'Front paws', channelIds: channelIdsByPrefix(['frontPaw.']) },
   { id: 'hind-paws', labelZh: '后爪', labelEn: 'Hind paws', channelIds: channelIdsByPrefix(['hindPaw.']) },
   { id: 'ears', labelZh: '耳朵', labelEn: 'Ears', channelIds: channelIdsByPrefix(['ear.']) },
-  { id: 'face', labelZh: '眼睛与嘴部', labelEn: 'Eyes and mouth', channelIds: channelIdsByPrefix(['eye.', 'mouth.']) },
+  { id: 'face', labelZh: '表情与鼻子', labelEn: 'Face and nose', channelIds: channelIdsByPrefix(['eye.', 'nose.', 'mouth.']) },
   { id: 'tail', labelZh: '尾巴', labelEn: 'Tail', channelIds: channelIdsByPrefix(['tail.']) },
   { id: 'antennae', labelZh: '触角', labelEn: 'Antennae', channelIds: channelIdsByPrefix(['antenna.']) },
 ])

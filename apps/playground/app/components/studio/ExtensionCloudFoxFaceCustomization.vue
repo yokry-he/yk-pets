@@ -13,7 +13,7 @@ import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-
 import { resolveCloudFoxMuzzleSurfaceAnchor } from '~/domain/cloud-fox-surface-model'
 import { resolvePetCustomization } from '~/domain/pet-part-customization'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
-import { customPoseValue, hasAuthoredPoseChannel } from '~/domain/custom-motion-pose'
+import { customPoseScale, customPoseValue, hasAuthoredPoseChannel } from '~/domain/custom-motion-pose'
 
 const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe; behavior: ExtensionCloudFoxMotionId; motionKey: number; customPose?: EvaluatedCloudFoxPose | null }>()
 const vector = (values: readonly number[]) => new Vector3(values[0] || 0, values[1] || 0, values[2] || 0)
@@ -33,7 +33,7 @@ let startedAt = 0
 const noseAnchor = computed(() => resolveCloudFoxMuzzleSurfaceAnchor(
   { shape: props.appearance.parts.headShape, headScale: headScale.value },
   nose.value.offsetX * headScale.value,
-  (-.02 + nose.value.offsetY) * headScale.value,
+  (-.02 + nose.value.offsetY + customPoseValue(props.customPose, 'nose.offset.y') * .16) * headScale.value,
   nose.value.surfaceOffset,
 ))
 const mouthAnchor = computed(() => resolveCloudFoxMuzzleSurfaceAnchor(
@@ -52,19 +52,24 @@ const noseScale = computed(() => {
   else if (props.appearance.parts.nose === 'button') base = [.135, .105, .068]
   else if (props.appearance.parts.nose === 'heart') base = [.115, .115, .07]
   else if (props.appearance.parts.nose === 'triangle') base = [.135, .12, .082]
+  else if (props.appearance.parts.nose === 'cat') base = [.13, .1, .075]
+  else if (props.appearance.parts.nose === 'crystal') base = [.13, .13, .09]
+  else if (props.appearance.parts.nose === 'starlight') base = [.14, .14, .08]
+  const sniff = customPoseValue(props.customPose, 'nose.sniff')
   return vector([
-    base[0] * headScale.value * nose.value.scaleX,
-    base[1] * headScale.value * nose.value.scaleY,
-    base[2] * headScale.value * nose.value.scaleZ,
+    base[0] * headScale.value * nose.value.scaleX * customPoseScale(props.customPose, 'nose.scale.x') * (1 + sniff * .12),
+    base[1] * headScale.value * nose.value.scaleY * customPoseScale(props.customPose, 'nose.scale.y') * (1 - sniff * .08),
+    base[2] * headScale.value * nose.value.scaleZ * customPoseScale(props.customPose, 'nose.scale.z') * (1 + sniff * .16),
   ])
 })
+const noseGlow = computed(() => customPoseValue(props.customPose, 'nose.glow') * 2.4)
 const mouthBaseScale = computed(() => vector([headScale.value * mouth.value.width, headScale.value * mouth.value.height, headScale.value]))
 const openScale = computed(() => mouth.value.defaultOpen + animatedOpen.value * Math.max(0, mouth.value.maxOpen - mouth.value.defaultOpen))
 const classicGap = computed(() => .046 + animatedOpen.value * .018)
 const tongueScale = computed(() => mouth.value.tongueScale * (1 + animatedOpen.value * .12))
 const lineThickness = computed(() => .014 * mouth.value.thickness)
 const curveThickness = computed(() => .014 * mouth.value.thickness)
-const curveScale = computed(() => vector([1, mouth.value.curve * (1 + animatedOpen.value * .1), 1]))
+const curveScale = computed(() => vector([1, mouth.value.curve * (1 + animatedOpen.value * .1 + customPoseValue(props.customPose, 'mouth.curve') * .45), 1]))
 const smileLeft = new CatmullRomCurve3([vector([-.17, .02, 0]), vector([-.12, -.035, .004]), vector([-.06, -.06, .006]), vector([0, -.052, .008])])
 const smileRight = new CatmullRomCurve3([vector([0, -.052, .008]), vector([.06, -.06, .006]), vector([.12, -.035, .004]), vector([.17, .02, 0])])
 const catLeft = new CatmullRomCurve3([vector([-.16, .015, 0]), vector([-.11, -.055, .004]), vector([-.05, -.07, .006]), vector([0, -.018, .008])])
@@ -118,7 +123,13 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
         <TresMesh v-for="side in [-1, 1]" :key="side" :position="vector([side * .32, .16, 0])" :scale="vector([.56, .56, .66])"><TresSphereGeometry /><TresMeshStandardMaterial :color="colors.nose" :roughness=".2" /></TresMesh>
         <TresMesh :position="vector([0, -.3, 0])" :rotation="rotation([0, 0, Math.PI])" :scale="vector([.68, .68, .7])"><TresConeGeometry :args="[.7, 1.05, 3]" /><TresMeshStandardMaterial :color="colors.nose" :roughness=".2" /></TresMesh>
       </template>
-      <TresMesh v-else><TresSphereGeometry :args="[1, 32, 24]" /><TresMeshStandardMaterial :color="colors.nose" :roughness=".22" /></TresMesh>
+      <template v-else-if="appearance.parts.nose === 'cat'">
+        <TresMesh :rotation="rotation([Math.PI / 2, 0, 0])"><TresConeGeometry :args="[1, 1.05, 3]" /><TresMeshStandardMaterial :color="colors.nose" :emissive="colors.antennaTip" :emissive-intensity="noseGlow" :roughness=".18" /></TresMesh>
+        <TresMesh :position="vector([0, -.18, .25])" :scale="vector([.36, .22, .2])"><TresSphereGeometry /><TresMeshStandardMaterial :color="colors.nose" :roughness=".2" /></TresMesh>
+      </template>
+      <TresMesh v-else-if="appearance.parts.nose === 'crystal'"><TresOctahedronGeometry :args="[1, 0]" /><TresMeshStandardMaterial :color="colors.nose" :emissive="colors.antennaTip" :emissive-intensity=".35 + noseGlow" :metalness=".45" :roughness=".08" /></TresMesh>
+      <TresMesh v-else-if="appearance.parts.nose === 'starlight'"><TresDodecahedronGeometry :args="[1, 0]" /><TresMeshStandardMaterial :color="colors.antennaTip" :emissive="colors.antennaTip" :emissive-intensity=".7 + noseGlow" :metalness=".2" :roughness=".1" /></TresMesh>
+      <TresMesh v-else><TresSphereGeometry :args="[1, 32, 24]" /><TresMeshStandardMaterial :color="colors.nose" :emissive="colors.antennaTip" :emissive-intensity="noseGlow" :roughness=".22" /></TresMesh>
     </TresGroup>
     <TresMesh v-for="side in [-1, 1]" :key="`face-cheek-${side}`" :position="cheekPosition(side)" :scale="vector([.13 * headScale, .07 * headScale, .018 * headScale])"><TresSphereGeometry /><TresMeshBasicMaterial :ref="registerCheek" :color="colors.cheeks" transparent :opacity="0" :depth-write="false" /></TresMesh>
     <TresGroup :position="mouthPosition" :rotation="mouthRotation" :scale="mouthBaseScale">

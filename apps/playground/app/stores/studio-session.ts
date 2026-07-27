@@ -4,6 +4,7 @@
  * Persists the shared Studio-shell context for appearance, motion, prop, preview view, and background without mixing editor-specific undo state.
  */
 import { defineStore } from 'pinia'
+import { normalizeStudioModelMode, type StudioModelMode } from '~/domain/studio-model-variants'
 import { STUDIO_SESSION_STORAGE_KEY, type StudioWorkspaceId } from '~/domain/studio-workspace'
 import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase3'
 
@@ -14,6 +15,7 @@ interface StudioSessionState {
   selectedPropId: string
   previewView: CloudFoxStudioView
   previewBackground: CloudFoxStudioBackground
+  modelMode: StudioModelMode
   lastWorkspace: StudioWorkspaceId
 }
 
@@ -23,6 +25,7 @@ const DEFAULT_STATE: Omit<StudioSessionState, 'hydrated'> = {
   selectedPropId: '',
   previewView: 'front',
   previewBackground: 'dark',
+  modelMode: 'simple',
   lastWorkspace: 'appearance',
 }
 
@@ -34,6 +37,7 @@ export const useStudioSessionStore = defineStore('studio-session', {
       try {
         const stored = JSON.parse(localStorage.getItem(STUDIO_SESSION_STORAGE_KEY) || '{}') as Partial<StudioSessionState>
         Object.assign(this, DEFAULT_STATE, stored, { hydrated: true })
+        this.modelMode = normalizeStudioModelMode(stored.modelMode)
       }
       catch {
         Object.assign(this, DEFAULT_STATE, { hydrated: true })
@@ -47,6 +51,7 @@ export const useStudioSessionStore = defineStore('studio-session', {
         selectedPropId: this.selectedPropId,
         previewView: this.previewView,
         previewBackground: this.previewBackground,
+        modelMode: this.modelMode,
         lastWorkspace: this.lastWorkspace,
       }))
     },
@@ -69,6 +74,10 @@ export const useStudioSessionStore = defineStore('studio-session', {
     setPreview(view: CloudFoxStudioView, background: CloudFoxStudioBackground) {
       this.previewView = view
       this.previewBackground = background
+      this.persist()
+    },
+    setModelMode(mode: StudioModelMode) {
+      this.modelMode = normalizeStudioModelMode(mode)
       this.persist()
     },
   },

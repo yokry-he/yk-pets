@@ -17,6 +17,7 @@ import type { EvaluatedCloudFoxPose, EvaluatedMotionPropInstance } from '@yk-pet
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
+import type { StudioModelMode } from '~/domain/studio-model-variants'
 
 const props = withDefaults(defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
@@ -35,12 +36,14 @@ const props = withDefaults(defineProps<{
   previewScale?: number
   previewRotation?: readonly [number, number, number]
   previewPosition?: readonly [number, number, number]
+  modelMode?: StudioModelMode
 }>(), {
   motionKey: 0,
   focus: 'full',
   previewScale: 1,
   previewRotation: () => [0, 0, 0],
   previewPosition: () => [0, 0, 0],
+  modelMode: 'simple',
 })
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vec3 = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
@@ -98,7 +101,7 @@ const sceneStyle = computed(() => ({
 </script>
 
 <template>
-  <div :class="['studio-canvas', `studio-canvas--${contrast}`, { 'studio-canvas--extension': extensionScene }]" :style="sceneStyle" :data-visual-scheme="scheme.id" :data-focus="focus">
+  <div :class="['studio-canvas', `studio-canvas--${contrast}`, { 'studio-canvas--extension': extensionScene }]" :style="sceneStyle" :data-visual-scheme="scheme.id" :data-focus="focus" :data-model-mode="modelMode">
     <div v-if="!activeScene.transparent" class="scene-surface" />
     <div v-if="!activeScene.transparent" class="scene-gradient" />
     <div v-if="extensionScene" class="extension-nebula" />
@@ -112,6 +115,10 @@ const sceneStyle = computed(() => ({
       <ProceduralPet :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotation" :preview-position="previewPosition" />
     </TresCanvas>
     <div v-if="extensionScene" class="extension-glow" />
+    <div v-if="modelMode === 'complex'" class="model-preview-status" aria-label="复杂模型预览状态">
+      <strong class="model-preview-status-title">复杂模型草稿</strong>
+      <span class="model-preview-status-detail">当前使用简单模型兼容预览</span>
+    </div>
     <div class="label">
       <strong>{{ appearance.identity.nameZh }} · {{ appearance.identity.nameEn }}</strong>
       <span>{{ appearance.parts.headShape }} / {{ appearance.parts.bodyShape }} · {{ petBounds.width.toFixed(1) }} × {{ petBounds.height.toFixed(1) }}</span>
@@ -120,5 +127,5 @@ const sceneStyle = computed(() => ({
 </template>
 
 <style scoped>
-.studio-canvas{position:relative;width:100%;height:100%;min-height:520px;overflow:hidden;border:1px solid #ffffff1f;border-radius:22px;background:transparent;box-shadow:0 28px 80px #0006}.scene-surface{position:absolute;inset:0;background:linear-gradient(145deg,var(--scene-a),var(--scene-b))}.scene-gradient{position:absolute;inset:0;background:radial-gradient(circle at 70% 15%,color-mix(in srgb,var(--scene-b) 76%,transparent),transparent 38%)}.studio-canvas--extension .scene-surface{background:var(--extension-surface)}.studio-canvas--extension .scene-gradient{display:none}.extension-nebula{position:absolute;inset:2% 4% 8%;border-radius:50%;background:var(--extension-nebula);filter:blur(10px);opacity:.92;pointer-events:none}.extension-glow{position:absolute;z-index:3;inset:auto 14% -18px;height:78px;background:var(--extension-glow);filter:blur(16px);pointer-events:none}.studio-canvas :deep(canvas){position:absolute!important;inset:0;z-index:2;width:100%!important;height:100%!important;background:transparent!important}.label{position:absolute;z-index:4;left:18px;bottom:18px;display:flex;flex-direction:column;gap:4px;max-width:calc(100% - 36px);padding:9px 12px;border:1px solid #ffffff24;border-radius:12px;color:#f5f7ff;background:#080b14a8;backdrop-filter:blur(16px)}.studio-canvas--light .label{color:#17192b;background:#ffffffe0}.label span{overflow:hidden;color:#aeb7d8;font-size:11px;text-overflow:ellipsis;white-space:nowrap}@media(max-width:980px){.studio-canvas{min-height:460px}}
+.studio-canvas{position:relative;width:100%;height:100%;min-height:520px;overflow:hidden;border:1px solid #ffffff1f;border-radius:22px;background:transparent;box-shadow:0 28px 80px #0006}.scene-surface{position:absolute;inset:0;background:linear-gradient(145deg,var(--scene-a),var(--scene-b))}.scene-gradient{position:absolute;inset:0;background:radial-gradient(circle at 70% 15%,color-mix(in srgb,var(--scene-b) 76%,transparent),transparent 38%)}.studio-canvas--extension .scene-surface{background:var(--extension-surface)}.studio-canvas--extension .scene-gradient{display:none}.extension-nebula{position:absolute;inset:2% 4% 8%;border-radius:50%;background:var(--extension-nebula);filter:blur(10px);opacity:.92;pointer-events:none}.extension-glow{position:absolute;z-index:3;inset:auto 14% -18px;height:78px;background:var(--extension-glow);filter:blur(16px);pointer-events:none}.studio-canvas :deep(canvas){position:absolute!important;inset:0;z-index:2;width:100%!important;height:100%!important;background:transparent!important}.model-preview-status{position:absolute;z-index:5;top:14px;left:14px;display:grid;gap:3px;max-width:calc(100% - 28px);padding:8px 10px;border:1px solid #e5c76248;border-radius:10px;background:#090d18d9;backdrop-filter:blur(14px);pointer-events:none}.model-preview-status-title{color:#f0d78c;font-size:9px}.model-preview-status-detail{color:#9ba6c1;font-size:8px}.label{position:absolute;z-index:4;left:18px;bottom:18px;display:flex;flex-direction:column;gap:4px;max-width:calc(100% - 36px);padding:9px 12px;border:1px solid #ffffff24;border-radius:12px;color:#f5f7ff;background:#080b14a8;backdrop-filter:blur(16px)}.studio-canvas--light .label{color:#17192b;background:#ffffffe0}.label span{overflow:hidden;color:#aeb7d8;font-size:11px;text-overflow:ellipsis;white-space:nowrap}@media(max-width:980px){.studio-canvas{min-height:460px}}
 </style>

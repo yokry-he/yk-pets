@@ -27,6 +27,7 @@ export const STUDIO_WORKSPACES: readonly StudioWorkspaceDefinition[] = Object.fr
 ])
 
 export const STUDIO_SESSION_STORAGE_KEY = 'yk-pets:studio:session:v1'
+export const STUDIO_MODEL_VARIANTS_STORAGE_KEY = 'yk-pets:studio:model-variants:v1'
 export const STUDIO_ASSET_STORAGE_KEY = 'yk-pets:studio:assets:v2'
 export const STUDIO_ASSET_LEGACY_STORAGE_KEY = 'yk-pets:studio:assets:v1'
 

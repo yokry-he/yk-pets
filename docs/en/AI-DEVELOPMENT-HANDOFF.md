@@ -150,3 +150,21 @@ Trust order: actual code and runtime results > latest full CI > machine state > 
 - Appearance Studio preserves Part Hotspots and Compare Classic through the actions slot, while Prop Studio now receives the shared Chinese canonical-view labels.
 - `useStudioPreviewOrientation` owns 40%–120% scale bounds and workspace-specific default-scale reset; its wheel handler is retained, but none of the three workspaces binds a wheel event.
 - `scripts/check-studio-preview-toolbar.mjs` covers grouping, three-workspace reuse, scale wiring, optional time, and extension-action contracts.
+
+## 14. Expression, safe deformation, and built-in asset batch
+
+- Appearance options add six emotional eye styles and three nose styles; the canonical eye metric table now covers twelve styles on the production head surface.
+- The semantic Rig adds fifteen motion-safe channels for head scale, eye scale/spacing/pupil/tilt, nose scale/offset/sniff/glow, mouth curve, tail length/fluff, and antenna glow.
+- New channels use neutral zero defaults, so legacy motions need no migration. Motion Studio writes them through the existing part tree and current-frame commands instead of storing appearance JSON.
+- Six read-only procedural props and six read-only motion templates are registered. Copying creates independent local IDs and never persists the original templates.
+- Nebula Staff Spin and Starlight Sway include built-in prop events, and Motion preview merges built-in and user prop registries.
+- `check-studio-expression-motion-assets.mjs`, `test-studio-built-in-assets.ts`, and pet-core domain tests cover registration, ranges, dependencies, and wiring.
+
+## 15. Dual-model Studio foundation batch
+
+- One pet now owns independently persisted simple and complex model variants; the procedural simple model remains ready by default and keeps the only production render path.
+- Studio has a global model mode. Selecting Complex for the first time creates a non-destructive draft automatically without another confirmation step or overwriting the simple model.
+- Appearance, Motion, and Prop Studio share the model mode, while the asset library reports the complex variant as missing, draft, ready, or blocked.
+- `CloudFoxStudioCanvas` now exposes the complex-preview adapter boundary, but explicitly uses the simple-model compatibility preview until the skeletal renderer exists.
+- The next phase is `complex-model-import-and-rig-validation`: complex GLB import plus skeleton, skin, morph, socket, and semantic-mapping validation.
+- `browser-acceptance-and-release-hardening` remains mandatory after the complex runtime exists; this batch's static checks are not real GPU/WebGL acceptance.

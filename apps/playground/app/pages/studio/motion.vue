@@ -19,6 +19,7 @@ import { useStudioAssetStore } from '~/stores/studio-assets'
 import { useStudioMotionEditorStore } from '~/stores/studio-motion-editor'
 import { useStudioSessionStore } from '~/stores/studio-session'
 import type { StudioMotionLoopMode } from '~/domain/studio-workspace'
+import { BUILT_IN_STUDIO_PROPS } from '~/domain/studio-built-in-props'
 
 type PropertyTab = 'basic' | 'pose' | 'advanced' | 'props'
 
@@ -30,7 +31,8 @@ const editor = useStudioMotionEditorStore()
 const session = useStudioSessionStore()
 const saved = computed(() => assets.motions.find(item => item.id === session.selectedMotionId))
 const draft = computed(() => editor.draft)
-const availableProps = computed(() => assets.props.filter(item => draft.value?.propIds.includes(item.id)))
+const allPropAssets = computed(() => [...BUILT_IN_STUDIO_PROPS, ...assets.props])
+const availableProps = computed(() => allPropAssets.value.filter(item => draft.value?.propIds.includes(item.id)))
 const evaluatedPose = computed(() => {
   if (!draft.value) return null
   const pose = evaluateNormalizedMotionAsset(draft.value, editor.playheadTimeMs)
@@ -216,7 +218,7 @@ onBeforeUnmount(() => {
         />
         <div class="preview-stage">
           <ClientOnly>
-            <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="assets.props" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" />
+            <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="allPropAssets" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" :model-mode="session.modelMode" />
           </ClientOnly>
           <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
           <div
@@ -297,11 +299,11 @@ onBeforeUnmount(() => {
         </section>
 
         <section v-else class="property-section">
-          <section class="dependency-card"><h3>道具依赖</h3><p v-if="!availableProps.length">当前动作尚未引用道具。</p><NuxtLink v-for="prop in availableProps" :key="prop.id" :to="`/studio/props?prop=${prop.id}`">{{ prop.nameZh }}</NuxtLink></section>
+          <section class="dependency-card"><h3>道具依赖</h3><p v-if="!availableProps.length">当前动作尚未引用道具。</p><template v-for="prop in availableProps" :key="prop.id"><span v-if="prop.id.startsWith('builtin-')">{{ prop.nameZh }}（内置）</span><NuxtLink v-else :to="`/studio/props?prop=${prop.id}`">{{ prop.nameZh }}</NuxtLink></template></section>
           <StudioMotionPropEvents
             :asset="draft"
             :playhead-time-ms="editor.playheadTimeMs"
-            :prop-assets="assets.props"
+            :prop-assets="allPropAssets"
             :selected-event-ids="editor.selectedPropEventIds"
             @add="editor.addPropEvent"
             @select="editor.selectPropEvent"

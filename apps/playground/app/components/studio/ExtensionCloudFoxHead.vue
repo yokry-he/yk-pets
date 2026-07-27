@@ -34,6 +34,9 @@ const damp = (current: number, target: number, speed: number, delta: number) => 
 const profile = computed(() => getCloudFoxHeadProfile(props.appearance.parts.headShape))
 const colors = computed(() => resolvePetCustomization(props.appearance).colors)
 const headScale = computed(() => props.appearance.proportions.headScale)
+const animatedHeadScale = computed(() => headScale.value * customPoseScale(props.customPose, 'head.scale'))
+const animatedEyeScale = computed(() => Math.max(.35, customPoseScale(props.customPose, 'eye.scale')))
+const pupilScale = computed(() => Math.max(.25, customPoseScale(props.customPose, 'eye.pupilScale')))
 const eyeBlinkFloor = computed(() => getCloudFoxEyeBlinkFloor(props.appearance.parts.eyes))
 const head = shallowRef<Group>()
 const leftEye = shallowRef<Group>()
@@ -161,6 +164,8 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     root.position.x = damp(root.position.x, targetPositionX, 7, delta)
     root.position.y = damp(root.position.y, targetPositionY + (state === 'happy' ? Math.max(0, Math.sin(elapsed * 8)) * .035 : 0), 7, delta)
     root.position.z = damp(root.position.z, targetPositionZ, 7, delta)
+    const targetHeadScale = animatedHeadScale.value / Math.max(.001, headScale.value)
+    root.scale.setScalar(damp(root.scale.x, targetHeadScale, 8, delta))
   }
 
   const asleep = state === 'sleeping' || state === 'cloud-nap'
@@ -181,9 +186,11 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     const expressionScale = state === 'confused' && side < 0 ? baseEyeY * .72 : baseEyeY
     const authoredEyeOpen = hasAuthoredPoseChannel(customPose, closureId) ? 1 - customPoseValue(customPose, closureId) : expressionScale
     const visibleScale = props.appearance.parts.eyes === 'sleepy' ? 1 : Math.max(eyeBlinkFloor.value, authoredEyeOpen)
-    group.scale.y = damp(group.scale.y, visibleScale, 12, delta)
-    group.scale.x = damp(group.scale.x, state === 'excited' ? 1.14 : 1, 10, delta)
-    group.position.x = damp(group.position.x, side * eyeX.value + scanOffset + customPoseValue(customPose, 'eye.gaze.x') * .055, 9, delta)
+    const expressionTilt = customPoseValue(customPose, 'eye.expressionTilt')
+    group.scale.y = damp(group.scale.y, visibleScale * animatedEyeScale.value, 12, delta)
+    group.scale.x = damp(group.scale.x, (state === 'excited' ? 1.14 : 1) * animatedEyeScale.value, 10, delta)
+    group.rotation.z = damp(group.rotation.z, eyeRotation(side).z + side * expressionTilt * .3, 10, delta)
+    group.position.x = damp(group.position.x, side * (eyeX.value + customPoseValue(customPose, 'eye.spacing') * .12) + scanOffset + customPoseValue(customPose, 'eye.gaze.x') * .055, 9, delta)
     group.position.y = damp(group.position.y, eyeY.value + customPoseValue(customPose, 'eye.gaze.y') * .04, 9, delta)
   }
   updateEye(leftEye.value, -1)
@@ -201,7 +208,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
     rightEar.value.rotation.z = damp(rightEar.value.rotation.z, scheme.model.head.earRotationZ - earEnergy + customPoseValue(props.customPose, 'ear.right.rotation.z'), 8, delta)
   }
 
-  const antennaCharge = state === 'antenna-charge' ? frame.antennaChargePose * 1.2 + frame.antennaRelease * .9 : state === 'energy-burst' ? frame.energyCharge + frame.energyRelease * .78 : state === 'fireworks-show' ? .7 + Math.sin(frame.fireworksProgress * Math.PI * 6) * .18 : state === 'sparkle-sneeze' ? frame.sneezeCharge + frame.sneezeRelease * .7 : state === 'star-juggle' ? .42 : state === 'excited' || state === 'thinking' ? .36 : frame.highEnergy ? .28 : .12
+  const antennaCharge = (state === 'antenna-charge' ? frame.antennaChargePose * 1.2 + frame.antennaRelease * .9 : state === 'energy-burst' ? frame.energyCharge + frame.energyRelease * .78 : state === 'fireworks-show' ? .7 + Math.sin(frame.fireworksProgress * Math.PI * 6) * .18 : state === 'sparkle-sneeze' ? frame.sneezeCharge + frame.sneezeRelease * .7 : state === 'star-juggle' ? .42 : state === 'excited' || state === 'thinking' ? .36 : frame.highEnergy ? .28 : .12) + customPoseValue(props.customPose, 'antenna.glow')
   const antennaSway = Math.sin(elapsed * (state === 'energy-burst' ? 9 : state === 'excited' ? 6.5 : 3.4)) * (state === 'energy-burst' ? .08 : .035)
   if (leftAntenna.value) {
     const converge = state === 'antenna-charge' ? frame.antennaChargePose * .42 : 0
@@ -282,7 +289,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 
     <template v-if="appearance.parts.eyes !== 'visor'">
       <TresGroup v-for="side in [-1, 1]" :key="`eye-${side}`" :ref="node => setEyeRef(node, side)" :position="eyePosition(side)" :rotation="eyeRotation(side)">
-        <ExtensionCloudFoxEyeShape :style="appearance.parts.eyes" :color="colors.eyes" :highlight-color="colors.eyeHighlight" :side="side" :eye-scale="appearance.proportions.eyeScale * headScale" />
+        <ExtensionCloudFoxEyeShape :style="appearance.parts.eyes" :color="colors.eyes" :highlight-color="colors.eyeHighlight" :side="side" :eye-scale="appearance.proportions.eyeScale * headScale" :pupil-scale="pupilScale" />
       </TresGroup>
     </template>
     <TresMesh v-else :position="visorSurface.position" :rotation="visorSurface.rotation" :scale="visorScale">

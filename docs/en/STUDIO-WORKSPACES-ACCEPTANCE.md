@@ -29,12 +29,22 @@ Automated CI cannot replace real-browser layout, navigation, and WebGL acceptanc
 - Save, refresh, and confirm restoration.
 - Confirm body and belly move together and unauthored channels retain breathing, blinking, and gaze.
 - Confirm the thirty built-in motions do not regress.
+- At multiple playhead positions, key head, eye/mouth, nose, and tail scale, spacing, expression tilt, sniff, glow, mouth curve, tail length, and fluff. Playback must interpolate smoothly and stop at the base appearance.
+- Copy and play Energetic Step (8s), Starlight Sway (10s), Horse Stance Combination (8.4s), Nebula Staff Combination (12s), Agile Gymnastics Combo (8.8s), and Sprint Stop Challenge (9.2s). Observe preparation, main phrases, transitions, climax, and recovery; confirm weight, head, limbs, ears/tail, gaze, and expression coordinate with visibly different strike and hold timing.
 
 ## Props and library
 
 - Prop foundation assets, default mounts, and four anchors remain available.
 - Prop events and prop entity editing are implemented, but real browser/WebGL, depth ordering, and advanced animation tools must not be described as accepted.
 - Deleting props clears motion dependencies; deleting selected assets clears shared selection.
+- Confirm Nebula Staff, Energy Sword, Starlight Fan, Twin Glow Sticks, Nebula Ribbon, and Energy Orb appear in the library and copy into Prop Studio without mutating the templates.
+- Play Nebula Staff Combination and Starlight Sway; their staff and glow sticks must appear, attach, change glow and particle emphasis at multiple climax events, and be destroyed at the end in the production preview scene.
+
+## Expression shapes
+
+- Across all six head shapes, inspect happy crescent, angry sharp, sad droop, surprised, heart, and dizzy spiral eyes from front and both sides.
+- Inspect cat, crystal, and starlight noses for muzzle-surface fit, glow, and animated scaling.
+- Confirm legacy eyes/noses, blinking, independent closures, and gaze channels do not regress.
 
 ## Local data, safety, and performance
 

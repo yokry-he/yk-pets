@@ -40,6 +40,7 @@ export type MotionBodyPartId =
   | 'ear-left'
   | 'ear-right'
   | 'face'
+  | 'nose'
   | 'tail-root'
   | 'tail-mid'
   | 'tail-tip'
@@ -82,6 +83,7 @@ export const MOTION_BODY_PARTS: readonly MotionBodyPartDefinition[] = Object.fre
   { id: 'ear-left', parentId: 'head', labelZh: '左耳', labelEn: 'Left ear', icon: 'L', symmetryPartnerId: 'ear-right' },
   { id: 'ear-right', parentId: 'head', labelZh: '右耳', labelEn: 'Right ear', icon: 'R', symmetryPartnerId: 'ear-left' },
   { id: 'face', parentId: 'head', labelZh: '眼睛与嘴部', labelEn: 'Eyes and mouth', icon: '◌' },
+  { id: 'nose', parentId: 'face', labelZh: '鼻子', labelEn: 'Nose', icon: '◆' },
   { id: 'antenna-left', parentId: 'head', labelZh: '左触角', labelEn: 'Left antenna', icon: 'L', symmetryPartnerId: 'antenna-right' },
   { id: 'antenna-right', parentId: 'head', labelZh: '右触角', labelEn: 'Right antenna', icon: 'R', symmetryPartnerId: 'antenna-left' },
   { id: 'tail-root', parentId: 'root', labelZh: '尾巴根部', labelEn: 'Tail root', icon: '≈' },
@@ -118,6 +120,7 @@ export const MOTION_CONTROLS = Object.freeze([
   control({ id: 'head.rotate.x', partId: 'head', mode: 'rotate', axis: 'x', labelZh: '头部旋转 X', labelEn: 'Head rotation X', channelIds: ['head.rotation.x'], displayUnit: 'degree', step: Math.PI / 36, fineStep: Math.PI / 180 }),
   control({ id: 'head.rotate.y', partId: 'head', mode: 'rotate', axis: 'y', labelZh: '头部旋转 Y', labelEn: 'Head rotation Y', channelIds: ['head.rotation.y'], displayUnit: 'degree', step: Math.PI / 36, fineStep: Math.PI / 180 }),
   control({ id: 'head.rotate.z', partId: 'head', mode: 'rotate', axis: 'z', labelZh: '头部旋转 Z', labelEn: 'Head rotation Z', channelIds: ['head.rotation.z'], displayUnit: 'degree', step: Math.PI / 36, fineStep: Math.PI / 180 }),
+  control({ id: 'head.scale.dynamic', partId: 'head', mode: 'scale', axis: 'uniform', labelZh: '头部动态比例', labelEn: 'Animated head scale', channelIds: ['head.scale'], displayUnit: 'ratio', step: .05, fineStep: .01 }),
 
   ...sideRotationControls('front-paw-left', 'frontPaw.left', '左前爪', 'Left front paw'),
   ...sideRotationControls('front-paw-right', 'frontPaw.right', '右前爪', 'Right front paw'),
@@ -139,12 +142,28 @@ export const MOTION_CONTROLS = Object.freeze([
   ...sideRotationControls('antenna-right', 'antenna.right', '右触角', 'Right antenna'),
   control({ id: 'antenna-left.scale.length', partId: 'antenna-left', mode: 'scale', axis: 'uniform', labelZh: '左触角长度', labelEn: 'Left antenna length', channelIds: ['antenna.left.length'], displayUnit: 'ratio', step: .05, fineStep: .01 }),
   control({ id: 'antenna-right.scale.length', partId: 'antenna-right', mode: 'scale', axis: 'uniform', labelZh: '右触角长度', labelEn: 'Right antenna length', channelIds: ['antenna.right.length'], displayUnit: 'ratio', step: .05, fineStep: .01 }),
+  control({ id: 'antenna-left.semantic.glow', partId: 'antenna-left', mode: 'semantic', axis: 'value', labelZh: '触角发光', labelEn: 'Antenna glow', channelIds: ['antenna.glow'], displayUnit: 'normalized', step: .1, fineStep: .02 }),
 
+  control({ id: 'face.scale.eye', partId: 'face', mode: 'scale', axis: 'uniform', labelZh: '眼睛动态比例', labelEn: 'Animated eye scale', channelIds: ['eye.scale'], displayUnit: 'ratio', step: .05, fineStep: .01 }),
+  control({ id: 'face.scale.pupil', partId: 'face', mode: 'scale', axis: 'uniform', labelZh: '瞳孔比例', labelEn: 'Pupil scale', channelIds: ['eye.pupilScale'], displayUnit: 'ratio', step: .05, fineStep: .01 }),
   control({ id: 'face.semantic.gaze-x', partId: 'face', mode: 'semantic', axis: 'x', labelZh: '视线 X', labelEn: 'Gaze X', channelIds: ['eye.gaze.x'], displayUnit: 'normalized', step: .1, fineStep: .02 }),
   control({ id: 'face.semantic.gaze-y', partId: 'face', mode: 'semantic', axis: 'y', labelZh: '视线 Y', labelEn: 'Gaze Y', channelIds: ['eye.gaze.y'], displayUnit: 'normalized', step: .1, fineStep: .02 }),
+  control({ id: 'face.semantic.spacing', partId: 'face', mode: 'semantic', axis: 'x', labelZh: '眼距动态偏移', labelEn: 'Animated eye spacing', channelIds: ['eye.spacing'], displayUnit: 'distance', step: .04, fineStep: .01 }),
+  control({ id: 'face.semantic.tilt', partId: 'face', mode: 'semantic', axis: 'value', labelZh: '眼部表情倾斜', labelEn: 'Eye expression tilt', channelIds: ['eye.expressionTilt'], displayUnit: 'normalized', step: .1, fineStep: .02 }),
   control({ id: 'face.semantic-eye-left', partId: 'face', mode: 'semantic', axis: 'value', labelZh: '左眼闭合', labelEn: 'Left eye closure', channelIds: ['eye.left.closure'], displayUnit: 'normalized', step: .1, fineStep: .02 }),
   control({ id: 'face.semantic-eye-right', partId: 'face', mode: 'semantic', axis: 'value', labelZh: '右眼闭合', labelEn: 'Right eye closure', channelIds: ['eye.right.closure'], displayUnit: 'normalized', step: .1, fineStep: .02 }),
   control({ id: 'face.semantic-mouth', partId: 'face', mode: 'semantic', axis: 'value', labelZh: '嘴部开合', labelEn: 'Mouth opening', channelIds: ['mouth.open'], displayUnit: 'normalized', step: .1, fineStep: .02 }),
+  control({ id: 'face.semantic-mouth-curve', partId: 'face', mode: 'semantic', axis: 'value', labelZh: '嘴部表情曲线', labelEn: 'Mouth expression curve', channelIds: ['mouth.curve'], displayUnit: 'normalized', step: .1, fineStep: .02 }),
+
+  control({ id: 'nose.translate.y', partId: 'nose', mode: 'translate', axis: 'y', labelZh: '鼻子上下偏移', labelEn: 'Nose offset Y', channelIds: ['nose.offset.y'], displayUnit: 'distance', step: .03, fineStep: .01 }),
+  control({ id: 'nose.scale.x', partId: 'nose', mode: 'scale', axis: 'x', labelZh: '鼻子缩放 X', labelEn: 'Nose scale X', channelIds: ['nose.scale.x'], displayUnit: 'ratio', step: .05, fineStep: .01 }),
+  control({ id: 'nose.scale.y', partId: 'nose', mode: 'scale', axis: 'y', labelZh: '鼻子缩放 Y', labelEn: 'Nose scale Y', channelIds: ['nose.scale.y'], displayUnit: 'ratio', step: .05, fineStep: .01 }),
+  control({ id: 'nose.scale.z', partId: 'nose', mode: 'scale', axis: 'z', labelZh: '鼻子缩放 Z', labelEn: 'Nose scale Z', channelIds: ['nose.scale.z'], displayUnit: 'ratio', step: .05, fineStep: .01 }),
+  control({ id: 'nose.semantic.sniff', partId: 'nose', mode: 'semantic', axis: 'value', labelZh: '嗅闻强度', labelEn: 'Sniff intensity', channelIds: ['nose.sniff'], displayUnit: 'normalized', step: .1, fineStep: .02 }),
+  control({ id: 'nose.semantic.glow', partId: 'nose', mode: 'semantic', axis: 'value', labelZh: '鼻子发光', labelEn: 'Nose glow', channelIds: ['nose.glow'], displayUnit: 'normalized', step: .1, fineStep: .02 }),
+
+  control({ id: 'tail-root.scale.length', partId: 'tail-root', mode: 'scale', axis: 'uniform', labelZh: '尾巴动态长度', labelEn: 'Animated tail length', channelIds: ['tail.length'], displayUnit: 'ratio', step: .05, fineStep: .01 }),
+  control({ id: 'tail-root.scale.fluff', partId: 'tail-root', mode: 'scale', axis: 'uniform', labelZh: '尾巴蓬松比例', labelEn: 'Tail fluff', channelIds: ['tail.fluff'], displayUnit: 'ratio', step: .05, fineStep: .01 }),
 ] as const)
 
 function sideRotationControls<TPart extends MotionBodyPartId, TPrefix extends string>(partId: TPart, prefix: TPrefix, labelZh: string, labelEn: string) {

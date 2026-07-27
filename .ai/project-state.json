@@ -52,7 +52,16 @@
     "appearancePreviewDragRotationComplete": true,
     "propPreviewDragRotationComplete": true,
     "sharedStudioPreviewToolbarComplete": true,
-    "studioPreviewScaleParityComplete": true
+    "studioPreviewScaleParityComplete": true,
+    "expressionShapeExpansionComplete": true,
+    "motionSafeDeformationChannelsComplete": true,
+    "builtInStudioPropsComplete": true,
+    "builtInStudioMotionTemplatesComplete": true,
+    "complexBuiltInMotionChoreographyComplete": true,
+    "studioDualModelContainerComplete": true,
+    "studioGlobalModelModeComplete": true,
+    "studioComplexDraftAutomationComplete": true,
+    "studioComplexPreviewAdapterBoundaryComplete": true
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -125,27 +134,40 @@
     "studio-canonical-view-reset",
     "appearance-and-prop-preview-drag-rotation",
     "shared-studio-preview-toolbar",
-    "appearance-and-prop-preview-scale-controls"
+    "appearance-and-prop-preview-scale-controls",
+    "expression-eye-and-nose-expansion",
+    "motion-safe-deformation-channels",
+    "built-in-studio-props",
+    "built-in-dance-martial-arts-agility-motions",
+    "long-form-complex-built-in-motion-choreography",
+    "studio-dual-model-container",
+    "studio-global-model-mode",
+    "studio-complex-draft-automation",
+    "studio-complex-preview-adapter-boundary"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
     "real-chrome-side-panel-manual-acceptance",
     "real-gpu-webgl-manual-acceptance",
-    "true-3d-raycast-gizmo-manipulation"
+    "true-3d-raycast-gizmo-manipulation",
+    "complex-skinned-model-import-and-renderer",
+    "complex-rig-skin-morph-and-socket-validation",
+    "complex-motion-retargeting-ik-foot-lock-root-motion",
+    "motion-driven-deterministic-vfx",
+    "simple-complex-motion-variants-and-publishing"
   ],
-  "nextPhase": "browser-acceptance-and-release-hardening",
+  "nextPhase": "complex-model-import-and-rig-validation",
   "latestCompletedBatch": {
-    "id": "shared-studio-preview-toolbar",
+    "id": "studio-dual-model-foundation",
     "domainPackage": "apps/playground",
     "rendererModified": false,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "shared-preview-toolbar-component",
-      "canonical-view-and-transform-grouping",
-      "three-workspace-toolbar-reuse",
-      "shared-preview-scale-bounds-with-wheel-input-disabled",
-      "optional-motion-preview-time",
-      "appearance-toolbar-action-slot"
+      "dual-model-domain-normalization",
+      "non-destructive-complex-draft-creation",
+      "global-model-mode-contract",
+      "three-workspace-model-mode-wiring",
+      "canonical-renderer-preservation"
     ]
   },
   "mandatoryDevelopmentPolicy": {

@@ -191,7 +191,7 @@ onMounted(() => {
       <StudioPreviewToolbar class="props-preview-toolbar" :view="session.previewView" :background="session.previewBackground" :scale="previewScale" :rotation="previewRotation" @view="setView" @background="setBackground" @scale="updatePreviewScale" @rotation="(axis, value) => updatePreviewRotation(axis, value)" @reset="resetPreviewTransform" />
       <div class="canvas-grid">
         <div class="pet-preview">
-          <ClientOnly><CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="selected?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :prop-instances="previewInstances" :prop-assets="selected ? [selected] : []" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" preserve-prop-materials /></ClientOnly>
+          <ClientOnly><CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="selected?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :prop-instances="previewInstances" :prop-assets="selected ? [selected] : []" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :model-mode="session.modelMode" preserve-prop-materials /></ClientOnly>
           <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
           <div ref="previewRotateSurface" class="preview-rotate-surface" :class="{ dragging: previewDrag.active }" @pointerdown="beginPreviewRotate" @pointermove="movePreviewRotate" @pointerup="endPreviewRotate" @pointercancel="cancelPreviewRotate"><span>拖动画布自由旋转</span></div>
           <span class="anchor-badge">挂载预览：{{ selected?.defaultAnchor || '未选择' }}</span>

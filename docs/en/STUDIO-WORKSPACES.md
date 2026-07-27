@@ -18,6 +18,9 @@ Motions never mutate appearance recipes. Motions reference stable prop IDs and d
 - Once-per-frame semantic pose evaluation through the sole production Cloud Fox renderer.
 - Appearance, Motion, and Prop Studio share one preview-orientation controller: canvas dragging applies a free rotation, while Front, Left, Back, or Right first clears that offset and then selects the exact canonical view.
 - All three studios reuse one preview toolbar grouped into Canonical Views and Preview Transform, with background, 40%–120% scale, three-axis angles, and reset. Motion Studio adds preview time within the same layout.
+- Appearance Studio adds happy, angry, sad, surprised, heart, and dizzy eyes plus cat, crystal, and starlight noses, all mounted through the canonical parametric head surface.
+- The motion Rig adds safe animated channels for head scale, eyes, pupils, spacing, nose deformation, mouth curve, tail length/fluff, and antenna glow while reusing current-frame, selected-keyframe, and whole-clip commands.
+- The library exposes six read-only long-form motion templates and six built-in props. Each 8–12 second template coordinates 15–16 semantic channels across 163–272 keyframes and is structured into preparation, main phrases, transitions, climax, and recovery. Copies become user assets, while the staff-combination and starlight-sway templates preview their built-in props directly.
 - Prop assets, kind, default mount, anchors, and hierarchy foundation.
 - Library viewing, contextual editing, and deletion.
 
