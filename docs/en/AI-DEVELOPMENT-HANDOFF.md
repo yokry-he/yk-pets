@@ -166,5 +166,6 @@ Trust order: actual code and runtime results > latest full CI > machine state > 
 - Studio has a global model mode. Selecting Complex for the first time creates a non-destructive draft automatically without another confirmation step or overwriting the simple model.
 - Appearance, Motion, and Prop Studio share the model mode, while the asset library reports the complex variant as missing, draft, ready, or blocked.
 - `CloudFoxStudioCanvas` now exposes the complex-preview adapter boundary, but explicitly uses the simple-model compatibility preview until the skeletal renderer exists.
-- The next phase is `complex-model-import-and-rig-validation`: complex GLB import plus skeleton, skin, morph, socket, and semantic-mapping validation.
+- The next phase is now `in-site-parametric-biped-rig`: pet GLB import is removed; an in-site recipe compiler will generate the `biped-pet/v1` skeleton, mesh, skin weights, sockets, and semantic mapping automatically.
+- Versioned Rig Profiles preserve future humanoid, quadruped, and mech support, while the first production profile remains focused on biped pets.
 - `browser-acceptance-and-release-hardening` remains mandatory after the complex runtime exists; this batch's static checks are not real GPU/WebGL acceptance.

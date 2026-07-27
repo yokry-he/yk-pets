@@ -166,5 +166,6 @@
 - Studio 顶部新增全局模型模式，首次切换复杂模式时自动创建非破坏性草稿，不增加确认步骤，也不覆盖简单模型；
 - 外观、动作、道具三个工坊共享模型模式，资产库显示复杂模型未创建、草稿、就绪或需修复的真实状态；
 - `CloudFoxStudioCanvas` 已建立复杂模型预览适配边界，但骨骼渲染器完成前明确使用简单模型兼容预览；
-- 下一阶段是 `complex-model-import-and-rig-validation`：实现复杂 GLB 导入、骨骼、蒙皮、Morph、Socket 和语义映射校验；
+- 下一阶段调整为 `in-site-parametric-biped-rig`：不导入宠物 GLB，由站内模型配方自动生成 `biped-pet/v1` 骨架、网格、蒙皮权重、Socket 和语义映射；
+- 长期通过版本化 Rig Profile 支持人形、四足和机甲，但第一版只正式实现双足萌宠；
 - `browser-acceptance-and-release-hardening` 仍是复杂运行时完成后的必要阶段，不得把本轮静态检查描述为真实 GPU/WebGL 验收。

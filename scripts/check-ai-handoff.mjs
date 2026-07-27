@@ -119,7 +119,7 @@ if (state) {
   expect((state.completed || []).includes('motion-studio-chinese-first-ui'), '必须标记动作工坊中文优先界面完成 / Motion Studio Chinese-first UI must be marked complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
   expect((state.notCompleted || []).includes('browser-screenshot-baselines'), '必须保留浏览器截图基线未完成 / Browser screenshot baselines must remain incomplete')
-  expect(state.nextPhase === 'complex-model-import-and-rig-validation', '下一阶段必须是复杂模型导入和 Rig 校验 / Next phase must be complex-model import and Rig validation')
+  expect(state.nextPhase === 'in-site-parametric-biped-rig', '下一阶段必须是站内参数化双足 Rig / Next phase must be the in-site parametric biped rig')
 }
 
 for (const routeFile of ['appearance.vue', 'motion.vue', 'props.vue', 'library.vue']) expect(existsSync(path.join(root, 'apps/playground/app/pages/studio', routeFile)), `缺少 Studio 路由文件 / Missing Studio route file: ${routeFile}`)

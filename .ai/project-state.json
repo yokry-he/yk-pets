@@ -150,13 +150,13 @@
     "real-chrome-side-panel-manual-acceptance",
     "real-gpu-webgl-manual-acceptance",
     "true-3d-raycast-gizmo-manipulation",
-    "complex-skinned-model-import-and-renderer",
-    "complex-rig-skin-morph-and-socket-validation",
-    "complex-motion-retargeting-ik-foot-lock-root-motion",
+    "in-site-parametric-biped-model-and-renderer",
+    "parametric-rig-skin-and-socket-validation",
+    "semantic-motion-solving-ik-foot-lock-root-motion",
     "motion-driven-deterministic-vfx",
     "simple-complex-motion-variants-and-publishing"
   ],
-  "nextPhase": "complex-model-import-and-rig-validation",
+  "nextPhase": "in-site-parametric-biped-rig",
   "latestCompletedBatch": {
     "id": "studio-dual-model-foundation",
     "domainPackage": "apps/playground",
