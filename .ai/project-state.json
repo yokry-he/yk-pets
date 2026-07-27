@@ -69,7 +69,14 @@
     "bipedPetModelPersistenceComplete": true,
     "bipedPetThreeRuntimeRendererAdapterComplete": true,
     "bipedPetWorkshopPreviewWiringComplete": true,
-    "bipedPetBeginnerParameterEditorComplete": true
+    "bipedPetBeginnerParameterEditorComplete": true,
+    "bipedPetPhase1DeliveryComplete": true,
+    "bipedPetSemanticMotionCompilerComplete": false,
+    "bipedPetRuntimeIkComplete": false,
+    "bipedPetFootLockComplete": false,
+    "bipedPetRootMotionComplete": false,
+    "bipedPetMotionVfxComplete": false,
+    "crossBrowserGpuManualAcceptanceComplete": false
   },
   "completed": [
     "complete-appearance-studio-migration",
@@ -159,7 +166,8 @@
     "biped-pet-model-persistence",
     "biped-pet-three-runtime-renderer-adapter",
     "studio-complex-model-workshop-preview-wiring",
-    "studio-complex-model-beginner-parameter-editor"
+    "studio-complex-model-beginner-parameter-editor",
+    "biped-pet-phase1-delivery"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -170,25 +178,34 @@
     "parametric-rig-skin-and-socket-validation",
     "semantic-motion-solving-ik-foot-lock-root-motion",
     "motion-driven-deterministic-vfx",
-    "simple-complex-motion-variants-and-publishing"
+    "simple-complex-motion-variants-and-publishing",
+    "biped-pet-quaternion-motion-compiler",
+    "biped-pet-runtime-ik",
+    "biped-pet-foot-lock",
+    "biped-pet-root-motion",
+    "biped-pet-complex-motion-library",
+    "biped-pet-motion-vfx",
+    "biped-pet-profile-runtime-expansion",
+    "cross-browser-gpu-manual-acceptance"
   ],
-  "nextPhase": "in-site-parametric-biped-rig",
+  "nextPhase": "biped-pet-motion-and-browser-acceptance",
   "latestCompletedBatch": {
-    "id": "studio-complex-model-beginner-parameter-editor",
-    "domainPackage": "apps/playground",
+    "id": "biped-pet-phase1-delivery",
+    "domainPackage": "packages/pet-core + apps/playground",
     "rendererModified": true,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "complex-biped-pet-runtime-object",
-      "geometry-skin-attribute-types",
-      "bone-hierarchy-and-socket-resolution",
-      "idempotent-three-resource-disposal",
-      "malformed-mesh-and-socket-rejection",
-      "normalized-recipe-runtime-key-deduplication",
-      "complex-biped-runtime-static-gate",
-      "complex-model-canvas-replacement-and-fallback-gate",
-      "three-workshop-shared-recipe-wiring",
-      "complex-model-beginner-editor-static-gate"
+      "corepack pnpm --filter @yk-pets/pet-core test",
+      "corepack pnpm run test:studio-model-variants",
+      "node scripts/check-studio-model-mode.mjs",
+      "corepack pnpm run test:studio-complex-biped-runtime",
+      "corepack pnpm run check:studio-complex-biped-model",
+      "node scripts/check-studio-workspace-shell.mjs",
+      "node scripts/check-unified-cloud-fox-renderer.mjs",
+      "node scripts/check-documentation.mjs",
+      "node scripts/check-ai-handoff.mjs",
+      "corepack pnpm --filter @nova/playground typecheck",
+      "corepack pnpm --filter @nova/playground build"
     ]
   },
   "mandatoryDevelopmentPolicy": {

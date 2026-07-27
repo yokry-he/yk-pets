@@ -50,6 +50,9 @@ function hasCanvasReplacementStructure(source) {
     && /CANONICAL_VIEW_YAW[\s\S]*front:\s*0[\s\S]*left:\s*Math\.PI\s*\/\s*2[\s\S]*back:\s*Math\.PI[\s\S]*right:\s*-Math\.PI\s*\/\s*2/.test(sourceScript)
     && /const\s+complexPreviewRotation\s*=\s*computed/.test(sourceScript)
     && /CANONICAL_VIEW_YAW\[props\.view]\s*\+\s*props\.previewRotation\[1\]/.test(sourceScript)
+    && /import\s*\{[^}]*\bEuler\b[^}]*\}\s*from\s*['"]three['"]/.test(sourceScript)
+    && /const\s+complexPreviewEuler\s*=\s*computed/.test(sourceScript)
+    && /new\s+Euler\(\.\.\.complexPreviewRotation\.value\)/.test(sourceScript)
     && /['"]complex-compiled['"]\s*:/.test(sourceScript)
     && /function\s+onComplexCompilation\s*\(/.test(sourceScript)
     && /emit\(['"]complex-compiled['"]/.test(sourceScript)
@@ -57,7 +60,8 @@ function hasCanvasReplacementStructure(source) {
     && (sourceTemplate.match(/<TresCanvas\b/g) || []).length === 1
     && /watch\(\(\)\s*=>\s*\[props\.modelMode,\s*complexPreviewKey\.value]\s*as const/.test(sourceScript)
     && !/watch\([\s\S]*?props\.complexRecipe[\s\S]*?deep:\s*true/.test(sourceScript)
-    && /<TresGroup\b[^>]*v-if="showComplexRenderer"[^>]*:position="vec3\(previewPosition\)"[^>]*:rotation="vec3\(complexPreviewRotation\)"[^>]*:scale="vec3\(\[previewScale,\s*previewScale,\s*previewScale\]\)"/.test(sourceTemplate)
+    && /<TresGroup\b[^>]*v-if="showComplexRenderer"[^>]*:position="vec3\(previewPosition\)"[^>]*:rotation="complexPreviewEuler"[^>]*:scale="vec3\(\[previewScale,\s*previewScale,\s*previewScale\]\)"/.test(sourceTemplate)
+    && !/:rotation="vec3\(complexPreviewRotation\)"/.test(sourceTemplate)
     && /<ComplexBipedPetRenderer\b[^>]*:key="complexPreviewKey"[^>]*@compilation="onComplexCompilation"/.test(sourceTemplate)
     && /<ProceduralPet\b[^>]*v-else/.test(sourceTemplate)
     && /v-if="showComplexRenderer"/.test(sourceTemplate)
@@ -109,6 +113,18 @@ function hasBeginnerComplexModelEditor(source) {
     && !/\.complex-model-[\w-]+\s+(?:small|strong|span|input|summary|h2|h3|p|dt|dd)\b/.test(source)
 }
 
+function hasClientOnlyLayoutHydration(source) {
+  const sourceScript = script(source)
+  const mountedStart = sourceScript.indexOf('onMounted(() =>')
+  const mountedBody = sourceScript.match(/onMounted\(\(\)\s*=>\s*\{([\s\S]*?)\n\}\)/)?.[1] || ''
+  const hydrationCalls = ['appearance.hydrate()', 'assets.hydrate()', 'modelVariants.hydrate()', 'session.hydrate()']
+  return mountedStart >= 0
+    && hydrationCalls.every(call => mountedBody.includes(call))
+    && hydrationCalls.every(call => sourceScript.indexOf(call) > mountedStart)
+    && /watch\(workspace,\s*next\s*=>\s*\{\s*if\s*\(session\.hydrated\)\s*session\.setWorkspace\(next\)\s*\},\s*\{\s*immediate:\s*true\s*\}\)/.test(sourceScript)
+    && /session\.hydrate\(\)\s*\n\s*session\.setWorkspace\(workspace\.value\)\s*\n\s*modelVariants\.ensurePet/.test(mountedBody)
+}
+
 const checks = [
   ['运行时创建 Bone、Skeleton 与 SkinnedMesh', /\bBone\b/.test(runtime) && /\bSkeleton\b/.test(runtime) && /\bSkinnedMesh\b/.test(runtime)],
   ['运行时提供 position、skinIndex、skinWeight 与 index 属性', ['position', 'skinIndex', 'skinWeight', 'setIndex'].every(token => runtime.includes(token))],
@@ -128,6 +144,7 @@ const checks = [
   ['动作与道具工坊只读取同一持久化复杂配方和最终宠物身份', hasSharedRecipeReadOnlyWiring(motion) && hasSharedRecipeReadOnlyWiring(props) && /:complex-pet-id="currentPetId"/.test(template(motion)) && /:complex-pet-id="currentPetId"/.test(template(props))],
   ['资产库在客户端稳定区域展示中文复杂模型状态并使用统一 petId 回退', /currentPetId\s*=\s*computed\(\(\)\s*=>\s*appearance\.recipe\.identity\.petId\.trim\(\)\s*\|\|\s*session\.selectedAppearanceId\s*\|\|\s*'active-appearance'/.test(script(library)) && /<ClientOnly>/.test(template(library)) && /复杂模型状态加载中/.test(template(library)) && /function\s+formatCompilationStatus\s*\(/.test(script(library)) && /status\s*===\s*'ready'/.test(script(library)) && /status\s*===\s*'blocked'/.test(script(library)) && /status\s*===\s*'draft'/.test(script(library)) && /biped-pet\/v1/.test(template(library)) && /biped-pet-generator\/v1/.test(template(library)) && /complex\.compilation\?\.diagnostics\.length/.test(template(library)) && /complex\.completion/.test(template(library))],
   ['Studio 布局不再声明复杂模式的简单兼容预览', !layout.includes('骨骼渲染器完成前') && !layout.includes('简单模型兼容预览') && layout.includes('复杂模型由站内配方自动生成')],
+  ['Studio 布局只在 onMounted 后 hydration 四个 Store，并在恢复后才持久化当前工作区，避免父布局覆盖子页面或复杂模式状态', hasClientOnlyLayoutHydration(layout)],
   ['package 注册门禁并纳入根 typecheck 链', Boolean(packageManifest.scripts?.['check:studio-complex-biped-model']) && packageManifest.scripts.typecheck.includes('pnpm run check:studio-complex-biped-model')],
 ]
 

@@ -18,10 +18,6 @@ const appearance = usePetAppearanceStore()
 const assets = useStudioAssetStore()
 const modelVariants = useStudioModelVariantsStore()
 const session = useStudioSessionStore()
-appearance.hydrate()
-assets.hydrate()
-modelVariants.hydrate()
-session.hydrate()
 
 const workspace = computed(() => resolveStudioWorkspace(route.path))
 const selectedMotion = computed(() => assets.motions.find(item => item.id === session.selectedMotionId))
@@ -31,7 +27,7 @@ const propPath = computed(() => session.selectedPropId ? `/studio/props?prop=${e
 const currentPetId = computed(() => appearance.recipe.identity.petId.trim() || session.selectedAppearanceId || 'active-appearance')
 const currentModelVariants = computed(() => modelVariants.byPetId[currentPetId.value] || createStudioPetModelVariants(currentPetId.value))
 const showModelNotice = ref(true)
-watch(workspace, next => session.setWorkspace(next), { immediate: true })
+watch(workspace, next => { if (session.hydrated) session.setWorkspace(next) }, { immediate: true })
 watch(() => session.modelMode, mode => { if (mode === 'complex') showModelNotice.value = true })
 
 function selectModelMode(mode: StudioModelMode) {
@@ -41,6 +37,12 @@ function selectModelMode(mode: StudioModelMode) {
 }
 
 onMounted(() => {
+  // 布局与子工作区都在挂载后才读取 localStorage，避免父级先改变 Pinia 状态而使子页面 hydration 输入不一致。
+  appearance.hydrate()
+  assets.hydrate()
+  modelVariants.hydrate()
+  session.hydrate()
+  session.setWorkspace(workspace.value)
   modelVariants.ensurePet(currentPetId.value)
   if (session.modelMode === 'complex') modelVariants.ensureComplexDraft(currentPetId.value)
 })

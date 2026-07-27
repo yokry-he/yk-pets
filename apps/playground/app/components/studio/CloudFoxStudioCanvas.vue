@@ -5,7 +5,7 @@
 -->
 <script setup lang="ts">
 import { TresCanvas } from '@tresjs/core'
-import { Vector3 } from 'three'
+import { Euler, Vector3 } from 'three'
 import ComplexBipedPetRenderer from './ComplexBipedPetRenderer.vue'
 import ProceduralPet from './ProceduralPet.vue'
 import PetSceneEffects from './PetSceneEffects.vue'
@@ -90,6 +90,8 @@ const complexPreviewRotation = computed<readonly [number, number, number]>(() =>
   CANONICAL_VIEW_YAW[props.view] + props.previewRotation[1],
   props.previewRotation[2],
 ])
+// TresGroup.rotation 是只读 Euler；传入 Euler 保留固定视角与自由旋转的既有组合，且避免以 Vector3 覆盖该对象。
+const complexPreviewEuler = computed(() => new Euler(...complexPreviewRotation.value))
 const showComplexRenderer = computed(() => props.modelMode === 'complex' && Boolean(props.complexRecipe) && !complexPreviewBlocked.value)
 const complexPreviewStatus = computed(() => {
   if (props.modelMode !== 'complex' || !props.complexRecipe) return undefined
@@ -164,7 +166,7 @@ const sceneStyle = computed(() => ({
       <TresPointLight :position="vec3(scheme.scene.lights.primaryPosition)" :intensity="scheme.scene.lights.primaryIntensity" :color="appearance.palette.primaryGlow" />
       <TresPointLight :position="vec3(scheme.scene.lights.secondaryPosition)" :intensity="scheme.scene.lights.secondaryIntensity" :color="appearance.palette.secondaryGlow" />
       <PetSceneEffects :scene="activeScene" :behavior="behavior" />
-      <TresGroup v-if="showComplexRenderer" :position="vec3(previewPosition)" :rotation="vec3(complexPreviewRotation)" :scale="vec3([previewScale, previewScale, previewScale])">
+      <TresGroup v-if="showComplexRenderer" :position="vec3(previewPosition)" :rotation="complexPreviewEuler" :scale="vec3([previewScale, previewScale, previewScale])">
         <ComplexBipedPetRenderer :key="complexPreviewKey" :recipe="complexRecipe!" @compilation="onComplexCompilation" />
       </TresGroup>
       <ProceduralPet v-else :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotation" :preview-position="previewPosition" />

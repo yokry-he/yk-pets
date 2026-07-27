@@ -96,6 +96,8 @@ if (state) {
   expect(state.architecture?.motionPreviewFreeRotationComplete === true, '动作预览自由旋转必须标记完成 / Motion preview free rotation must be marked complete')
   expect(state.architecture?.motionStudioHorizontalOverflowFixed === true, '动作侧栏横向溢出修复必须标记完成 / Motion sidebar horizontal overflow repair must be marked complete')
   expect(state.architecture?.motionStudioChineseUiComplete === true, '动作工坊中文界面必须标记完成 / Motion Studio Chinese-first UI must be marked complete')
+  for (const key of ['bipedPetRigProfileContractComplete', 'bipedPetModelRecipeComplete', 'bipedPetCharacterCompilerComplete', 'bipedPetAutomaticSkinFoundationComplete', 'bipedPetModelPersistenceComplete', 'bipedPetThreeRuntimeRendererAdapterComplete', 'bipedPetWorkshopPreviewWiringComplete', 'bipedPetBeginnerParameterEditorComplete', 'bipedPetPhase1DeliveryComplete']) expect(state.architecture?.[key] === true, `双足萌宠第一阶段状态缺失 / Missing completed biped-pet Phase 1 state: ${key}`)
+  for (const key of ['bipedPetSemanticMotionCompilerComplete', 'bipedPetRuntimeIkComplete', 'bipedPetFootLockComplete', 'bipedPetRootMotionComplete', 'bipedPetMotionVfxComplete', 'crossBrowserGpuManualAcceptanceComplete']) expect(state.architecture?.[key] === false, `双足萌宠未完成边界错误 / Incorrect incomplete biped-pet boundary: ${key}`)
   expect(state.mandatoryDevelopmentPolicy?.updateAiPackageForEveryFeatureCommit === true, '必须启用每个功能提交更新 AI 包 / Per-feature-commit AI update policy must be enabled')
   expect((state.completed || []).includes('motion-semantic-rig'), '必须标记语义 Rig 领域已完成 / Semantic Rig domain must be marked complete')
   expect((state.completed || []).includes('motion-domain-evaluator'), '必须标记无 UI 动作求值器已完成 / UI-free motion evaluator must be marked complete')
@@ -117,9 +119,26 @@ if (state) {
   expect((state.completed || []).includes('motion-preview-free-rotation'), '必须标记动作预览自由旋转完成 / Motion preview free rotation must be marked complete')
   expect((state.completed || []).includes('motion-property-panel-horizontal-overflow-repair'), '必须标记动作属性栏横向溢出修复完成 / Motion property-panel horizontal overflow repair must be marked complete')
   expect((state.completed || []).includes('motion-studio-chinese-first-ui'), '必须标记动作工坊中文优先界面完成 / Motion Studio Chinese-first UI must be marked complete')
+  expect((state.completed || []).includes('biped-pet-phase1-delivery'), '必须标记双足萌宠第一阶段交付完成 / Biped-pet Phase 1 delivery must be marked complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
   expect((state.notCompleted || []).includes('browser-screenshot-baselines'), '必须保留浏览器截图基线未完成 / Browser screenshot baselines must remain incomplete')
-  expect(state.nextPhase === 'in-site-parametric-biped-rig', '下一阶段必须是站内参数化双足 Rig / Next phase must be the in-site parametric biped rig')
+  for (const key of ['biped-pet-quaternion-motion-compiler', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-root-motion', 'biped-pet-complex-motion-library', 'biped-pet-motion-vfx', 'biped-pet-profile-runtime-expansion', 'cross-browser-gpu-manual-acceptance']) expect((state.notCompleted || []).includes(key), `必须保留双足萌宠后续边界 / Biped-pet future boundary must remain incomplete: ${key}`)
+  expect(state.nextPhase === 'biped-pet-motion-and-browser-acceptance', '下一阶段必须是双足萌宠动作与浏览器验收 / Next phase must be biped-pet motion and browser acceptance')
+  const phaseOneCoverage = [
+    'corepack pnpm --filter @yk-pets/pet-core test',
+    'corepack pnpm run test:studio-model-variants',
+    'node scripts/check-studio-model-mode.mjs',
+    'corepack pnpm run test:studio-complex-biped-runtime',
+    'corepack pnpm run check:studio-complex-biped-model',
+    'node scripts/check-studio-workspace-shell.mjs',
+    'node scripts/check-unified-cloud-fox-renderer.mjs',
+    'node scripts/check-documentation.mjs',
+    'node scripts/check-ai-handoff.mjs',
+    'corepack pnpm --filter @nova/playground typecheck',
+    'corepack pnpm --filter @nova/playground build',
+  ]
+  expect(state.latestCompletedBatch?.id === 'biped-pet-phase1-delivery', '最新批次必须是双足萌宠第一阶段交付 / Latest batch must be biped-pet Phase 1 delivery')
+  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(phaseOneCoverage), '第一阶段 automatedCoverage 必须且只能列出真实验证命令 / Phase 1 automatedCoverage must contain only the actual verification commands')
 }
 
 for (const routeFile of ['appearance.vue', 'motion.vue', 'props.vue', 'library.vue']) expect(existsSync(path.join(root, 'apps/playground/app/pages/studio', routeFile)), `缺少 Studio 路由文件 / Missing Studio route file: ${routeFile}`)
@@ -138,6 +157,11 @@ if (visualCases) {
     expect(Array.isArray(item.automatedChecks) && item.automatedChecks.length > 0, `视觉案例缺少自动检查 / Missing automated checks: ${item.id}`)
     expect(Array.isArray(item.manualChecks) && item.manualChecks.length > 0, `视觉案例缺少人工检查 / Missing manual checks: ${item.id}`)
   }
+  const phaseOneCase = visualCases.cases.find(item => item.id === 'biped-pet-phase1-browser-acceptance')
+  expect(Boolean(phaseOneCase), '缺少双足萌宠第一阶段人工验收案例 / Missing biped-pet Phase 1 manual acceptance case')
+  expect(JSON.stringify(phaseOneCase?.setup?.viewports) === JSON.stringify([[1440, 900], [760, 900]]), '第一阶段人工案例必须覆盖 1440×900 与 760×900 / Phase 1 manual case must cover 1440×900 and 760×900')
+  expect(['soft', 'athletic', 'round', 'slender'].every(style => phaseOneCase?.setup?.bodyStyles?.includes(style)), '第一阶段人工案例必须覆盖四个体型模板 / Phase 1 manual case must cover four body styles')
+  expect((phaseOneCase?.manualChecks || []).length >= 5 && phaseOneCase.manualChecks.every(check => check.startsWith('manual:')), '未自动覆盖的双足萌宠检查必须显式标记 manual / Non-automated biped-pet checks must be explicitly marked manual')
 }
 
 const sessionStart = safeRead('.ai/session-start.md')
@@ -155,6 +179,8 @@ expect(handoffZh.includes('高级动画工具') && handoffZh.includes('browser-a
 expect(handoffEn.includes('Advanced animation tools') && handoffEn.includes('browser-acceptance-and-release-hardening'), 'English handoff must record completed Phase E and browser acceptance next')
 expect(handoffZh.includes('动作直接操控批次') && handoffEn.includes('Direct motion manipulation batch'), '中英文交接必须记录动作直接操控批次 / Handoffs must record the direct manipulation batch')
 expect(handoffZh.includes('动作工坊预览与中文化可用性批次') && handoffEn.includes('Motion Studio preview and Chinese-first usability batch'), '中英文交接必须记录动作工坊预览与中文化批次 / Handoffs must record the Motion Studio preview and localization batch')
+expect(handoffZh.includes('双足萌宠第一阶段交付状态') && handoffEn.includes('Biped-pet Phase 1 delivery status'), '中英文交接必须同步双足萌宠第一阶段状态 / Handoffs must synchronize biped-pet Phase 1 status')
+expect(handoffZh.includes('已回退简单模型') && handoffEn.includes('simple-model fallback'), '中英文交接必须说明复杂模型失败回退 / Handoffs must document complex-model fallback')
 expect(knownZh.includes('HANDOFF-001') && knownEn.includes('HANDOFF-001'), '中英文已知问题必须记录强制 AI 更新 / Known issues must record mandatory AI updates')
 expect(knownZh.includes('MOTION-004') && knownEn.includes('MOTION-004'), '中英文已知问题必须记录旧数据浏览器验收 / Known issues must record legacy-data browser acceptance')
 expect(knownZh.includes('MOTION-006') && knownEn.includes('MOTION-006'), '中英文已知问题必须记录动作预览与窄侧栏复验 / Known issues must record Motion Studio preview and narrow-sidebar recheck')
@@ -235,7 +261,8 @@ function checkCommitHistoryPolicy() {
   for (const commit of commits) {
     const parentLine = git(['rev-list', '--parents', '-n', '1', commit]).split(/\s+/)
     if (parentLine.length > 2) continue
-    const changedFiles = git(['diff-tree', '--root', '--no-commit-id', '--name-only', '-r', commit]).split(/\r?\n/).filter(Boolean)
+    // `-z` 保留中文文件名原样，避免 Git quotePath 转义后误判同提交交接文档缺失。
+    const changedFiles = git(['diff-tree', '--root', '--no-commit-id', '--name-only', '-z', '-r', commit]).split('\0').filter(Boolean)
     if (!changedFiles.some(isFeatureSource)) continue
     const shortSha = commit.slice(0, 9)
     if (!changedFiles.includes('.ai/project-state.json')) failures.push(`功能提交 ${shortSha} 未更新 .ai/project-state.json / Feature commit ${shortSha} did not update .ai/project-state.json`)

@@ -79,6 +79,9 @@ The complete Appearance Studio, shared navigation, local StudioSession, stable m
 - Advanced interpolation for prop events;
 - browser screenshot baselines;
 - real Chrome Side Panel, GPU, and WebGL manual acceptance.
+- A compiler from five semantic motions to Quaternion animation, complex-model runtime IK, foot locking, Root Motion, complex dance/martial-arts/sport motions, and motion-driven effects.
+- Runtime generation and editing for humanoid, quadruped, and mech Profiles; only `biped-pet/v1` is production-ready today.
+- DCC or GLB export for the in-site parametric character. Its recipe and compiled data are only for this runtime and require neither GLB, Blender, nor hand rigging/skinning.
 
 ## 5. Motion consumption chain
 
@@ -88,13 +91,14 @@ Evaluate once per frame. Store pose offsets relative to base appearance mounts a
 
 ## 6. Next phase
 
-The next phase is `browser-acceptance-and-release-hardening`:
+The next phase is `biped-pet-motion-and-browser-acceptance`:
 
-1. Validate timeline, prop events, prop entities, and advanced tools in a real browser.
-2. Validate Chrome Side Panel, GPU/WebGL, depth ordering, audio user gestures, and complex GLB files.
-3. Establish browser screenshot baselines and multi-resolution regression.
-4. Fix issues found by real acceptance and update release documentation.
-5. The PR still must not be merged without explicit user instruction.
+1. Compile five semantic motions to Quaternion animation and let the complex biped runtime consume them.
+2. Implement runtime IK, foot locking, Root Motion, complex motions, and deterministic motion effects.
+3. Validate the shared recipe across all three workshops, persistence, simple fallback, keyboard operation, 1440×900/760×900 layout, and console state in a real browser.
+4. Validate Chrome Side Panel, GPU/WebGL, depth ordering, audio user gestures, and final pixels across supported browsers.
+5. Establish browser screenshot baselines and multi-resolution regression, then fix real-acceptance findings and update release documentation.
+6. The PR still must not be merged without explicit user instruction.
 
 ## 7. Manual acceptance still required
 
@@ -169,3 +173,58 @@ Trust order: actual code and runtime results > latest full CI > machine state > 
 - The next phase is now `in-site-parametric-biped-rig`: pet GLB import is removed; an in-site recipe compiler will generate the `biped-pet/v1` skeleton, mesh, skin weights, sockets, and semantic mapping automatically.
 - Versioned Rig Profiles preserve future humanoid, quadruped, and mech support, while the first production profile remains focused on biped pets.
 - `browser-acceptance-and-release-hardening` remains mandatory after the complex runtime exists; this batch's static checks are not real GPU/WebGL acceptance.
+
+## 16. Biped-pet Rig Profile contract batch
+
+- `@yk-pets/pet-core` provides a framework-neutral `CharacterRigProfile` contract with stable diagnostics for unique bones, a single-root hierarchy, parents and cycles, semantic references, joint limits, contacts, sockets, and finite Vector3/Quaternion values.
+- `biped-pet/v1` defines the first biped skeleton: root, pelvis, three spine bones, chest, neck, head, complete left/right arms and legs, plus optional ears, tail, and antenna chains.
+- Foot contacts and left/right hand, left/right foot, head, back, and tail-root sockets are part of the domain contract.
+- Renderers, procedural mesh generation, automatic skinning, Quaternion motion, runtime IK, foot locking, and Root Motion were not delivered by this contract alone and must not be represented as completed GPU/WebGL acceptance.
+
+## 17. Biped-pet parametric model-recipe batch
+
+- `CharacterModelRecipeV1` stably declares `biped-pet/v1`, `biped-pet-generator/v1`, proportions, ears/tail/antennae, materials, and update time. It is an in-site generator input, not a GLB or other exchange format.
+- `normalizeBipedPetModelRecipe` repairs unknown enums, `NaN`, invalid colors, and out-of-range values without throwing. The same input and injected time produce deterministic output.
+- `applyBipedPetBodyStyle` replaces only a body-style preset and retains user-configured appendages, material, identity, and time.
+
+## 18. Automatic skeleton, mesh, and skin compilation batch
+
+- `compileBipedPetCharacter` deterministically compiles the in-site recipe into a `biped-pet/v1` skeleton, optional appendage chains, indexed procedural mesh, and up to four generated weights per vertex. It is framework-neutral and creates no Three.js object.
+- Tubes use fixed radial/axial topology and smooth weight transitions. Head, hand, and foot end regions are rigidly bound to their semantic bones for stable future runtime consumption.
+- The result clones joint limits, contacts, and sockets, validates hierarchy, finite values, and non-negative weights, and returns `blocked` diagnostics for invalid internal state. Ordinary damaged recipes are repaired before compilation.
+
+## 19. Recipe and compilation persistence batch
+
+- The `studio-model-variants` complex container persists `CharacterModelRecipeV1` and a lightweight compilation summary. First entry to Complex mode creates a default biped-pet recipe without overwriting the simple model or an edited recipe.
+- Patch updates accept only editable fields, deep-merge proportions, appendages, and material, clear stale compilation data, and return to a draft state.
+- Store commit recompiles the current recipe. It marks the variant ready only when submitted hash/status and current compilation all match; stale data retains a diagnostic and draft state.
+
+## 20. Three runtime and adapter batch
+
+- `createComplexBipedPetObject` accepts only ready framework-neutral compilation results and creates BufferGeometry, SkinnedMesh, Bone/Skeleton hierarchy, and sockets resolved by `boneId`. Invalid hierarchy, index, or socket input is rejected with safe domain errors.
+- Geometry contains explicit position, skinIndex, skinWeight, and index buffers, normals, and bounds. The base material color comes from the recipe; secondary color is only a weak emissive accent.
+- `dispose()` is idempotent and releases geometry, material, and skeleton, including partially created resources after a failure.
+- `ComplexBipedPetRenderer.vue` is a Canvas-free Vue/Tres adapter. It normalizes once for compilation and material creation, deduplicates by compilation key, owns disposal, and turns runtime exceptions into diagnostics.
+
+## 21. Unified complex-workshop preview batch
+
+- `CloudFoxStudioCanvas` still creates one existing `TresCanvas`. In Complex mode with a recipe, it replaces the simple renderer with `ComplexBipedPetRenderer`; Simple mode or a missing recipe continues to use `ProceduralPet` without stacking two pets.
+- Canvas forwards a real `compilation` event as `complex-compiled`. Appearance commits only a hash that matches the current recipe, while the Store repeats the final persistence check.
+- A blocked compilation or Three runtime failure displays “Generation failed; falling back to the simple model” and actually uses the simple renderer for that session without deleting the selected complex mode or recipe.
+- Appearance, Motion, and Prop Studio read the same persisted recipe by `petId`; only Appearance edits the recipe and commits compilation. The library reports profile, generator, compilation status, diagnostics, and completion honestly.
+
+## 22. Beginner complex-model editor batch
+
+- Appearance Studio shows `StudioComplexModelEditor` only in Complex mode with a current recipe. Its normal surface exposes Soft, Athletic, Round, and Slender presets, nine bounded proportions, and ear/tail/antenna toggles.
+- The parent owns edits: presets use `applyBipedPetBodyStyle`, local patches use `studio-model-variants.updateComplexRecipe`, and appendage toggles write only `enabled`, retaining their length and segments. Every recipe change clears stale compilation and triggers the existing runtime recompilation path.
+- Range inputs update local draft state on `input` and commit once on `change`; numeric inputs reject empty/invalid values. External recipe changes do not overwrite an active drag. The container has no undo history and must not claim drag merging.
+- Advanced information is read-only. At ≤760px the editor is single-column; presets expose `aria-pressed`, and controls retain labels and keyboard focus.
+
+## 23. Biped-pet Phase 1 delivery status
+
+- Phase 1 is complete only for `biped-pet/v1`, `CharacterModelRecipeV1`, procedural skeleton/mesh generation, up-to-four automatic weights, the Three complex runtime, recipe persistence, unified previews in all three workshops, and beginner body-style/proportion/appendage editing.
+- On a runtime failure, stale hash, or damaged local data, the current session displays the simple-model fallback. The simple Cloud Fox remains on the canonical production render path; fallback does not delete the selected complex mode or recipe.
+- This is not GLB import/export, a Blender workflow, or manual bone/skin authoring. The in-site format promises consumption only by this runtime.
+- Two blockers found in a real browser received minimal fixes with static regressions: complex `TresGroup.rotation` now receives the canonical/free-rotation composition as an `Euler`, not a `Vector3`; the four Studio-layout stores hydrate only after `onMounted`, the workspace watch writes only after `session.hydrated`, and the current routed workspace is persisted only after restoration. This prevents default `simple` from overwriting a saved complex mode or the parent from mutating child hydration input first.
+- The primary agent completed the real-browser recheck for this batch: a new tab has no error or hydration mismatch; Complex mode survives refresh; motion templates and appendages persist; simple fallback works; `motion`, `props`, and `library` share one ready complex recipe; the library shows `biped-pet/v1`, `biped-pet-generator/v1`, and zero diagnostics; and at 760×900, `clientWidth === scrollWidth === 760` with all four presets, nine proportions, and three appendage controls present. This completes the batch's functional Studio browser acceptance, but it does not replace the still-incomplete final cross-browser GPU/WebGL acceptance.
+- `.ai/visual-cases.json` lists 1440×900, 760×900, four presets, persistence, three-workshop state, simple fallback, keyboard operation, no overflow, console, and GPU checks as manual acceptance. Functional Studio browser acceptance for this batch is complete; `cross-browser-gpu-manual-acceptance` and the cross-browser GPU/WebGL and final-pixel items remain incomplete until that separate graphics acceptance is performed.

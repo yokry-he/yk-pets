@@ -79,7 +79,9 @@
 - 道具事件的高级曲线插值；
 - 浏览器截图基线；
 - 真实 Chrome Side Panel、GPU 与 WebGL 人工验收。
-- 复杂模型的语义动作、IK、足底锁定、Root Motion、导出与发布流程。
+- 复杂模型的五个语义动作到 Quaternion 的动作编译器、运行时 IK、足底锁定、Root Motion、复杂舞蹈/功夫/运动动作和动作特效。
+- 人类、四足、机甲 Profile 的运行时生成与编辑；当前仅 `biped-pet/v1` 正式可用。
+- 本站参数化角色的 DCC/GLB 导出；当前配方和编译数据只服务本站 runtime，且无需 GLB、Blender 或手工绑骨蒙皮。
 
 ## 5. 动作消费链路
 
@@ -89,13 +91,14 @@
 
 ## 6. 下一阶段
 
-下一阶段是 `browser-acceptance-and-release-hardening`：
+下一阶段是 `biped-pet-motion-and-browser-acceptance`：
 
-1. 在真实浏览器验证时间轴、道具事件、道具实体和高级工具；
-2. 验证 Chrome Side Panel、GPU/WebGL、深度排序、音频用户手势和复杂 GLB；
-3. 建立浏览器截图基线和多分辨率回归；
-4. 修复真实验收发现的问题并更新发布文档；
-5. 未经用户明确要求仍不得合并 PR。
+1. 实现五个语义动作到 Quaternion 的编译器，并让复杂双足运行时消费结果；
+2. 实现运行时 IK、足底锁定、Root Motion、复杂动作与确定性动作特效；
+3. 在真实浏览器验证三工坊共享配方、持久化、简单回退、键盘、1440×900/760×900 响应式布局及控制台；
+4. 验证 Chrome Side Panel、GPU/WebGL、深度排序、音频用户手势和跨浏览器最终像素；
+5. 建立浏览器截图基线和多分辨率回归，修复真实验收问题并更新发布文档；
+6. 未经用户明确要求仍不得合并 PR。
 
 ## 7. 仍需人工验收
 
@@ -225,3 +228,12 @@
 - 比例滑块在 `input` 阶段仅更新本地草稿，在 `change` 阶段只提交一次；数值框使用 `valueAsNumber`，空值或非法值会恢复当前配方而不提交。外部配方更新不会覆盖正在拖动的本地值。当前复杂模型容器没有撤销历史，禁止伪造拖动合并能力；静态门禁只检查该事件契约，单次拖动写入仍由 `.ai/visual-cases.json` 的人工验收确认。
 - 高级信息折叠区只读显示 Profile、generator、骨骼数、顶点数、诊断与安全范围；不向新手暴露手工骨骼、绑定或权重编辑。760px 以下改为单列，模板使用 `aria-pressed`，开关具有稳定标签与键盘焦点。
 - 本批只完成 Task7 编辑器接入；复杂模型语义动作、IK、足底锁定、Root Motion、确定性特效、导出与真实 GPU/WebGL 人工验收仍未完成。
+
+## 23. 双足萌宠第一阶段交付状态
+
+- 第一阶段已完成且仅包括：`biped-pet/v1`、站内 `CharacterModelRecipeV1`、程序化骨架/网格、每顶点四权重自动蒙皮、Three 复杂运行时、配方持久化、三个工坊统一预览，以及新手体型/比例/附属编辑。
+- 复杂渲染失败、陈旧哈希或损坏本地数据时，当前会话会显示“生成失败，已回退简单模型”；简单云狐仍沿唯一正式渲染链路运行，复杂模式选择和配方不被回退逻辑删除。
+- 这不是 GLB 导入/导出、Blender 工作流或手工骨骼/蒙皮功能；站内格式只承诺本站 runtime 消费。
+- 真实浏览器发现的两项阻塞已作最小修复并加静态回归：复杂 `TresGroup.rotation` 以 `Euler`（而非 `Vector3`）接收固定视角与自由旋转组合；Studio 布局的四个 Store 只在 `onMounted` 后 hydration，工作区 watch 仅在 `session.hydrated` 后写入，恢复完成后才显式持久化当前路由工作区，避免默认 `simple` 覆盖已保存的复杂模式或抢先改变子页面 hydration 输入。
+- 主代理已完成本批真实浏览器复测：新标签页无 error 或 hydration mismatch；复杂模式刷新后保持；运动模板与附属特征持久化；简单模型回退正常；`motion`、`props`、`library` 共享同一复杂配方且 Canvas 为 ready；资产库显示 `biped-pet/v1`、`biped-pet-generator/v1` 与 0 条诊断；在 760×900 下 `clientWidth === scrollWidth === 760`，四模板、九比例和三附属控件均存在。此证据完成本批 Studio 功能性浏览器验收，但不替代仍未完成的跨浏览器 GPU/WebGL 最终验收。
+- `.ai/visual-cases.json` 将 1440×900、760×900、四模板、持久化、三个工坊、简单回退、键盘、无横向溢出、控制台和 GPU 检查列为人工验收。本批 Studio 功能性浏览器复测已经完成；`cross-browser-gpu-manual-acceptance` 及跨浏览器 GPU/WebGL、最终像素相关项目仍须保持未完成，直至后续完成对应图形验收。

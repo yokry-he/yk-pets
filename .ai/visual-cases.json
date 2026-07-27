@@ -383,6 +383,49 @@
         "展开只读高级信息可看到 Profile、生成器、骨骼数、顶点数、诊断和安全范围",
         "1440×900 与 760×900 均为单列可操作布局且没有横向滚动"
       ]
+    },
+    {
+      "id": "biped-pet-phase1-browser-acceptance",
+      "route": "/studio/appearance",
+      "setup": {
+        "modelMode": "complex",
+        "bodyStyles": [
+          "soft",
+          "athletic",
+          "round",
+          "slender"
+        ],
+        "repeatRoutes": [
+          "/studio/motion",
+          "/studio/props"
+        ],
+        "viewports": [
+          [
+            1440,
+            900
+          ],
+          [
+            760,
+            900
+          ]
+        ]
+      },
+      "automatedChecks": [
+        "corepack pnpm --filter @yk-pets/pet-core test",
+        "corepack pnpm run test:studio-model-variants",
+        "node scripts/check-studio-model-mode.mjs",
+        "corepack pnpm run test:studio-complex-biped-runtime",
+        "corepack pnpm run check:studio-complex-biped-model",
+        "node scripts/check-studio-workspace-shell.mjs",
+        "node scripts/check-unified-cloud-fox-renderer.mjs"
+      ],
+      "manualChecks": [
+        "manual: 在 1440×900 和 760×900 各选择柔软、运动、圆润、纤细四个模板，确认新手编辑器可操作且无横向溢出",
+        "manual: 修改比例与附属物、刷新并切换到动作和道具工坊，确认同一 petId 的复杂配方、编译状态和编辑值持续一致",
+        "manual: 使用键盘 Tab、Enter、Space 与范围输入操作模板、附属开关和比例，确认可见焦点和正确语义状态",
+        "manual: 人为触发复杂编译或运行时失败，确认提示“生成失败，已回退简单模型”，简单模型可继续显示与旋转，且复杂配方没有被删除",
+        "manual: 检查浏览器控制台无未处理错误，并记录 GPU/WebGL、跨浏览器渲染和最终像素验收；这些项目在主代理实际验收前均不得标记完成"
+      ]
     }
   ]
 }
