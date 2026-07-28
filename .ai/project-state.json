@@ -94,6 +94,7 @@
     "bipedPetAnalyticTwoBoneIkComplete": true,
     "bipedPetConstrainedFabrikSolverComplete": true,
     "bipedPetConstrainedFabrikConstraintFixComplete": true,
+    "bipedPetConstrainedFabrikPlaneValidationComplete": true,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
     "bipedPetRootMotionComplete": false,

@@ -195,14 +195,25 @@ const constructPoleHalfPlaneChain = (
   return result
 }
 
-const satisfiesPoleHalfPlane = (
+const satisfiesPolePlaneConstraint = (
   positions: readonly RigVector3[],
   root: RigVector3,
+  targetDirection: RigVector3,
   bendDirection: RigVector3,
   totalLength: number,
 ): boolean => {
   const tolerance = Math.max(LENGTH_EPSILON, totalLength * 1e-10)
-  return positions.slice(1, -1).every(position => dot(subtract(position, root), bendDirection) >= -tolerance)
+  const planeNormal = normalize(cross(targetDirection, bendDirection))
+  if (!planeNormal) return false
+  return positions.slice(1, -1).every((position) => {
+    const rootOffset = subtract(position, root)
+    const planeDistance = dot(rootOffset, planeNormal)
+    const halfPlaneCoordinate = dot(rootOffset, bendDirection)
+    return Number.isFinite(planeDistance)
+      && Number.isFinite(halfPlaneCoordinate)
+      && Math.abs(planeDistance) <= tolerance
+      && halfPlaneCoordinate >= -tolerance
+  })
 }
 
 export const solveConstrainedFabrik = (input: ConstrainedFabrikInput): ConstrainedFabrikResult => {
@@ -270,7 +281,7 @@ export const solveConstrainedFabrik = (input: ConstrainedFabrikInput): Constrain
   // 配置上限小于物理链长时，直线展开会违反“保持原段长”；使用聚合两段三角形直接命中钳制点。
   if (wasClamped) {
     const constrainedPositions = constructPoleHalfPlaneChain(root, effectiveTarget, bendDirection, segmentLengths, tolerance)
-    if (!constrainedPositions || !satisfiesPoleHalfPlane(constrainedPositions, root, bendDirection, totalLength)) {
+    if (!constrainedPositions || !satisfiesPolePlaneConstraint(constrainedPositions, root, mainAxis, bendDirection, totalLength)) {
       return blockedResult(input)
     }
     return {
@@ -313,9 +324,9 @@ export const solveConstrainedFabrik = (input: ConstrainedFabrikInput): Constrain
   // 有可行聚合分割时改用同一平面内的确定性保长解，否则绝不伪称 solved。
   const constrainedPositions = constructPoleHalfPlaneChain(root, effectiveTarget, bendDirection, segmentLengths, tolerance)
   const resultPositions = constrainedPositions
-    && satisfiesPoleHalfPlane(constrainedPositions, root, bendDirection, totalLength)
+    && satisfiesPolePlaneConstraint(constrainedPositions, root, mainAxis, bendDirection, totalLength)
     ? constrainedPositions
-    : (satisfiesPoleHalfPlane(positions, root, bendDirection, totalLength)
+    : (satisfiesPolePlaneConstraint(positions, root, mainAxis, bendDirection, totalLength)
       ? positions.map(position => [...position] as RigVector3)
       : null)
   if (!resultPositions) return blockedResult(input, positions, iterations)

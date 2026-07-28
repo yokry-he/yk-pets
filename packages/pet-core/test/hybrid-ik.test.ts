@@ -104,11 +104,18 @@ test('FABRIK 最终所有内部关节点位于 Pole 定义的统一弯曲半平�
   const projectedPole = pole.map((value, index) => value - axis[index]! * poleAlongAxis)
   const projectedPoleLength = Math.hypot(...projectedPole)
   const bend = projectedPole.map(value => value / projectedPoleLength)
+  const planeNormal = [
+    axis[1]! * bend[2]! - axis[2]! * bend[1]!,
+    axis[2]! * bend[0]! - axis[0]! * bend[2]!,
+    axis[0]! * bend[1]! - axis[1]! * bend[0]!,
+  ]
 
   assert.equal(result.status, 'solved')
   assert.ok(result.error <= 1e-4)
   for (const position of result.positions.slice(1, -1)) {
     const signedDistance = position[0] * bend[0]! + position[1] * bend[1]! + position[2] * bend[2]!
+    const planeDistance = position[0] * planeNormal[0]! + position[1] * planeNormal[1]! + position[2] * planeNormal[2]!
+    assert.ok(Math.abs(planeDistance) <= 1e-8, `内部关节点脱离统一 Pole 平面：${planeDistance}`)
     assert.ok(signedDistance >= -1e-8, `内部关节点越过 Pole 半平面：${signedDistance}`)
   }
   for (let index = 1; index < result.positions.length; index += 1) {
@@ -123,6 +130,17 @@ test('FABRIK 找不到可行聚合分割且未收敛时安全阻塞', () => {
   })
 
   assert.equal(result.status, 'blocked')
+  assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
+})
+
+test('FABRIK 无可行聚合分割时拒绝末端命中但脱离统一 Pole 平面的解', () => {
+  const result = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [0, 0, 4], [3, 0, 4], [3, 2, 4]],
+    target: [.5, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'blocked')
+  assert.equal(result.iterations, 3)
   assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
 })
 
