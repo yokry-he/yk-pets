@@ -95,6 +95,7 @@
     "bipedPetConstrainedFabrikSolverComplete": true,
     "bipedPetConstrainedFabrikConstraintFixComplete": true,
     "bipedPetConstrainedFabrikPlaneValidationComplete": true,
+    "bipedPetConstrainedFabrikCompleteReachDomainComplete": true,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
     "bipedPetRootMotionComplete": false,

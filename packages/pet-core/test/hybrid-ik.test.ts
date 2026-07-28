@@ -144,6 +144,114 @@ test('FABRIK 无可行聚合分割时拒绝末端命中但脱离统一 Pole 平�
   assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
 })
 
+test('FABRIK 使用 Pole 打破直链同轴收缩奇异', () => {
+  const result = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [1, 0, 0], [2, 0, 0]],
+    target: [1.5, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'solved')
+  assert.ok(result.error <= 1e-4)
+  assert.ok(result.positions[1]![1] >= -1e-8)
+  assert.ok(Math.abs(result.positions[1]![2]) <= 1e-8)
+  assert.ok(Math.abs(distance(result.positions[0]!, result.positions[1]!) - 1) <= 1e-8)
+  assert.ok(Math.abs(distance(result.positions[1]!, result.positions[2]!) - 1) <= 1e-8)
+})
+
+test('FABRIK 的一般平面构造覆盖无连续聚合分割的异长链', () => {
+  const input = {
+    positions: [[0, 0, 0], [.04, 0, 0], [.91, 0, 0], [1, 0, 0]] as const,
+    target: [100, 0, 0] as const,
+    pole: [0, 1, 0] as const,
+    maxStretchRatio: .8,
+  }
+  const first = solveConstrainedFabrik(input)
+  const second = solveConstrainedFabrik(input)
+
+  assert.equal(first.status, 'clamped')
+  assert.deepEqual(first, second)
+  assert.ok(Math.abs(distance(first.positions[0]!, first.positions.at(-1)!) - .8) <= 1e-4)
+  for (let index = 1; index < first.positions.length; index += 1) {
+    assert.ok(Math.abs(distance(first.positions[index - 1]!, first.positions[index]!) - distance(input.positions[index - 1]!, input.positions[index]!)) <= 1e-8)
+    assert.ok(Math.abs(first.positions[index]![2]) <= 1e-8)
+    if (index < first.positions.length - 1) assert.ok(first.positions[index]![1] >= -1e-8)
+  }
+})
+
+test('FABRIK 把过近目标钳制到链的物理最小可达距离', () => {
+  const result = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [4, 0, 0], [5, 0, 0], [6, 0, 0]],
+    target: [1, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'clamped')
+  assert.ok(Math.abs(distance(result.positions[0]!, result.positions.at(-1)!) - 2) <= 1e-4)
+  assert.ok(Math.abs(result.error - 1) <= 1e-4)
+  for (const [index, expected] of [4, 1, 1].entries()) {
+    assert.ok(Math.abs(distance(result.positions[index]!, result.positions[index + 1]!) - expected) <= expected * 1e-8)
+  }
+})
+
+test('FABRIK 对稀疏 positions 和显式 null 可选参数安全阻塞', () => {
+  const sparse = new Array(3) as [number, number, number][]
+  sparse[0] = [0, 0, 0]
+  sparse[2] = [0, -2, 0]
+  const base = { positions: [[0, 0, 0], [0, -1, 0], [0, -2, 0]], target: [1, -1, 0], pole: [0, 0, 1], maxStretchRatio: 1 }
+
+  for (const input of [
+    { ...base, positions: sparse },
+    { ...base, positions: [[0, 0, 0], new Array(3), [0, -2, 0]] },
+    { ...base, maxIterations: null },
+    { ...base, tolerance: null },
+  ]) {
+    const result = solveConstrainedFabrik(input as never)
+    assert.equal(result.status, 'blocked')
+    assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
+  }
+})
+
+test('FABRIK 固定种子异长链覆盖三段、四段和五段完整可达域', () => {
+  const cases = [
+    [.35, .8, .45],
+    [.2, .65, .4, .55],
+    [.15, .5, .3, .7, .25],
+  ] as const
+  for (const lengths of cases) {
+    let cursor = 0
+    const positions: [number, number, number][] = [[0, 0, 0]]
+    for (const segmentLength of lengths) {
+      cursor += segmentLength
+      positions.push([cursor, 0, 0])
+    }
+    const result = solveConstrainedFabrik({ positions, target: [50, 4, -3], pole: [0, 1, 0], maxStretchRatio: .85 })
+    const repeated = solveConstrainedFabrik({ positions, target: [50, 4, -3], pole: [0, 1, 0], maxStretchRatio: .85 })
+
+    assert.equal(result.status, 'clamped')
+    assert.deepEqual(result, repeated)
+    assert.ok(result.iterations <= 8)
+    const tip = result.positions.at(-1)!
+    const tipLength = distance(result.positions[0]!, tip)
+    const axis = tip.map(value => value / tipLength)
+    const poleAlongAxis = axis[1]!
+    const bendRaw = [-axis[0]! * poleAlongAxis, 1 - axis[1]! * poleAlongAxis, -axis[2]! * poleAlongAxis]
+    const bendLength = Math.hypot(...bendRaw)
+    const bend = bendRaw.map(value => value / bendLength)
+    const normal = [
+      axis[1]! * bend[2]! - axis[2]! * bend[1]!,
+      axis[2]! * bend[0]! - axis[0]! * bend[2]!,
+      axis[0]! * bend[1]! - axis[1]! * bend[0]!,
+    ]
+    for (let index = 0; index < lengths.length; index += 1) {
+      assert.ok(Math.abs(distance(result.positions[index]!, result.positions[index + 1]!) - lengths[index]!) <= lengths[index]! * 1e-8)
+      if (index > 0) {
+        const position = result.positions[index]!
+        assert.ok(Math.abs(position[0] * normal[0]! + position[1] * normal[1]! + position[2] * normal[2]!) <= 1e-8)
+        assert.ok(position[0] * bend[0]! + position[1] * bend[1]! + position[2] * bend[2]! >= -1e-8)
+      }
+    }
+  }
+})
+
 test('FABRIK 不突变输入、不共享输出引用并保持确定性', () => {
   const input = {
     positions: [[0, 0, 0], [.2, -1, 0], [.1, -2, 0], [0, -3, 0]] as [number, number, number][],
