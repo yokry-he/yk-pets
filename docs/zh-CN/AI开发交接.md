@@ -262,3 +262,4 @@
 - 本批实现 Quaternion Clip、关节限制、五个动作和复杂模型消费链路；接触、Root Motion 和事件只输出后续候选，不把运行时 IK、足底锁定、完整 Root Motion、复杂舞蹈/功夫/运动或特效标记为完成。
 - 权威设计见 `docs/zh-CN/双足萌宠语义动作编译设计.md`，后续实施计划必须保持简单模型兼容、唯一 Canvas、无 GLB/网络/新增权限及失败时恢复绑定姿态的边界。
 - 可执行计划已写入 `docs/zh-CN/双足萌宠语义动作编译实施计划.md`，按 Quaternion 契约、语义映射、Clip 编译采样、五模板、Three 控制器、预览接线、新手入口和阶段验收八个独立任务推进；每个功能提交必须同步 AI 状态并立即推送当前分支。
+- Quaternion 契约批次已完成：`quaternion-motion.ts` 提供零长度/非有限输入恢复、固定 XYZ Euler 转换与同半球最短路径 slerp；`biped-pet-motion-adapter.ts` 提供版本化 Clip、骨骼轨道、根位移、接触候选、语义事件、诊断和真实骨骼集合编译目标契约。当前尚未实现语义映射、Clip 编译采样或 Three 播放，不能把契约完成描述为复杂动作已经可见。
