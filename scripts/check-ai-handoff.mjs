@@ -198,6 +198,7 @@ if (state) {
   expect((state.completed || []).includes('biped-pet-hybrid-root-motion-vfx-design'), '必须标记双足萌宠混合 Root Motion 与运动特效设计完成 / Hybrid biped Root Motion and motion-VFX design must be marked complete')
   expect((state.completed || []).includes('biped-pet-hybrid-root-motion-vfx-plan'), '必须标记双足萌宠混合 Root Motion 与运动特效计划完成 / Hybrid biped Root Motion and motion-VFX plan must be marked complete')
   expect((state.completed || []).includes('biped-pet-root-motion-solver'), '必须标记框架无关 Root Motion 求解完成 / Framework-neutral Root Motion solver must be complete')
+  expect((state.completed || []).includes('biped-pet-root-motion-shared-ballistic-timeline'), '必须标记 Root Motion 共享弹道时间线完成 / Shared Root Motion ballistic timeline must be complete')
   for (const key of ['biped-pet-hybrid-ik-profile-contract', 'biped-pet-analytic-two-bone-ik', 'biped-pet-constrained-fabrik', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-hybrid-ik-phase-delivery']) expect((state.completed || []).includes(key), `必须标记混合 IK 交付项完成 / Hybrid-IK delivery item must be complete: ${key}`)
   expect((state.completed || []).includes('hybrid-ik-legacy-history-migration'), '必须标记混合 IK 历史门禁迁移完成 / Hybrid-IK history-gate migration must be complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
@@ -217,6 +218,8 @@ if (state) {
   expect(state.latestCompletedBatch?.id === 'biped-pet-root-motion-solver', '最新批次必须是框架无关 Root Motion 求解 / Latest batch must be the framework-neutral Root Motion solver')
   expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(rootMotionCoverage), 'Root Motion 批次 automatedCoverage 必须且只能列出真实验证项 / Root Motion automatedCoverage must contain only the actual verification items')
   expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, '纯数值 Root Motion 批次不得声明渲染器或视觉案例修改 / Pure numeric Root Motion batch must not claim renderer or visual-case changes')
+  expect(state.latestCompletedBatch?.ballisticTimelineWorkBudget === 512, 'Root Motion 共享弹道时间线必须锁定单帧 512 work-unit 预算 / Shared ballistic timeline must lock the per-sample budget to 512 work units')
+  expect(state.latestCompletedBatch?.ballisticTimelineUnknownPolicy === 'preserve-authorization', 'Root Motion unknown 区间必须保留旧授权且不签发新授权 / Unknown ballistic ranges must preserve old authorization and issue no new authorization')
 }
 
 for (const routeFile of ['appearance.vue', 'motion.vue', 'props.vue', 'library.vue']) expect(existsSync(path.join(root, 'apps/playground/app/pages/studio', routeFile)), `缺少 Studio 路由文件 / Missing Studio route file: ${routeFile}`)

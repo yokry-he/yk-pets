@@ -13,6 +13,7 @@
 ## 文件职责映射
 
 - `packages/pet-core/src/motion/biped-pet-root-motion.ts`：Root Motion 契约、规范化、累计采样、时间连续性和安全预算。
+- `packages/pet-core/src/motion/biped-pet-root-motion-timeline.ts`：内部复合弹道时间线、唯一边界/支撑分量与单帧共享工作预算；不从包入口公开导出。
 - `packages/pet-core/src/motion/biped-pet-motion-vfx.ts`：由速度、减速度、接触和语义标签生成确定性 VFX 信号。
 - `packages/pet-core/src/motion/biped-pet-motion-adapter.ts`：从现有动作扩展读取 Root Motion，编译进 Quaternion Clip，并把原始时间身份带入采样结果。
 - `apps/playground/app/domain/studio-basic-biped-motions.ts`：待机、行走、跳跃、招手和直拳的默认移动语义。
@@ -24,7 +25,7 @@
 - `apps/playground/app/components/studio/ComplexBipedPetRenderer.vue`：创建、挂载、切换和释放动作、Root Motion 与 VFX 控制器。
 - `apps/playground/app/components/studio/StudioRootMotionSettings.vue`：面向新手的中文移动模式与自动特效设置。
 - `scripts/test-studio-complex-biped-root-motion-runtime.ts`：Three 运行时、重心、IK 协同和 VFX 资源测试。
-- `scripts/test-studio-biped-root-motion-probe.ts`：10,000 组有状态输入、42 个 ULP touchdown 与 100,000 次 raw/canonical 性能观测的可复现门禁。
+- `scripts/test-studio-biped-root-motion-probe.ts`：10,000 组有状态输入、42 个 ULP touchdown、64 弹道窗共享预算授权链与 100,000 次 raw/canonical 性能观测的可复现门禁。
 - `scripts/check-studio-complex-biped-root-motion.mjs`：唯一场景、调用顺序、简单/复杂互斥和生命周期静态门禁。
 
 ### 任务 1：版本兼容的 Root Motion 契约与编译传播
@@ -151,7 +152,9 @@ git push origin agent/cloud-fox-studio-v0610
 **文件：**
 
 - 修改：`packages/pet-core/src/motion/biped-pet-root-motion.ts`
+- 创建：`packages/pet-core/src/motion/biped-pet-root-motion-timeline.ts`
 - 修改：`packages/pet-core/test/biped-pet-root-motion.test.ts`
+- 创建：`packages/pet-core/test/biped-pet-root-motion-timeline.test.ts`
 - 修改：`.ai/project-state.json`
 - 修改：`docs/zh-CN/AI开发交接.md`
 
@@ -250,7 +253,7 @@ export interface SampledBipedPetRootMotion {
 }
 ```
 
-`cumulative*` 必须由动作定义、`requestedTimeMs` 和 `iteration` 直接计算，作为帧率无关 target；调用方通过 `previousAppliedWorld/previousAppliedTurnRadians` 提供上一帧已应用状态，并把上一帧返回的 `landingAuthorization` 作为 `previousLandingAuthorization` 原样回传。求解器在世界空间从 applied 指向 target 计算误差和预算，使用实际可表示的 `appliedWorld - previousAppliedWorld` 输出 `deltaWorld` 与速度，再以当前朝向的逆旋转派生 `appliedLocal/deltaLocal`；朝向改变不得重解释既有世界位置。缺 applied、倒退、Clip 身份变化或超过 `max(250ms, duration×0.5)` 时 reset 并把 applied 初始化为 target，同时清除授权且不发速度或瞬时事件。窗口使用 `smoothstep(t)=t²(3-2t)`，多个有效窗口按权重归一化。弹道高度使用 `4h·p·(1-p)`，但阶段由实际 applied 高度与纵向增量判定；target touchdown 候选只有在当前有效强度下证明真实 airborne→grounded 后才签发冻结授权。授权跨后续 `actionWeight` 淡出与不合格微尾窗保持，只有 applied 随后真实越过接地阈值才消费一次并输出无量纲 `landingImpulse`；后续真实 target airborne 清除旧授权。归一化阈值必须取 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))`，同时遵守 target 相对零化和世界接地。暂停保留授权但不触发，倒退、reset、大跳和未授权 applied 落地均不触发。
+`cumulative*` 必须由动作定义、`requestedTimeMs` 和 `iteration` 直接计算，作为帧率无关 target；调用方通过 `previousAppliedWorld/previousAppliedTurnRadians` 提供上一帧已应用状态，并把上一帧返回的 `landingAuthorization` 作为 `previousLandingAuthorization` 原样回传。求解器在世界空间从 applied 指向 target 计算误差和预算，使用实际可表示的 `appliedWorld - previousAppliedWorld` 输出 `deltaWorld` 与速度，再以当前朝向的逆旋转派生 `appliedLocal/deltaLocal`；朝向改变不得重解释既有世界位置。缺 applied、倒退、Clip 身份变化或超过 `max(250ms, duration×0.5)` 时 reset 并把 applied 初始化为 target，同时清除授权且不发速度或瞬时事件。窗口使用 `smoothstep(t)=t²(3-2t)`，多个有效窗口按权重归一化。弹道高度使用 `4h·p·(1-p)`，但阶段由实际 applied 高度与纵向增量判定；target touchdown 候选只有在当前有效强度下证明真实 airborne→grounded 后才签发冻结授权。授权跨后续 `actionWeight` 淡出与不合格微尾窗保持，只有 applied 随后真实越过接地阈值才消费一次并输出无量纲 `landingImpulse`；后续真实 target airborne 清除旧授权。归一化阈值必须取 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))`，同时遵守 target 相对零化和世界接地。每次连续采样必须以唯一排序边界和支撑分量构建一次内部只读时间线，全部 takeoff/touchdown/stale 查询共享最多 `512` 个 work unit；`unknown` 不签发、不清除授权，也不得用跨调用缓存续算。loop/ping-pong 的内部事件查询直接使用原窗口 canonical resolved 边界锚点，避免十进制绝对事件时间重映射产生 1 ULP 身份漂移；`0/duration` 端点仍由分段枚举决定侧别。暂停保留授权但不触发，倒退、reset、大跳和未授权 applied 落地均不触发。
 
 安全预算固定为每帧不超过 `0.25 × characterHeight` 位移和 `π/4` 转向；超过时按方向等比钳制并返回 `clamped`，不改变累计 target，后续帧继续从 applied 追赶欠量。`footResidual` 只读取有限 X/Z，正值推动根节点沿对应局部轴正向修正，完全忽略 Y；仅在整个帧间时间映射都被连续 `travel/warp` 支撑组件覆盖时作为局部水平反馈，跨入、跨出或穿越 gap 的帧不消费残差。预算随真实时间差、动作权重和水平追赶误差缩放；纯函数不持有低通状态。
 
@@ -263,7 +266,7 @@ corepack pnpm --filter @yk-pets/pet-core test
 corepack pnpm run test:studio-biped-root-motion-probe
 ```
 
-预期：单元测试通过；可复现探针保存每帧 applied 与授权，10,000 组固定种子输入达到 solved/clamped/reset/blocked、loop 接缝、landing 与 brake 最小命中数，42 个正反向 ULP applied touchdown 全部通过；100,000 次 1/64 窗口 canonical/raw 对照只输出本机性能观测，不设置脆弱耗时阈值。
+预期：单元测试通过；可复现探针保存每帧 applied 与授权，10,000 组固定种子输入达到 solved/clamped/reset/blocked、loop 接缝、landing 与 brake 最小命中数，42 个正反向 ULP applied touchdown 全部通过；canonical 64 弹道窗场景验证主窗授权跨 63 个低于世界接地阈值的 ULP 尾窗保持并最终消费，后续高窗仍清除 stale 授权，且共享分析统计始终不超过 `512` work unit；100,000 次 1/64 窗口 canonical/raw 对照只输出本机性能观测，不设置脆弱耗时阈值。
 
 - [ ] **步骤 5：提交推送**
 

@@ -101,7 +101,7 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 - 蓄力阶段保持双脚接触，降低骨盆并积累起跳强度；
 - 离地时释放接触锚，按模板高度与角色尺寸生成连续抛物线；
 - 空中阶段不启用足底锁定；
-- 移动阶段由实际 applied 轨迹决定：高度在角色身高的 `1e-12` 阈值内为 `grounded`，正的实际纵向增量为 `takeoff`，负增量为 `landing`，正高度且纵向静止为 `airborne`。target 的合成弹道只负责授权落地候选，不得提前驱动阶段或冲量。候选必须先证明其前置支撑区间在当前有效强度下真实经历 airborne→grounded，才可签发只读 `landingAuthorization`；调用方逐帧原样回传，`actionWeight` 后续淡出或不越过世界接地阈值的微尾窗不得覆盖它。只有 applied 世界高度本帧从阈值上方真正跨到地面时，才消费一次授权并输出 `landingImpulse`；后续真实 target airborne 会清除旧授权。归一化 airborne 阈值固定为 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))`，同时匹配 target 自身相对零化和实际世界接地；查询通过固定节点预算和区间上界保持有界。暂停保留授权但不触发，reset、倒退、异常大跳、Clip/runtime 切换会清除授权；目标尚未经历合格 touchdown 或 stale touchdown 均不触发。候选仍用有界双侧探测区分重叠、重复、精确相邻与正 gap，强度仍由跳高意图、动作权重及结束贡献窗权重占比得到，是 `[0,1]` 无量纲启发式信号而非物理碰撞速度。
+- 移动阶段由实际 applied 轨迹决定：高度在角色身高的 `1e-12` 阈值内为 `grounded`，正的实际纵向增量为 `takeoff`，负增量为 `landing`，正高度且纵向静止为 `airborne`。target 的合成弹道只负责授权落地候选，不得提前驱动阶段或冲量。候选必须先证明其前置支撑区间在当前有效强度下真实经历 airborne→grounded，才可签发只读 `landingAuthorization`；调用方逐帧原样回传，`actionWeight` 后续淡出或不越过世界接地阈值的微尾窗不得覆盖它。只有 applied 世界高度本帧从阈值上方真正跨到地面时，才消费一次授权并输出 `landingImpulse`；后续真实 target airborne 会清除旧授权。归一化 airborne 阈值固定为 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))`，同时匹配 target 自身相对零化和实际世界接地。每次连续采样只按唯一排序边界与支撑分量构建一份不可变复合弹道时间线，takeoff、touchdown 和 stale 授权查询复用同一个 `512` work-unit 全局预算，不允许按窗口重置预算或持有跨调用隐藏状态；耗尽预算的区间标记为 `unknown`，既不签发新授权也不清除旧授权。loop/ping-pong 的内部事件必须携带原窗口的 canonical resolved 边界作为查询锚点，不得把十进制绝对事件时间再次相减后用浮点精确匹配，也不得用会吞掉真实 ULP gap 的宽容差替代；`0/duration` 端点不锚定，继续由分段枚举保留 loop 周期缝与 ping-pong 转折点的正确侧别。暂停保留授权但不触发，reset、倒退、异常大跳、Clip/runtime 切换会清除授权；目标尚未经历合格 touchdown 或 stale touchdown 均不触发。候选仍用有界双侧探测区分重叠、重复、精确相邻与正 gap，强度仍由跳高意图、动作权重及结束贡献窗权重占比得到，是 `[0,1]` 无量纲启发式信号而非物理碰撞速度。
 
 第一阶段地面固定为角色预览平面，不做射线地形、坡度、台阶或碰撞体响应。
 

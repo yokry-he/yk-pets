@@ -234,7 +234,8 @@
     "hybrid-ik-legacy-history-migration",
     "biped-pet-hybrid-root-motion-vfx-design",
     "biped-pet-hybrid-root-motion-vfx-plan",
-    "biped-pet-root-motion-solver"
+    "biped-pet-root-motion-solver",
+    "biped-pet-root-motion-shared-ballistic-timeline"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -257,6 +258,8 @@
     "domainPackage": "packages/pet-core",
     "rendererModified": false,
     "visualCasesModified": false,
+    "ballisticTimelineWorkBudget": 512,
+    "ballisticTimelineUnknownPolicy": "preserve-authorization",
     "automatedCoverage": [
       "corepack pnpm --filter @yk-pets/pet-core test",
       "corepack pnpm --filter @yk-pets/pet-core typecheck",

@@ -13,6 +13,11 @@ import {
   type SampleBipedPetRootMotionInput,
   type SampledBipedPetRootMotion,
 } from '../packages/pet-core/src/index.ts'
+import {
+  MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS,
+  analyzeBipedPetBallisticTimeline,
+  classifyBipedPetBallisticRequestedRange,
+} from '../packages/pet-core/src/motion/biped-pet-root-motion-timeline.ts'
 
 const STATEFUL_PROBE_CASES = 10_000
 const ULP_PROBES_PER_DIRECTION = 21
@@ -141,6 +146,19 @@ function nextDown(value: number): number {
   return floatView.getFloat64(0)
 }
 
+function nextUp(value: number): number {
+  assert.ok(Number.isFinite(value) && value >= 0)
+  floatView.setFloat64(0, value)
+  floatView.setBigUint64(0, floatView.getBigUint64(0) + 1n)
+  return floatView.getFloat64(0)
+}
+
+function addUlps(value: number, count: number): number {
+  let result = value
+  for (let index = 0; index < count; index += 1) result = nextUp(result)
+  return result
+}
+
 function ulpWindow(endMs: number): { startMs: number; midpointMs: number } {
   let startMs = endMs
   for (let index = 0; index < 8; index += 1) startMs = nextDown(startMs)
@@ -217,6 +235,139 @@ function runUlpProbes() {
   return { probes: completed, impulses, elapsedMs: performance.now() - startedAt }
 }
 
+function runBallisticTimelineProbe() {
+  const tails = []
+  for (let index = 0; index < 31; index += 1) {
+    const centerMs = 20 + index * 2
+    const firstStartMs = addUlps(centerMs, 1)
+    const firstEndMs = addUlps(firstStartMs, 8)
+    const secondStartMs = addUlps(firstEndMs, 8)
+    const secondEndMs = addUlps(secondStartMs, 8)
+    tails.push(
+      { id: `tail-a-${index}`, kind: 'ballistic' as const, startMs: firstStartMs, endMs: firstEndMs, weight: 7.5e-9 },
+      { id: `tail-b-${index}`, kind: 'ballistic' as const, startMs: secondStartMs, endMs: secondEndMs, weight: 7.5e-9 },
+    )
+  }
+  const lastStartMs = addUlps(83, 1)
+  tails.push({
+    id: 'tail-last',
+    kind: 'ballistic' as const,
+    startMs: lastStartMs,
+    endMs: addUlps(lastStartMs, 8),
+    weight: 7.5e-9,
+  })
+  const definition = normalizeBipedPetRootMotion({
+    mode: 'travel',
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic',
+    jumpHeight: 1,
+    windows: [{ id: 'main', kind: 'ballistic', startMs: 0, endMs: 10, weight: 1 }, ...tails],
+    vfxTags: [],
+  }, 100).value
+  assert.equal(definition.windows.length, 64, '共享时间线探针必须命中合法窗口上限')
+  const analysis = analyzeBipedPetBallisticTimeline({
+    windows: definition.windows,
+    durationMs: 100,
+    loopMode: 'once',
+    jumpHeight: definition.jumpHeight,
+    actionWeight: 1e-4,
+    previousRequestedTimeMs: 10,
+    requestedTimeMs: 84,
+  })
+  assert.equal(classifyBipedPetBallisticRequestedRange(analysis, 10, 84), 'grounded')
+  assert.equal(analysis.stats.workUnits, 259)
+  assert.equal(analysis.stats.maximumWorkUnits, MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS)
+  assert.equal(analysis.stats.boundaryCount, 130)
+  assert.equal(analysis.stats.supportComponentCount, 64)
+  assert.equal(analysis.stats.exhausted, false)
+
+  const base = {
+    definition,
+    durationMs: 100,
+    loopMode: 'once' as const,
+    characterHeight: 4,
+    facingRadians: 0,
+    footResidual: [0, 0, 0] as const,
+  }
+  let maximumTailHeight = 0
+  for (const tail of tails) {
+    const midpointMs = tail.startMs + (tail.endMs - tail.startMs) * .5
+    maximumTailHeight = Math.max(maximumTailHeight, sampleDeterministically({
+      ...base,
+      actionWeight: 1e-4,
+      requestedTimeMs: midpointMs,
+    }).cumulativeWorld[1])
+  }
+  assert.ok(maximumTailHeight > 0 && maximumTailHeight < 4e-12)
+
+  const startedAt = performance.now()
+  let previous = sampleDeterministically({ ...base, actionWeight: 1, requestedTimeMs: 5 })
+  let signedImpulse = 0
+  for (const requestedTimeMs of [10, 84, 85, 86]) {
+    previous = sampleDeterministically({
+      ...base,
+      actionWeight: requestedTimeMs === 10 ? 1 : 1e-4,
+      requestedTimeMs,
+      previousRequestedTimeMs: previous.requestedTimeMs,
+      previousAppliedWorld: previous.appliedWorld,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+      previousLandingAuthorization: previous.landingAuthorization,
+    })
+    if (requestedTimeMs === 10) signedImpulse = previous.landingAuthorization?.impulse ?? 0
+    if (requestedTimeMs === 84 || requestedTimeMs === 85) {
+      assert.equal(previous.landingAuthorization?.touchdownRequestedTimeMs, 10)
+    }
+  }
+  assert.ok(signedImpulse > 0)
+  assert.equal(previous.landingImpulse, signedImpulse)
+  assert.equal(previous.landingAuthorization, undefined)
+
+  const highDefinition = normalizeBipedPetRootMotion({
+    mode: 'travel',
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic',
+    jumpHeight: 1,
+    windows: [
+      { id: 'main', kind: 'ballistic', startMs: 0, endMs: 10, weight: 1 },
+      { id: 'later-high', kind: 'ballistic', startMs: 80, endMs: 100, weight: 1 },
+    ],
+    vfxTags: [],
+  }, 120).value
+  const highBase = { ...base, definition: highDefinition, durationMs: 120 }
+  let highPrevious = sampleDeterministically({ ...highBase, actionWeight: 1, requestedTimeMs: 5 })
+  highPrevious = sampleDeterministically({
+    ...highBase,
+    actionWeight: 1,
+    requestedTimeMs: 10,
+    previousRequestedTimeMs: 5,
+    previousAppliedWorld: highPrevious.appliedWorld,
+    previousAppliedTurnRadians: highPrevious.appliedTurnRadians,
+  })
+  assert.ok(highPrevious.landingAuthorization)
+  const laterAirborne = sampleDeterministically({
+    ...highBase,
+    actionWeight: 1,
+    requestedTimeMs: 90,
+    previousRequestedTimeMs: 10,
+    previousAppliedWorld: highPrevious.appliedWorld,
+    previousAppliedTurnRadians: highPrevious.appliedTurnRadians,
+    previousLandingAuthorization: highPrevious.landingAuthorization,
+  })
+  assert.ok(laterAirborne.cumulativeWorld[1] > 0)
+  assert.equal(laterAirborne.landingAuthorization, undefined, '后续可证明的真实腾空必须清除旧授权')
+  assert.equal(laterAirborne.landingImpulse, 0)
+
+  return {
+    windows: definition.windows.length,
+    maximumTailHeight,
+    signedImpulse,
+    analysis: analysis.stats,
+    elapsedMs: performance.now() - startedAt,
+  }
+}
+
 function benchmarkDefinition(windowCount: 1 | 64): BipedPetRootMotionDefinition {
   return {
     mode: 'travel',
@@ -285,10 +436,15 @@ function runPerformanceObservation() {
 const result = {
   stateful: runStatefulProbe(),
   ulp: runUlpProbes(),
+  ballisticTimeline: runBallisticTimelineProbe(),
   performanceObservation: runPerformanceObservation(),
 }
 
 console.log('Root Motion 可复现探针通过；耗时仅作本机观测，不设置脆弱阈值。')
 console.log(JSON.stringify(result, (_key, value) => (
-  typeof value === 'number' && !Number.isInteger(value) ? Number(value.toFixed(3)) : value
+  typeof value === 'number' && !Number.isInteger(value)
+    ? Math.abs(value) > 0 && Math.abs(value) < .001
+      ? Number(value.toPrecision(8))
+      : Number(value.toFixed(3))
+    : value
 ), 2))

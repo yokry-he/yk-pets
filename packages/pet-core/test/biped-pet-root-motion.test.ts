@@ -880,6 +880,7 @@ test('Root Motion 哈希保持 ASCII 路径并覆盖全部契约字段', () => {
 
 test('Root Motion 数值采样器从公共入口导出', () => {
   assert.equal(typeof Reflect.get(petCore, 'sampleBipedPetRootMotion'), 'function')
+  assert.equal(Reflect.get(petCore, 'analyzeBipedPetBallisticTimeline'), undefined, '时间线分析器只供包内采样与直接路径测试使用')
 })
 
 test('累计位移与帧率无关并在 loop 接缝连续，回拖与大跳只重置瞬时量', () => {
@@ -1599,6 +1600,133 @@ test('caller-owned 落地授权跨 actionWeight 淡出与不合格微尾窗保�
   assert.equal(repeated.landingAuthorization, undefined)
 })
 
+test('64 个互斥低强度 ULP 尾窗共享一次分析且不得清除主窗授权', () => {
+  const buffer = new ArrayBuffer(8)
+  const view = new DataView(buffer)
+  const nextUp = (value: number) => {
+    view.setFloat64(0, value)
+    view.setBigUint64(0, view.getBigUint64(0) + 1n)
+    return view.getFloat64(0)
+  }
+  const addUlps = (value: number, count: number) => {
+    let result = value
+    for (let index = 0; index < count; index += 1) result = nextUp(result)
+    return result
+  }
+  const tails = []
+  for (let index = 0; index < 31; index += 1) {
+    const centerMs = 20 + index * 2
+    const firstStartMs = addUlps(centerMs, 1)
+    const firstEndMs = addUlps(firstStartMs, 8)
+    const secondStartMs = addUlps(firstEndMs, 8)
+    const secondEndMs = addUlps(secondStartMs, 8)
+    tails.push(
+      { id: `tail-a-${index}`, kind: 'ballistic' as const, startMs: firstStartMs, endMs: firstEndMs, weight: 7.5e-9 },
+      { id: `tail-b-${index}`, kind: 'ballistic' as const, startMs: secondStartMs, endMs: secondEndMs, weight: 7.5e-9 },
+    )
+  }
+  const lastStartMs = addUlps(83, 1)
+  tails.push({
+    id: 'tail-last',
+    kind: 'ballistic' as const,
+    startMs: lastStartMs,
+    endMs: addUlps(lastStartMs, 8),
+    weight: 7.5e-9,
+  })
+  const definition = normalizeBipedPetRootMotion({
+    mode: 'travel',
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic',
+    jumpHeight: 1,
+    windows: [{ id: 'main', kind: 'ballistic', startMs: 0, endMs: 10, weight: 1 }, ...tails],
+    vfxTags: [],
+  }, 100).value
+  const base = {
+    ...travelSampleInput,
+    definition,
+    durationMs: 100,
+    loopMode: 'once' as const,
+    characterHeight: 4,
+  }
+
+  let maximumTailHeight = 0
+  for (const tail of tails) {
+    const midpointMs = tail.startMs + (tail.endMs - tail.startMs) * .5
+    const sample = sampleRootMotion({ ...base, actionWeight: 1e-4, requestedTimeMs: midpointMs })
+    maximumTailHeight = Math.max(maximumTailHeight, sample.cumulativeWorld[1])
+  }
+  assert.ok(maximumTailHeight > 0 && maximumTailHeight < 4e-12, '夹具中每个尾窗都必须严格低于世界接地阈值')
+
+  let previous = sampleRootMotion({ ...base, actionWeight: 1, requestedTimeMs: 5 })
+  for (const requestedTimeMs of [10, 84, 85, 86]) {
+    previous = sampleRootMotion({
+      ...base,
+      actionWeight: requestedTimeMs === 10 ? 1 : 1e-4,
+      requestedTimeMs,
+      previousRequestedTimeMs: previous.requestedTimeMs,
+      previousAppliedWorld: previous.appliedWorld,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+      previousLandingAuthorization: previous.landingAuthorization,
+    })
+    if (requestedTimeMs === 10) assert.ok(previous.landingAuthorization, '主窗 touchdown 必须签发授权')
+    if (requestedTimeMs === 84 || requestedTimeMs === 85) {
+      assert.equal(previous.landingAuthorization?.touchdownRequestedTimeMs, 10, '低于接地阈值的尾窗不得清除旧授权')
+      assert.equal(previous.landingImpulse, 0)
+    }
+  }
+  assert.equal(previous.phase, 'grounded')
+  assert.ok(previous.landingImpulse > 0, '86ms 的真实 applied touchdown 必须消费主窗授权')
+  assert.equal(previous.landingAuthorization, undefined)
+})
+
+test('共享时间线预算耗尽时既不清除旧授权也不签发新授权', () => {
+  const windows = []
+  for (let index = 0; index < 32; index += 1) {
+    const startMs = index * 3
+    windows.push(
+      { id: `overlap-a-${index}`, kind: 'ballistic' as const, startMs, endMs: startMs + 1.5, weight: 1 },
+      { id: `overlap-b-${index}`, kind: 'ballistic' as const, startMs: startMs + .5, endMs: startMs + 2, weight: 1 },
+    )
+  }
+  const buffer = new ArrayBuffer(8)
+  const view = new DataView(buffer)
+  const exactCompositePeak = 1120 / (729 * 64)
+  view.setFloat64(0, exactCompositePeak)
+  view.setBigUint64(0, view.getBigUint64(0) + 1n)
+  const actionWeight = 1e-12 / view.getFloat64(0)
+  const definition = normalizeBipedPetRootMotion({
+    mode: 'travel',
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic',
+    jumpHeight: 1,
+    windows,
+    vfxTags: [],
+  }, 100).value
+  const base = {
+    ...travelSampleInput,
+    definition,
+    durationMs: 100,
+    loopMode: 'once' as const,
+    actionWeight,
+    previousRequestedTimeMs: 0,
+    requestedTimeMs: 100,
+    previousAppliedWorld: [0, .5, 0] as const,
+    previousAppliedTurnRadians: 0,
+  }
+  const preserved = sampleRootMotion({
+    ...base,
+    previousLandingAuthorization: { touchdownRequestedTimeMs: 0, impulse: .75 },
+  })
+  assert.equal(preserved.phase, 'grounded')
+  assert.equal(preserved.landingImpulse, .75, 'unknown 区间不得清除已签发授权')
+
+  const unsigned = sampleRootMotion(base)
+  assert.equal(unsigned.landingImpulse, 0)
+  assert.equal(unsigned.landingAuthorization, undefined, 'unknown 区间不得凭上界签发新授权')
+})
+
 test('后续真实腾空清除旧授权，暂停保留而 reset 清除 caller-owned 令牌', () => {
   const definition = {
     mode: 'travel' as const,
@@ -2261,6 +2389,98 @@ test('短循环可有界跨越多个真实 touchdown 且 loop/ping-pong 每区�
     })
     assert.equal(paused.landingImpulse, 0)
   }
+})
+
+test('loop 与 ping-pong 十进制事件边界复用 canonical resolved 锚点清除旧授权', () => {
+  const definition = normalizeBipedPetRootMotion({
+    mode: 'travel',
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic',
+    jumpHeight: 1,
+    windows: [
+      { id: 'first', kind: 'ballistic', startMs: 20.3, endMs: 40.4, weight: 1 },
+      { id: 'second', kind: 'ballistic', startMs: 60.1, endMs: 80.2, weight: 1 },
+    ],
+    vfxTags: [],
+  }, 100).value
+  for (const loopMode of ['loop', 'ping-pong'] as const) {
+    const previous = sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      durationMs: 100,
+      loopMode,
+      requestedTimeMs: 130,
+      previousRequestedTimeMs: undefined,
+    })
+    const crossed = sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      durationMs: 100,
+      loopMode,
+      requestedTimeMs: 170,
+      previousRequestedTimeMs: 130,
+      previousAppliedWorld: previous.appliedWorld,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+    assert.ok(crossed.cumulativeWorld[1] > 4e-12, `${loopMode} 当前 target 必须在第二段真实腾空`)
+    assert.equal(crossed.landingAuthorization, undefined, `${loopMode} 后续真实腾空必须清除同帧早先 touchdown 授权`)
+    assert.equal(crossed.landingImpulse, 0)
+  }
+})
+
+test('loop 周期缝与 ping-pong 转折点使用各自分段侧别', () => {
+  const definition = normalizeBipedPetRootMotion({
+    mode: 'travel',
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic',
+    jumpHeight: 1,
+    windows: [{ id: 'to-seam', kind: 'ballistic', startMs: 20, endMs: 100, weight: 1 }],
+    vfxTags: [],
+  }, 100).value
+  const previous = sampleRootMotion({
+    ...travelSampleInput,
+    definition,
+    durationMs: 100,
+    loopMode: 'loop',
+    requestedTimeMs: 60,
+    previousRequestedTimeMs: undefined,
+  })
+  const crossed = sampleRootMotion({
+    ...travelSampleInput,
+    definition,
+    durationMs: 100,
+    loopMode: 'loop',
+    requestedTimeMs: 110,
+    previousRequestedTimeMs: 60,
+    previousAppliedWorld: previous.appliedWorld,
+    previousAppliedTurnRadians: previous.appliedTurnRadians,
+  })
+  assert.equal(crossed.cumulativeWorld[1], 0)
+  assert.equal(crossed.landingImpulse, 0)
+  assert.equal(crossed.landingAuthorization?.touchdownRequestedTimeMs, 100, '下一周期 0→10ms grounded 不得清除周期缝授权')
+
+  const pingPrevious = sampleRootMotion({
+    ...travelSampleInput,
+    definition,
+    durationMs: 100,
+    loopMode: 'ping-pong',
+    requestedTimeMs: 60,
+    previousRequestedTimeMs: undefined,
+  })
+  const pingTurnaround = sampleRootMotion({
+    ...travelSampleInput,
+    definition,
+    durationMs: 100,
+    loopMode: 'ping-pong',
+    requestedTimeMs: 110,
+    previousRequestedTimeMs: 60,
+    previousAppliedWorld: pingPrevious.appliedWorld,
+    previousAppliedTurnRadians: pingPrevious.appliedTurnRadians,
+  })
+  assert.ok(pingTurnaround.cumulativeWorld[1] > 4e-12)
+  assert.equal(pingTurnaround.landingAuthorization, undefined, 'ping-pong 转折后同一窗口真实腾空必须清除瞬时 touchdown 授权')
 })
 
 test('ballistic touchdown 边界探针区分重叠、精确相邻与极窄正 gap', () => {
