@@ -51,6 +51,29 @@ const contextPaths = new Set([
   'docs/zh-CN/AI开发路线图.md',
   'docs/en/AI-DEVELOPMENT-ROADMAP.md',
 ])
+const legacyHistoryMigrationClosure = '813281b424e23edd8cb4ec9cff1e16cf9b74a2ce'
+const legacyHistoryMigrationExceptions = new Map([
+  ['7c07bfdcd70ad2ef5ffdf76be408785b3e623dad', {
+    missing: ['project-state', 'handoff-context'],
+    reason: '混合 IK Profile 边界修复提交遗漏 AI 包；由阶段收口提交补齐状态和双语交接。',
+  }],
+  ['59123c5e23004597f59ce2e3c4f819574e643479', {
+    missing: ['project-state', 'handoff-context'],
+    reason: 'blocked 角色 IK 编译修复提交遗漏 AI 包；由阶段收口提交补齐状态和双语交接。',
+  }],
+  ['bbf1861dea6d957630010d88a8561cc50c26c956', {
+    missing: ['project-state', 'handoff-context'],
+    reason: 'IK 编译安全复核提交遗漏 AI 包；由阶段收口提交补齐状态和双语交接。',
+  }],
+  ['63f479f968482decc3b68f4133f50e77810b0b1a', {
+    missing: ['project-state'],
+    reason: '循环接触连续性修复已更新交接但遗漏机器状态；由阶段收口提交补齐。',
+  }],
+  ['41ed499445c8f0e96d476e95dc180d21e2a36e11', {
+    missing: ['project-state'],
+    reason: '历史接触 Clip 兼容修复已更新交接但遗漏机器状态；由阶段收口提交补齐。',
+  }],
+])
 const failures = []
 
 for (const relativePath of requiredFiles) {
@@ -125,6 +148,7 @@ if (state) {
   ]
   for (const key of completedHybridIkFlags) expect(state.architecture?.[key] === true, `双足萌宠混合 IK 完成状态缺失 / Missing completed hybrid-IK state: ${key}`)
   for (const key of incompleteHybridIkBoundaries) expect(state.architecture?.[key] === false, `双足萌宠未完成边界错误 / Incorrect incomplete biped-pet boundary: ${key}`)
+  expect(state.architecture?.hybridIkLegacyHistoryMigrationComplete === true, '混合 IK 历史门禁迁移必须标记完成 / Hybrid-IK history-gate migration must be complete')
   // 内建正反夹具用于防止后续把已交付能力改回 false，或把明确边界误改为 true。
   const positiveHybridIkFixture = Object.fromEntries([
     ...completedHybridIkFlags.map(key => [key, true]),
@@ -136,6 +160,13 @@ if (state) {
   expect(matchesHybridIkBoundary(positiveHybridIkFixture), '混合 IK 正向状态夹具必须通过 / Positive hybrid-IK state fixture must pass')
   expect(!matchesHybridIkBoundary(negativeHybridIkFixture), '混合 IK 负向状态夹具必须失败 / Negative hybrid-IK state fixture must fail')
   expect(state.mandatoryDevelopmentPolicy?.updateAiPackageForEveryFeatureCommit === true, '必须启用每个功能提交更新 AI 包 / Per-feature-commit AI update policy must be enabled')
+  const expectedLegacyExceptions = [...legacyHistoryMigrationExceptions].map(([commit, item]) => ({
+    commit,
+    missing: item.missing,
+    reason: item.reason,
+    remediatedBy: legacyHistoryMigrationClosure,
+  }))
+  expect(JSON.stringify(state.mandatoryDevelopmentPolicy?.legacyHistoryMigrationExceptions) === JSON.stringify(expectedLegacyExceptions), '历史迁移例外必须与门禁中的完整 SHA、缺失类型、原因和收口提交完全一致 / Legacy migration exceptions must exactly match the gate SHA, missing types, reasons, and closure commit')
   expect((state.completed || []).includes('motion-semantic-rig'), '必须标记语义 Rig 领域已完成 / Semantic Rig domain must be marked complete')
   expect((state.completed || []).includes('motion-domain-evaluator'), '必须标记无 UI 动作求值器已完成 / UI-free motion evaluator must be marked complete')
   expect((state.completed || []).includes('motion-keyframe-writing'), '必须标记时间轴关键帧写入已完成 / Timeline keyframe writing must be marked complete')
@@ -163,6 +194,7 @@ if (state) {
   expect((state.completed || []).includes('biped-pet-hybrid-ik-design'), '必须标记双足与多骨骼链混合 IK 设计完成 / Hybrid biped and multi-chain IK design must be marked complete')
   expect((state.completed || []).includes('biped-pet-hybrid-ik-plan'), '必须标记双足与多骨骼链混合 IK 计划完成 / Hybrid biped and multi-chain IK plan must be marked complete')
   for (const key of ['biped-pet-hybrid-ik-profile-contract', 'biped-pet-analytic-two-bone-ik', 'biped-pet-constrained-fabrik', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-hybrid-ik-phase-delivery']) expect((state.completed || []).includes(key), `必须标记混合 IK 交付项完成 / Hybrid-IK delivery item must be complete: ${key}`)
+  expect((state.completed || []).includes('hybrid-ik-legacy-history-migration'), '必须标记混合 IK 历史门禁迁移完成 / Hybrid-IK history-gate migration must be complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
   expect((state.notCompleted || []).includes('browser-screenshot-baselines'), '必须保留浏览器截图基线未完成 / Browser screenshot baselines must remain incomplete')
   for (const key of ['biped-pet-root-motion', 'biped-pet-complex-motion-library', 'biped-pet-motion-vfx', 'biped-pet-profile-runtime-expansion', 'cross-browser-gpu-manual-acceptance']) expect((state.notCompleted || []).includes(key), `必须保留双足萌宠后续边界 / Biped-pet future boundary must remain incomplete: ${key}`)
@@ -256,6 +288,11 @@ for (const adrPath of requiredFiles.filter(item => item.includes('/adr/'))) {
   expect(content.includes('Accepted'), `ADR 必须为 Accepted / ADR must be Accepted: ${adrPath}`)
 }
 
+const firstLegacyException = legacyHistoryMigrationExceptions.entries().next().value
+expect(Boolean(firstLegacyException) && matchesLegacyHistoryMigrationException(firstLegacyException[0], firstLegacyException[1].missing), '历史迁移例外正向夹具必须精确匹配 / Positive legacy migration fixture must match exactly')
+expect(Boolean(firstLegacyException) && !matchesLegacyHistoryMigrationException(`${firstLegacyException[0].slice(0, -1)}0`, firstLegacyException[1].missing), '未知 SHA 不得命中历史迁移例外 / Unknown SHA must not match a legacy migration exception')
+expect(Boolean(firstLegacyException) && !matchesLegacyHistoryMigrationException(firstLegacyException[0], [...firstLegacyException[1].missing, 'future-missing-type']), '额外缺失类型不得命中历史迁移例外 / Extra missing types must not match a legacy migration exception')
+
 checkCommitHistoryPolicy()
 
 if (failures.length) {
@@ -286,6 +323,20 @@ function isFeatureSource(relativePath) {
 function isContextPath(relativePath) {
   return contextPaths.has(relativePath)
     || /^docs\/(?:zh-CN|en)\/adr\//.test(relativePath)
+}
+function matchesLegacyHistoryMigrationException(commit, missing) {
+  const exception = legacyHistoryMigrationExceptions.get(commit)
+  return Boolean(exception)
+    && JSON.stringify([...missing].sort()) === JSON.stringify([...exception.missing].sort())
+}
+function isAncestor(ancestor, descendant) {
+  try { execFileSync('git', ['merge-base', '--is-ancestor', ancestor, descendant], { cwd: root, stdio: 'ignore' }); return true }
+  catch { return false }
+}
+function migrationClosureCoversAiPackage(headSha) {
+  if (!isAncestor(legacyHistoryMigrationClosure, headSha)) return false
+  const changedFiles = git(['diff-tree', '--root', '--no-commit-id', '--name-only', '-z', '-r', legacyHistoryMigrationClosure]).split('\0').filter(Boolean)
+  return changedFiles.includes('.ai/project-state.json') && changedFiles.some(isContextPath)
 }
 function checkCommitHistoryPolicy() {
   const eventPath = process.env.GITHUB_EVENT_PATH
@@ -319,6 +370,11 @@ function checkCommitHistoryPolicy() {
     const changedFiles = git(['diff-tree', '--root', '--no-commit-id', '--name-only', '-z', '-r', commit]).split('\0').filter(Boolean)
     if (!changedFiles.some(isFeatureSource)) continue
     const shortSha = commit.slice(0, 9)
+    const missing = []
+    if (!changedFiles.includes('.ai/project-state.json')) missing.push('project-state')
+    if (!changedFiles.some(isContextPath)) missing.push('handoff-context')
+    if (!missing.length) continue
+    if (matchesLegacyHistoryMigrationException(commit, missing) && migrationClosureCoversAiPackage(headSha)) continue
     if (!changedFiles.includes('.ai/project-state.json')) failures.push(`功能提交 ${shortSha} 未更新 .ai/project-state.json / Feature commit ${shortSha} did not update .ai/project-state.json`)
     if (!changedFiles.some(isContextPath)) failures.push(`功能提交 ${shortSha} 未更新交接上下文 / Feature commit ${shortSha} did not update a handoff context file`)
   }

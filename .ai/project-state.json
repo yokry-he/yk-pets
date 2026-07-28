@@ -112,6 +112,7 @@
     "bipedPetComplexMotionAstCleanupGateComplete": true,
     "bipedPetComplexMotionCreateFailureCleanupComplete": true,
     "bipedPetHybridIkPhaseDeliveryComplete": true,
+    "hybridIkLegacyHistoryMigrationComplete": true,
     "bipedPetProductionQuadrupedProfileComplete": false,
     "bipedPetProductionMechProfileComplete": false,
     "bipedPetHighDetailTopologyComplete": false,
@@ -226,7 +227,8 @@
     "biped-pet-constrained-fabrik",
     "biped-pet-runtime-ik",
     "biped-pet-foot-lock",
-    "biped-pet-hybrid-ik-phase-delivery"
+    "biped-pet-hybrid-ik-phase-delivery",
+    "hybrid-ik-legacy-history-migration"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -284,6 +286,38 @@
       "docs/en/AI-DEVELOPMENT-ROADMAP.md",
       "docs/zh-CN/adr/",
       "docs/en/adr/"
+    ],
+    "legacyHistoryMigrationExceptions": [
+      {
+        "commit": "7c07bfdcd70ad2ef5ffdf76be408785b3e623dad",
+        "missing": ["project-state", "handoff-context"],
+        "reason": "混合 IK Profile 边界修复提交遗漏 AI 包；由阶段收口提交补齐状态和双语交接。",
+        "remediatedBy": "813281b424e23edd8cb4ec9cff1e16cf9b74a2ce"
+      },
+      {
+        "commit": "59123c5e23004597f59ce2e3c4f819574e643479",
+        "missing": ["project-state", "handoff-context"],
+        "reason": "blocked 角色 IK 编译修复提交遗漏 AI 包；由阶段收口提交补齐状态和双语交接。",
+        "remediatedBy": "813281b424e23edd8cb4ec9cff1e16cf9b74a2ce"
+      },
+      {
+        "commit": "bbf1861dea6d957630010d88a8561cc50c26c956",
+        "missing": ["project-state", "handoff-context"],
+        "reason": "IK 编译安全复核提交遗漏 AI 包；由阶段收口提交补齐状态和双语交接。",
+        "remediatedBy": "813281b424e23edd8cb4ec9cff1e16cf9b74a2ce"
+      },
+      {
+        "commit": "63f479f968482decc3b68f4133f50e77810b0b1a",
+        "missing": ["project-state"],
+        "reason": "循环接触连续性修复已更新交接但遗漏机器状态；由阶段收口提交补齐。",
+        "remediatedBy": "813281b424e23edd8cb4ec9cff1e16cf9b74a2ce"
+      },
+      {
+        "commit": "41ed499445c8f0e96d476e95dc180d21e2a36e11",
+        "missing": ["project-state"],
+        "reason": "历史接触 Clip 兼容修复已更新交接但遗漏机器状态；由阶段收口提交补齐。",
+        "remediatedBy": "813281b424e23edd8cb4ec9cff1e16cf9b74a2ce"
+      }
     ]
   },
   "trustOrder": [
