@@ -31,10 +31,6 @@ export interface AnalyzeBipedPetBallisticTimelineInput {
   readonly loopMode: StudioMotionLoopMode
   readonly jumpHeight: number
   readonly actionWeight: number
-  /** 兼容旧调用签名；请求端点不会参与 canonical 结构分析。 */
-  readonly previousRequestedTimeMs?: number
-  /** 兼容旧调用签名；请求端点只应传给转换/区间查询函数。 */
-  readonly requestedTimeMs?: number
 }
 
 export interface BipedPetBallisticTimelineStats {
@@ -398,6 +394,64 @@ export function analyzeBipedPetBallisticTimeline(
     if (!consumeWorkUnit()) return undefined
     return normalizedCompositeHeightBounds(windows, maximumWeight, totalScaledWeight, startMs, endMs)
   }
+  /**
+   * 强度取阈值组件内的真实复合高度峰值，不能复用 proof witness 或窗口中点提示。
+   * 单窗、共同峰心及同向区间直接解析；其余区间用导数安全界递归隔离全部极值。
+   * 每次递归与结构证明共享 512 work-unit，耗尽即令整个分析 unknown，不把松上界当成强度。
+   */
+  const maximumCompositeHeightInRange = (rangeStartMs: number, rangeEndMs: number): number | undefined => {
+    let maximumHeight = 0
+    const consider = (timeMs: number) => {
+      const sample = sampleAt(timeMs)
+      if (sample.evidence === 'unknown') return false
+      maximumHeight = Math.max(maximumHeight, sample.height)
+      return true
+    }
+    const visitExtrema = (
+      startMs: number,
+      endMs: number,
+      activeWindows: readonly BipedPetBallisticTimelineWindow[],
+    ): boolean => {
+      if (!(endMs > startMs)) return consider(startMs)
+      if (activeWindows.length === 0) return consider(startMs)
+      const firstPeakMs = activeWindows[0]!.startMs
+        + (activeWindows[0]!.endMs - activeWindows[0]!.startMs) * .5
+      if (activeWindows.length === 1
+        || activeWindows.every(window => (
+          window.startMs + (window.endMs - window.startMs) * .5 === firstPeakMs
+        ))) {
+        return consider(clamp(firstPeakMs, startMs, endMs))
+      }
+      const peakTimes = activeWindows.map(window => window.startMs + (window.endMs - window.startMs) * .5)
+      if (peakTimes.every(peakMs => peakMs >= endMs)) return consider(endMs)
+      if (peakTimes.every(peakMs => peakMs <= startMs)) return consider(startMs)
+
+      const bounds = boundsAt(startMs, endMs)
+      if (bounds === undefined) return false
+      if (bounds.lowerDerivative >= 0) return consider(endMs)
+      if (bounds.upperDerivative <= 0) return consider(startMs)
+      const midpointMs = startMs + (endMs - startMs) * .5
+      if (midpointMs === startMs || midpointMs === endMs) {
+        return consider(startMs) && consider(endMs)
+      }
+      return visitExtrema(startMs, midpointMs, activeWindows)
+        && visitExtrema(midpointMs, endMs, activeWindows)
+    }
+
+    if (!consider(rangeStartMs) || !consider(rangeEndMs)) return undefined
+    const rangeBoundaries = [
+      rangeStartMs,
+      ...boundaries.filter(boundaryMs => boundaryMs > rangeStartMs && boundaryMs < rangeEndMs),
+      rangeEndMs,
+    ]
+    for (let index = 0; index < rangeBoundaries.length - 1; index += 1) {
+      const startMs = rangeBoundaries[index]!
+      const endMs = rangeBoundaries[index + 1]!
+      const activeWindows = windows.filter(window => window.startMs < endMs && window.endMs > startMs)
+      if (!visitExtrema(startMs, endMs, activeWindows)) return undefined
+    }
+    return maximumHeight
+  }
   const classifyInterval = (startMs: number, endMs: number): readonly ClassifiedInterval[] => {
     const midpointMs = startMs + (endMs - startMs) * .5
     if (midpointMs === startMs || midpointMs === endMs) {
@@ -550,25 +604,12 @@ export function analyzeBipedPetBallisticTimeline(
         exhausted = true
         return
       }
-      let maximumWitnessHeight = 0
-      for (let index = firstAirborneRegionIndex; index <= lastAirborneRegionIndex; index += 1) {
-        maximumWitnessHeight = Math.max(maximumWitnessHeight, classifiedRegions[index]?.witnessHeight ?? 0)
+      const maximumHeight = maximumCompositeHeightInRange(startEdge.airborneMs, endEdge.airborneMs)
+      if (maximumHeight === undefined) {
+        exhausted = true
+        return
       }
-      /*
-       * 每个成员窗的 canonical 中点不依赖结构提示边界；它们避免低强度切分稀释组件强度，且不会借用无关窗口权重。
-       * Each member midpoint is independent from boundary hints, preventing weak splits from diluting strength or borrowing unrelated weights.
-       */
-      for (const window of windows) {
-        const midpointMs = window.startMs + (window.endMs - window.startMs) * .5
-        if (midpointMs < firstRegion.startMs || midpointMs > lastRegion.endMs) continue
-        const midpoint = sampleAt(midpointMs)
-        if (midpoint.evidence === 'unknown') {
-          exhausted = true
-          return
-        }
-        if (midpoint.evidence === 'airborne') maximumWitnessHeight = Math.max(maximumWitnessHeight, midpoint.height)
-      }
-      const strength = stableComponentStrength(maximumWitnessHeight * verticalIntentScale)
+      const strength = stableComponentStrength(maximumHeight * verticalIntentScale)
       if (!(strength > 0)) return
       components.push(Object.freeze({
         index: components.length,

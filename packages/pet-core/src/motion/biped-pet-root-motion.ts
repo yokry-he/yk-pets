@@ -974,8 +974,6 @@ function advanceLandingAuthorization(
     loopMode: input.loopMode,
     jumpHeight: input.definition.jumpHeight,
     actionWeight: input.actionWeight,
-    previousRequestedTimeMs,
-    requestedTimeMs: input.requestedTimeMs,
   })
   const mapped = bipedPetBallisticTransitionsInRequestedRange(
     analysis,
@@ -985,7 +983,6 @@ function advanceLandingAuthorization(
   // unknown、预算耗尽和不可表示的超大 iteration 都不得改变 caller-owned 授权。
   if (!mapped.complete) return input.previousLandingAuthorization
   let authorization = input.previousLandingAuthorization
-  let cursorTimeMs = previousRequestedTimeMs
   for (const event of mapped.transitions) {
     if (event.kind === 'takeoff') {
       authorization = undefined
@@ -996,12 +993,11 @@ function advanceLandingAuthorization(
         impulse: event.strength,
       })
     }
-    cursorTimeMs = event.requestedTimeMs
   }
   if (mapped.transitions.length === 0 && authorization
     && requestedRangeHasProvenTargetAirborne(
       analysis,
-      cursorTimeMs,
+      previousRequestedTimeMs,
       input.requestedTimeMs,
     )) return undefined
   return authorization

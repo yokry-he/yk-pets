@@ -14,6 +14,7 @@ import {
   type SampledBipedPetRootMotion,
 } from '../packages/pet-core/src/index.ts'
 import {
+  BIPED_PET_ROOT_MOTION_SIGNAL_EPSILON,
   MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS,
   analyzeBipedPetBallisticTimeline,
   classifyBipedPetBallisticRequestedRange,
@@ -273,8 +274,6 @@ function runBallisticTimelineProbe() {
     loopMode: 'once',
     jumpHeight: definition.jumpHeight,
     actionWeight: 1e-4,
-    previousRequestedTimeMs: 10,
-    requestedTimeMs: 84,
   })
   assert.equal(classifyBipedPetBallisticRequestedRange(analysis, 10, 84), 'grounded')
   assert.ok(analysis.stats.workUnits > 0
@@ -373,6 +372,79 @@ function runBallisticTimelineProbe() {
     signedImpulse,
     analysis: analysis.stats,
     elapsedMs: performance.now() - startedAt,
+  }
+}
+
+function runCompositePeakStabilityProbe() {
+  const primaryWindows = [
+    { id: 'primary-a', startMs: 0, endMs: 60, weight: 1 },
+    { id: 'primary-b', startMs: 20, endMs: 80, weight: 1 },
+  ] as const
+  const jumpHeight = .69
+  const expectedPeakStrength = jumpHeight * 560 / 729
+  const analyze = (microWindows: readonly {
+    readonly id: string
+    readonly startMs: number
+    readonly endMs: number
+    readonly weight: number
+  }[]) => analyzeBipedPetBallisticTimeline({
+    windows: [...primaryWindows, ...microWindows],
+    durationMs: 100,
+    loopMode: 'once',
+    jumpHeight,
+    actionWeight: 1,
+  })
+  const baseline = analyze([])
+  const variants = [
+    [{ id: 'before', startMs: 39.8, endMs: 40, weight: 7.5e-13 }],
+    [{ id: 'exact', startMs: 39.9, endMs: 40.1, weight: 7.5e-13 }],
+    [{ id: 'after', startMs: 40, endMs: 40.2, weight: 7.5e-13 }],
+    [
+      { id: 'multiple-before', startMs: 39.7, endMs: 39.9, weight: 2.5e-13 },
+      { id: 'multiple-exact', startMs: 39.95, endMs: 40.05, weight: 2.5e-13 },
+      { id: 'multiple-after', startMs: 40.1, endMs: 40.3, weight: 2.5e-13 },
+    ],
+  ] as const
+  const baselineStrength = baseline.components[0]?.strength
+  assert.ok(baselineStrength !== undefined && Math.abs(baselineStrength - expectedPeakStrength) <= 1e-12)
+  let maximumStrengthDelta = 0
+  let maximumTransitionTimeDeltaMs = 0
+  for (const microWindows of variants) {
+    const totalMicroWeight = microWindows.reduce((total, window) => total + window.weight, 0)
+    assert.ok(totalMicroWeight < BIPED_PET_ROOT_MOTION_SIGNAL_EPSILON)
+    const analysis = analyze(microWindows)
+    assert.equal(analysis.stats.exhausted, false)
+    assert.deepEqual(
+      analysis.transitions.map(({ componentIndex, traversalDirection, kind }) => ({
+        componentIndex,
+        traversalDirection,
+        kind,
+      })),
+      baseline.transitions.map(({ componentIndex, traversalDirection, kind }) => ({
+        componentIndex,
+        traversalDirection,
+        kind,
+      })),
+    )
+    const strength = analysis.components[0]?.strength
+    assert.ok(strength !== undefined)
+    maximumStrengthDelta = Math.max(maximumStrengthDelta, Math.abs(strength - baselineStrength))
+    assert.ok(Math.abs(strength - baselineStrength) <= jumpHeight * totalMicroWeight + 1e-12)
+    for (let index = 0; index < analysis.transitions.length; index += 1) {
+      maximumTransitionTimeDeltaMs = Math.max(
+        maximumTransitionTimeDeltaMs,
+        Math.abs(analysis.transitions[index]!.resolvedTimeMs - baseline.transitions[index]!.resolvedTimeMs),
+      )
+    }
+  }
+  assert.ok(maximumTransitionTimeDeltaMs <= 1e-9)
+  assert.ok([.25, .4, .45].every(threshold => baselineStrength > threshold))
+  return {
+    cases: variants.length,
+    expectedPeakStrength,
+    baselineStrength,
+    maximumStrengthDelta,
+    maximumTransitionTimeDeltaMs,
   }
 }
 
@@ -592,6 +664,7 @@ const result = {
   stateful: runStatefulProbe(),
   ulp: runUlpProbes(),
   ballisticTimeline: runBallisticTimelineProbe(),
+  compositePeakStability: runCompositePeakStabilityProbe(),
   frameSubdivision: runFrameSubdivisionProbe(),
   normalizationCostObservation: runNormalizationCostObservation(),
   continuousBallisticObservation: runContinuousBallisticPerformanceObservation(),

@@ -48,8 +48,6 @@ function lowUlpTailWindows() {
 function analyze(
   windows: readonly { readonly id: string; readonly startMs: number; readonly endMs: number; readonly weight: number }[],
   loopMode: 'once' | 'loop' | 'ping-pong' = 'once',
-  previousRequestedTimeMs = 5,
-  requestedTimeMs = 10,
 ) {
   return analyzeBipedPetBallisticTimeline({
     windows,
@@ -57,23 +55,17 @@ function analyze(
     loopMode,
     jumpHeight: 1,
     actionWeight: 1,
-    previousRequestedTimeMs,
-    requestedTimeMs,
   })
 }
 
-test('canonical 组件与转换完全独立于请求帧端点', () => {
+test('canonical 组件与转换只由动作结构形成', () => {
   const windows = [
     { id: 'first', startMs: 0, endMs: 10, weight: 1 },
     { id: 'adjacent', startMs: 10, endMs: 20, weight: 1 },
   ]
-  const exact = analyze(windows, 'once', 5, 10)
-  const crossed = analyze(windows, 'once', 5, 10.000001)
+  const exact = analyze(windows, 'once')
 
   assert.deepEqual(exact.boundaries, [0, 10, 20, 100])
-  assert.deepEqual(crossed.boundaries, exact.boundaries)
-  assert.deepEqual(crossed.components, exact.components)
-  assert.deepEqual(crossed.transitions, exact.transitions)
   assert.equal(exact.components.length, 1, '两侧 proven airborne 且仅精确相邻时必须合并为一个组件')
   assert.ok(exact.components[0]!.startMs > 0 && exact.components[0]!.endMs < 20)
   assert.equal(
@@ -99,6 +91,108 @@ test('低于阈值的重叠/相邻尾窗不改变主组件，touchdown 位于真
     transition.traversalDirection === 1 && transition.kind === 'touchdown'
   ))
   assert.ok(touchdown && touchdown.resolvedTimeMs < 10 && touchdown.resolvedTimeMs > 9.9999)
+})
+
+test('低于信号阈值的微窗提示不改变复合峰值强度与 VFX 阈值侧别', () => {
+  const primaryWindows = [
+    { id: 'primary-a', startMs: 0, endMs: 60, weight: 1 },
+    { id: 'primary-b', startMs: 20, endMs: 80, weight: 1 },
+  ] as const
+  const jumpHeight = .69
+  const expectedPeakStrength = jumpHeight * 560 / 729
+  const baseline = analyzeBipedPetBallisticTimeline({
+    windows: primaryWindows,
+    durationMs: 100,
+    loopMode: 'once',
+    jumpHeight,
+    actionWeight: 1,
+  })
+  const microWindowVariants = [
+    [{ id: 'peak-before', startMs: 39.8, endMs: 40, weight: 7.5e-13 }],
+    [{ id: 'peak-exact', startMs: 39.9, endMs: 40.1, weight: 7.5e-13 }],
+    [{ id: 'peak-after', startMs: 40, endMs: 40.2, weight: 7.5e-13 }],
+    [
+      { id: 'multiple-before', startMs: 39.7, endMs: 39.9, weight: 2.5e-13 },
+      { id: 'multiple-exact', startMs: 39.95, endMs: 40.05, weight: 2.5e-13 },
+      { id: 'multiple-after', startMs: 40.1, endMs: 40.3, weight: 2.5e-13 },
+    ],
+  ] as const
+
+  assert.equal(baseline.stats.exhausted, false)
+  assert.equal(baseline.components.length, 1)
+  assert.ok(
+    Math.abs(baseline.components[0]!.strength - expectedPeakStrength) <= 1e-12,
+    '基线强度必须来自真实复合峰值，不得取决于 proof witness 是否恰好落在峰心',
+  )
+  for (const microWindows of microWindowVariants) {
+    const analysis = analyzeBipedPetBallisticTimeline({
+      windows: [...primaryWindows, ...microWindows],
+      durationMs: 100,
+      loopMode: 'once',
+      jumpHeight,
+      actionWeight: 1,
+    })
+    const totalMicroWeight = microWindows.reduce((total, window) => total + window.weight, 0)
+
+    assert.equal(analysis.stats.exhausted, false)
+    assert.equal(analysis.components.length, baseline.components.length)
+    assert.deepEqual(
+      analysis.transitions.map(({ componentIndex, traversalDirection, kind }) => ({
+        componentIndex,
+        traversalDirection,
+        kind,
+      })),
+      baseline.transitions.map(({ componentIndex, traversalDirection, kind }) => ({
+        componentIndex,
+        traversalDirection,
+        kind,
+      })),
+      '微窗结构提示不得改变转换拓扑',
+    )
+    for (let index = 0; index < analysis.transitions.length; index += 1) {
+      assert.ok(
+        Math.abs(analysis.transitions[index]!.resolvedTimeMs - baseline.transitions[index]!.resolvedTimeMs) <= 1e-9,
+        '微窗只能按其真实贡献微扰转换时间',
+      )
+    }
+    assert.ok(
+      Math.abs(analysis.components[0]!.strength - baseline.components[0]!.strength)
+        <= jumpHeight * totalMicroWeight + 1e-12,
+      '强度变化必须受微窗真实复合高度贡献约束',
+    )
+    for (const vfxThreshold of [.25, .4, .45]) {
+      assert.equal(
+        analysis.components[0]!.strength > vfxThreshold,
+        baseline.components[0]!.strength > vfxThreshold,
+        `${String(vfxThreshold)} VFX 阈值侧别不得被微窗提示改变`,
+      )
+    }
+  }
+})
+
+test('真实复合峰值在 VFX 强度阈值两侧保持精确判定', () => {
+  const windows = [
+    { id: 'threshold-a', startMs: 0, endMs: 60, weight: 1 },
+    { id: 'threshold-b', startMs: 20, endMs: 80, weight: 1 },
+  ] as const
+  const normalizedPeak = 560 / 729
+  for (const threshold of [.25, .4, .45]) {
+    for (const side of [-1, 1] as const) {
+      const expectedStrength = threshold + side * 1e-6
+      const analysis = analyzeBipedPetBallisticTimeline({
+        windows,
+        durationMs: 100,
+        loopMode: 'once',
+        jumpHeight: expectedStrength / normalizedPeak,
+        actionWeight: 1,
+      })
+
+      assert.equal(analysis.stats.exhausted, false)
+      assert.equal(analysis.components.length, 1)
+      assert.ok(Math.abs(analysis.components[0]!.strength - expectedStrength) <= 1e-12)
+      assert.equal(analysis.components[0]!.strength > threshold, side > 0)
+    }
+  }
 })
 
 test('任意正宽 proven grounded gap 都拆分组件，精确相邻不拆分', () => {
@@ -299,8 +393,6 @@ test('共享时间线在一个固定工作预算内证明 63 个低强度 ULP �
     loopMode: 'once',
     jumpHeight: 1,
     actionWeight: 1e-4,
-    previousRequestedTimeMs: 10,
-    requestedTimeMs: 84,
   })
 
   assert.equal(classifyBipedPetBallisticRequestedRange(analysis, 10, 84), 'grounded')
@@ -325,8 +417,6 @@ test('共享时间线在 once、loop 与 ping-pong 中复用同一已证明区�
       loopMode: item.loopMode,
       jumpHeight: 1,
       actionWeight: 1,
-      previousRequestedTimeMs: item.previousRequestedTimeMs,
-      requestedTimeMs: item.requestedTimeMs,
     })
     assert.equal(
       classifyBipedPetBallisticRequestedRange(analysis, item.previousRequestedTimeMs, item.requestedTimeMs),
@@ -357,8 +447,6 @@ test('全局预算耗尽时区间保持 unknown 且不会伪造 airborne 证明'
     loopMode: 'once',
     jumpHeight: 1,
     actionWeight: 1e-12 / thresholdImmediatelyAbovePeak,
-    previousRequestedTimeMs: 0,
-    requestedTimeMs: 100,
   })
 
   assert.equal(analysis.stats.workUnits, MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS)
