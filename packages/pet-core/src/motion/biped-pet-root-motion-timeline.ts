@@ -14,6 +14,9 @@ const BALLISTIC_DERIVATIVE_CRITICAL_PROGRESS = Object.freeze([
   0.233783518068081,
   0.766216481931919,
 ])
+// `4·smoothstep(t)·(1-smoothstep(t))` 转成六次 Bernstein 基后得到这组固定控制点。
+const BALLISTIC_HEIGHT_BERNSTEIN_CONTROL_POINTS = Object.freeze([0, 0, .8, 2, .8, 0, 0])
+const COMPOSITE_PEAK_RELATIVE_TOLERANCE = 1e-13
 
 export type BipedPetBallisticTimelineEvidence = 'airborne' | 'grounded' | 'unknown'
 export type BipedPetBallisticTimelineTransitionKind = 'takeoff' | 'touchdown'
@@ -88,12 +91,26 @@ interface ClassifiedInterval {
   readonly endMs: number
   readonly evidence: BipedPetBallisticTimelineEvidence
   readonly witnessTimeMs?: number
-  readonly witnessHeight?: number
 }
 
 interface ThresholdEdge {
   readonly airborneMs: number
   readonly groundedMs: number
+}
+
+interface BernsteinSplit {
+  readonly left: readonly number[]
+  readonly right: readonly number[]
+}
+
+interface CompositePeakNode {
+  readonly startMs: number
+  readonly endMs: number
+  readonly controlPoints: readonly number[]
+  readonly activeWindowCount: number
+  readonly depth: number
+  readonly upper: number
+  readonly sequence: number
 }
 
 export interface BipedPetBallisticTimelineAnalysis {
@@ -166,6 +183,70 @@ function normalizedCompositeHeight(
     weightedHeight += window.weight / maximumWeight * 4 * progress * (1 - progress)
   }
   return weightedHeight / totalScaledWeight
+}
+
+function splitBernsteinControlPoints(
+  controlPoints: readonly number[],
+  progress: number,
+): BernsteinSplit {
+  const rows: number[][] = [controlPoints.slice()]
+  for (let level = 1; level < controlPoints.length; level += 1) {
+    const previous = rows[level - 1]!
+    const row: number[] = []
+    for (let index = 0; index < previous.length - 1; index += 1) {
+      row.push(previous[index]! * (1 - progress) + previous[index + 1]! * progress)
+    }
+    rows.push(row)
+  }
+  return Object.freeze({
+    left: Object.freeze(rows.map(row => row[0]!)),
+    right: Object.freeze(rows.slice().reverse().map(row => row.at(-1)!)),
+  })
+}
+
+function restrictedBallisticHeightControlPoints(
+  startProgress: number,
+  endProgress: number,
+): readonly number[] {
+  let restricted = BALLISTIC_HEIGHT_BERNSTEIN_CONTROL_POINTS as readonly number[]
+  if (endProgress < 1) restricted = splitBernsteinControlPoints(restricted, endProgress).left
+  if (startProgress > 0) {
+    restricted = splitBernsteinControlPoints(restricted, startProgress / endProgress).right
+  }
+  return restricted
+}
+
+function normalizedCompositeHeightControlPoints(
+  windows: readonly BipedPetBallisticTimelineWindow[],
+  maximumWeight: number,
+  totalScaledWeight: number,
+  startMs: number,
+  endMs: number,
+): readonly number[] {
+  const controlPoints = Array.from({ length: BALLISTIC_HEIGHT_BERNSTEIN_CONTROL_POINTS.length }, () => 0)
+  for (const window of windows) {
+    const durationMs = window.endMs - window.startMs
+    const startProgress = clamp((startMs - window.startMs) / durationMs, 0, 1)
+    const endProgress = clamp((endMs - window.startMs) / durationMs, 0, 1)
+    const windowControlPoints = restrictedBallisticHeightControlPoints(startProgress, endProgress)
+    const normalizedWeight = window.weight / maximumWeight / totalScaledWeight
+    for (let index = 0; index < controlPoints.length; index += 1) {
+      controlPoints[index] = controlPoints[index]! + windowControlPoints[index]! * normalizedWeight
+    }
+  }
+  return Object.freeze(controlPoints)
+}
+
+function compositePeakUpper(
+  controlPoints: readonly number[],
+  activeWindowCount: number,
+  depth: number,
+): number {
+  const maximum = Math.max(...controlPoints)
+  const magnitude = Math.max(1, ...controlPoints.map(Math.abs))
+  // 正权重合成与 de Casteljau 只有凸组合；按窗口数和细分深度外扩舍入误差，保持控制凸包上界保守。
+  const roundingPadding = Number.EPSILON * magnitude * (activeWindowCount + depth + 16) * 4
+  return maximum + roundingPadding
 }
 
 /**
@@ -396,46 +477,39 @@ export function analyzeBipedPetBallisticTimeline(
   }
   /**
    * 强度取阈值组件内的真实复合高度峰值，不能复用 proof witness 或窗口中点提示。
-   * 单窗、共同峰心及同向区间直接解析；其余区间用导数安全界递归隔离全部极值。
-   * 每次递归与结构证明共享 512 work-unit，耗尽即令整个分析 unknown，不把松上界当成强度。
+   * 单窗、共同峰心及同向区间直接解析；其余区间共享一个 Bernstein 凸包上界优先队列。
+   * 每次细分与真实采样都纳入 512 work-unit，耗尽即令整个分析 unknown；控制多边形上界只作证明，绝不成为强度。
    */
   const maximumCompositeHeightInRange = (rangeStartMs: number, rangeEndMs: number): number | undefined => {
     let maximumHeight = 0
+    let nextNodeSequence = 0
+    const pendingNodes: CompositePeakNode[] = []
     const consider = (timeMs: number) => {
       const sample = sampleAt(timeMs)
       if (sample.evidence === 'unknown') return false
       maximumHeight = Math.max(maximumHeight, sample.height)
       return true
     }
-    const visitExtrema = (
+    const createNode = (
       startMs: number,
       endMs: number,
-      activeWindows: readonly BipedPetBallisticTimelineWindow[],
-    ): boolean => {
-      if (!(endMs > startMs)) return consider(startMs)
-      if (activeWindows.length === 0) return consider(startMs)
-      const firstPeakMs = activeWindows[0]!.startMs
-        + (activeWindows[0]!.endMs - activeWindows[0]!.startMs) * .5
-      if (activeWindows.length === 1
-        || activeWindows.every(window => (
-          window.startMs + (window.endMs - window.startMs) * .5 === firstPeakMs
-        ))) {
-        return consider(clamp(firstPeakMs, startMs, endMs))
-      }
-      const peakTimes = activeWindows.map(window => window.startMs + (window.endMs - window.startMs) * .5)
-      if (peakTimes.every(peakMs => peakMs >= endMs)) return consider(endMs)
-      if (peakTimes.every(peakMs => peakMs <= startMs)) return consider(startMs)
-
-      const bounds = boundsAt(startMs, endMs)
-      if (bounds === undefined) return false
-      if (bounds.lowerDerivative >= 0) return consider(endMs)
-      if (bounds.upperDerivative <= 0) return consider(startMs)
-      const midpointMs = startMs + (endMs - startMs) * .5
-      if (midpointMs === startMs || midpointMs === endMs) {
-        return consider(startMs) && consider(endMs)
-      }
-      return visitExtrema(startMs, midpointMs, activeWindows)
-        && visitExtrema(midpointMs, endMs, activeWindows)
+      controlPoints: readonly number[],
+      activeWindowCount: number,
+      depth: number,
+    ): CompositePeakNode => Object.freeze({
+      startMs,
+      endMs,
+      controlPoints,
+      activeWindowCount,
+      depth,
+      upper: compositePeakUpper(controlPoints, activeWindowCount, depth),
+      sequence: nextNodeSequence++,
+    })
+    const compareNodes = (left: CompositePeakNode, right: CompositePeakNode) => {
+      if (left.upper !== right.upper) return right.upper - left.upper
+      if (left.startMs !== right.startMs) return left.startMs - right.startMs
+      if (left.endMs !== right.endMs) return left.endMs - right.endMs
+      return left.sequence - right.sequence
     }
 
     if (!consider(rangeStartMs) || !consider(rangeEndMs)) return undefined
@@ -448,7 +522,69 @@ export function analyzeBipedPetBallisticTimeline(
       const startMs = rangeBoundaries[index]!
       const endMs = rangeBoundaries[index + 1]!
       const activeWindows = windows.filter(window => window.startMs < endMs && window.endMs > startMs)
-      if (!visitExtrema(startMs, endMs, activeWindows)) return undefined
+      if (activeWindows.length === 0) continue
+      const firstPeakMs = activeWindows[0]!.startMs
+        + (activeWindows[0]!.endMs - activeWindows[0]!.startMs) * .5
+      if (activeWindows.length === 1
+        || activeWindows.every(window => (
+          window.startMs + (window.endMs - window.startMs) * .5 === firstPeakMs
+        ))) {
+        if (!consider(clamp(firstPeakMs, startMs, endMs))) return undefined
+        continue
+      }
+      const peakTimes = activeWindows.map(window => window.startMs + (window.endMs - window.startMs) * .5)
+      if (peakTimes.every(peakMs => peakMs >= endMs)) {
+        if (!consider(endMs)) return undefined
+        continue
+      }
+      if (peakTimes.every(peakMs => peakMs <= startMs)) {
+        if (!consider(startMs)) return undefined
+        continue
+      }
+      if (!consumeWorkUnit()) return undefined
+      const controlPoints = normalizedCompositeHeightControlPoints(
+        activeWindows,
+        maximumWeight,
+        totalScaledWeight,
+        startMs,
+        endMs,
+      )
+      const midpointMs = startMs + (endMs - startMs) * .5
+      if (!consider(midpointMs)) return undefined
+      pendingNodes.push(createNode(startMs, endMs, controlPoints, activeWindows.length, 0))
+    }
+
+    while (pendingNodes.length > 0) {
+      pendingNodes.sort(compareNodes)
+      const node = pendingNodes.shift()!
+      const tolerance = Math.max(1, Math.abs(maximumHeight)) * COMPOSITE_PEAK_RELATIVE_TOLERANCE
+      if (node.upper <= maximumHeight + tolerance) break
+      const midpointMs = node.startMs + (node.endMs - node.startMs) * .5
+      if (midpointMs === node.startMs || midpointMs === node.endMs) {
+        if (!consider(node.startMs) || !consider(node.endMs)) return undefined
+        continue
+      }
+      if (!consumeWorkUnit()) return undefined
+      const split = splitBernsteinControlPoints(node.controlPoints, .5)
+      if (!consider(midpointMs)) return undefined
+      const nextDepth = node.depth + 1
+      const left = createNode(
+        node.startMs,
+        midpointMs,
+        split.left,
+        node.activeWindowCount,
+        nextDepth,
+      )
+      const right = createNode(
+        midpointMs,
+        node.endMs,
+        split.right,
+        node.activeWindowCount,
+        nextDepth,
+      )
+      const nextTolerance = Math.max(1, Math.abs(maximumHeight)) * COMPOSITE_PEAK_RELATIVE_TOLERANCE
+      if (left.upper > maximumHeight + nextTolerance) pendingNodes.push(left)
+      if (right.upper > maximumHeight + nextTolerance) pendingNodes.push(right)
     }
     return maximumHeight
   }
@@ -468,14 +604,11 @@ export function analyzeBipedPetBallisticTimeline(
       const witnessTimeMs = start.evidence === 'airborne'
         ? startMs
         : end.evidence === 'airborne' ? endMs : undefined
-      const witnessHeight = start.evidence === 'airborne'
-        ? start.height
-        : end.evidence === 'airborne' ? end.height : undefined
       return [Object.freeze({
         startMs,
         endMs,
         evidence: witnessTimeMs === undefined ? 'unknown' : 'airborne',
-        ...(witnessTimeMs === undefined ? {} : { witnessTimeMs, witnessHeight }),
+        ...(witnessTimeMs === undefined ? {} : { witnessTimeMs }),
       })]
     }
     const midpoint = sampleAt(midpointMs)
@@ -489,7 +622,6 @@ export function analyzeBipedPetBallisticTimeline(
         endMs,
         evidence: 'airborne',
         witnessTimeMs: midpointMs,
-        witnessHeight: midpoint.height,
       })]
     }
     const bounds = boundsAt(startMs, endMs)
@@ -501,7 +633,6 @@ export function analyzeBipedPetBallisticTimeline(
         endMs,
         evidence: 'airborne',
         witnessTimeMs: midpointMs,
-        witnessHeight: midpoint.height,
       })]
     }
     if (!connectedAirborneSuperlevel) {
@@ -519,13 +650,11 @@ export function analyzeBipedPetBallisticTimeline(
       if ((nonDecreasing && start.evidence === 'airborne')
         || (nonIncreasing && end.evidence === 'airborne')) {
         const witnessTimeMs = start.evidence === 'airborne' ? startMs : endMs
-        const witnessHeight = start.evidence === 'airborne' ? start.height : end.height
-        return [Object.freeze({ startMs, endMs, evidence: 'airborne', witnessTimeMs, witnessHeight })]
+        return [Object.freeze({ startMs, endMs, evidence: 'airborne', witnessTimeMs })]
       }
       if ((nonDecreasing || nonIncreasing) && start.evidence !== end.evidence) {
         const witnessTimeMs = start.evidence === 'airborne' ? startMs : endMs
-        const witnessHeight = start.evidence === 'airborne' ? start.height : end.height
-        return [Object.freeze({ startMs, endMs, evidence: 'airborne', witnessTimeMs, witnessHeight })]
+        return [Object.freeze({ startMs, endMs, evidence: 'airborne', witnessTimeMs })]
       }
     }
     /*

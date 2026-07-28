@@ -11,6 +11,16 @@ import {
   bipedPetBallisticTransitionsInRequestedRange,
   classifyBipedPetBallisticRequestedRange,
 } from '../src/motion/biped-pet-root-motion-timeline.ts'
+import { sampleBipedPetRootMotion } from '../src/motion/biped-pet-root-motion.ts'
+
+interface TestBallisticWindow {
+  readonly id: string
+  readonly startMs: number
+  readonly endMs: number
+  readonly weight: number
+}
+
+const MAX_REGULAR_OFFSET_OVERLAP_WORK_UNITS = 192
 
 const floatBuffer = new ArrayBuffer(8)
 const floatView = new DataView(floatBuffer)
@@ -46,7 +56,7 @@ function lowUlpTailWindows() {
 }
 
 function analyze(
-  windows: readonly { readonly id: string; readonly startMs: number; readonly endMs: number; readonly weight: number }[],
+  windows: readonly TestBallisticWindow[],
   loopMode: 'once' | 'loop' | 'ping-pong' = 'once',
 ) {
   return analyzeBipedPetBallisticTimeline({
@@ -57,6 +67,98 @@ function analyze(
     actionWeight: 1,
   })
 }
+
+function referenceCompositePeakStrength(
+  windows: readonly TestBallisticWindow[],
+  jumpHeight: number,
+  actionWeight: number,
+): number {
+  const totalWeight = windows.reduce((total, window) => total + window.weight, 0)
+  const supportStartMs = Math.min(...windows.map(window => window.startMs))
+  const supportEndMs = Math.max(...windows.map(window => window.endMs))
+  const heightAt = (timeMs: number) => {
+    const weightedHeight = windows.reduce((total, window) => {
+      const linearProgress = Math.max(0, Math.min(1, (timeMs - window.startMs) / (window.endMs - window.startMs)))
+      const progress = linearProgress * linearProgress * (3 - 2 * linearProgress)
+      return total + window.weight * 4 * progress * (1 - progress)
+    }, 0)
+    return weightedHeight / totalWeight
+  }
+  const samples = 20_000
+  const stepMs = (supportEndMs - supportStartMs) / samples
+  let bestIndex = 0
+  let bestHeight = 0
+  for (let index = 0; index <= samples; index += 1) {
+    const height = heightAt(supportStartMs + stepMs * index)
+    if (height > bestHeight) {
+      bestHeight = height
+      bestIndex = index
+    }
+  }
+  let leftMs = supportStartMs + stepMs * Math.max(0, bestIndex - 2)
+  let rightMs = supportStartMs + stepMs * Math.min(samples, bestIndex + 2)
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    const firstMs = leftMs + (rightMs - leftMs) / 3
+    const secondMs = rightMs - (rightMs - leftMs) / 3
+    if (heightAt(firstMs) < heightAt(secondMs)) leftMs = firstMs
+    else rightMs = secondMs
+  }
+  bestHeight = Math.max(bestHeight, heightAt(leftMs), heightAt(rightMs), heightAt((leftMs + rightMs) * .5))
+  return Math.max(0, Math.min(1, bestHeight * jumpHeight * actionWeight))
+}
+
+const representativeOffsetOverlapCases = Object.freeze([
+  Object.freeze({
+    name: '2-window-analytic',
+    windows: Object.freeze([
+      Object.freeze({ id: 'a', startMs: 0, endMs: 20, weight: 1 }),
+      Object.freeze({ id: 'b', startMs: 10, endMs: 30, weight: 1 }),
+    ]),
+    expectedStrength: .3638671875,
+  }),
+  Object.freeze({
+    name: '3-window-seeded',
+    windows: Object.freeze([
+      Object.freeze({ id: 'a', startMs: 4.610589128686115, endMs: 43.79479029099457, weight: .9148315281141549 }),
+      Object.freeze({ id: 'b', startMs: 16.45487498724833, endMs: 55.0972313019447, weight: .48598238304257396 }),
+      Object.freeze({ id: 'c', startMs: 30.838873620377854, endMs: 58.31329605472274, weight: .931716621434316 }),
+    ]),
+  }),
+  Object.freeze({
+    name: '4-window-seeded',
+    windows: Object.freeze([
+      Object.freeze({ id: 'a', startMs: 4.4333891870919615, endMs: 45.39904362545349, weight: .7202611952554434 }),
+      Object.freeze({ id: 'b', startMs: 12.871700086941322, endMs: 39.063388455969594, weight: .8441144871525467 }),
+      Object.freeze({ id: 'c', startMs: 21.708508548714843, endMs: 54.15464292598578, weight: .896370590897277 }),
+      Object.freeze({ id: 'd', startMs: 31.99727036850527, endMs: 55.119538047816604, weight: .6199079547077417 }),
+    ]),
+  }),
+  Object.freeze({
+    name: '5-window-seeded',
+    windows: Object.freeze([
+      Object.freeze({ id: 'a', startMs: 2.3263431212399155, endMs: 44.273581713670865, weight: .4611827674787492 }),
+      Object.freeze({ id: 'b', startMs: 11.93839174322784, endMs: 42.10239333007485, weight: .683881179150194 }),
+      Object.freeze({ id: 'c', startMs: 18.306828801287338, endMs: 59.76460696826689, weight: .48774253283627333 }),
+      Object.freeze({ id: 'd', startMs: 23.905550407711416, endMs: 52.576215501409024, weight: .8060933940112591 }),
+      Object.freeze({ id: 'e', startMs: 32.74153687362559, endMs: 57.2267072473187, weight: .7881289293523879 }),
+    ]),
+  }),
+  Object.freeze({
+    name: '6-window-seeded',
+    windows: Object.freeze([
+      Object.freeze({ id: 'a', startMs: 4.78183579700999, endMs: 39.70331560703926, weight: .7270644527394325 }),
+      Object.freeze({ id: 'b', startMs: 8.09918443756178, endMs: 41.326760709192605, weight: .5834468726068736 }),
+      Object.freeze({ id: 'c', startMs: 13.436333699198439, endMs: 35.82874837522395, weight: .6627991245593876 }),
+      Object.freeze({ id: 'd', startMs: 21.072239991463718, endMs: 56.27220711410045, weight: .999884991068393 }),
+      Object.freeze({ id: 'e', startMs: 24.931994502758606, endMs: 65.98471576473676, weight: .8673986090812832 }),
+      Object.freeze({ id: 'f', startMs: 31.05710903322324, endMs: 60.5353079312481, weight: .8122628284618258 }),
+    ]),
+  }),
+] satisfies readonly {
+  readonly name: string
+  readonly windows: readonly TestBallisticWindow[]
+  readonly expectedStrength?: number
+}[])
 
 test('canonical 组件与转换只由动作结构形成', () => {
   const windows = [
@@ -192,6 +294,160 @@ test('真实复合峰值在 VFX 强度阈值两侧保持精确判定', () => {
       assert.ok(Math.abs(analysis.components[0]!.strength - expectedStrength) <= 1e-12)
       assert.equal(analysis.components[0]!.strength > threshold, side > 0)
     }
+  }
+})
+
+test('2/3/4/5/6 个常规错峰窗口在固定预算内求得真峰且帧细分不改变单次落地', () => {
+  for (const fixture of representativeOffsetOverlapCases) {
+    const analysis = analyzeBipedPetBallisticTimeline({
+      windows: fixture.windows,
+      durationMs: 100,
+      loopMode: 'once',
+      jumpHeight: .69,
+      actionWeight: 1,
+    })
+    const expectedStrength = fixture.expectedStrength
+      ?? referenceCompositePeakStrength(fixture.windows, .69, 1)
+
+    assert.equal(analysis.stats.exhausted, false, `${fixture.name} 不得耗尽正常输入预算`)
+    assert.ok(analysis.stats.workUnits <= MAX_REGULAR_OFFSET_OVERLAP_WORK_UNITS)
+    assert.equal(analysis.components.length, 1)
+    assert.ok(Math.abs(analysis.components[0]!.strength - expectedStrength) <= 2e-12, `${fixture.name} 必须返回复合真峰`)
+    const forwardTransitions = analysis.transitions.filter(transition => transition.traversalDirection === 1)
+    assert.deepEqual(forwardTransitions.map(transition => transition.kind), ['takeoff', 'touchdown'])
+    assert.equal(forwardTransitions.filter(transition => transition.kind === 'touchdown').length, 1)
+
+    const direct = bipedPetBallisticTransitionsInRequestedRange(analysis, 0, 100)
+    const subdivided = [[0, 17], [17, 34], [34, 51], [51, 68], [68, 85], [85, 100]]
+      .flatMap(([startMs, endMs]) => (
+        bipedPetBallisticTransitionsInRequestedRange(analysis, startMs!, endMs!).transitions
+      ))
+    assert.equal(direct.complete, true)
+    assert.deepEqual(subdivided, direct.transitions, `${fixture.name} 的转换信号不得依赖请求帧细分`)
+  }
+})
+
+test('Bernstein 局部限制与全局权重归一化复原错峰复合曲线峰值', () => {
+  const windows = [
+    { id: 'long', startMs: 0, endMs: 41, weight: 1 },
+    { id: 'short', startMs: 7, endMs: 32, weight: .37 },
+    { id: 'late', startMs: 19, endMs: 58, weight: .63 },
+  ] as const
+  const jumpHeight = .83
+  const actionWeight = .71
+  const expectedStrength = referenceCompositePeakStrength(windows, jumpHeight, actionWeight)
+  const analyzeWeighted = (weightScale: number) => analyzeBipedPetBallisticTimeline({
+    windows: windows.map(window => ({ ...window, weight: window.weight * weightScale })),
+    durationMs: 100,
+    loopMode: 'once',
+    jumpHeight,
+    actionWeight,
+  })
+  const baseline = analyzeWeighted(1)
+  const uniformlyScaled = analyzeWeighted(.125)
+
+  assert.equal(baseline.stats.exhausted, false)
+  assert.ok(baseline.stats.workUnits <= MAX_REGULAR_OFFSET_OVERLAP_WORK_UNITS)
+  assert.ok(Math.abs(baseline.components[0]!.strength - expectedStrength) <= 2e-12)
+  assert.equal(uniformlyScaled.stats.exhausted, false)
+  assert.ok(Math.abs(uniformlyScaled.components[0]!.strength - expectedStrength) <= 2e-12)
+  assert.equal(uniformlyScaled.components[0]!.strength, baseline.components[0]!.strength)
+})
+
+test('固定种子 2–6 窗常规错峰代表集具有确定性非耗尽预算上界', () => {
+  let randomState = 0x51a7c0de
+  const random = () => {
+    randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0
+    return randomState / 0x1_0000_0000
+  }
+  let maximumObservedWorkUnits = 0
+  for (let windowCount = 2; windowCount <= 6; windowCount += 1) {
+    for (let fixtureIndex = 0; fixtureIndex < 8; fixtureIndex += 1) {
+      const windows = Array.from({ length: windowCount }, (_, index) => {
+        const startMs = 2 + index * (24 / (windowCount - 1)) + random() * 2
+        return Object.freeze({
+          id: `seeded-${windowCount}-${fixtureIndex}-${index}`,
+          startMs,
+          endMs: startMs + 32 + random() * 18,
+          weight: .4 + random() * .6,
+        })
+      })
+      const input = {
+        windows,
+        durationMs: 100,
+        loopMode: 'once' as const,
+        jumpHeight: .69,
+        actionWeight: 1,
+      }
+      const first = analyzeBipedPetBallisticTimeline(input)
+      const repeated = analyzeBipedPetBallisticTimeline(input)
+
+      assert.deepEqual(repeated, first, '同一固定种子输入必须保持确定预算与结果')
+      assert.equal(first.stats.exhausted, false, `${windowCount} 窗固定种子案例 ${fixtureIndex} 不得耗尽`)
+      assert.ok(first.stats.workUnits <= MAX_REGULAR_OFFSET_OVERLAP_WORK_UNITS)
+      assert.equal(first.components.length, 1)
+      assert.equal(first.transitions.filter(transition => (
+        transition.traversalDirection === 1 && transition.kind === 'touchdown'
+      )).length, 1)
+      maximumObservedWorkUnits = Math.max(maximumObservedWorkUnits, first.stats.workUnits)
+    }
+  }
+  assert.ok(maximumObservedWorkUnits <= MAX_REGULAR_OFFSET_OVERLAP_WORK_UNITS)
+})
+
+test('2/3/4/5/6 个常规错峰窗口的授权与冲量在独立帧和细分帧中一致', () => {
+  const run = (fixture: typeof representativeOffsetOverlapCases[number], stepMs: number) => {
+    const definition = {
+      mode: 'travel' as const,
+      distance: 0,
+      turnRadians: 0,
+      verticalMode: 'ballistic' as const,
+      jumpHeight: .69,
+      windows: fixture.windows.map(window => ({ ...window, kind: 'ballistic' as const })),
+      vfxTags: [] as const,
+    }
+    const base = {
+      definition,
+      durationMs: 100,
+      loopMode: 'once' as const,
+      characterHeight: 4,
+      facingRadians: 0,
+      actionWeight: 1,
+      footResidual: [0, 0, 0] as const,
+    }
+    let previous = sampleBipedPetRootMotion({ ...base, requestedTimeMs: 0 })
+    const impulses: number[] = []
+    const authorizationImpulses = new Set<number>()
+    for (let requestedTimeMs = stepMs; requestedTimeMs <= 100; requestedTimeMs += stepMs) {
+      previous = sampleBipedPetRootMotion({
+        ...base,
+        requestedTimeMs,
+        previousRequestedTimeMs: previous.requestedTimeMs,
+        previousAppliedWorld: previous.appliedWorld,
+        previousAppliedTurnRadians: previous.appliedTurnRadians,
+        previousLandingAuthorization: previous.landingAuthorization,
+      })
+      if (previous.landingAuthorization) authorizationImpulses.add(previous.landingAuthorization.impulse)
+      if (previous.landingImpulse > 0) impulses.push(previous.landingImpulse)
+    }
+    return Object.freeze({ impulses, authorizationImpulses: [...authorizationImpulses] })
+  }
+
+  for (const fixture of representativeOffsetOverlapCases) {
+    const expectedStrength = fixture.expectedStrength
+      ?? referenceCompositePeakStrength(fixture.windows, .69, 1)
+    const independentFrames = run(fixture, 20)
+    const subdividedFrames = run(fixture, 5)
+
+    assert.equal(independentFrames.impulses.length, 1, `${fixture.name} 的独立帧必须消费一次落地冲量`)
+    assert.equal(subdividedFrames.impulses.length, 1, `${fixture.name} 的细分帧必须消费一次落地冲量`)
+    assert.ok(Math.abs(independentFrames.impulses[0]! - expectedStrength) <= 2e-12)
+    assert.deepEqual(subdividedFrames.impulses, independentFrames.impulses, `${fixture.name} 的落地冲量不得依赖帧细分`)
+    assert.ok(
+      [...independentFrames.authorizationImpulses, ...subdividedFrames.authorizationImpulses]
+        .every(impulse => Math.abs(impulse - expectedStrength) <= 2e-12),
+      `${fixture.name} 若跨帧保留授权，其强度必须与最终冲量一致`,
+    )
   }
 })
 

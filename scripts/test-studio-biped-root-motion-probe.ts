@@ -24,6 +24,7 @@ const STATEFUL_PROBE_CASES = 10_000
 const ULP_PROBES_PER_DIRECTION = 21
 const BENCHMARK_ITERATIONS = 100_000
 const BALLISTIC_HOT_PATH_ITERATIONS = 2_000
+const MAX_REGULAR_OFFSET_OVERLAP_WORK_UNITS = 192
 
 function assertFiniteSample(sample: SampledBipedPetRootMotion) {
   const vectors = [
@@ -448,6 +449,74 @@ function runCompositePeakStabilityProbe() {
   }
 }
 
+function runOffsetOverlapBudgetProbe() {
+  const analytic = analyzeBipedPetBallisticTimeline({
+    windows: [
+      { id: 'analytic-a', startMs: 0, endMs: 20, weight: 1 },
+      { id: 'analytic-b', startMs: 10, endMs: 30, weight: 1 },
+    ],
+    durationMs: 100,
+    loopMode: 'once',
+    jumpHeight: .69,
+    actionWeight: 1,
+  })
+  assert.equal(analytic.stats.exhausted, false)
+  assert.ok(analytic.stats.workUnits <= MAX_REGULAR_OFFSET_OVERLAP_WORK_UNITS)
+  assert.ok(Math.abs(analytic.components[0]!.strength - .3638671875) <= 1e-12)
+
+  let randomState = 0x51a7c0de
+  const random = () => {
+    randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0
+    return randomState / 0x1_0000_0000
+  }
+  const maximumWorkUnitsByWindowCount: Record<string, number> = {}
+  let cases = 0
+  let exhaustedCases = 0
+  let maximumWorkUnits = analytic.stats.workUnits
+  for (let windowCount = 2; windowCount <= 6; windowCount += 1) {
+    let windowCountMaximum = 0
+    for (let fixtureIndex = 0; fixtureIndex < 8; fixtureIndex += 1) {
+      const windows = Array.from({ length: windowCount }, (_, index) => {
+        const startMs = 2 + index * (24 / (windowCount - 1)) + random() * 2
+        return {
+          id: `probe-${windowCount}-${fixtureIndex}-${index}`,
+          startMs,
+          endMs: startMs + 32 + random() * 18,
+          weight: .4 + random() * .6,
+        }
+      })
+      const input = {
+        windows,
+        durationMs: 100,
+        loopMode: 'once' as const,
+        jumpHeight: .69,
+        actionWeight: 1,
+      }
+      const analysis = analyzeBipedPetBallisticTimeline(input)
+      assert.deepEqual(analyzeBipedPetBallisticTimeline(input), analysis, '错峰预算与结果必须确定')
+      cases += 1
+      if (analysis.stats.exhausted) exhaustedCases += 1
+      maximumWorkUnits = Math.max(maximumWorkUnits, analysis.stats.workUnits)
+      windowCountMaximum = Math.max(windowCountMaximum, analysis.stats.workUnits)
+      assert.equal(analysis.stats.exhausted, false)
+      assert.ok(analysis.stats.workUnits <= MAX_REGULAR_OFFSET_OVERLAP_WORK_UNITS)
+      assert.equal(analysis.components.length, 1)
+      assert.equal(analysis.transitions.filter(transition => (
+        transition.traversalDirection === 1 && transition.kind === 'touchdown'
+      )).length, 1)
+    }
+    maximumWorkUnitsByWindowCount[String(windowCount)] = windowCountMaximum
+  }
+  assert.equal(exhaustedCases, 0)
+  return {
+    cases,
+    exhaustedCases,
+    maximumWorkUnits,
+    maximumWorkUnitsByWindowCount,
+    deterministicWorkUnitLimit: MAX_REGULAR_OFFSET_OVERLAP_WORK_UNITS,
+  }
+}
+
 function runFrameSubdivisionProbe() {
   const sequence = (
     loopMode: 'once' | 'loop' | 'ping-pong',
@@ -665,6 +734,7 @@ const result = {
   ulp: runUlpProbes(),
   ballisticTimeline: runBallisticTimelineProbe(),
   compositePeakStability: runCompositePeakStabilityProbe(),
+  offsetOverlapBudget: runOffsetOverlapBudgetProbe(),
   frameSubdivision: runFrameSubdivisionProbe(),
   normalizationCostObservation: runNormalizationCostObservation(),
   continuousBallisticObservation: runContinuousBallisticPerformanceObservation(),
