@@ -385,3 +385,4 @@
 - 第一批覆盖行走循环、冲刺急停和起跳落地，并自动生成落地冲击环、落地尘点、速度拖尾和急停摩擦粒子。特效由动作标签与实际速度、减速度、落地冲量共同授权，使用有界对象池，不建设通用粒子编辑器。
 - 暂停保持累计状态，停止、普通回拖、异常时间跳跃、Clip 切换、runtime 重建和释放会清除旧速度、周期身份、足底锚与瞬时特效。单项失败只关闭对应 Root Motion 或 VFX，保持 FK/IK 安全路径。
 - 权威设计文档为 `docs/zh-CN/双足萌宠混合RootMotion与运动特效设计.md`。当前只把设计标记完成；`bipedPetRootMotionComplete`、`bipedPetMotionVfxComplete`、正式四足/机甲 Profile、高细节拓扑和跨浏览器 GPU 验收仍保持 `false`。
+- 可执行计划为 `docs/zh-CN/双足萌宠混合RootMotion与运动特效实施计划.md`，共八个 TDD 批次；每个修改 `apps/` 或 `packages/` 的提交都必须同步 AI 状态与交接上下文并立即推送。当前只把计划标记完成，尚未开始 Root Motion 或 VFX 生产实现。

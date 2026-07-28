@@ -114,6 +114,7 @@
     "bipedPetHybridIkPhaseDeliveryComplete": true,
     "hybridIkLegacyHistoryMigrationComplete": true,
     "bipedPetHybridRootMotionVfxDesignComplete": true,
+    "bipedPetHybridRootMotionVfxPlanComplete": true,
     "bipedPetProductionQuadrupedProfileComplete": false,
     "bipedPetProductionMechProfileComplete": false,
     "bipedPetHighDetailTopologyComplete": false,
@@ -230,7 +231,8 @@
     "biped-pet-foot-lock",
     "biped-pet-hybrid-ik-phase-delivery",
     "hybrid-ik-legacy-history-migration",
-    "biped-pet-hybrid-root-motion-vfx-design"
+    "biped-pet-hybrid-root-motion-vfx-design",
+    "biped-pet-hybrid-root-motion-vfx-plan"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
