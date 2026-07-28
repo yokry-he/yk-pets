@@ -504,14 +504,15 @@ export interface ComplexBipedRootMotionController {
 ```ts
 export interface ComplexBipedIkFrameReport {
   supportingContacts: number
+  /** 每肢锚点到当前接触点在世界 X/Z 水平面的真实残差幅值；不含 Y，也不编码方向。 */
   residualByLimb: Readonly<Record<string, number>>
   clampedLimbs: readonly string[]
 }
 ```
 
-报告不暴露 Bone 引用，也不改变现有有界诊断。动作控制器调用顺序必须是 `restoreBindPose → FK → rootMotion.apply → balance.apply → updateMatrixWorld → ik.apply`，并把上一帧有限的局部水平残差作为下一帧 Root Motion 的有界修正输入；Y 残差不得传入 Root Motion，原地、窗口空隙与腾空阶段不得因旧残差漂移。
+报告不暴露 Bone 引用，也不改变现有有界诊断。`residualByLimb` 只能由 `anchor-current` 的世界 X/Z 分量计算 `hypot`，禁止使用三维 `distanceTo` 把 Y 误差转成水平 feedback。动作控制器调用顺序必须是 `restoreBindPose → FK → rootMotion.apply → balance.apply → updateMatrixWorld → ik.apply`，并把上一帧有限的水平残差幅值沿本帧局部水平移动反方向构造为下一帧 Root Motion 的有界 X/Z 修正输入；Y 残差不得传入 Root Motion，原地、窗口空隙与腾空阶段不得因旧残差漂移。
 
-实现阶段的真实可达域扫描证明，仅靠 `0.025×height` 骨盆 X/Z、骨骼 Quaternion 且不改段长时，写入行走 Root Motion 后的单支撑世界残差无法降到 `1e-3`。因此 `createComplexBipedIkController` 增加默认关闭的集成选项；只有完整动作控制器开启尺寸化单支撑 pelvis Y 补偿，预算为 `min(0.08, characterHeight×0.025)`。直接 IK 保持历史单支撑 clamped 语义；集成补偿达到预算时必须在报告和诊断中明确 `clamped`，腾空、无支撑、weight 0、reset 与 dispose 恢复绑定 Y。
+实现阶段的真实可达域扫描证明，仅靠 `0.025×height` 骨盆 X/Z、骨骼 Quaternion 且不改段长时，写入行走 Root Motion 后的单支撑世界残差无法降到 `1e-3`。因此 `createComplexBipedIkController` 增加默认关闭的集成选项；只有完整动作控制器开启尺寸化单支撑 pelvis Y 补偿，预算为 `min(0.08, characterHeight×0.025)`。完整链还必须把实际 applied `rootMotionPhase` 作为可选只读上下文传给 IK；`takeoff/airborne` 即使仍带非零 contact weight，也要先恢复 pelvis Y、释放锚点并返回空支撑报告，standalone 未传上下文时保持旧语义。直接 IK 保持历史单支撑 clamped 和三轮交替语义；集成链可以在不扩大每骨骼累计角预算、不改局部 position 与段长的前提下使用五轮交替收敛。集成补偿达到预算时必须在报告和诊断中明确 `clamped`，腾空、无支撑、weight 0、reset 与 dispose 恢复绑定 Y。
 
 - [x] **步骤 5：验证当前 0.014 残差和所有权**
 
@@ -523,7 +524,7 @@ corepack pnpm run test:studio-complex-biped-root-motion-runtime
 corepack pnpm --filter @nova/playground typecheck
 ```
 
-预期：既有 IK 测试保持通过；行走 `100→320ms` 在 Root Motion 链路中的支撑脚残差低于 `1e-3`，纯 FK 对照更大；腿骨局部 position 与段长不变。
+预期：既有 IK 测试保持通过；行走 `100→320ms` 在 Root Motion 链路中的世界支撑脚残差不高于 `7.5e-4`（当前固定探针约 `0.000311`），纯 FK 对照更大；纯 Y 误差的水平报告为零；`takeoff/airborne` 的滞后 contact weight 不锁脚；每骨骼累计角预算、腿骨局部 position 与段长不变。
 
 - [ ] **步骤 6：提交推送**
 

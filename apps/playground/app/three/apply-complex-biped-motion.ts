@@ -4,9 +4,13 @@
  */
 
 import { Quaternion, Vector3 } from 'three'
-import type { CompiledCharacterModel, SampledBipedPetMotion } from '@yk-pets/pet-core'
+import type { CompiledCharacterModel, SampledBipedPetMotion, SampledBipedPetRootMotion } from '@yk-pets/pet-core'
 import type { ComplexBipedPetObject } from './create-complex-biped-pet-object'
-import { createComplexBipedIkController, type ComplexBipedIkFrameReport } from './apply-complex-biped-ik'
+import {
+  createComplexBipedIkController,
+  type ComplexBipedIkFrameContext,
+  type ComplexBipedIkFrameReport,
+} from './apply-complex-biped-ik'
 import { createComplexBipedRootMotionController, type ComplexBipedRootMotionFrame } from './apply-complex-biped-root-motion'
 import { createComplexBipedBalanceController } from './apply-complex-biped-balance'
 
@@ -28,6 +32,12 @@ const emptyIkReport = (): ComplexBipedIkFrameReport => Object.freeze({
   residualByLimb: Object.freeze({}),
   clampedLimbs: Object.freeze([]),
 })
+const IK_CONTEXT_BY_ROOT_MOTION_PHASE = Object.freeze({
+  grounded: Object.freeze({ rootMotionPhase: 'grounded' }),
+  takeoff: Object.freeze({ rootMotionPhase: 'takeoff' }),
+  airborne: Object.freeze({ rootMotionPhase: 'airborne' }),
+  landing: Object.freeze({ rootMotionPhase: 'landing' }),
+}) satisfies Readonly<Record<SampledBipedPetRootMotion['phase'], ComplexBipedIkFrameContext>>
 
 export function createComplexBipedMotionController(runtime: ComplexBipedPetObject, compilation?: CompiledCharacterModel): ComplexBipedMotionController {
   const bindRotations = new Map([...runtime.bonesById].map(([boneId, bone]) => [boneId, bone.quaternion.clone()]))
@@ -80,7 +90,11 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
       const rootMotionFrame = rootMotionController.apply(sample, weight, consumedFootResidual)
       balanceController?.apply(sample, weight, rootMotionFrame.rootMotion)
       runtime.object.updateMatrixWorld(true)
-      const ikReport = ikController?.apply(sample, weight) ?? emptyIkReport()
+      const ikReport = ikController?.apply(
+        sample,
+        weight,
+        IK_CONTEXT_BY_ROOT_MOTION_PHASE[rootMotionFrame.rootMotion.phase],
+      ) ?? emptyIkReport()
       previousFootResidual = nextFootResidual(rootMotionFrame, ikReport, characterHeight, sample)
       return Object.freeze({
         ...rootMotionFrame,
@@ -125,12 +139,12 @@ function nextFootResidual(
     || sample.rootMotion.mode !== 'travel'
     || !sample.rootMotion.windows.some(window => (window.kind === 'travel' || window.kind === 'warp')
       && sample.resolvedTimeMs >= window.startMs && sample.resolvedTimeMs <= window.endMs)) return Object.freeze([0, 0, 0])
-  const maximumResidual = Math.max(0, ...Object.values(report.residualByLimb).filter(Number.isFinite))
+  const maximumHorizontalResidual = Math.max(0, ...Object.values(report.residualByLimb).filter(Number.isFinite))
   const deltaX = frame.rootMotion.deltaLocal[0]
   const deltaZ = frame.rootMotion.deltaLocal[2]
   const length = Math.hypot(deltaX, deltaZ)
-  if (!(maximumResidual > 0) || !(length > 1e-12) || !(characterHeight > 0)) return Object.freeze([0, 0, 0])
-  // 把上一帧有限物理残差提升到求解器自带的速度预算，再由领域层统一钳制；避免把残差增益散落到 Three 位移写入。 / Raise the finite previous-frame residual toward the solver-owned speed budget, then let the domain clamp it centrally.
-  const bounded = Math.min(maximumResidual * 8, characterHeight * .025)
+  if (!(maximumHorizontalResidual > 0) || !(length > 1e-12) || !(characterHeight > 0)) return Object.freeze([0, 0, 0])
+  // 只把上一帧真实水平残差幅值提升到求解器自带的速度预算，再由领域层统一钳制；Y 不得进入这个反馈链。 / Raise only the true horizontal residual magnitude toward the solver-owned speed budget; Y must never enter this feedback path.
+  const bounded = Math.min(maximumHorizontalResidual * 8, characterHeight * .025)
   return Object.freeze([-deltaX / length * bounded, 0, -deltaZ / length * bounded])
 }

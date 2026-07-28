@@ -233,6 +233,19 @@ if (state) {
   expect(state.latestCompletedBatch?.rootMotionPositionOwnership === 'bind-position-plus-applied-world' && state.latestCompletedBatch?.rootMotionTurnOwnership === 'world-yaw-times-bind-quaternion', 'Root Motion 容器所有权必须保持绝对写入 / Root Motion container ownership must remain absolute')
   expect(state.latestCompletedBatch?.balancePelvisHorizontalLimitBodyHeightRatio === .025 && state.latestCompletedBatch?.balanceChestTiltLimitRadians === .12, '重心控制预算错误 / Balance-controller bounds are incorrect')
   expect(state.latestCompletedBatch?.integratedSingleSupportPelvisYDefault === false && state.latestCompletedBatch?.integratedSingleSupportPelvisYLimit === 'min(0.08, characterHeight*0.025)', '单支撑 pelvis Y 集成策略必须默认关闭且尺寸化 / Integrated single-support pelvis Y must be default-off and scale-bounded')
+  expect(state.latestCompletedBatch?.ikResidualByLimbMetric === 'world-horizontal-anchor-current-xz-hypot', 'IK residualByLimb 必须只表示真实世界水平残差幅值 / IK residualByLimb must represent true world-horizontal residual magnitude only')
+  expect(JSON.stringify(state.latestCompletedBatch?.ikRootMotionPhaseRelease) === JSON.stringify(['takeoff', 'airborne']), 'IK 必须在实际 takeoff/airborne 相位释放滞后接触 / IK must release stale contacts in actual takeoff/airborne phases')
+  expect(state.latestCompletedBatch?.standaloneIkCorrectionPasses === 3 && state.latestCompletedBatch?.integratedIkCorrectionPasses === 5 && state.latestCompletedBatch?.ikPerBoneAngularBudgetExpanded === false, 'IK 集成收敛只能增加 pass，不得扩大每骨骼累计角预算 / Integrated IK may add passes but must not expand per-bone cumulative angular budgets')
+  expect(state.latestCompletedBatch?.integratedWorldResidualGate === .00075
+    && state.latestCompletedBatch?.integratedWorldResidualProbe <= state.latestCompletedBatch.integratedWorldResidualGate
+    && state.latestCompletedBatch?.integratedHorizontalResidualProbe <= state.latestCompletedBatch.integratedWorldResidualGate,
+  '集成 IK 固定残差探针必须保留明确裕量 / Integrated IK residual probes must retain explicit margin')
+  expect(JSON.stringify(state.latestCompletedBatch?.rootMotionRuntimeReviewRedEvidence) === JSON.stringify({
+    staleTakeoffSupportingContacts: 1,
+    pureVerticalOffset: .02,
+    reportedThreeDimensionalResidual: .020000000000000018,
+    previousIntegratedWorldResidual: .000999317248683272,
+  }), 'Task 5 规格审查 RED 证据必须保持可追踪 / Task 5 review RED evidence must remain traceable')
   expect(state.latestCompletedBatch?.motionIntensityReferenceBodyHeightsPerSecond === .4, '移动强度参考速度必须是每秒 0.4 个角色身高 / Motion-intensity reference speed must be 0.4 body-heights per second')
   expect(state.latestCompletedBatch?.landingImpulseFormula === 'sqrt(normalizedCompositePeakHeight)', '落地冲量必须由归一化复合峰高的平方根派生 / Landing impulse must derive from the square root of normalized composite peak height')
   expect(state.latestCompletedBatch?.landingRingThreshold === .25 && state.latestCompletedBatch?.landingDustThreshold === .4, '落地环与尘效必须保持既定严格阈值 / Landing ring and dust must retain their strict thresholds')

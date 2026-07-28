@@ -402,6 +402,26 @@ for (const transition of ['stop', 'rewind', 'clip-switch'] as const) {
   }
 }
 
+// Root Motion 的 takeoff/airborne 相位优先于动作资产里滞后的接触权重：不得继续锁脚或下压 pelvis Y。 / Root Motion takeoff/airborne phases override stale authored contact weights: IK must release feet and restore pelvis Y.
+for (const expectedPhase of ['takeoff', 'airborne'] as const) {
+  const { compilation, runtime } = createRuntime()
+  const clip = compile(jumpAsset, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation)
+  const pelvis = runtime.bonesById.get('pelvis')!
+  const bindY = pelvis.position.y
+  const withStaleContact = (timeMs: number) => lockedLeft(sampleBipedPetMotion(clip, timeMs))
+  controller.apply(withStaleContact(400), 1)
+  let frame = controller.apply(withStaleContact(880), 1)
+  if (expectedPhase === 'airborne') frame = controller.apply(withStaleContact(880), 1)
+  assert.equal(frame.rootMotion.phase, expectedPhase)
+  assert.equal(frame.ikReport.supportingContacts, 0, `${expectedPhase} 不得继续消费滞后接触权重`)
+  assert.deepEqual(frame.ikReport.residualByLimb, {})
+  assert.deepEqual(frame.nextFootResidual, [0, 0, 0])
+  near(pelvis.position.y, bindY, 1e-12, `${expectedPhase} 必须恢复 pelvis 绑定 Y`)
+  controller.dispose()
+  runtime.dispose()
+}
+
 // IK 帧报告深冻结、不暴露 Bone；腾空不锁脚，有限诊断和原有局部 position 所有权保持。 / IK reports are deeply frozen and Bone-free; airborne frames release feet without taking local-position ownership.
 {
   const { compilation, runtime } = createRuntime()
@@ -430,6 +450,23 @@ for (const transition of ['stop', 'rewind', 'clip-switch'] as const) {
   const released = controller.apply(airborne, 1)
   assert.equal(released.supportingContacts, 0)
   assert.ok(controller.diagnostics().some(item => item.includes('已释放')))
+  runtime.dispose()
+}
+
+// 报告只包含真实水平面残差：纯 Y 接触误差不得泄漏成下一帧 Root Motion 的水平 feedback。 / Reports contain true horizontal-plane residuals only: a pure-Y contact error must not leak into next-frame horizontal Root Motion feedback.
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compile(waveAsset, compilation)
+  const controller = createComplexBipedIkController(runtime, compilation)
+  const sample = lockedLeft(sampleBipedPetMotion(clip, 100))
+  controller.apply(sample, 1)
+  runtime.object.position.y += .02
+  runtime.object.updateMatrixWorld(true)
+  const report = controller.apply(sample, Number.MIN_VALUE)
+  assert.equal(report.supportingContacts, 1)
+  const horizontalResidual = report.residualByLimb['leg.left']!
+  near(horizontalResidual, 0, 1e-12, `纯 Y 误差的水平残差幅值必须为零，实际 ${horizontalResidual}`)
+  controller.dispose()
   runtime.dispose()
 }
 
@@ -492,6 +529,9 @@ for (const transition of ['stop', 'rewind', 'clip-switch'] as const) {
       .distanceTo(runtime.bonesById.get(id)!.getWorldPosition(runtime.object.position.clone())))
   }
   const bindLengths = segmentLengths(withIk.runtime)
+  const leftLimb = withIk.compilation.limbIk.find(item => item.id === 'leg.left')!
+  const leftContactBoneId = withIk.compilation.contacts.find(item => item.id === leftLimb.contactId)!.boneId
+  const correctionBoneIds = new Set([...leftLimb.boneIds, leftContactBoneId])
   controller.apply(lockedLeft(sampleBipedPetMotion(clip, 100)), 1)
   fkController.apply(lockedLeft(sampleBipedPetMotion(clip, 100)), 1)
   const anchor = readContactWorld(withIk.runtime, withIk.compilation, 'foot.left')
@@ -500,11 +540,15 @@ for (const transition of ['stop', 'rewind', 'clip-switch'] as const) {
   fkController.apply(lockedLeft(sampleBipedPetMotion(clip, 320)), 1)
   const residual = readContactWorld(withIk.runtime, withIk.compilation, 'foot.left').distanceTo(anchor)
   const fkResidual = readContactWorld(fkOnly.runtime, fkOnly.compilation, 'foot.left').distanceTo(fkAnchor)
-  assert.ok(residual < 1e-3, `协同后支撑残差应低于 1e-3，实际 ${residual}`)
+  assert.ok(residual <= 7.5e-4, `协同后支撑残差应保留稳定裕量并不高于 7.5e-4，实际 ${residual}`)
   assert.ok(fkResidual > residual, `纯 FK 残差应更大：fk=${fkResidual}, ik=${residual}`)
   const pelvis = withIk.runtime.bonesById.get('pelvis')!
   const pelvisBindY = withIk.compilation.bones.find(item => item.id === 'pelvis')!.position[1]
   assert.ok(Math.abs(pelvis.position.y - pelvisBindY) <= Math.min(.08, readCharacterHeight(withIk.runtime) * .025) + 1e-9)
+  for (const boneId of correctionBoneIds) {
+    const correction = withIk.runtime.bonesById.get(boneId)!.quaternion.angleTo(fkOnly.runtime.bonesById.get(boneId)!.quaternion)
+    assert.ok(correction <= leftLimb.maxCorrectionRadians + 1e-6, `${boneId} 的累计 IK 角修正越界：${correction}`)
+  }
   for (const [id, bone] of withIk.runtime.bonesById) if (id !== 'pelvis' && id !== 'root') {
     assert.deepEqual(bone.position.toArray(), footPositions[id])
   }

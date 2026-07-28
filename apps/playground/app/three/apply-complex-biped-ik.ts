@@ -12,14 +12,20 @@ import {
   type CompiledCharacterModel,
   type SampledBipedPetContactState,
   type SampledBipedPetMotion,
+  type SampledBipedPetRootMotion,
 } from '@yk-pets/pet-core'
 import type { ComplexBipedPetObject } from './create-complex-biped-pet-object'
 
 export interface ComplexBipedIkController {
-  apply(sample: SampledBipedPetMotion, weight: number): ComplexBipedIkFrameReport
+  apply(sample: SampledBipedPetMotion, weight: number, context?: ComplexBipedIkFrameContext): ComplexBipedIkFrameReport
   reset(): void
   diagnostics(): readonly string[]
   dispose(): void
+}
+
+export interface ComplexBipedIkFrameContext {
+  /** 完整动作链本帧实际 applied Root Motion 相位；standalone 未传入时继续只按接触权重求解。 */
+  readonly rootMotionPhase: SampledBipedPetRootMotion['phase']
 }
 
 export interface ComplexBipedIkControllerOptions {
@@ -30,6 +36,7 @@ export interface ComplexBipedIkControllerOptions {
 
 export interface ComplexBipedIkFrameReport {
   supportingContacts: number
+  /** 每肢锚点到当前接触点在世界 X/Z 水平面的真实残差幅值；不含 Y，也不编码方向。 */
   residualByLimb: Readonly<Record<string, number>>
   clampedLimbs: readonly string[]
 }
@@ -59,7 +66,8 @@ interface LimbRuntime {
 }
 
 type MutableRigVector = [number, number, number]
-const IK_CORRECTION_PASS_COUNT = 3
+const STANDALONE_IK_CORRECTION_PASS_COUNT = 3
+const INTEGRATED_IK_CORRECTION_PASS_COUNT = 5
 const clamp01 = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
 const emptyFrameReport = (): ComplexBipedIkFrameReport => Object.freeze({
   supportingContacts: 0,
@@ -129,6 +137,10 @@ export function createComplexBipedIkController(
     ? Math.min(.08, configuredHeight * .025)
     : 0
   const integratedSingleSupportPelvisY = options.integratedSingleSupportPelvisY === true
+  // 只给完整 Root Motion 链增加交替收敛轮数；每根骨骼的累计角预算仍由 remainingCorrections 单独封顶。
+  const correctionPassCount = integratedSingleSupportPelvisY
+    ? INTEGRATED_IK_CORRECTION_PASS_COUNT
+    : STANDALONE_IK_CORRECTION_PASS_COUNT
   const limbs: LimbRuntime[] = []
   const contactById = new Map(compilation.contacts.map(contact => [contact.id, contact]))
 
@@ -292,7 +304,7 @@ export function createComplexBipedIkController(
     const mix = clamp01(limb.definition.weight) * actionWeight * clamp01(state.weight) * clamp01(state.confidence)
     if (mix <= 0) return
     for (const bone of limb.remainingCorrections.keys()) limb.remainingCorrections.set(bone, limb.definition.maxCorrectionRadians * mix)
-    const passMix = 1 - (1 - mix) ** (1 / IK_CORRECTION_PASS_COUNT)
+    const passMix = 1 - (1 - mix) ** (1 / correctionPassCount)
 
     target.copy(limb.anchor).sub(limb.anchorOffset)
     for (const [index, bone] of limb.bones.entries()) {
@@ -367,7 +379,7 @@ export function createComplexBipedIkController(
     // 在同一累计角预算内交替收敛位置与接触朝向；禁止改动任何腿或脚骨骼局部 position。
     const tipBone = limb.bones.at(-1)!
     limb.targetContactBoneWorldRotation.copy(limb.anchorContactWorldRotation).multiply(limb.contactLocalRotationInverse).normalize()
-    for (let iteration = 0; iteration < IK_CORRECTION_PASS_COUNT; iteration += 1) {
+    for (let iteration = 0; iteration < correctionPassCount; iteration += 1) {
       tipBone.getWorldPosition(worldPosition)
       readContactWorld(limb, currentContact)
       limb.terminalStart[0] = worldPosition.x
@@ -396,7 +408,7 @@ export function createComplexBipedIkController(
   }
 
   return {
-    apply(sample, weightInput) {
+    apply(sample, weightInput, context) {
       frameClampedLimbs.clear()
       if (disposed) {
         report('disposed-apply', '混合 IK 控制器已释放，后续 apply 已忽略。')
@@ -409,6 +421,11 @@ export function createComplexBipedIkController(
       const actionWeight = clamp01(weightInput)
       restorePelvisTranslation()
       runtime.object.updateMatrixWorld(true)
+      if (context?.rootMotionPhase === 'takeoff' || context?.rootMotionPhase === 'airborne') {
+        // Root Motion 的实际离地相位高于动作资产里可能滞后的 contact weight，避免腾空仍锁脚或下压骨盆。
+        clearTemporalState()
+        return emptyFrameReport()
+      }
       if (actionWeight <= 0 || compilation.status !== 'ready') {
         clearTemporalState()
         return emptyFrameReport()
@@ -481,7 +498,11 @@ export function createComplexBipedIkController(
         const state = findState(limb.definition.contactId)
         if (!limb.anchored || !state || state.weight <= 0) continue
         finalSupportingContacts += 1
-        residualByLimb[limb.definition.id] = readContactWorld(limb, currentContact).distanceTo(limb.anchor)
+        readContactWorld(limb, currentContact)
+        residualByLimb[limb.definition.id] = Math.hypot(
+          limb.anchor.x - currentContact.x,
+          limb.anchor.z - currentContact.z,
+        )
       }
       return Object.freeze({
         supportingContacts: finalSupportingContacts,
