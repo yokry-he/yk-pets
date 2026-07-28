@@ -904,9 +904,6 @@ function isContinuouslyActiveHorizontalWindow(
 ): boolean {
   if (input.definition.mode !== 'travel' || input.actionWeight <= 0) return false
   const components = horizontalSupportComponents(input.definition)
-  if (!components.some(component => (
-    currentResolved.resolvedTimeMs > component.startMs && currentResolved.resolvedTimeMs < component.endMs
-  ))) return false
 
   if (input.loopMode === 'once') {
     const previousResolved = resolveMotionTime(previousRequestedTimeMs, input.durationMs, input.loopMode)

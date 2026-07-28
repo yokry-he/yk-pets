@@ -1442,27 +1442,41 @@ test('超大有限绝对时间的不可表示周期不伪造事件且已有授�
 test('超大有限绝对时间的水平支撑扫描保持有界且不会整数停滞', () => {
   const durationMs = 100
   const segmentBoundaryMs = 2 ** 53 * durationMs
-  const sample = sampleRootMotion({
+  const definition = {
+    mode: 'travel' as const,
+    distance: 1e-15,
+    turnRadians: 0,
+    verticalMode: 'grounded' as const,
+    jumpHeight: 0,
+    windows: [{ id: 'huge-time-travel', kind: 'travel' as const, startMs: 0, endMs: 100, weight: 1 }],
+    vfxTags: [] as const,
+  }
+  const requestedTimeMs = segmentBoundaryMs + 128
+  const currentTarget = sampleRootMotion({
     ...travelSampleInput,
-    definition: {
-      mode: 'travel' as const,
-      distance: 1,
-      turnRadians: 0,
-      verticalMode: 'grounded' as const,
-      jumpHeight: 0,
-      windows: [{ id: 'huge-time-travel', kind: 'travel' as const, startMs: 0, endMs: 100, weight: 1 }],
-      vfxTags: [] as const,
-    },
+    definition,
     loopMode: 'loop',
     durationMs,
-    requestedTimeMs: segmentBoundaryMs + 128,
-    previousRequestedTimeMs: segmentBoundaryMs,
-    previousAppliedWorld: [0, 0, 0],
-    previousAppliedTurnRadians: 0,
-    footResidual: [1, 0, 0],
+    characterHeight: 1e10,
+    requestedTimeMs,
+    previousRequestedTimeMs: undefined,
   })
+  const intervalInput = {
+    ...travelSampleInput,
+    definition,
+    loopMode: 'loop' as const,
+    durationMs,
+    characterHeight: 1e10,
+    requestedTimeMs,
+    previousRequestedTimeMs: segmentBoundaryMs,
+    previousAppliedWorld: [currentTarget.appliedWorld[0] - 100, 0, 0] as const,
+    previousAppliedTurnRadians: 0,
+  }
+  const baseline = sampleRootMotion({ ...intervalInput, footResidual: [0, 0, 0] })
+  const sample = sampleRootMotion({ ...intervalInput, footResidual: [0, 0, 1e9] })
   assertFiniteSample(sample)
-  assert.equal(sample.status, 'clamped')
+  assertVectorClose(sample.deltaWorld, baseline.deltaWorld)
+  assert.equal(sample.deltaWorld[2], 0, '不可表示的相邻 iteration 必须保守禁用残差')
 })
 
 test('target 在新窗口重新腾空会清除旧授权并只为自身 touchdown 重签', () => {
@@ -2047,7 +2061,7 @@ test('100/200ms 短动作在 24/30/60FPS 连续采样且正常轨迹最终一致
   }
 })
 
-test('足底残差是仅限有效移动窗的局部水平反馈并随权重与追赶误差连续缩放', () => {
+test('足底残差仅在连续移动支撑内按闭区间端点与追赶误差消费', () => {
   const inPlace = { ...travelDefinition, mode: 'in-place' as const, distance: 0, turnRadians: 0, windows: [] as const }
   const inPlaceSample = sampleRootMotion({
     ...travelSampleInput,
@@ -2203,6 +2217,159 @@ test('足底残差是仅限有效移动窗的局部水平反馈并随权重与�
   const invalid = sampleRootMotion({ ...travelSampleInput, footResidual: [Number.NaN, 0, 0] })
   assert.equal(invalid.status, 'blocked')
   assertFiniteSample(invalid)
+
+  const durationMs = 100
+  const fullCycleDefinition = {
+    ...travelDefinition,
+    distance: 1,
+    turnRadians: 0,
+    windows: [{ id: 'full-cycle', kind: 'travel' as const, startMs: 0, endMs: durationMs, weight: 1 }],
+  }
+  const seedAt = (
+    definition: unknown,
+    loopMode: 'once' | 'loop' | 'ping-pong',
+    requestedTimeMs: number,
+  ) => sampleRootMotion({
+    ...travelSampleInput,
+    definition,
+    durationMs,
+    loopMode,
+    requestedTimeMs,
+    previousRequestedTimeMs: undefined,
+  })
+  const advance = (
+    definition: unknown,
+    loopMode: 'once' | 'loop' | 'ping-pong',
+    previousRequestedTimeMs: number,
+    requestedTimeMs: number,
+    previousAppliedWorld: readonly [number, number, number],
+    previousAppliedTurnRadians: number,
+    footResidual: readonly [number, number, number],
+  ) => sampleRootMotion({
+    ...travelSampleInput,
+    definition,
+    durationMs,
+    loopMode,
+    previousRequestedTimeMs,
+    requestedTimeMs,
+    previousAppliedWorld,
+    previousAppliedTurnRadians,
+    footResidual,
+  })
+  const sampleInterval = (
+    definition: unknown,
+    loopMode: 'once' | 'loop' | 'ping-pong',
+    previousRequestedTimeMs: number,
+    requestedTimeMs: number,
+    footResidual: readonly [number, number, number],
+    previousAppliedOffsetX = 0,
+  ) => {
+    const previous = seedAt(definition, loopMode, previousRequestedTimeMs)
+    return advance(
+      definition,
+      loopMode,
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      [previous.appliedWorld[0] + previousAppliedOffsetX, previous.appliedWorld[1], previous.appliedWorld[2]],
+      previous.appliedTurnRadians,
+      footResidual,
+    )
+  }
+  const assertResidualConsumed = (
+    definition: unknown,
+    loopMode: 'once' | 'loop' | 'ping-pong',
+    previousRequestedTimeMs: number,
+    requestedTimeMs: number,
+    message: string,
+    previousAppliedOffsetX = 0,
+  ) => {
+    const previous = seedAt(definition, loopMode, previousRequestedTimeMs)
+    const previousAppliedWorld = [
+      previous.appliedWorld[0] + previousAppliedOffsetX,
+      previous.appliedWorld[1],
+      previous.appliedWorld[2],
+    ] as const
+    const baseline = advance(
+      definition, loopMode, previousRequestedTimeMs, requestedTimeMs,
+      previousAppliedWorld, previous.appliedTurnRadians, [0, 0, 0],
+    )
+    const corrected = advance(
+      definition, loopMode, previousRequestedTimeMs, requestedTimeMs,
+      previousAppliedWorld, previous.appliedTurnRadians, [1, 0, 0],
+    )
+    assert.ok(corrected.deltaLocal[0] > baseline.deltaLocal[0], message)
+    assertVectorClose(corrected.appliedWorld, [
+      previousAppliedWorld[0] + corrected.deltaWorld[0],
+      previousAppliedWorld[1] + corrected.deltaWorld[1],
+      previousAppliedWorld[2] + corrected.deltaWorld[2],
+    ])
+  }
+
+  for (const kind of ['travel', 'warp'] as const) {
+    const supportDefinition = {
+      ...fullCycleDefinition,
+      windows: [{ id: `full-cycle-${kind}`, kind, startMs: 0, endMs: durationMs, weight: 1 }],
+    }
+    for (const loopMode of ['loop', 'ping-pong'] as const) {
+      for (const [fromMs, toMs, debt, label] of [
+        [90, 100, 0, '精确端点'],
+        [100, 110, 0, '跨越后半帧'],
+        [90, 110, -.1, '带 target debt 的整帧'],
+      ] as const) assertResidualConsumed(
+        supportDefinition,
+        loopMode,
+        fromMs,
+        toMs,
+        `${loopMode} 的 full-cycle ${kind} 窗在 seam/turnaround ${label}时应消费残差`,
+        debt,
+      )
+    }
+  }
+
+  for (const loopMode of ['loop', 'ping-pong'] as const) {
+    const initial = seedAt(fullCycleDefinition, loopMode, 90)
+    const whole = advance(
+      fullCycleDefinition, loopMode, 90, 110,
+      initial.appliedWorld, initial.appliedTurnRadians, [0, 0, 0],
+    )
+    const firstHalf = advance(
+      fullCycleDefinition, loopMode, 90, 100,
+      initial.appliedWorld, initial.appliedTurnRadians, [0, 0, 0],
+    )
+    const secondHalf = advance(
+      fullCycleDefinition, loopMode, 100, 110,
+      firstHalf.appliedWorld, firstHalf.appliedTurnRadians, [0, 0, 0],
+    )
+    assertVectorClose(secondHalf.appliedWorld, whole.appliedWorld)
+    assertVectorClose([
+      firstHalf.deltaWorld[0] + secondHalf.deltaWorld[0],
+      firstHalf.deltaWorld[1] + secondHalf.deltaWorld[1],
+      firstHalf.deltaWorld[2] + secondHalf.deltaWorld[2],
+    ], whole.deltaWorld)
+  }
+
+  const onceDefinition = {
+    ...fullCycleDefinition,
+    windows: [{ id: 'once-window', kind: 'travel' as const, startMs: 20, endMs: 80, weight: 1 }],
+  }
+  assertResidualConsumed(onceDefinition, 'once', 20, 30, 'once 窗的 start 端点应按包含语义消费残差')
+  assertResidualConsumed(onceDefinition, 'once', 70, 80, 'once 窗的 end 端点应按包含语义消费残差')
+
+  for (const [previousRequestedTimeMs, requestedTimeMs] of [[19, 21], [79, 81]] as const) {
+    const baseline = sampleInterval(onceDefinition, 'once', previousRequestedTimeMs, requestedTimeMs, [0, 0, 0])
+    const crossing = sampleInterval(onceDefinition, 'once', previousRequestedTimeMs, requestedTimeMs, [1e9, 0, 1e9])
+    assertVectorClose(crossing.deltaLocal, baseline.deltaLocal)
+  }
+  const disjointDefinition = {
+    ...fullCycleDefinition,
+    windows: [
+      { id: 'before-gap', kind: 'travel' as const, startMs: 0, endMs: 40, weight: 1 },
+      { id: 'after-gap', kind: 'warp' as const, startMs: 60, endMs: 100, weight: 1 },
+    ],
+  }
+  const gapBaseline = sampleInterval(disjointDefinition, 'once', 30, 70, [0, 0, 0])
+  const gapCorrected = sampleInterval(disjointDefinition, 'once', 30, 70, [1e9, 0, 1e9])
+  assertVectorClose(gapCorrected.deltaLocal, gapBaseline.deltaLocal)
 })
 
 test('合成弹道只在加权支撑区间真实结束时聚合一次启发式落地强度', () => {
