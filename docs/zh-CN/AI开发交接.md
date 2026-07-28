@@ -254,3 +254,10 @@
 - `ensurePet`、配方更新和编译提交继续使用“已验证内存状态”语义，不会让当前会话中已经复核的 ready/blocked 状态因普通 Store 操作退化。当前宠物真正进入既有复杂 renderer 后才重新编译，并继续由 `commitComplexCompilation` 对哈希和状态做最终复核后回写 ready。
 - 100 条历史记录回归使用结构和状态断言，不依赖机器速度或绝对毫秒阈值；损坏输入修复、简单模型与 authoritative key 契约保持覆盖。
 - 主代理已完成 1440 宽度下的 Chrome 功能复测：刷新未验证复杂摘要后，当前访问宠物由 renderer 完成真实编译并回写 `ready`、100% 和 compilation hash；控制台无应用错误或 hydration mismatch，页面无横向溢出。`.ai/visual-cases.json` 仍保留 10/50/100 历史集合规模、760 窄屏和跨浏览器 GPU/WebGL 的后续验收，本批不改变复杂动作、IK、足底锁定、Root Motion 或特效边界。
+
+## 26. 双足萌宠语义动作编译设计
+
+- 已确认采用 Profile 专属 Quaternion Clip：领域层把现有动作工坊语义姿态与五个基础模板编译为框架无关骨骼轨道，Three runtime 只负责采样和写入现有 Bone。
+- 第一批动作固定为待机呼吸、行走循环、起跳与落地、招手、直拳组合；支持速度、力度、幅度、情绪和循环的安全参数化。
+- 本批实现 Quaternion Clip、关节限制、五个动作和复杂模型消费链路；接触、Root Motion 和事件只输出后续候选，不把运行时 IK、足底锁定、完整 Root Motion、复杂舞蹈/功夫/运动或特效标记为完成。
+- 权威设计见 `docs/zh-CN/双足萌宠语义动作编译设计.md`，后续实施计划必须保持简单模型兼容、唯一 Canvas、无 GLB/网络/新增权限及失败时恢复绑定姿态的边界。

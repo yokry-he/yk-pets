@@ -75,6 +75,7 @@
     "bipedPetComplexPropSocketFunctionalBrowserRecheckComplete": true,
     "studioModelVariantLazyHydrationReviewComplete": true,
     "studioModelVariantLazyHydrationFunctionalBrowserRecheckComplete": true,
+    "bipedPetSemanticMotionCompilationDesignComplete": true,
     "bipedPetSemanticMotionCompilerComplete": false,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
