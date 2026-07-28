@@ -29,6 +29,7 @@ export interface ComplexBipedRootMotionController {
 type RootVector = readonly [number, number, number]
 const MAX_DIAGNOSTICS = 64
 const ZERO_RESIDUAL = Object.freeze([0, 0, 0]) as RootVector
+const EMPTY_VFX_SIGNALS = Object.freeze([]) as readonly BipedPetMotionVfxSignal[]
 const WORLD_Y_AXIS = new Vector3(0, 1, 0)
 const rootMotionOwnerByRuntime = new WeakMap<ComplexBipedPetObject, symbol>()
 const clamp01 = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
@@ -49,22 +50,21 @@ function horizontalResidual(input: readonly [number, number, number] | undefined
 }
 
 function blockedRootMotion(sample: SampledBipedPetMotion): SampledBipedPetRootMotion {
-  const zero = Object.freeze([0, 0, 0]) as RootVector
   return Object.freeze({
     status: 'blocked',
     requestedTimeMs: sample.requestedTimeMs,
     resolvedTimeMs: sample.resolvedTimeMs,
     iteration: sample.iteration,
-    cumulativeLocal: zero,
-    cumulativeWorld: zero,
-    appliedLocal: zero,
-    appliedWorld: zero,
-    deltaLocal: zero,
-    deltaWorld: zero,
+    cumulativeLocal: ZERO_RESIDUAL,
+    cumulativeWorld: ZERO_RESIDUAL,
+    appliedLocal: ZERO_RESIDUAL,
+    appliedWorld: ZERO_RESIDUAL,
+    deltaLocal: ZERO_RESIDUAL,
+    deltaWorld: ZERO_RESIDUAL,
     cumulativeTurnRadians: 0,
     appliedTurnRadians: 0,
     deltaTurnRadians: 0,
-    linearVelocity: zero,
+    linearVelocity: ZERO_RESIDUAL,
     angularVelocity: 0,
     phase: 'grounded',
     motionIntensity: 0,
@@ -151,7 +151,7 @@ function createOwnedComplexBipedRootMotionController(
         report('invalid-character-height', '复杂双足萌宠几何包围盒无效，Root Motion 已阻塞但 FK/IK 可继续执行。')
         clearOwnership()
         if (stopping) restoreBindTransform()
-        return Object.freeze({ rootMotion: blockedRootMotion(sample), vfxSignals: Object.freeze([]) })
+        return Object.freeze({ rootMotion: blockedRootMotion(sample), vfxSignals: EMPTY_VFX_SIGNALS })
       }
 
       const inputPreviousRequestedTimeMs = previousRequestedTimeMs
@@ -177,12 +177,18 @@ function createOwnedComplexBipedRootMotionController(
       const mayConsumeResidual = residual !== ZERO_RESIDUAL
         && (phasePreview.status === 'solved' || phasePreview.status === 'clamped')
         && phasePreview.phase === 'grounded'
-      const rootMotion = mayConsumeResidual
+      const residualSample = mayConsumeResidual
         ? sampleBipedPetRootMotion({ ...input, footResidual: residual })
+        : undefined
+      // 水平 strain 不能通过共享 XYZ 预算延迟已由零反馈证明的 touchdown；二采样只有仍为有限 grounded 才能提交。 / Horizontal strain cannot delay a zero-preview touchdown through the shared XYZ budget; commit only a finite grounded resample.
+      const rootMotion = residualSample
+        && (residualSample.status === 'solved' || residualSample.status === 'clamped')
+        && residualSample.phase === 'grounded'
+        ? residualSample
         : phasePreview
 
       const vfxSignals = inputPreviousRequestedTimeMs === undefined
-        ? Object.freeze([]) as readonly BipedPetMotionVfxSignal[]
+        ? EMPTY_VFX_SIGNALS
         : deriveBipedPetMotionVfxSignals({
             clipHash: sample.clipHash,
             previousRequestedTimeMs: inputPreviousRequestedTimeMs,
@@ -194,7 +200,7 @@ function createOwnedComplexBipedRootMotionController(
       if (rootMotion.status === 'blocked') {
         report(`blocked:${sample.clipHash}`, '本帧 Root Motion 输入无效，已保留角色容器并继续 FK/IK。')
         clearOwnership()
-        return Object.freeze({ rootMotion, vfxSignals: Object.freeze([]) })
+        return Object.freeze({ rootMotion, vfxSignals: EMPTY_VFX_SIGNALS })
       }
 
       writeAppliedTransform(rootMotion)
@@ -210,7 +216,7 @@ function createOwnedComplexBipedRootMotionController(
         // 授权只保存采样器返回的冻结值；Three 层不补签、不吸附时间，也不改写强度。 / Store only the sampler-issued frozen authorization; Three never reissues, snaps, or rewrites it.
         previousLandingAuthorization = rootMotion.landingAuthorization
       }
-      return Object.freeze({ rootMotion, vfxSignals: stopping ? Object.freeze([]) : vfxSignals })
+      return Object.freeze({ rootMotion, vfxSignals: stopping ? EMPTY_VFX_SIGNALS : vfxSignals })
     },
     reset() {
       assertUsable()
@@ -220,11 +226,22 @@ function createOwnedComplexBipedRootMotionController(
     diagnostics: () => Object.freeze([...messages]),
     dispose() {
       if (disposed) return
-      clearOwnership()
       const ownsRuntime = rootMotionOwnerByRuntime.get(runtime) === ownershipToken
-      if (ownsRuntime && !runtime.isDisposed()) restoreBindTransform()
-      if (ownsRuntime) rootMotionOwnerByRuntime.delete(runtime)
-      disposed = true
+      let didFail = false
+      let failure: unknown
+      try {
+        clearOwnership()
+        if (ownsRuntime && !runtime.isDisposed()) restoreBindTransform()
+      }
+      catch (error) {
+        didFail = true
+        failure = error
+      }
+      finally {
+        if (ownsRuntime) rootMotionOwnerByRuntime.delete(runtime)
+        disposed = true
+      }
+      if (didFail) throw failure
     },
   }
 }

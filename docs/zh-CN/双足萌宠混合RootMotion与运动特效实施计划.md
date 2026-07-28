@@ -495,7 +495,7 @@ export interface ComplexBipedRootMotionController {
 
 控制器保存 `runtime.object` 的绑定 position/quaternion，以及当前 Clip 身份下最后一次成功写入的 `previousAppliedWorld/previousAppliedTurnRadians` 与只读 `previousLandingAuthorization`。每帧把三者传给纯函数，把返回的 `landingAuthorization` 原样保存到下一连续帧，并只将 `appliedWorld` 与 `appliedTurnRadians` 绝对写入容器；`appliedLocal` 仅供诊断与领域消费，不得另存为连续历史。授权不允许重建、改写强度、把 touchdown 时间吸附回窗口 end，或附加可变引用，只在求解器输出 `landingImpulse` 后视为已消费；Three 层不得重新枚举窗口首尾或根据当前帧端点补签事件。禁止直接写 `cumulative*` target，也禁止在 Three 层再次累计 `delta*`。这样朝向切换不会旋转既有世界位置，target 仍由绝对时间确定，单帧预算不会被绕过，钳制后的欠量由后续求解帧继续追赶，速度与容器真实 applied 轨迹一致。
 
-角色高度从已计算的 `runtime.object.geometry.boundingBox` 六个标量直接读取；无有效包围盒时阻塞 Root Motion 但不阻塞 FK。首帧、停止、回拖、Clip 切换、runtime 重建、dispose 或求解 reset 时同时清除旧 applied 与落地授权所有权，让求解器把 applied 初始化为当前 target，且该帧不生成速度/VFX。Root 控制器先用零 residual 预采样实际相位，仅在结果为 `solved/clamped + grounded` 时从同一 previous state 带入 residual 重采样并提交最终结果。暂停只保留授权而不消费；实际 applied 落地消费后使用求解器返回的空授权覆盖控制器状态。每个 runtime 由 WeakMap token 保证只有一个 Root 写入者，释放与外层构造失败必须交还 token，已释放 runtime 拒绝创建控制器。纯数值求解器内部不得保存隐式滤波历史。
+角色高度从已计算的 `runtime.object.geometry.boundingBox` 六个标量直接读取；无有效包围盒时阻塞 Root Motion 但不阻塞 FK。首帧、停止、回拖、Clip 切换、runtime 重建、dispose 或求解 reset 时同时清除旧 applied 与落地授权所有权，让求解器把 applied 初始化为当前 target，且该帧不生成速度/VFX。Root 控制器先用零 residual 预采样实际相位，仅在预览为 `solved/clamped + grounded` 时从同一 previous state 带入 residual 做第二次纯采样；二采样也保持有限 grounded 才提交，否则回退预览，禁止水平 strain 通过共享 XYZ 预算延迟 touchdown、token、冲量或 VFX。暂停只保留授权而不消费；实际 applied 落地消费后使用求解器返回的空授权覆盖控制器状态。每个 runtime 由 WeakMap token 保证只有一个 Root 写入者，释放与外层构造失败必须交还 token，已释放 runtime 拒绝创建控制器。Root dispose 恢复绑定失败也要在 finally 中删除 token 并封存，使用独立失败哨兵保证 `throw undefined` 仍被原样重抛；构造失败需保留初始化错误并对 IK、Balance、Root 全部尽力回滚。错误详情转换必须覆盖 `Error.message` 本身，`Symbol` 或访问器抛错统一安全降级，诊断格式化不得成为新的清理失败源。外层 dispose 对 IK、Balance、Root、runtime 状态检查、bind 和 matrix 全部尽力，状态检查异常时仍尝试 bind/matrix，清状态后统一抛中文聚合错误。纯数值求解器内部不得保存隐式滤波历史。
 
 - [x] **步骤 4：实现独立重心控制器和 IK 帧报告**
 
@@ -510,7 +510,7 @@ export interface ComplexBipedIkFrameReport {
 }
 ```
 
-报告不暴露 Bone 引用，也不改变现有有界诊断。`residualByLimb` 只能由 `anchor-current` 的世界 X/Z 分量计算 `hypot`，禁止使用三维 `distanceTo` 把 Y 误差转成水平 feedback。该值是无方向的水平 strain 启发式：动作控制器取最大有限幅值，应用 `×8` 增益并钳制到 `characterHeight×0.025`，再沿本帧局部水平移动反方向构造下一帧 Root Motion 的 X/Z 输入，Y 永远为零。正常帧顺序必须是 `restoreBindPose → FK → rootMotion.apply → balance.apply → updateMatrixWorld → ik.apply`；相同 Clip/请求时间/归一化权重的重复帧则只调用 Root 保持时间令牌，完整冻结已显示 FK/Balance/IK、IK 报告和 residual。原地、窗口空隙与非支撑阶段不得因旧 residual 漂移。
+报告不暴露 Bone 引用，也不改变现有有界诊断。`residualByLimb` 只能由 `anchor-current` 的世界 X/Z 分量计算 `hypot`，禁止使用三维 `distanceTo` 把 Y 误差转成水平 feedback。该值是无方向的水平 strain 启发式：动作控制器直接循环只读记录取得最大有限幅值，不得用 `Object.values/filter` 创建临时数组；随后应用 `×8` 增益并钳制到 `characterHeight×0.025`，再沿本帧局部水平移动反方向构造下一帧 Root Motion 的 X/Z 输入，Y 永远为零。全部早退复用共享冻结零 residual，Root blocked 向量与空 VFX、无 IK 报告也复用安全常量。正常帧顺序必须是 `restoreBindPose → FK → rootMotion.apply → balance.apply → updateMatrixWorld → ik.apply`；相同 Clip/请求时间/归一化权重的重复帧则只调用 Root 保持时间令牌，完整冻结已显示 FK/Balance/IK、IK 报告和 residual。原地、窗口空隙与非支撑阶段不得因旧 residual 漂移。
 
 实现阶段的真实可达域扫描证明，仅靠 `0.025×height` 骨盆 X/Z、骨骼 Quaternion 且不改段长时，写入行走 Root Motion 后的单支撑世界残差无法降到 `1e-3`。因此 `createComplexBipedIkController` 增加默认关闭的集成选项；只有完整动作控制器开启尺寸化单支撑 pelvis Y 补偿，预算为 `min(0.08, characterHeight×0.025)`。完整链还必须把实际 applied `rootMotionPhase` 作为可选只读上下文传给 IK；`takeoff/airborne/landing` 即使仍带非零 contact weight，也要先恢复 pelvis Y、释放锚点并返回空支撑报告，只有真实 grounded touchdown 才重捕获，standalone 未传上下文时保持旧语义。有效支撑统一要求 weight/confidence 都是正有限数。直接 IK 保持历史单支撑 clamped 和三轮交替语义；集成链可以在不扩大每骨骼累计角预算、不改局部 position 与段长的前提下使用五轮交替收敛。集成补偿达到预算时必须在报告和诊断中明确 `clamped`，非支撑、无有效接触、weight 0、reset 与 dispose 恢复绑定 Y。
 
@@ -524,7 +524,7 @@ corepack pnpm run test:studio-complex-biped-root-motion-runtime
 corepack pnpm --filter @nova/playground typecheck
 ```
 
-预期：既有 IK 测试保持通过；行走 `100→320ms` 在 Root Motion 链路中的世界支撑脚残差不高于 `7.5e-4`（当前固定探针约 `0.000311`），纯 FK 对照更大；纯 Y 误差的水平报告为零；`takeoff/airborne/landing` 的滞后 contact weight 不锁脚；重复帧姿态/残差冻结；第二个 Root 写入者被拒绝；自然 loop/ping-pong 长序列无反向振荡或过冲；每骨骼累计角预算、腿骨局部 position 与段长不变。
+预期：既有 IK 测试保持通过；行走 `100→320ms` 在 Root Motion 链路中的世界支撑脚残差不高于 `7.5e-4`（当前固定探针约 `0.000311`），纯 FK 对照更大；纯 Y 误差的水平报告为零；`takeoff/airborne/landing` 的滞后 contact weight 不锁脚；临界 touchdown 的 residual 二采样不延迟落地；重复帧姿态/残差冻结；第二个 Root 写入者被拒绝，`Error` 与 `undefined` 释放异常后 token 均可重取；IK 构造失败叠加 Balance 清理失败也能释放 Root token；runtime 状态检查失败仍执行 matrix；自然 loop 与由真实 `loopMode:'ping-pong'` 资产编译、采样的长序列均无反向振荡或过冲；每骨骼累计角预算、腿骨局部 position 与段长不变。
 
 - [ ] **步骤 6：提交推送**
 

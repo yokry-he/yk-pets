@@ -289,6 +289,47 @@ function applyTimes(
   withFeedback.runtime.dispose()
 }
 
+// 零反馈预采样已经真实 grounded 时，residual 二采样不得因共享 XYZ 预算把 touchdown 延迟成 landing。 / A residual resample cannot delay a zero-preview touchdown into landing through the shared XYZ budget.
+{
+  const baseline = createRuntime()
+  const withFeedback = createRuntime()
+  const onceWalk = { ...walkAsset, loopMode: 'once' as const }
+  const clip = compile(onceWalk, baseline.compilation)
+  const definition = rootMotionDefinition({
+    distance: .42,
+    verticalMode: 'ballistic',
+    jumpHeight: 1.0894,
+    windows: [
+      { id: 'touchdown-travel', kind: 'travel', startMs: 0, endMs: 1000, weight: 1 },
+      { id: 'touchdown-ballistic', kind: 'ballistic', startMs: 0, endMs: 1000, weight: 1 },
+    ],
+    vfxTags: ['landing-ring'],
+  })
+  const sampleAt = (timeMs: number) => patchSample(sampleBipedPetMotion(clip, timeMs), {
+    clipHash: `${clip.hash}:touchdown-residual-phase`,
+    rootMotion: definition,
+  })
+  const baselineController = createComplexBipedRootMotionController(baseline.runtime)
+  const feedbackController = createComplexBipedRootMotionController(withFeedback.runtime)
+  baselineController.apply(sampleAt(850), 1)
+  feedbackController.apply(sampleAt(850), 1)
+  const grounded = baselineController.apply(sampleAt(1000), 1)
+  const residual = feedbackController.apply(sampleAt(1000), 1, [.1, 0, 0])
+  assert.equal(grounded.rootMotion.status, 'solved')
+  assert.equal(grounded.rootMotion.phase, 'grounded')
+  near(grounded.rootMotion.appliedWorld[1], 0)
+  near(grounded.rootMotion.landingImpulse, 1)
+  assert.deepEqual(grounded.vfxSignals.map(signal => signal.kind), ['landing-ring'])
+  assert.equal(residual.rootMotion.phase, 'grounded')
+  vectorNear(residual.rootMotion.appliedWorld, grounded.rootMotion.appliedWorld, 1e-12)
+  near(residual.rootMotion.landingImpulse, grounded.rootMotion.landingImpulse, 1e-12)
+  assert.deepEqual(residual.vfxSignals, grounded.vfxSignals)
+  baselineController.dispose()
+  feedbackController.dispose()
+  baseline.runtime.dispose()
+  withFeedback.runtime.dispose()
+}
+
 // 停止、回拖与 Clip 切换都清除旧 applied/授权/欠量，并在当前目标无速度 reset。 / Stop, rewind, and Clip switch clear applied state, authorization, and debt with a stationary reset.
 for (const transition of ['stop', 'rewind', 'clip-switch'] as const) {
   const { compilation, runtime } = createRuntime()
@@ -663,6 +704,24 @@ for (const invalidState of [
   runtime.dispose()
 }
 
+// 无支撑早退必须复用同一个冻结零 residual，避免静止热路径逐帧分配。 / Unsupported early returns must reuse one frozen zero residual instead of allocating per idle frame.
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compile(walkAsset, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation)
+  const unsupported = (timeMs: number) => patchSample(sampleBipedPetMotion(clip, timeMs), {
+    activeContacts: [],
+    contactStates: [],
+  })
+  const first = controller.apply(unsupported(100), 1)
+  const second = controller.apply(unsupported(120), 1)
+  assert.strictEqual(first.nextFootResidual, second.nextFootResidual)
+  assert.ok(Object.isFrozen(first.nextFootResidual))
+  assert.deepEqual(first.nextFootResidual, [0, 0, 0])
+  controller.dispose()
+  runtime.dispose()
+}
+
 // 单支撑 pelvis Y 可达补偿默认关闭；只在完整 Root Motion 集成策略中开启并按身高钳制。 / Single-support pelvis-Y reach compensation is opt-in for the integrated Root Motion chain and height-bounded.
 {
   const run = (integrated: boolean, heightScale = 1) => {
@@ -842,6 +901,55 @@ for (const invalidState of [
   runtime.dispose()
 }
 
+// 构造错误与 Balance 清理错误同时发生时仍必须继续释放 Root token，并保留两段错误上下文。 / A Balance-cleanup failure must not hide the construction error or prevent Root-token release.
+{
+  const { compilation, runtime } = createRuntime()
+  const bone = runtime.bonesById.get('thigh.left')!
+  const chest = runtime.bonesById.get('chest')!
+  const getWorldPosition = bone.getWorldPosition
+  const copy = chest.quaternion.copy
+  bone.getWorldPosition = () => { throw new Error('测试注入：IK 构造失败') }
+  chest.quaternion.copy = () => { throw new Error('测试注入：Balance 清理失败') }
+  assert.throws(
+    () => createComplexBipedMotionController(runtime, compilation),
+    error => error instanceof Error
+      && error.message.includes('复杂双足萌宠动作控制器构造失败')
+      && error.message.includes('IK 构造失败')
+      && error.message.includes('Balance 清理失败'),
+  )
+  bone.getWorldPosition = getWorldPosition
+  chest.quaternion.copy = copy
+  const replacement = createComplexBipedRootMotionController(runtime)
+  replacement.dispose()
+  runtime.dispose()
+}
+
+// 畸形 Error.message 不能让诊断格式化反过来中断构造回滚；Symbol 与抛错 getter 都必须继续释放 Root token。 / Malformed Error.message values must not let diagnostic formatting interrupt rollback or leak the Root token.
+for (const malformedMessage of ['symbol', 'throwing-getter'] as const) {
+  const { compilation, runtime } = createRuntime()
+  const bone = runtime.bonesById.get('thigh.left')!
+  const chest = runtime.bonesById.get('chest')!
+  const getWorldPosition = bone.getWorldPosition
+  const copy = chest.quaternion.copy
+  const cleanupError = new Error('占位清理错误')
+  if (malformedMessage === 'symbol') cleanupError.message = Symbol('Balance 清理失败') as unknown as string
+  else Object.defineProperty(cleanupError, 'message', { get: () => { throw new Error('message getter 失败') } })
+  bone.getWorldPosition = () => { throw new Error('测试注入：IK 构造失败') }
+  chest.quaternion.copy = () => { throw cleanupError }
+  assert.throws(
+    () => createComplexBipedMotionController(runtime, compilation),
+    error => error instanceof Error
+      && error.message.includes('复杂双足萌宠动作控制器构造失败')
+      && error.message.includes('IK 构造失败')
+      && error.message.includes(malformedMessage === 'symbol' ? 'Symbol(Balance 清理失败)' : '未知错误'),
+  )
+  bone.getWorldPosition = getWorldPosition
+  chest.quaternion.copy = copy
+  const replacement = createComplexBipedRootMotionController(runtime)
+  replacement.dispose()
+  runtime.dispose()
+}
+
 // Root 控制器自身初始化失败也必须释放刚登记的运行时所有权。 / Root-controller initialization failure must also release its newly registered runtime ownership.
 {
   const { runtime } = createRuntime()
@@ -854,15 +962,109 @@ for (const invalidState of [
   runtime.dispose()
 }
 
+// Root dispose 恢复绑定失败时仍必须封存控制器并释放 WeakMap token，且错误不能被吞掉。 / Root disposal must seal itself and release the WeakMap token even when bind restoration throws.
+{
+  const { runtime } = createRuntime()
+  const controller = createComplexBipedRootMotionController(runtime)
+  const copy = runtime.object.position.copy
+  runtime.object.position.copy = () => { throw new Error('测试注入：Root position.copy 失败') }
+  assert.throws(() => controller.dispose(), /Root position\.copy 失败/)
+  runtime.object.position.copy = copy
+  const replacement = createComplexBipedRootMotionController(runtime)
+  controller.dispose()
+  replacement.dispose()
+  runtime.dispose()
+}
+
+// JavaScript 允许 throw undefined；Root dispose 不能把 undefined 同“没有错误”混为一谈。 / JavaScript permits throw undefined; Root disposal must not confuse it with the no-error sentinel.
+{
+  const { runtime } = createRuntime()
+  const controller = createComplexBipedRootMotionController(runtime)
+  const copy = runtime.object.position.copy
+  runtime.object.position.copy = () => { throw undefined }
+  let didThrow = false
+  try { controller.dispose() }
+  catch (error) {
+    didThrow = true
+    assert.equal(error, undefined)
+  }
+  assert.equal(didThrow, true)
+  runtime.object.position.copy = copy
+  const replacement = createComplexBipedRootMotionController(runtime)
+  replacement.dispose()
+  runtime.dispose()
+}
+
+// 外层 dispose 必须在子步骤失败时继续释放 Root token、清空状态并最终抛出中文聚合错误。 / Outer disposal must continue through every cleanup step, clear state, and throw one Chinese aggregate after child failures.
+{
+  const { compilation, runtime } = createRuntime()
+  const controller = createComplexBipedMotionController(runtime, compilation)
+  const updateMatrixWorld = runtime.object.updateMatrixWorld
+  runtime.object.updateMatrixWorld = () => { throw new Error('测试注入：updateMatrixWorld 失败') }
+  assert.throws(
+    () => controller.dispose(),
+    error => error instanceof Error
+      && error.message.includes('复杂双足萌宠动作控制器释放失败')
+      && error.message.includes('updateMatrixWorld 失败'),
+  )
+  runtime.object.updateMatrixWorld = updateMatrixWorld
+  controller.dispose()
+  const replacement = createComplexBipedRootMotionController(runtime)
+  replacement.dispose()
+  runtime.dispose()
+}
+
+// runtime 状态检查异常也必须进入中文聚合，并继续尝试绑定恢复和世界矩阵更新。 / A runtime-state-check failure must be aggregated while bind restoration and matrix update are still attempted.
+{
+  const { compilation, runtime } = createRuntime()
+  const controller = createComplexBipedMotionController(runtime, compilation)
+  const isDisposed = runtime.isDisposed
+  const updateMatrixWorld = runtime.object.updateMatrixWorld
+  let matrixCalls = 0
+  runtime.isDisposed = () => { throw new Error('测试注入：状态检查失败') }
+  runtime.object.updateMatrixWorld = force => {
+    matrixCalls += 1
+    return updateMatrixWorld.call(runtime.object, force)
+  }
+  assert.throws(
+    () => controller.dispose(),
+    error => error instanceof Error
+      && error.message.includes('复杂双足萌宠动作控制器释放失败')
+      && error.message.includes('状态检查失败'),
+  )
+  assert.equal(matrixCalls, 1)
+  runtime.isDisposed = isDisposed
+  runtime.object.updateMatrixWorld = updateMatrixWorld
+  controller.dispose()
+  const replacement = createComplexBipedRootMotionController(runtime)
+  replacement.dispose()
+  runtime.dispose()
+}
+
 // 自然 walk 与 ping-pong 长序列不得因标量 strain feedback 产生振荡、过冲或伪造侧向向量。 / Long natural walk and ping-pong sequences must not oscillate, overshoot, or invent lateral vectors from scalar strain feedback.
 for (const loopMode of ['loop', 'ping-pong'] as const) {
   const { compilation, runtime } = createRuntime()
-  const clip = compile(walkAsset, compilation)
+  const asset = loopMode === 'loop' ? walkAsset : { ...walkAsset, loopMode: 'ping-pong' as const }
+  const clip = compile(asset, compilation)
+  assert.equal(clip.loopMode, loopMode)
   const controller = createComplexBipedMotionController(runtime, compilation)
   let previousApplied = 0
   let previousTarget = 0
   for (let timeMs = 0; timeMs <= 3600; timeMs += 20) {
-    const sample = patchSample(sampleBipedPetMotion(clip, timeMs), { loopMode })
+    const sample = sampleBipedPetMotion(clip, timeMs)
+    const iteration = Math.floor(timeMs / clip.durationMs)
+    const segmentTimeMs = timeMs % clip.durationMs
+    const resolvedTimeMs = loopMode === 'loop' || iteration % 2 === 0
+      ? segmentTimeMs
+      : clip.durationMs - segmentTimeMs
+    assert.equal(sample.loopMode, loopMode)
+    assert.equal(sample.iteration, iteration)
+    assert.equal(sample.resolvedTimeMs, resolvedTimeMs)
+    assert.ok(sample.bones.length > 0)
+    assert.ok(sample.contactStates.length > 0)
+    assert.deepEqual(sample.activeContacts, sample.contactStates
+      .filter(contact => contact.weight > 0)
+      .map(contact => contact.contactId))
     const frame = controller.apply(sample, 1)
     const applied = frame.rootMotion.appliedLocal[0]
     const target = frame.rootMotion.cumulativeLocal[0]

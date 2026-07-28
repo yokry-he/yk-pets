@@ -28,7 +28,7 @@ export interface ComplexBipedMotionController {
 
 const clampWeight = (value: number | undefined) => Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 1))
 const ZERO_FOOT_RESIDUAL = Object.freeze([0, 0, 0]) as readonly [number, number, number]
-const emptyIkReport = (): ComplexBipedIkFrameReport => Object.freeze({
+const EMPTY_IK_REPORT: ComplexBipedIkFrameReport = Object.freeze({
   supportingContacts: 0,
   residualByLimb: Object.freeze({}),
   clampedLimbs: Object.freeze([]),
@@ -39,6 +39,16 @@ const IK_CONTEXT_BY_ROOT_MOTION_PHASE = Object.freeze({
   airborne: Object.freeze({ rootMotionPhase: 'airborne' }),
   landing: Object.freeze({ rootMotionPhase: 'landing' }),
 }) satisfies Readonly<Record<SampledBipedPetRootMotion['phase'], ComplexBipedIkFrameContext>>
+
+const thrownDetail = (error: unknown) => {
+  try { return String(error instanceof Error ? error.message : error) }
+  catch { return '未知错误' }
+}
+
+const attemptCleanup = (failures: string[], label: string, cleanup: () => void) => {
+  try { cleanup() }
+  catch (error) { failures.push(`${label}：${thrownDetail(error)}`) }
+}
 
 export function createComplexBipedMotionController(runtime: ComplexBipedPetObject, compilation?: CompiledCharacterModel): ComplexBipedMotionController {
   const bindRotations = new Map([...runtime.bonesById].map(([boneId, bone]) => [boneId, bone.quaternion.clone()]))
@@ -67,16 +77,17 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
     }) : undefined
   }
   catch (error) {
-    ikController?.dispose()
-    balanceController?.dispose()
-    rootMotionController.dispose()
-    throw error
+    const failures = [`控制器初始化：${thrownDetail(error)}`]
+    attemptCleanup(failures, 'IK 清理', () => ikController?.dispose())
+    attemptCleanup(failures, 'Balance 清理', () => balanceController?.dispose())
+    attemptCleanup(failures, 'Root Motion 清理', () => rootMotionController.dispose())
+    throw new Error(`复杂双足萌宠动作控制器构造失败：${failures.join('；')}`)
   }
   let previousFootResidual: readonly [number, number, number] = ZERO_FOOT_RESIDUAL
   let lastAppliedClipHash: string | undefined
   let lastAppliedRequestedTimeMs: number | undefined
   let lastAppliedWeight: number | undefined
-  let lastIkReport = emptyIkReport()
+  let lastIkReport = EMPTY_IK_REPORT
 
   const assertUsable = () => {
     if (disposed || runtime.isDisposed()) throw new Error('复杂双足萌宠动作控制器已释放，不能继续写入骨骼。')
@@ -122,7 +133,7 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
         sample,
         weight,
         IK_CONTEXT_BY_ROOT_MOTION_PHASE[rootMotionFrame.rootMotion.phase],
-      ) ?? emptyIkReport()
+      ) ?? EMPTY_IK_REPORT
       previousFootResidual = nextFootResidual(rootMotionFrame, ikReport, characterHeight, sample)
       lastAppliedClipHash = sample.clipHash
       lastAppliedRequestedTimeMs = sample.requestedTimeMs
@@ -142,7 +153,7 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
       lastAppliedClipHash = undefined
       lastAppliedRequestedTimeMs = undefined
       lastAppliedWeight = undefined
-      lastIkReport = emptyIkReport()
+      lastIkReport = EMPTY_IK_REPORT
       rootMotionController.reset()
       balanceController?.reset()
       ikController?.reset()
@@ -150,19 +161,30 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
     },
     dispose() {
       if (disposed) return
-      ikController?.dispose()
-      balanceController?.dispose()
-      rootMotionController.dispose()
-      if (!runtime.isDisposed()) {
-        restoreBindPose()
-        runtime.object.updateMatrixWorld(true)
+      const failures: string[] = []
+      try {
+        attemptCleanup(failures, 'IK 释放', () => ikController?.dispose())
+        attemptCleanup(failures, 'Balance 释放', () => balanceController?.dispose())
+        attemptCleanup(failures, 'Root Motion 释放', () => rootMotionController.dispose())
+        let runtimeDisposed: boolean | undefined
+        attemptCleanup(failures, '运行时状态检查', () => { runtimeDisposed = runtime.isDisposed() })
+        if (runtimeDisposed !== true) {
+          attemptCleanup(failures, '绑定姿态恢复', restoreBindPose)
+          attemptCleanup(failures, '世界矩阵更新', () => runtime.object.updateMatrixWorld(true))
+        }
       }
-      bindRotations.clear()
-      lastAppliedClipHash = undefined
-      lastAppliedRequestedTimeMs = undefined
-      lastAppliedWeight = undefined
-      lastIkReport = emptyIkReport()
-      disposed = true
+      finally {
+        ikController = undefined
+        balanceController = undefined
+        bindRotations.clear()
+        previousFootResidual = ZERO_FOOT_RESIDUAL
+        lastAppliedClipHash = undefined
+        lastAppliedRequestedTimeMs = undefined
+        lastAppliedWeight = undefined
+        lastIkReport = EMPTY_IK_REPORT
+        disposed = true
+      }
+      if (failures.length > 0) throw new Error(`复杂双足萌宠动作控制器释放失败：${failures.join('；')}`)
     },
   }
 }
@@ -178,12 +200,18 @@ function nextFootResidual(
     || frame.rootMotion.phase === 'takeoff' || frame.rootMotion.phase === 'airborne' || frame.rootMotion.phase === 'landing'
     || sample.rootMotion.mode !== 'travel'
     || !sample.rootMotion.windows.some(window => (window.kind === 'travel' || window.kind === 'warp')
-      && sample.resolvedTimeMs >= window.startMs && sample.resolvedTimeMs <= window.endMs)) return Object.freeze([0, 0, 0])
-  const maximumHorizontalResidual = Math.max(0, ...Object.values(report.residualByLimb).filter(Number.isFinite))
+      && sample.resolvedTimeMs >= window.startMs && sample.resolvedTimeMs <= window.endMs)) return ZERO_FOOT_RESIDUAL
+  let maximumHorizontalResidual = 0
+  for (const limbId in report.residualByLimb) {
+    const residual = report.residualByLimb[limbId]
+    if (typeof residual === 'number' && Number.isFinite(residual) && residual > maximumHorizontalResidual) {
+      maximumHorizontalResidual = residual
+    }
+  }
   const deltaX = frame.rootMotion.deltaLocal[0]
   const deltaZ = frame.rootMotion.deltaLocal[2]
   const length = Math.hypot(deltaX, deltaZ)
-  if (!(maximumHorizontalResidual > 0) || !(length > 1e-12) || !(characterHeight > 0)) return Object.freeze([0, 0, 0])
+  if (!(maximumHorizontalResidual > 0) || !(length > 1e-12) || !(characterHeight > 0)) return ZERO_FOOT_RESIDUAL
   // 只把上一帧真实水平残差幅值提升到求解器自带的速度预算，再由领域层统一钳制；Y 不得进入这个反馈链。 / Raise only the true horizontal residual magnitude toward the solver-owned speed budget; Y must never enter this feedback path.
   const bounded = Math.min(maximumHorizontalResidual * 8, characterHeight * .025)
   return Object.freeze([-deltaX / length * bounded, 0, -deltaZ / length * bounded])

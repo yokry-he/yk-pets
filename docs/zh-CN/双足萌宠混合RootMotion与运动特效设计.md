@@ -88,7 +88,7 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 
 行走循环的单周期位移必须可累加：跨越连续循环接缝时使用上一周期终点到下一周期起点的连续差值，不归零世界位置。普通时间倒退、异常大跳、Clip 切换或停止则清除累计身份和速度，不把预览拖动解释为反向移动。
 
-支撑脚残差的契约固定为“调用方提供的局部水平接触残差反馈”。IK 报告中的 `residualByLimb` 是每肢世界水平面 `hypot(anchor.x-current.x, anchor.z-current.z)` 的真实标量幅值，不包含 Y，也不编码方向；它在当前集成链中是沿移动反方向抵消步滑的 **strain 启发式**，不是测得的误差向量。外层将最大幅值放大 `8` 倍并限制在 `characterHeight×0.025` 内，再沿本帧局部水平移动的反方向构造有限 X/Z feedback，Y 永远为零。Root 控制器必须先以零 feedback 预采样相位，只有预采样为有限 `solved/clamped + grounded` 时，才从完全相同的 previous state 带入 residual 做最终采样；因此 travel 与 ballistic 同时存在的首个 takeoff 不会被旧 strain 污染。反馈只在上一请求到当前请求的整段时间映射都被连续 `travel/warp` 支撑组件覆盖时修正 applied 增量，跨入、跨出或穿越 gap 的帧不消费旧残差；预算同时随真实时间差、`actionWeight` 和当前水平 target 追赶误差缩放；原地、窗口空隙、仅弹道、暂停、reset 或 `actionWeight→0` 时不得漂移。纯函数内部不保存也不伪造低通历史，任务 5 控制器显式拥有跨帧 feedback 状态。
+支撑脚残差的契约固定为“调用方提供的局部水平接触残差反馈”。IK 报告中的 `residualByLimb` 是每肢世界水平面 `hypot(anchor.x-current.x, anchor.z-current.z)` 的真实标量幅值，不包含 Y，也不编码方向；它在当前集成链中是沿移动反方向抵消步滑的 **strain 启发式**，不是测得的误差向量。外层将最大幅值放大 `8` 倍并限制在 `characterHeight×0.025` 内，再沿本帧局部水平移动的反方向构造有限 X/Z feedback，Y 永远为零。Root 控制器必须先以零 feedback 预采样相位，只有预采样为有限 `solved/clamped + grounded` 时，才从完全相同的 previous state 带入 residual 做第二次纯采样；第二次结果也必须保持有限 `grounded` 才能提交，否则完整回退零反馈预览。这样 travel 与 ballistic 同时存在的首个 takeoff 不会被旧 strain 污染，临界 touchdown 也不会因 XYZ 共享位移预算被水平 strain 延迟为 landing，授权、冲量和 VFX 始终跟随零反馈权威相位。反馈只在上一请求到当前请求的整段时间映射都被连续 `travel/warp` 支撑组件覆盖时修正 applied 增量，跨入、跨出或穿越 gap 的帧不消费旧残差；预算同时随真实时间差、`actionWeight` 和当前水平 target 追赶误差缩放；原地、窗口空隙、仅弹道、暂停、reset 或 `actionWeight→0` 时不得漂移。纯函数内部不保存也不伪造低通历史，任务 5 控制器显式拥有跨帧 feedback 状态。
 
 ### 5.2 转向与姿态扭曲
 
@@ -121,7 +121,7 @@ Root Motion 是角色整体水平位移和转向的唯一所有者；IK 控制�
 
 重心补偿由接触状态决定：只有 `weight` 与 `confidence` 均为正有限数的接触才是有效支撑；双支撑时骨盆位于两脚支撑中心附近，单支撑时平滑偏向支撑脚。`takeoff/airborne/landing` 全部按非支撑处理，完整链清除 pelvis X/Y/Z、Balance 自有 chest tilt 与 IK 锚点，同时保留本帧动作 FK 的胸腔姿态；真实 `grounded` touchdown 才重新捕获。所有水平偏移和单帧变化都按角色尺寸钳制。
 
-同一个 Three runtime 同时只能存在一个 Root Motion 写入者。控制器用 runtime 弱引用所有权令牌阻止第二个写入者；owner 释放或外层构造失败会交还令牌，已释放 runtime 拒绝重新取得所有权，非 owner 的 reset/dispose 不得覆盖容器。
+同一个 Three runtime 同时只能存在一个 Root Motion 写入者。控制器用 runtime 弱引用所有权令牌阻止第二个写入者；owner 释放或外层构造失败会交还令牌，已释放 runtime 拒绝重新取得所有权，非 owner 的 reset/dispose 不得覆盖容器。Root dispose 即使恢复绑定抛错，也必须在 `finally` 删除令牌并封存自身后再抛出原值；失败状态使用独立布尔哨兵，不能把合法的 `throw undefined` 当成成功。外层构造回滚保留原始初始化错误，同时对 IK、Balance、Root 全部尽力清理；错误上下文必须在完整 try/catch 内安全转换成字符串，畸形 `Symbol` message 或抛错 getter 只能降级为可读文本，不能打断后续清理。外层 dispose 按 IK、Balance、Root、运行时状态检查、绑定姿态、世界矩阵顺序全部尽力执行。状态检查失败也进入中文聚合，并继续尝试 bind/matrix；最后清空引用并封存，第二次 dispose 保持幂等。
 
 执行完 Root Motion 后再捕获或维持足底锚，解决当前“身体没有前进但腿已经达到旋转极限”的残差；IK 仍负责最终小误差，不承担整段位移。
 

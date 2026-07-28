@@ -237,6 +237,7 @@ if (state) {
   expect(JSON.stringify(state.latestCompletedBatch?.ikRootMotionPhaseRelease) === JSON.stringify(['takeoff', 'airborne', 'landing']), 'IK 必须在实际 takeoff/airborne/landing 相位释放滞后接触 / IK must release stale contacts in actual takeoff/airborne/landing phases')
   expect(state.latestCompletedBatch?.effectiveSupportPredicate === 'finite-weight>0-and-finite-confidence>0', 'IK 有效支撑必须同时要求正有限 weight/confidence / Effective IK support requires finite positive weight and confidence')
   expect(state.latestCompletedBatch?.rootResidualPhasePreview === 'zero-residual-preview-then-grounded-resample'
+    && state.latestCompletedBatch?.rootResidualFinalPhaseGuard === 'commit-resample-only-when-final-remains-finite-grounded'
     && state.latestCompletedBatch?.rootResidualStrainGain === 8
     && state.latestCompletedBatch?.rootResidualStrainLimitBodyHeightRatio === .025,
   'Root residual 必须先零反馈预采样，并保持明确 strain 增益与尺寸上限 / Root residual must use zero-feedback preview with explicit strain gain and scale bound')
@@ -246,7 +247,14 @@ if (state) {
   expect(state.latestCompletedBatch?.rootMotionRuntimeExclusiveOwnership === true
     && state.latestCompletedBatch?.rootMotionRuntimeOwnerRegistry === 'weakmap-token',
   '每个 runtime 必须只有一个 Root Motion 写入者 / Each runtime must have exactly one Root Motion writer')
-  expect(state.latestCompletedBatch?.rootMotionHotPathAllocationPolicy === 'direct-bounds-preallocated-balance-single-contact-scan', 'Three 热路径分配策略必须保持 / Three hot-path allocation policy must remain explicit')
+  expect(state.latestCompletedBatch?.rootMotionExceptionalDisposePolicy === 'finally-release-owner-then-outer-best-effort-aggregate', '异常释放必须交还 Root owner 并由外层全部尽力聚合 / Exceptional disposal must release Root ownership and aggregate best-effort outer cleanup')
+  expect(state.latestCompletedBatch?.rootMotionThrownValuePolicy === 'separate-failure-sentinel-preserves-undefined'
+    && state.latestCompletedBatch?.motionControllerConstructionCleanupPolicy === 'preserve-construction-error-and-best-effort-ik-balance-root'
+    && state.latestCompletedBatch?.runtimeDisposeStateCheckPolicy === 'aggregate-check-failure-and-attempt-bind-matrix'
+    && state.latestCompletedBatch?.cleanupDiagnosticFormattingPolicy === 'total-string-conversion-with-unknown-fallback',
+  '异常值、构造回滚和运行时状态检查都必须遵守不吞错的全部尽力策略 / Thrown values, construction rollback, and runtime-state checks must preserve best-effort no-swallow semantics')
+  expect(state.latestCompletedBatch?.rootMotionHotPathAllocationPolicy === 'direct-bounds-preallocated-balance-single-contact-scan-shared-zero-direct-residual-record-scan', 'Three 热路径分配策略必须保持 / Three hot-path allocation policy must remain explicit')
+  expect(state.latestCompletedBatch?.rootMotionNaturalPingPongFixture === 'compiled-and-sampled-ping-pong-asset', 'ping-pong 长序列必须来自真实编译资产 / Long ping-pong coverage must use a genuinely compiled asset')
   expect(state.latestCompletedBatch?.standaloneIkCorrectionPasses === 3 && state.latestCompletedBatch?.integratedIkCorrectionPasses === 5 && state.latestCompletedBatch?.ikPerBoneAngularBudgetExpanded === false, 'IK 集成收敛只能增加 pass，不得扩大每骨骼累计角预算 / Integrated IK may add passes but must not expand per-bone cumulative angular budgets')
   expect(state.latestCompletedBatch?.integratedWorldResidualGate === .00075
     && state.latestCompletedBatch?.integratedWorldResidualProbe <= state.latestCompletedBatch.integratedWorldResidualGate
@@ -267,6 +275,24 @@ if (state) {
     duplicateDisplayPoseChanged: true,
     secondRootControllerRejected: false,
   }), 'Task 5 第二轮质量审查 RED 证据必须保持可追踪 / Task 5 second quality-review RED evidence must remain traceable')
+  expect(JSON.stringify(state.latestCompletedBatch?.rootMotionRuntimeReviewRedEvidenceV3) === JSON.stringify({
+    zeroPreviewStatus: 'solved',
+    zeroPreviewPhase: 'grounded',
+    zeroPreviewAppliedY: 0,
+    zeroPreviewLandingImpulse: 1,
+    residualResampleStatus: 'clamped',
+    residualResamplePhase: 'landing',
+    residualResampleAppliedYApprox: .0000017957,
+    rootDisposeRetainedTokenAfterRestoreFailure: true,
+    outerDisposeStoppedAtFirstFailure: true,
+  }), 'Task 5 第三轮质量审查 RED 证据必须保持可追踪 / Task 5 third quality-review RED evidence must remain traceable')
+  expect(JSON.stringify(state.latestCompletedBatch?.rootMotionRuntimeReviewRedEvidenceV4) === JSON.stringify({
+    rootDisposeSwallowedUndefined: true,
+    constructorCleanupStoppedBeforeRoot: true,
+    disposeRuntimeCheckBypassedAggregate: true,
+    symbolErrorMessageStoppedCleanup: true,
+    throwingErrorMessageGetterStoppedCleanup: true,
+  }), 'Task 5 第四轮异常边界 RED 证据必须保持可追踪 / Task 5 fourth exceptional-boundary RED evidence must remain traceable')
   expect(state.latestCompletedBatch?.motionIntensityReferenceBodyHeightsPerSecond === .4, '移动强度参考速度必须是每秒 0.4 个角色身高 / Motion-intensity reference speed must be 0.4 body-heights per second')
   expect(state.latestCompletedBatch?.landingImpulseFormula === 'sqrt(normalizedCompositePeakHeight)', '落地冲量必须由归一化复合峰高的平方根派生 / Landing impulse must derive from the square root of normalized composite peak height')
   expect(state.latestCompletedBatch?.landingRingThreshold === .25 && state.latestCompletedBatch?.landingDustThreshold === .4, '落地环与尘效必须保持既定严格阈值 / Landing ring and dust must retain their strict thresholds')
@@ -335,6 +361,7 @@ const knownEn = safeRead('docs/en/KNOWN-ISSUES.md')
 const roadmapZh = safeRead('docs/zh-CN/AI开发路线图.md')
 const roadmapEn = safeRead('docs/en/AI-DEVELOPMENT-ROADMAP.md')
 const packageJson = safeRead('package.json')
+const rootMotionRuntimeTest = safeRead('scripts/test-studio-complex-biped-root-motion-runtime.ts')
 
 expect(sessionStart.includes('同一个提交') && sessionStart.includes('scripts/check-ai-handoff.mjs'), '启动协议必须声明同提交更新和强制门禁 / Session protocol must require same-commit updates and name the gate')
 expect(sessionStart.includes('实际代码和运行结果') && sessionStart.includes('旧聊天记录'), '启动协议必须包含可信度顺序 / Session protocol must include the trust order')
@@ -344,6 +371,10 @@ expect(handoffZh.includes('动作直接操控批次') && handoffEn.includes('Dir
 expect(handoffZh.includes('动作工坊预览与中文化可用性批次') && handoffEn.includes('Motion Studio preview and Chinese-first usability batch'), '中英文交接必须记录动作工坊预览与中文化批次 / Handoffs must record the Motion Studio preview and localization batch')
 expect(handoffZh.includes('双足萌宠第一阶段交付状态') && handoffEn.includes('Biped-pet Phase 1 delivery status'), '中英文交接必须同步双足萌宠第一阶段状态 / Handoffs must synchronize biped-pet Phase 1 status')
 expect(handoffZh.includes('已回退简单模型') && handoffEn.includes('simple-model fallback'), '中英文交接必须说明复杂模型失败回退 / Handoffs must document complex-model fallback')
+expect(rootMotionRuntimeTest.includes("{ ...walkAsset, loopMode: 'ping-pong' as const }")
+  && rootMotionRuntimeTest.includes('const sample = sampleBipedPetMotion(clip, timeMs)')
+  && !rootMotionRuntimeTest.includes('patchSample(sampleBipedPetMotion(clip, timeMs), { loopMode }'),
+  'Root Motion 长序列必须编译并采样真实 ping-pong 资产，不得只改写采样结果 / Root Motion long-sequence coverage must compile and sample a real ping-pong asset')
 expect(handoffZh.includes('混合 IK 与足底锁定阶段交付') && handoffEn.includes('Hybrid IK and foot-lock phase delivery'), '中英文交接必须同步混合 IK 与足底锁定阶段 / Handoffs must synchronize the hybrid IK and foot-lock phase')
 expect(handoffZh.includes('双足萌宠混合 Root Motion 与运动特效设计') && handoffEn.includes('Hybrid biped Root Motion and motion-VFX design'), '中英文交接必须同步混合 Root Motion 与运动特效设计 / Handoffs must synchronize the hybrid Root Motion and motion-VFX design')
 expect(handoffZh.includes('双足萌宠混合RootMotion与运动特效实施计划.md') && handoffEn.includes('双足萌宠混合RootMotion与运动特效实施计划.md'), '中英文交接必须同步混合 Root Motion 与运动特效计划 / Handoffs must synchronize the hybrid Root Motion and motion-VFX plan')
