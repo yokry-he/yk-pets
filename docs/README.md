@@ -57,6 +57,7 @@ YK-PETS is the product brand. The current default pet is a Cloud Fox named Zeph�
 | Biped pet semantic motion compilation design | [双足萌宠语义动作编译设计](./zh-CN/双足萌宠语义动作编译设计.md) | 中文设计为当前权威版本 |
 | Biped pet semantic motion compilation plan | [双足萌宠语义动作编译实施计划](./zh-CN/双足萌宠语义动作编译实施计划.md) | 中文计划为当前权威版本 |
 | Hybrid biped and multi-chain IK design | [双足与多骨骼链混合 IK 设计](./zh-CN/双足与多骨骼链混合IK设计.md) | 中文设计为当前权威版本 |
+| Hybrid biped and multi-chain IK plan | [双足与多骨骼链混合 IK 实施计划](./zh-CN/双足与多骨骼链混合IK实施计划.md) | 中文计划为当前权威版本 |
 | Dual-model Studio phase 1 plan | [双模型工坊第一阶段实施计划](./zh-CN/双模型工坊第一阶段实施计划.md) | 中文计划为当前权威版本 |
 | Customization | [宠物自定义](./zh-CN/宠物自定义.md) | [Pet customization](./en/PET-CUSTOMIZATION.md) |
 | Customization acceptance | [宠物自定义验收](./zh-CN/宠物自定义验收.md) | [Customization acceptance](./en/PET-CUSTOMIZATION-ACCEPTANCE.md) |
