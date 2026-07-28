@@ -336,7 +336,8 @@ function normalizeStringList(input: unknown): string[] {
 }
 
 function collectExtensions(source: Record<string, unknown>, diagnostics: MotionNormalizationDiagnostic[]): Record<string, unknown> {
-  const extensions: Record<string, unknown> = {}
+  // 扩展键来自持久化 JSON；null prototype 保证 __proto__/constructor/prototype 都只是普通自有数据键。
+  const extensions = Object.create(null) as Record<string, unknown>
   let explicitExtensions: unknown
   try {
     explicitExtensions = Reflect.get(source, 'extensions')

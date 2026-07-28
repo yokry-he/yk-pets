@@ -289,7 +289,9 @@ function readBipedMotionExtensionSource(asset: StudioMotionAssetV2): {
   diagnostics: BipedPetMotionDiagnostic[]
 } {
   try {
-    const source = asset.extensions?.['yk-pets/biped-motion/v1']
+    const extensions = asset.extensions
+    if (extensions === undefined || !Object.hasOwn(extensions, 'yk-pets/biped-motion/v1')) return { diagnostics: [] }
+    const source = Reflect.get(extensions, 'yk-pets/biped-motion/v1')
     if (source === undefined) return { diagnostics: [] }
     if (!source || typeof source !== 'object' || Array.isArray(source)) {
       return {

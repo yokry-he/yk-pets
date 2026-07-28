@@ -9,6 +9,7 @@ import {
   BIPED_PET_RIG_PROFILE,
   compileBipedPetMotion,
   createStudioMotionAsset,
+  normalizeMotionAsset,
   normalizeBipedPetRootMotion,
   sampleBipedPetMotion,
 } from '../src/index.ts'
@@ -346,6 +347,51 @@ test('编译入口会局部隔离顶层和命名空间扩展访问异常', () =>
     assert.deepEqual(first?.diagnostics, second?.diagnostics)
     assert.ok(first?.diagnostics.some(item => item.severity === 'warning' && /[\u3400-\u9fff]/u.test(item.message)))
   }
+})
+
+test('JSON 危险扩展键不能注入正式命名空间且往返编译保持确定', () => {
+  const input = JSON.parse(`{
+    "id": "prototype-extension",
+    "nameZh": "原型扩展",
+    "nameEn": "Prototype Extension",
+    "durationMs": 1200,
+    "displayFps": 30,
+    "loopMode": "loop",
+    "tracks": [],
+    "propIds": [],
+    "propEventTracks": [],
+    "createdAt": 1,
+    "updatedAt": 1,
+    "extensions": {
+      "__proto__": {
+        "yk-pets/biped-motion/v1": {
+          "rootMotion": { "mode": "travel", "distance": 0.8 }
+        }
+      },
+      "constructor": { "kept": true },
+      "prototype": { "kept": true },
+      "third-party/example": { "kept": true }
+    }
+  }`)
+  const normalized = normalizeMotionAsset(input, { now: 1 }).asset
+  const direct = compileBipedPetMotion(normalized)
+  const serialized = JSON.stringify(normalized)
+  const roundTrippedAsset = normalizeMotionAsset(JSON.parse(serialized), { now: 1 }).asset
+  const roundTripped = compileBipedPetMotion(roundTrippedAsset)
+
+  assert.ok(normalized.extensions)
+  assert.equal(Object.getPrototypeOf(normalized.extensions), null)
+  assert.ok(Object.hasOwn(normalized.extensions, '__proto__'))
+  assert.ok(Object.hasOwn(normalized.extensions, 'constructor'))
+  assert.ok(Object.hasOwn(normalized.extensions, 'prototype'))
+  assert.ok(Object.hasOwn(normalized.extensions, 'third-party/example'))
+  assert.equal(Object.hasOwn(normalized.extensions, 'yk-pets/biped-motion/v1'), false)
+  assert.deepEqual(Reflect.get(normalized.extensions, 'third-party/example'), { kept: true })
+  assert.ok(serialized.includes('"__proto__"'))
+  assert.equal(direct.rootMotion.mode, 'in-place')
+  assert.equal(roundTripped.rootMotion.mode, 'in-place')
+  assert.equal(roundTripped.hash, direct.hash)
+  assert.deepEqual(roundTripped.rootMotion, direct.rootMotion)
 })
 
 test('只有 undefined 是兼容缺失，显式 null 扩展会产生稳定 warning', () => {
