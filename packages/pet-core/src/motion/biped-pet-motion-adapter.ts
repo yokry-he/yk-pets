@@ -12,7 +12,6 @@ import { IDENTITY_MOTION_QUATERNION, motionEulerToQuaternion, slerpMotionQuatern
 import {
   normalizeBipedPetRootMotion,
   type BipedPetRootMotionDefinition,
-  type BipedPetRootMotionNormalizationResult,
 } from './biped-pet-root-motion'
 
 export const BIPED_PET_MOTION_ADAPTER_ID = 'biped-pet-motion-adapter/v1' as const
@@ -115,6 +114,11 @@ export interface SampledBipedPetContactState {
 
 type RotationDistribution = readonly (readonly [boneId: string, weight: number])[]
 type MutableVector3 = [number, number, number]
+type BipedPetMotionExtensionWarning = Readonly<{
+  id: string
+  severity: 'warning'
+  message: string
+}>
 
 const ROOT_POSITION_SCALE = .24
 const BODY_DISTRIBUTION: RotationDistribution = [
@@ -130,7 +134,10 @@ const clamp = (value: number, minimum: number, maximum: number) => Math.max(mini
 const compareCodePoints = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0
 const numericSuffix = (boneId: string) => Number.parseInt(boneId.split('.').at(-1) || '0', 10)
 const canonicalRootMotions = new WeakSet<object>()
-const sampledRootMotionCache = new WeakMap<object, BipedPetRootMotionDefinition>()
+type SampledRootMotionCacheEntry =
+  | { readonly status: 'blocked'; readonly rootMotion: BipedPetRootMotionDefinition }
+  | { readonly status: 'ready'; readonly source: unknown; readonly rootMotion: BipedPetRootMotionDefinition }
+const sampledRootMotionCache = new WeakMap<object, SampledRootMotionCacheEntry>()
 
 function freezeRootMotionDefinition(value: BipedPetRootMotionDefinition): BipedPetRootMotionDefinition {
   const rootMotion: BipedPetRootMotionDefinition = {
@@ -306,7 +313,7 @@ function readExtensionField(
   field: 'rootMotion' | 'contacts' | 'events',
 ): { ok: true; value: unknown } | {
   ok: false
-  diagnostic: BipedPetRootMotionNormalizationResult['diagnostics'][number]
+  diagnostic: BipedPetMotionExtensionWarning
 } {
   try {
     return { ok: true, value: Reflect.get(source, field) }
@@ -358,7 +365,7 @@ function readExtensionArray(
 function readRootMotionDefinition(
   asset: StudioMotionAssetV2,
   source: Record<PropertyKey, unknown> | undefined,
-): BipedPetRootMotionNormalizationResult {
+): ReturnType<typeof normalizeBipedPetRootMotion> {
   if (!source) return normalizeBipedPetRootMotion(undefined, asset.durationMs)
   const field = readExtensionField(source, 'rootMotion')
   if (field.ok) return normalizeBipedPetRootMotion(field.value, asset.durationMs)
@@ -644,11 +651,11 @@ function sampleContactStates(contacts: readonly BipedPetMotionContactCandidate[]
 }
 
 function rootMotionForSample(clip: BipedPetQuaternionClip): BipedPetRootMotionDefinition {
-  const cached = sampledRootMotionCache.get(clip)
-  if (cached) return cached
   if (clip.status !== 'ready') {
+    const cached = sampledRootMotionCache.get(clip)
+    if (cached?.status === 'blocked') return cached.rootMotion
     const rootMotion = canonicalInPlaceRootMotion(clip.durationMs)
-    sampledRootMotionCache.set(clip, rootMotion)
+    sampledRootMotionCache.set(clip, { status: 'blocked', rootMotion })
     return rootMotion
   }
   let input: unknown
@@ -658,6 +665,8 @@ function rootMotionForSample(clip: BipedPetQuaternionClip): BipedPetRootMotionDe
   catch {
     input = undefined
   }
+  const cached = sampledRootMotionCache.get(clip)
+  if (cached?.status === 'ready' && cached.source === input) return cached.rootMotion
   if (input && typeof input === 'object' && canonicalRootMotions.has(input)) {
     return input as BipedPetRootMotionDefinition
   }
@@ -665,7 +674,7 @@ function rootMotionForSample(clip: BipedPetQuaternionClip): BipedPetRootMotionDe
   const rootMotion = normalized.diagnostics.length
     ? canonicalInPlaceRootMotion(clip.durationMs)
     : freezeRootMotionDefinition(normalized.value)
-  sampledRootMotionCache.set(clip, rootMotion)
+  sampledRootMotionCache.set(clip, { status: 'ready', source: input, rootMotion })
   return rootMotion
 }
 

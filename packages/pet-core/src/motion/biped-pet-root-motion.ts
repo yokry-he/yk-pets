@@ -9,21 +9,21 @@ export type BipedPetRootMotionWindowKind = 'travel' | 'warp' | 'ballistic' | 'br
 export type BipedPetMotionVfxTag = 'landing-ring' | 'landing-dust' | 'speed-trail' | 'brake-sparks'
 
 export interface BipedPetRootMotionWindow {
-  id: string
-  kind: BipedPetRootMotionWindowKind
-  startMs: number
-  endMs: number
-  weight: number
+  readonly id: string
+  readonly kind: BipedPetRootMotionWindowKind
+  readonly startMs: number
+  readonly endMs: number
+  readonly weight: number
 }
 
 export interface BipedPetRootMotionDefinition {
-  mode: BipedPetRootMotionMode
-  distance: number
-  turnRadians: number
-  verticalMode: BipedPetRootVerticalMode
-  jumpHeight: number
-  windows: readonly BipedPetRootMotionWindow[]
-  vfxTags: readonly BipedPetMotionVfxTag[]
+  readonly mode: BipedPetRootMotionMode
+  readonly distance: number
+  readonly turnRadians: number
+  readonly verticalMode: BipedPetRootVerticalMode
+  readonly jumpHeight: number
+  readonly windows: readonly BipedPetRootMotionWindow[]
+  readonly vfxTags: readonly BipedPetMotionVfxTag[]
 }
 
 export interface BipedPetRootMotionNormalizationResult {

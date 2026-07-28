@@ -506,6 +506,59 @@ test('历史 V1 Clip 缺失或损坏 Root Motion 时采样迁移为冻结 canoni
   }
 })
 
+test('同一历史 V1 Clip 从 ready 切到 blocked 后不得复用 travel 缓存', () => {
+  const current = compileBipedPetMotion({ ...fixtureMotion, extensions: undefined })
+  const firstRootMotion = {
+    mode: 'travel' as const,
+    distance: .4,
+    turnRadians: .1,
+    verticalMode: 'grounded' as const,
+    jumpHeight: 0,
+    windows: [{ id: 'first', kind: 'travel' as const, startMs: 0, endMs: 1200, weight: 1 }],
+    vfxTags: ['speed-trail' as const],
+  }
+  const secondRootMotion = {
+    ...firstRootMotion,
+    distance: .9,
+    windows: [{ id: 'second', kind: 'travel' as const, startMs: 0, endMs: 1200, weight: 1 }],
+  }
+  const clip = { ...current, rootMotion: firstRootMotion }
+  const mutableClip = clip as unknown as { status: 'ready' | 'blocked'; rootMotion: typeof firstRootMotion }
+
+  assert.equal(sampleBipedPetMotion(clip, 100).rootMotion.distance, .4)
+  mutableClip.rootMotion = secondRootMotion
+  assert.equal(sampleBipedPetMotion(clip, 100).rootMotion.distance, .9)
+  mutableClip.status = 'blocked'
+
+  const blockedSample = sampleBipedPetMotion(clip, 100)
+  assert.deepEqual(blockedSample.rootMotion, canonicalInPlaceRootMotion)
+  assert.ok(Object.isFrozen(blockedSample.rootMotion))
+})
+
+test('同一历史 V1 Clip 从 blocked 切回 ready 后不得复用原地缓存', () => {
+  const current = compileBipedPetMotion({ ...fixtureMotion, extensions: undefined })
+  const travelRootMotion = {
+    mode: 'travel' as const,
+    distance: .7,
+    turnRadians: .2,
+    verticalMode: 'ballistic' as const,
+    jumpHeight: .5,
+    windows: [{ id: 'resume', kind: 'ballistic' as const, startMs: 0, endMs: 1200, weight: 1 }],
+    vfxTags: ['landing-ring' as const],
+  }
+  const clip = { ...current, status: 'blocked' as const, rootMotion: travelRootMotion }
+  const mutableClip = clip as unknown as { status: 'ready' | 'blocked' }
+
+  assert.deepEqual(sampleBipedPetMotion(clip, 100).rootMotion, canonicalInPlaceRootMotion)
+  mutableClip.status = 'ready'
+
+  const readySample = sampleBipedPetMotion(clip, 100)
+  assert.equal(readySample.rootMotion.distance, .7)
+  assert.equal(readySample.rootMotion.verticalMode, 'ballistic')
+  assert.deepEqual(readySample.rootMotion.vfxTags, ['landing-ring'])
+  assert.ok(Object.isFrozen(readySample.rootMotion))
+})
+
 test('Root Motion 哈希保持 ASCII 路径并覆盖全部契约字段', () => {
   const base = {
     mode: 'travel',
