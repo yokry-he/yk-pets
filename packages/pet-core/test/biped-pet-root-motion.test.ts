@@ -226,3 +226,75 @@ test('blocked Clip 与 ping-pong 采样保留安全原地定义和统一时间�
   assert.equal(sample.direction, -1)
   assert.deepEqual(sample.rootMotion, clip.rootMotion)
 })
+
+test('动作扩展命名空间的 getter 全部异常时编译仍返回稳定可检查 Clip', () => {
+  const namespace = new Proxy({}, {
+    get() {
+      throw new Error('外部扩展 getter 不应逃逸')
+    },
+  })
+  const asset = {
+    ...fixtureMotion,
+    extensions: { 'yk-pets/biped-motion/v1': namespace },
+  }
+  let first: ReturnType<typeof compileBipedPetMotion> | undefined
+  let second: ReturnType<typeof compileBipedPetMotion> | undefined
+
+  assert.doesNotThrow(() => { first = compileBipedPetMotion(asset) })
+  assert.doesNotThrow(() => { second = compileBipedPetMotion(asset) })
+  assert.equal(first?.status, 'ready')
+  assert.equal(first?.rootMotion.mode, 'in-place')
+  assert.deepEqual(first?.contacts, [])
+  assert.deepEqual(first?.events, [])
+  assert.deepEqual(first?.diagnostics, second?.diagnostics)
+  assert.ok(first?.diagnostics.some(item => item.severity === 'warning' && item.id.includes('access-failed')))
+})
+
+test('补充平面的不同窗口 ID 会产生不同 Root Motion Clip 哈希', () => {
+  const compile = (windowId: string) => compileBipedPetMotion({
+    ...fixtureMotion,
+    extensions: {
+      'yk-pets/biped-motion/v1': {
+        rootMotion: {
+          mode: 'travel',
+          distance: .4,
+          windows: [{ id: windowId, kind: 'travel', startMs: 0, endMs: 1200, weight: 1 }],
+        },
+      },
+    },
+  })
+
+  const first = compile('\u{10000}')
+  const second = compile('\u{10001}')
+
+  assert.notEqual(first.hash, second.hash)
+})
+
+test('无效 Profile 不会遮蔽 Root Motion 警告且 blocked 定义保持深层隔离', () => {
+  const invalidRootMotion = {
+    mode: 'travel',
+    distance: Number.POSITIVE_INFINITY,
+    windows: [{ id: 'reverse', kind: 'travel', startMs: 600, endMs: 100, weight: 1 }],
+  }
+  const asset = {
+    ...fixtureMotion,
+    extensions: { 'yk-pets/biped-motion/v1': { rootMotion: invalidRootMotion } },
+  }
+  const invalidProfile = { ...BIPED_PET_RIG_PROFILE, bones: [] }
+  const normalized = normalizeBipedPetRootMotion(invalidRootMotion, fixtureMotion.durationMs)
+  const first = compileBipedPetMotion(asset, { profile: invalidProfile })
+  const second = compileBipedPetMotion(asset, { profile: invalidProfile })
+
+  assert.equal(first.status, 'blocked')
+  assert.ok(first.diagnostics.some(item => item.severity === 'error' && item.id.startsWith('motion-profile-validation-')))
+  assert.ok(first.diagnostics.some(item => item.severity === 'warning' && item.id.startsWith('root-motion-')))
+  assert.deepEqual(first.diagnostics, second.diagnostics)
+  assert.deepEqual(first.rootMotion, normalized.value)
+  assert.equal(first.rootMotion.mode, 'in-place')
+  assert.notEqual(first.rootMotion, normalized.value)
+  assert.notEqual(first.rootMotion, second.rootMotion)
+  assert.notEqual(first.rootMotion.windows, normalized.value.windows)
+  assert.notEqual(first.rootMotion.windows, second.rootMotion.windows)
+  assert.notEqual(first.rootMotion.vfxTags, normalized.value.vfxTags)
+  assert.notEqual(first.rootMotion.vfxTags, second.rootMotion.vfxTags)
+})

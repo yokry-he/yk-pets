@@ -246,46 +246,127 @@ function stableStringify(value: unknown): string {
 function motionHash(value: unknown) {
   let result = 2166136261
   for (const character of stableStringify(value)) {
-    result ^= character.charCodeAt(0)
+    // `for...of` 已按完整 Unicode 字符迭代；使用 code point 可区分共享高代理的补充平面身份，并保持 ASCII 哈希不变。
+    result ^= character.codePointAt(0)!
     result = Math.imul(result, 16777619)
   }
   return `bpm-${(result >>> 0).toString(16).padStart(8, '0')}`
 }
 
-function readRootMotionDefinition(asset: StudioMotionAssetV2): BipedPetRootMotionNormalizationResult {
+function readBipedMotionExtensionSource(asset: StudioMotionAssetV2): {
+  source?: Record<PropertyKey, unknown>
+  diagnostics: BipedPetMotionDiagnostic[]
+} {
   try {
     const source = asset.extensions?.['yk-pets/biped-motion/v1']
-    if (!source || typeof source !== 'object' || Array.isArray(source)) {
-      return normalizeBipedPetRootMotion(undefined, asset.durationMs)
-    }
-    return normalizeBipedPetRootMotion(Reflect.get(source, 'rootMotion'), asset.durationMs)
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return { diagnostics: [] }
+    return { source: source as Record<PropertyKey, unknown>, diagnostics: [] }
   }
   catch {
     return {
-      value: normalizeBipedPetRootMotion(undefined, asset.durationMs).value,
       diagnostics: [{
-        id: 'root-motion-extension-access-failed',
+        id: 'biped-motion-extension-access-failed',
         severity: 'warning',
-        message: 'Root Motion 扩展无法安全读取，已使用原地回退。',
+        message: '双足萌宠动作扩展命名空间无法安全读取，已忽略该扩展。',
       }],
     }
   }
 }
 
-function readBipedMotionMetadata(asset: StudioMotionAssetV2, profile: CharacterRigProfile) {
+function readExtensionField(
+  source: Record<PropertyKey, unknown>,
+  field: 'rootMotion' | 'contacts' | 'events',
+): { ok: true; value: unknown } | {
+  ok: false
+  diagnostic: BipedPetRootMotionNormalizationResult['diagnostics'][number]
+} {
+  try {
+    return { ok: true, value: Reflect.get(source, field) }
+  }
+  catch {
+    return {
+      ok: false,
+      diagnostic: {
+        id: `biped-motion-${field}-access-failed`,
+        severity: 'warning',
+        message: `双足萌宠动作扩展字段 ${field} 无法安全读取，已忽略该字段。`,
+      },
+    }
+  }
+}
+
+function readExtensionArray(
+  value: unknown,
+  field: 'contacts' | 'events',
+  diagnostics: BipedPetMotionDiagnostic[],
+): unknown[] {
+  try {
+    if (!Array.isArray(value)) return []
+    const length = Reflect.get(value, 'length')
+    if (!Number.isSafeInteger(length) || length < 0) throw new TypeError('invalid extension array length')
+    const items: unknown[] = []
+    for (let index = 0; index < length; index += 1) items.push(Reflect.get(value, index))
+    return items
+  }
+  catch {
+    diagnostics.push({
+      id: `biped-motion-${field}-array-access-failed`,
+      severity: 'warning',
+      message: `双足萌宠动作扩展字段 ${field} 无法安全遍历，已忽略该字段。`,
+    })
+    return []
+  }
+}
+
+function readRootMotionDefinition(
+  asset: StudioMotionAssetV2,
+  source: Record<PropertyKey, unknown> | undefined,
+): BipedPetRootMotionNormalizationResult {
+  if (!source) return normalizeBipedPetRootMotion(undefined, asset.durationMs)
+  const field = readExtensionField(source, 'rootMotion')
+  if (field.ok) return normalizeBipedPetRootMotion(field.value, asset.durationMs)
+  return {
+    value: normalizeBipedPetRootMotion(undefined, asset.durationMs).value,
+    diagnostics: [field.diagnostic],
+  }
+}
+
+function readBipedMotionMetadata(
+  asset: StudioMotionAssetV2,
+  profile: CharacterRigProfile,
+  source: Record<PropertyKey, unknown> | undefined,
+) {
   const diagnostics: BipedPetMotionDiagnostic[] = []
   const contacts: BipedPetMotionContactCandidate[] = []
   const events: BipedPetMotionSemanticEvent[] = []
-  const source = asset.extensions?.['yk-pets/biped-motion/v1']
-  if (!source || typeof source !== 'object' || Array.isArray(source)) return { contacts, events, diagnostics }
-  const record = source as Record<string, unknown>
+  if (!source) return { contacts, events, diagnostics }
+  const contactsField = readExtensionField(source, 'contacts')
+  const eventsField = readExtensionField(source, 'events')
+  if (!contactsField.ok) diagnostics.push(contactsField.diagnostic)
+  if (!eventsField.ok) diagnostics.push(eventsField.diagnostic)
+  const contactItems = contactsField.ok ? readExtensionArray(contactsField.value, 'contacts', diagnostics) : []
+  const eventItems = eventsField.ok ? readExtensionArray(eventsField.value, 'events', diagnostics) : []
   const contactIds = new Set(profile.contacts.map(item => item.id))
-  if (Array.isArray(record.contacts)) for (const [index, item] of record.contacts.entries()) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+  for (const [index, item] of contactItems.entries()) {
+    let value: Record<string, unknown> | undefined
+    try {
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        value = {
+          contactId: Reflect.get(item, 'contactId'),
+          startMs: Reflect.get(item, 'startMs'),
+          endMs: Reflect.get(item, 'endMs'),
+          confidence: Reflect.get(item, 'confidence'),
+        }
+      }
+    }
+    catch {
+      diagnostics.push({ id: `contact-metadata-${index}-access-failed`, severity: 'warning', message: '复杂动作接触候选无法安全读取，已忽略。' })
+      continue
+    }
+    if (!value) {
       diagnostics.push({ id: `invalid-contact-metadata-${index}`, severity: 'warning', message: '复杂动作接触候选不是对象，已忽略。' })
       continue
     }
-    const value = item as Record<string, unknown>
     if (typeof value.contactId !== 'string' || !contactIds.has(value.contactId) || !Number.isFinite(value.startMs) || !Number.isFinite(value.endMs) || !Number.isFinite(value.confidence)) {
       diagnostics.push({ id: `invalid-contact-metadata-${index}`, severity: 'warning', message: '复杂动作接触候选字段无效，已忽略。' })
       continue
@@ -297,12 +378,25 @@ function readBipedMotionMetadata(asset: StudioMotionAssetV2, profile: CharacterR
     contacts.push({ contactId: value.contactId, startMs, endMs, confidence: clamp(Number(value.confidence), 0, 1), fadeIn: true, fadeOut: true })
   }
   const eventKinds = new Set<BipedPetMotionSemanticEvent['kind']>(['takeoff', 'landing', 'wave-peak', 'hit'])
-  if (Array.isArray(record.events)) for (const [index, item] of record.events.entries()) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+  for (const [index, item] of eventItems.entries()) {
+    let value: Record<string, unknown> | undefined
+    try {
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        value = {
+          id: Reflect.get(item, 'id'),
+          kind: Reflect.get(item, 'kind'),
+          timeMs: Reflect.get(item, 'timeMs'),
+        }
+      }
+    }
+    catch {
+      diagnostics.push({ id: `event-metadata-${index}-access-failed`, severity: 'warning', message: '复杂动作语义事件无法安全读取，已忽略。' })
+      continue
+    }
+    if (!value) {
       diagnostics.push({ id: `invalid-event-metadata-${index}`, severity: 'warning', message: '复杂动作语义事件不是对象，已忽略。' })
       continue
     }
-    const value = item as Record<string, unknown>
     if (typeof value.id !== 'string' || !value.id.trim() || !eventKinds.has(value.kind as BipedPetMotionSemanticEvent['kind']) || !Number.isFinite(value.timeMs)) {
       diagnostics.push({ id: `invalid-event-metadata-${index}`, severity: 'warning', message: '复杂动作语义事件字段无效，已忽略。' })
       continue
@@ -358,7 +452,12 @@ function sameQuaternion(left: MotionQuaternion, right: MotionQuaternion) {
   ) > 1 - 1e-12
 }
 
-function blockedMotionClip(asset: StudioMotionAssetV2, profile: CharacterRigProfile, diagnostics: readonly BipedPetMotionDiagnostic[]): BipedPetQuaternionClip {
+function blockedMotionClip(
+  asset: StudioMotionAssetV2,
+  profile: CharacterRigProfile,
+  rootMotion: BipedPetRootMotionDefinition,
+  diagnostics: readonly BipedPetMotionDiagnostic[],
+): BipedPetQuaternionClip {
   const value = {
     schemaVersion: BIPED_PET_QUATERNION_CLIP_SCHEMA_VERSION,
     adapterId: BIPED_PET_MOTION_ADAPTER_ID,
@@ -367,7 +466,11 @@ function blockedMotionClip(asset: StudioMotionAssetV2, profile: CharacterRigProf
     durationMs: asset.durationMs,
     loopMode: asset.loopMode,
     status: 'blocked' as const,
-    rootMotion: normalizeBipedPetRootMotion(undefined, asset.durationMs).value,
+    rootMotion: {
+      ...rootMotion,
+      windows: rootMotion.windows.map(item => ({ ...item })),
+      vfxTags: [...rootMotion.vfxTags],
+    },
     boneTracks: [],
     rootPositionTrack: [],
     contacts: [],
@@ -382,13 +485,26 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
   const normalized = normalizeMotionAsset(input)
   const asset = normalized.asset
   const profile = target.profile ?? BIPED_PET_RIG_PROFILE
+  const diagnostics: BipedPetMotionDiagnostic[] = normalized.diagnostics.map((item, index) => ({
+    id: `motion-normalization-${index}`,
+    severity: 'warning',
+    message: `动作资产已规范化：${item.code}:${item.path}`,
+  }))
+  const extension = readBipedMotionExtensionSource(asset)
+  diagnostics.push(...extension.diagnostics)
+  const rootMotion = readRootMotionDefinition(asset, extension.source)
+  diagnostics.push(...rootMotion.diagnostics)
   const profileDiagnostics = validateRigProfile(profile)
   if (profile.id !== 'biped-pet/v1' || profileDiagnostics.length) {
-    return blockedMotionClip(asset, profile, profileDiagnostics.map((message, index) => ({
+    diagnostics.push(...profileDiagnostics.map((message, index): BipedPetMotionDiagnostic => ({
       id: `motion-profile-validation-${index}`,
       severity: 'error',
       message: `双足萌宠动作 Profile 无法安全编译：${message}`,
     })))
+    const safeRootMotion = rootMotion.value.mode === 'in-place'
+      ? rootMotion.value
+      : normalizeBipedPetRootMotion(undefined, asset.durationMs).value
+    return blockedMotionClip(asset, profile, safeRootMotion, diagnostics)
   }
 
   const times = [...new Set([0, asset.durationMs, ...asset.tracks.flatMap(track => track.keyframes.map(keyframe => keyframe.timeMs))])]
@@ -397,14 +513,7 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
   const rootPositionTrack: BipedPetRootPositionKeyframe[] = []
   // 编译关键帧必须读取原始 0..duration 区间；循环只属于运行时采样，否则 duration 端点会提前回绕到 0。 / Compile the raw 0..duration range; looping belongs to runtime sampling so the duration endpoint does not wrap to zero.
   const evaluationAsset: StudioMotionAssetV2 = asset.loopMode === 'once' ? asset : { ...asset, loopMode: 'once' }
-  const diagnostics: BipedPetMotionDiagnostic[] = normalized.diagnostics.map((item, index) => ({
-    id: `motion-normalization-${index}`,
-    severity: 'warning',
-    message: `动作资产已规范化：${item.code}:${item.path}`,
-  }))
-  const rootMotion = readRootMotionDefinition(asset)
-  diagnostics.push(...rootMotion.diagnostics)
-  const metadata = readBipedMotionMetadata(asset, profile)
+  const metadata = readBipedMotionMetadata(asset, profile, extension.source)
   diagnostics.push(...metadata.diagnostics)
   const hasRootPosition = asset.tracks.some(track => track.channelId.startsWith('root.position.'))
 
@@ -426,7 +535,12 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
       }
     }
   }
-  if (diagnostics.some(item => item.severity === 'error')) return blockedMotionClip(asset, profile, diagnostics)
+  if (diagnostics.some(item => item.severity === 'error')) {
+    const safeRootMotion = rootMotion.value.mode === 'in-place'
+      ? rootMotion.value
+      : normalizeBipedPetRootMotion(undefined, asset.durationMs).value
+    return blockedMotionClip(asset, profile, safeRootMotion, diagnostics)
+  }
 
   const value = {
     schemaVersion: BIPED_PET_QUATERNION_CLIP_SCHEMA_VERSION,
