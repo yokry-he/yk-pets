@@ -52,6 +52,12 @@ function compilationKey(compilation: CompiledCharacterModel) {
   return [compilation.hash, compilation.status, diagnosticsKey(compilation.diagnostics)].join('\u0002')
 }
 
+function diagnosticErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) return '未知错误'
+  const message = error.message.replace(/\s+/g, ' ').trim().slice(0, 240)
+  return message || error.name || '未知错误'
+}
+
 function emitCompilationIfChanged(compilation: CompiledCharacterModel) {
   const next = {
     hash: compilation.hash,
@@ -164,13 +170,17 @@ function createRuntime(recipe: CharacterModelRecipeV1) {
     motionController.value = newController
     compileMotion()
     emitCompilationIfChanged(compilation)
-  } catch {
+  } catch (creationError) {
     // 创建中途失败时先解除响应式引用，再按创建逆序释放；不得让 primitive 继续持有半成品对象。 / On partial creation failure, detach reactive references and release in reverse order so primitive never retains a partial object.
     if (motionController.value === newController) motionController.value = undefined
     if (runtime.value === newRuntime) runtime.value = undefined
     motionClip.value = undefined
-    newController?.dispose()
-    newRuntime?.dispose()
+    const cleanupFailures: string[] = []
+    try { newController?.dispose() }
+    catch (controllerDisposeError) { cleanupFailures.push(`动作控制器释放失败：${diagnosticErrorMessage(controllerDisposeError)}`) }
+    try { newRuntime?.dispose() }
+    catch (runtimeDisposeError) { cleanupFailures.push(`Three 运行时释放失败：${diagnosticErrorMessage(runtimeDisposeError)}`) }
+    const cleanupContext = cleanupFailures.length > 0 ? `；清理上下文：${cleanupFailures.join('；')}` : ''
     // 运行时异常必须转为可恢复诊断，不能让场景组件在更新配方时崩溃。 / Runtime failures become recoverable diagnostics instead of crashing the scene.
     emitCompilationIfChanged({
       ...compilation,
@@ -178,7 +188,7 @@ function createRuntime(recipe: CharacterModelRecipeV1) {
       diagnostics: [...compilation.diagnostics, {
         id: 'three-runtime-create-failure',
         severity: 'error',
-        message: '复杂双足萌宠 Three 运行时创建失败，已安全停止预览。',
+        message: `复杂双足萌宠 Three 运行时创建失败：${diagnosticErrorMessage(creationError)}${cleanupContext}。已安全停止预览。`,
       }],
     })
   }

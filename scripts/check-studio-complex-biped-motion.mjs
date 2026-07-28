@@ -65,16 +65,6 @@ function createRuntimeBody(sourceFile) {
   }
 }
 
-function containsCall(node, name) {
-  let found = false
-  const visit = (child) => {
-    if (ts.isCallExpression(child) && ts.isIdentifier(child.expression) && child.expression.text === name) found = true
-    if (!found) ts.forEachChild(child, visit)
-  }
-  visit(node)
-  return found
-}
-
 function isDirectOptionalDispose(statement, variableName) {
   if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression) || statement.expression.arguments.length !== 0) return false
   const access = statement.expression.expression
@@ -85,7 +75,50 @@ function isDirectOptionalDispose(statement, variableName) {
     && access.questionDotToken !== undefined
 }
 
-function hasAstCleanupOrder(source) {
+function containsAbruptCompletionInCurrentScope(node) {
+  let found = false
+  const visit = (child) => {
+    if (ts.isThrowStatement(child) || ts.isReturnStatement(child) || ts.isBreakStatement(child) || ts.isContinueStatement(child)) { found = true; return }
+    if (child !== node && (ts.isFunctionLike(child) || ts.isClassLike(child))) return
+    if (!found) ts.forEachChild(child, visit)
+  }
+  visit(node)
+  return found
+}
+
+function isDirectRuntimeCreation(statement) {
+  if (!ts.isExpressionStatement(statement) || !ts.isBinaryExpression(statement.expression) || statement.expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return false
+  const assignment = statement.expression
+  return ts.isIdentifier(assignment.left)
+    && assignment.left.text === 'newRuntime'
+    && ts.isCallExpression(assignment.right)
+    && ts.isIdentifier(assignment.right.expression)
+    && assignment.right.expression.text === 'createComplexBipedPetObject'
+}
+
+function isCleanupTry(statement, variableName) {
+  return ts.isTryStatement(statement)
+    && statement.catchClause !== undefined
+    && statement.tryBlock.statements.length === 1
+    && isDirectOptionalDispose(statement.tryBlock.statements[0], variableName)
+    && !containsAbruptCompletionInCurrentScope(statement.catchClause.block)
+}
+
+function isCreateFailureBlockedEmit(statement) {
+  if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) return false
+  const call = statement.expression
+  if (!ts.isIdentifier(call.expression) || call.expression.text !== 'emitCompilationIfChanged' || call.arguments.length !== 1 || !ts.isObjectLiteralExpression(call.arguments[0])) return false
+  const status = call.arguments[0].properties.find(property => ts.isPropertyAssignment(property) && property.name.getText() === 'status')
+  const diagnostics = call.arguments[0].properties.find(property => ts.isPropertyAssignment(property) && property.name.getText() === 'diagnostics')
+  return status !== undefined
+    && ts.isPropertyAssignment(status)
+    && ts.isStringLiteral(status.initializer)
+    && status.initializer.text === 'blocked'
+    && diagnostics !== undefined
+    && diagnostics.getText().includes('three-runtime-create-failure')
+}
+
+function hasAstCreationFailureLifecycle(source) {
   const script = scriptSetupContent(source)
   if (!script) return false
   const sourceFile = ts.createSourceFile('ComplexBipedPetRenderer.ts', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
@@ -94,15 +127,19 @@ function hasAstCleanupOrder(source) {
   if (!body) return false
   const creationTry = body.statements.find(statement => ts.isTryStatement(statement)
     && statement.catchClause
-    && containsCall(statement.tryBlock, 'createComplexBipedPetObject'))
+    && statement.tryBlock.statements.some(isDirectRuntimeCreation))
   if (!creationTry?.catchClause) return false
   const statements = creationTry.catchClause.block.statements
-  const controllerIndex = statements.findIndex(statement => isDirectOptionalDispose(statement, 'newController'))
-  const runtimeIndex = statements.findIndex(statement => isDirectOptionalDispose(statement, 'newRuntime'))
+  const controllerIndex = statements.findIndex(statement => isCleanupTry(statement, 'newController'))
+  const runtimeIndex = statements.findIndex(statement => isCleanupTry(statement, 'newRuntime'))
+  const blockedEmitIndex = statements.findIndex(isCreateFailureBlockedEmit)
   return controllerIndex >= 0
     && runtimeIndex >= 0
+    && blockedEmitIndex >= 0
     && controllerIndex < runtimeIndex
+    && runtimeIndex < blockedEmitIndex
     && statements[controllerIndex].getStart(sourceFile) < statements[runtimeIndex].getStart(sourceFile)
+    && statements[runtimeIndex].getStart(sourceFile) < statements[blockedEmitIndex].getStart(sourceFile)
 }
 
 function functionBody(source, name) {
@@ -133,7 +170,7 @@ function rendererLifecycleFailures(source) {
   if (!/if\s*\(\s*!props\.motionAsset\s*\)[\s\S]*?motionClip\.value\s*=\s*undefined[\s\S]*?controller\.reset\(\)/.test(compileBody)) issues.push('无动作分支必须清 clip 并恢复绑定姿态')
   if (!/compiledClip\.status\s*!==\s*['"]ready['"][\s\S]*?motionClip\.value\s*=\s*undefined[\s\S]*?controller\.reset\(\)/.test(compileBody)) issues.push('阻塞动作分支必须清 clip 并恢复绑定姿态')
   if (!/catch[\s\S]*?motionClip\.value\s*=\s*undefined[\s\S]*?controller\.reset\(\)/.test(compileBody)) issues.push('动作编译异常必须清 clip 并恢复绑定姿态')
-  if (!hasAstCleanupOrder(source)) issues.push('运行时创建失败必须按 controller、runtime 逆序释放局部资源')
+  if (!hasAstCreationFailureLifecycle(source)) issues.push('运行时创建失败必须按 controller、runtime 逆序释放局部资源并发出阻塞诊断')
   if (!/disposeRuntime\(\)[\s\S]*?createComplexBipedPetObject/.test(createBody)) issues.push('重建模型前必须释放旧 controller 与 runtime')
   if (/createComplexBipedPetObject|createComplexBipedMotionController/.test(applyBody)) issues.push('时间采样路径禁止重建 runtime 或 controller')
   if (!/onBeforeUnmount\s*\(\s*\(\)\s*=>\s*\{[\s\S]*?disposeRuntime\(\)/.test(code)) issues.push('卸载时必须释放复杂运行时')
@@ -157,7 +194,7 @@ function hasExclusiveRendererBranches(source) {
 const lifecycleFixture = renderer.replace(/createComplexBipedMotionController\s*\(\s*runtime\.value\s*\)/, 'createComplexBipedMotionController(runtime.value, compilation)')
 expect(rendererLifecycleFailures(`/* createComplexBipedMotionController(runtime.value, compilation) */\n${lifecycleFixture.replace('createComplexBipedMotionController(runtime.value, compilation)', 'createComplexBipedMotionController(runtime.value)')}`).includes('控制器必须消费创建当前 runtime 的同一局部 compilation'), '门禁自身必须拒绝仅靠注释伪造 compilation 接线')
 expect(rendererLifecycleFailures(lifecycleFixture.replace(/controller\.reset\(\)\s*try\s*\{\s*const compiledClip/, 'try { const compiledClip')).includes('动作编译替换 clip 前必须先 reset'), '门禁自身必须拒绝替换 clip 后才 reset')
-const cleanupFailure = '运行时创建失败必须按 controller、runtime 逆序释放局部资源'
+const cleanupFailure = '运行时创建失败必须按 controller、runtime 逆序释放局部资源并发出阻塞诊断'
 const replaceDirectCleanup = replacement => renderer
   .replace('newController?.dispose()', replacement)
   .replace('newRuntime?.dispose()', '')
@@ -182,7 +219,22 @@ const cleanupReversedFixture = renderer
   .replace('newRuntime?.dispose()', 'newController?.dispose()')
   .replace('__controller_dispose__', 'newRuntime?.dispose()')
 expect(rendererLifecycleFailures(cleanupReversedFixture).includes(cleanupFailure), '门禁自身必须拒绝 controller/runtime 释放顺序反转')
-expect(!rendererLifecycleFailures(renderer).includes(cleanupFailure), '门禁自身必须接受创建异常 catch 中的顶层直接释放调用')
+const cleanupRethrowFixture = renderer.replace(/catch \(controllerDisposeError\) \{ cleanupFailures\.push\([^\n]+\) \}/, 'catch (controllerDisposeError) { throw controllerDisposeError }')
+expect(rendererLifecycleFailures(cleanupRethrowFixture).includes(cleanupFailure), '门禁自身必须拒绝 controller 清理异常从 catch 重新抛出')
+const fakeNestedCreationFixture = renderer
+  .replace(/    try \{ newController\?\.dispose\(\) \}\n    catch \(controllerDisposeError\) \{[^\n]+\}\n/, '')
+  .replace(/    try \{ newRuntime\?\.dispose\(\) \}\n    catch \(runtimeDisposeError\) \{[^\n]+\}\n/, '')
+  .replace('  try {\n    newRuntime = createComplexBipedPetObject', `  try {
+    const fake = () => createComplexBipedPetObject(compilation, normalizedRecipe.material)
+  } catch {
+    try { newController?.dispose() } catch {}
+    try { newRuntime?.dispose() } catch {}
+    emitCompilationIfChanged({ status: 'blocked', diagnostics: [{ id: 'three-runtime-create-failure' }] })
+  }
+  try {
+    newRuntime = createComplexBipedPetObject`)
+expect(rendererLifecycleFailures(fakeNestedCreationFixture).includes(cleanupFailure), '门禁自身禁止把嵌套函数中的伪创建 try 误认成真实 runtime 创建路径')
+expect(!rendererLifecycleFailures(renderer).includes(cleanupFailure), '门禁自身必须接受创建异常 catch 中按序且独立吞并异常的清理 try')
 const commentedExclusiveFixture = `<template>
   <ComplexBipedPetRenderer />
   <ProceduralPet />

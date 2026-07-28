@@ -110,6 +110,7 @@
     "bipedPetComplexMotionRendererLifecycleComplete": true,
     "bipedPetComplexMotionProductionWiringComplete": true,
     "bipedPetComplexMotionAstCleanupGateComplete": true,
+    "bipedPetComplexMotionCreateFailureCleanupComplete": true,
     "bipedPetRootMotionComplete": false,
     "bipedPetMotionVfxComplete": false,
     "crossBrowserGpuManualAcceptanceComplete": false
@@ -214,7 +215,8 @@
     "biped-pet-deterministic-contact-phases",
     "biped-pet-basic-motion-contact-data",
     "biped-pet-complex-motion-renderer-lifecycle",
-    "biped-pet-complex-motion-ast-cleanup-gate"
+    "biped-pet-complex-motion-ast-cleanup-gate",
+    "biped-pet-complex-motion-create-failure-cleanup"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
