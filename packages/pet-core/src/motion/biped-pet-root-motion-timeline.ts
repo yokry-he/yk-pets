@@ -87,17 +87,6 @@ function normalizedCompositeHeight(
   return weightedHeight / totalScaledWeight
 }
 
-export function normalizedBipedPetCompositeBallisticHeight(
-  windows: readonly BipedPetBallisticTimelineWindow[],
-  timeMs: number,
-): number {
-  const maximumWeight = windows.reduce((maximum, window) => Math.max(maximum, window.weight), 0)
-  const totalScaledWeight = maximumWeight > 0
-    ? windows.reduce((total, window) => total + window.weight / maximumWeight, 0)
-    : 0
-  return normalizedCompositeHeight(windows, maximumWeight, totalScaledWeight, timeMs)
-}
-
 function maximumNormalizedCompositeHeight(
   windows: readonly BipedPetBallisticTimelineWindow[],
   maximumWeight: number,
@@ -332,6 +321,21 @@ export function classifyBipedPetBallisticResolvedRange(
     if (evidence === 'unknown' || evidence === undefined) unknown = true
   }
   return unknown ? 'unknown' : 'grounded'
+}
+
+/**
+ * 读取 canonical 边界某一侧紧邻区域的既有证据；越出 once 时间轴的区域按 grounded 处理。
+ * 该查询不执行新采样、不消耗额外 work unit，loop/ping-pong 的 seam 映射由事件调用方明确提供。
+ */
+export function classifyBipedPetBallisticResolvedBoundarySide(
+  analysis: BipedPetBallisticTimelineAnalysis,
+  boundaryMs: number,
+  direction: -1 | 1,
+): BipedPetBallisticTimelineEvidence {
+  const boundaryIndex = analysis.boundaries.indexOf(boundaryMs)
+  if (boundaryIndex < 0) return 'unknown'
+  const regionIndex = direction === -1 ? boundaryIndex - 1 : boundaryIndex
+  return analysis.regions[regionIndex]?.evidence ?? 'grounded'
 }
 
 export function classifyBipedPetBallisticRequestedRange(

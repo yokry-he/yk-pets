@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "lastReviewedDate": "2026-07-28",
+  "lastReviewedDate": "2026-07-29",
   "repository": "yokry-he/yk-pets",
   "developmentBranch": "agent/cloud-fox-studio-v0610",
   "pullRequest": 7,
@@ -235,7 +235,8 @@
     "biped-pet-hybrid-root-motion-vfx-design",
     "biped-pet-hybrid-root-motion-vfx-plan",
     "biped-pet-root-motion-solver",
-    "biped-pet-root-motion-shared-ballistic-timeline"
+    "biped-pet-root-motion-shared-ballistic-timeline",
+    "biped-pet-root-motion-action-aware-boundaries"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -260,6 +261,7 @@
     "visualCasesModified": false,
     "ballisticTimelineWorkBudget": 512,
     "ballisticTimelineUnknownPolicy": "preserve-authorization",
+    "ballisticTouchdownEvidencePolicy": "adjacent-region-airborne-to-grounded",
     "automatedCoverage": [
       "corepack pnpm --filter @yk-pets/pet-core test",
       "corepack pnpm --filter @yk-pets/pet-core typecheck",

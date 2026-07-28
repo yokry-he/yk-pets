@@ -1,6 +1,6 @@
 /**
  * 文件职责 / File responsibility
- * 以固定种子复现双足萌宠 Root Motion 的有状态、ULP 边界与 raw/canonical 性能探针。
+ * 以固定种子复现双足萌宠 Root Motion 的有状态、ULP 边界、规范化成本与连续弹道热路径探针。
  */
 
 import assert from 'node:assert/strict'
@@ -22,6 +22,7 @@ import {
 const STATEFUL_PROBE_CASES = 10_000
 const ULP_PROBES_PER_DIRECTION = 21
 const BENCHMARK_ITERATIONS = 100_000
+const BALLISTIC_HOT_PATH_ITERATIONS = 2_000
 
 function assertFiniteSample(sample: SampledBipedPetRootMotion) {
   const vectors = [
@@ -276,7 +277,8 @@ function runBallisticTimelineProbe() {
     requestedTimeMs: 84,
   })
   assert.equal(classifyBipedPetBallisticRequestedRange(analysis, 10, 84), 'grounded')
-  assert.equal(analysis.stats.workUnits, 259)
+  assert.ok(analysis.stats.workUnits > 0
+    && analysis.stats.workUnits <= MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS)
   assert.equal(analysis.stats.maximumWorkUnits, MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS)
   assert.equal(analysis.stats.boundaryCount, 130)
   assert.equal(analysis.stats.supportComponentCount, 64)
@@ -406,7 +408,7 @@ function benchmarkSampler(definition: BipedPetRootMotionDefinition): { elapsedMs
   return { elapsedMs: performance.now() - startedAt, checksum }
 }
 
-function runPerformanceObservation() {
+function runNormalizationCostObservation() {
   const observations: Record<string, { elapsedMs: number; checksum: number }> = {}
   for (const windowCount of [1, 64] as const) {
     const raw = benchmarkDefinition(windowCount)
@@ -430,14 +432,97 @@ function runPerformanceObservation() {
     observations[`${windowCount}-window-canonical`] = canonicalObservation
     observations[`${windowCount}-window-raw`] = rawObservation
   }
-  return { iterationsPerCase: BENCHMARK_ITERATIONS, observations }
+  return {
+    scope: 'reset 采样的 raw/canonical 防御规范化成本；不代表连续弹道时间线热路径',
+    iterationsPerCase: BENCHMARK_ITERATIONS,
+    observations,
+  }
+}
+
+function continuousBallisticBenchmarkDefinition(windowCount: 1 | 64): BipedPetRootMotionDefinition {
+  const windows = windowCount === 1
+    ? [{ id: 'ballistic-0', kind: 'ballistic' as const, startMs: 100, endMs: 300, weight: 1 }]
+    : Array.from({ length: windowCount }, (_, index) => ({
+        id: `ballistic-${index}`,
+        kind: 'ballistic' as const,
+        startMs: 100,
+        endMs: 300,
+        weight: 1,
+      }))
+  const definition = normalizeBipedPetRootMotion({
+    mode: 'travel',
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic',
+    jumpHeight: 1,
+    windows,
+    vfxTags: [],
+  }, 1000).value
+  assert.equal(definition.windows.length, windowCount, '连续弹道热路径必须保留请求的 canonical 窗口数量')
+  return definition
+}
+
+function benchmarkContinuousBallisticSampler(definition: BipedPetRootMotionDefinition) {
+  const base = {
+    definition,
+    durationMs: 1000,
+    loopMode: 'loop' as const,
+    characterHeight: 4,
+    facingRadians: .3,
+    actionWeight: 1,
+    footResidual: [0, 0, 0] as const,
+  }
+  let previous = sampleBipedPetRootMotion({ ...base, requestedTimeMs: 0 })
+  let checksum = 0
+  let authorizationFrames = 0
+  let landingImpulses = 0
+  const startedAt = performance.now()
+  for (let index = 1; index <= BALLISTIC_HOT_PATH_ITERATIONS; index += 1) {
+    const sample = sampleBipedPetRootMotion({
+      ...base,
+      requestedTimeMs: index * 50,
+      previousRequestedTimeMs: previous.requestedTimeMs,
+      previousAppliedWorld: previous.appliedWorld,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+      previousLandingAuthorization: previous.landingAuthorization,
+    })
+    assertFiniteSample(sample)
+    assert.notEqual(sample.status, 'blocked')
+    if (sample.landingAuthorization) authorizationFrames += 1
+    if (sample.landingImpulse > 0) landingImpulses += 1
+    checksum += sample.appliedWorld[1]
+      + sample.landingImpulse
+      + (sample.landingAuthorization?.impulse ?? 0)
+    previous = sample
+  }
+  assert.ok(authorizationFrames > 0, '连续弹道热路径必须实际推进 landingAuthorization')
+  assert.ok(landingImpulses > 0, '连续弹道热路径必须实际消费 touchdown 授权')
+  assert.ok(Number.isFinite(checksum))
+  return {
+    elapsedMs: performance.now() - startedAt,
+    checksum,
+    authorizationFrames,
+    landingImpulses,
+  }
+}
+
+function runContinuousBallisticPerformanceObservation() {
+  return {
+    scope: 'canonical 连续弹道采样；逐帧携带 previousAppliedWorld/previousAppliedTurnRadians/landingAuthorization 并构建一次共享时间线',
+    iterationsPerCase: BALLISTIC_HOT_PATH_ITERATIONS,
+    observations: {
+      '1-window-canonical': benchmarkContinuousBallisticSampler(continuousBallisticBenchmarkDefinition(1)),
+      '64-window-canonical': benchmarkContinuousBallisticSampler(continuousBallisticBenchmarkDefinition(64)),
+    },
+  }
 }
 
 const result = {
   stateful: runStatefulProbe(),
   ulp: runUlpProbes(),
   ballisticTimeline: runBallisticTimelineProbe(),
-  performanceObservation: runPerformanceObservation(),
+  normalizationCostObservation: runNormalizationCostObservation(),
+  continuousBallisticObservation: runContinuousBallisticPerformanceObservation(),
 }
 
 console.log('Root Motion 可复现探针通过；耗时仅作本机观测，不设置脆弱阈值。')

@@ -8,8 +8,7 @@ import {
   BIPED_PET_ROOT_MOTION_SIGNAL_EPSILON,
   analyzeBipedPetBallisticTimeline,
   classifyBipedPetBallisticRequestedRange,
-  classifyBipedPetBallisticResolvedRange,
-  normalizedBipedPetCompositeBallisticHeight,
+  classifyBipedPetBallisticResolvedBoundarySide,
   type BipedPetBallisticTimelineAnalysis,
 } from './biped-pet-root-motion-timeline'
 
@@ -735,77 +734,20 @@ interface BallisticTouchdownCandidate {
   readonly weight: number
 }
 
-const effectiveBallisticWindowCache = new WeakMap<BipedPetRootMotionDefinition, readonly BipedPetRootMotionWindow[]>()
+const ballisticWindowCache = new WeakMap<BipedPetRootMotionDefinition, readonly BipedPetRootMotionWindow[]>()
 const ballisticTouchdownCandidateCache = new WeakMap<BipedPetRootMotionDefinition, {
   readonly forward: readonly BallisticTouchdownCandidate[]
   readonly reverse: readonly BallisticTouchdownCandidate[]
   readonly totalWeight: number
 }>()
 
-function effectiveBallisticWindows(definition: BipedPetRootMotionDefinition): readonly BipedPetRootMotionWindow[] {
-  const cached = effectiveBallisticWindowCache.get(definition)
+function ballisticWindows(definition: BipedPetRootMotionDefinition): readonly BipedPetRootMotionWindow[] {
+  const cached = ballisticWindowCache.get(definition)
   if (cached) return cached
-  let maximumWeight = 0
-  for (const window of definition.windows) {
-    if (window.kind === 'ballistic') maximumWeight = Math.max(maximumWeight, window.weight)
-  }
-  if (maximumWeight === 0) {
-    const empty = Object.freeze([]) as readonly BipedPetRootMotionWindow[]
-    effectiveBallisticWindowCache.set(definition, empty)
-    return empty
-  }
-  // 与 grounded 稳定零阈值使用同一尺度，避免数值上已接地的极小尾窗延后并放大 touchdown。
-  const windows = Object.freeze(definition.windows.filter(window => (
-    window.kind === 'ballistic' && window.weight / maximumWeight > ROOT_MOTION_SIGNAL_EPSILON
-  )))
-  effectiveBallisticWindowCache.set(definition, windows)
+  // 候选枚举与 action 强度无关；所有合法 ballistic 窗都进入共享时间线，是否形成事件只由本帧证据决定。
+  const windows = Object.freeze(definition.windows.filter(window => window.kind === 'ballistic'))
+  ballisticWindowCache.set(definition, windows)
   return windows
-}
-
-function isCompositeTouchdownBoundary(
-  windows: readonly BipedPetRootMotionWindow[],
-  boundaryMs: number,
-  direction: 1 | -1,
-): boolean {
-  // 精确相邻窗口按连续支撑处理；只有严格正 gap 才形成新的 touchdown。 / Exact adjacency stays continuous; only a positive gap creates a touchdown.
-  const hasAdjacentContinuation = direction === 1
-    ? windows.some(window => window.startMs === boundaryMs)
-    : windows.some(window => window.endMs === boundaryMs)
-  if (hasAdjacentContinuation) return false
-
-  const endingContributors = windows.filter(window => (
-    direction === 1 ? window.endMs === boundaryMs : window.startMs === boundaryMs
-  ))
-  const continuingWindows = windows.filter(window => window.startMs < boundaryMs && window.endMs > boundaryMs)
-  // 同终点微型窗不得缩小长主窗的 before probe；任一真实结束贡献都可证明前侧仍在空中。 / Probe each ending contributor independently so a tiny peer cannot hide a real landing.
-  const airborneBefore = endingContributors.some(window => {
-    const physicalInsideEndMs = direction === 1 ? window.startMs : window.endMs
-    const maximumProbeMs = Math.abs(boundaryMs - physicalInsideEndMs) * .5
-    const preferredProbeMs = Math.min(1, (window.endMs - window.startMs) * .01, maximumProbeMs)
-    let sampleTimeMs = boundaryMs - direction * preferredProbeMs
-    if (!(sampleTimeMs > window.startMs && sampleTimeMs < window.endMs)) {
-      sampleTimeMs = window.startMs + (window.endMs - window.startMs) * .5
-    }
-    return sampleTimeMs > window.startMs && sampleTimeMs < window.endMs
-      && normalizedBipedPetCompositeBallisticHeight(windows, sampleTimeMs) > ROOT_MOTION_SIGNAL_EPSILON
-  })
-  if (!airborneBefore) return false
-
-  // after 侧逐窗取可表示的内部点；不跨过正 gap，也不让其他极短窗改变探针。 / Probe each continuing window at its own representable interior point without crossing a positive gap.
-  const airborneAfter = continuingWindows.some(window => {
-    const physicalEndMs = direction === 1 ? window.endMs : window.startMs
-    const maximumProbeMs = Math.abs(physicalEndMs - boundaryMs) * .5
-    const preferredProbeMs = Math.min(1, (window.endMs - window.startMs) * .01, maximumProbeMs)
-    let sampleTimeMs = boundaryMs + direction * preferredProbeMs
-    if (!(direction === 1 ? sampleTimeMs > boundaryMs && sampleTimeMs < physicalEndMs : sampleTimeMs < boundaryMs && sampleTimeMs > physicalEndMs)) {
-      sampleTimeMs = boundaryMs + (physicalEndMs - boundaryMs) * .5
-    }
-    const isInterior = direction === 1
-      ? sampleTimeMs > boundaryMs && sampleTimeMs < physicalEndMs
-      : sampleTimeMs < boundaryMs && sampleTimeMs > physicalEndMs
-    return isInterior && normalizedBipedPetCompositeBallisticHeight(windows, sampleTimeMs) > ROOT_MOTION_SIGNAL_EPSILON
-  })
-  return !airborneAfter
 }
 
 function ballisticTouchdownCandidates(definition: BipedPetRootMotionDefinition): {
@@ -815,7 +757,7 @@ function ballisticTouchdownCandidates(definition: BipedPetRootMotionDefinition):
 } {
   const cached = ballisticTouchdownCandidateCache.get(definition)
   if (cached) return cached
-  const windows = effectiveBallisticWindows(definition)
+  const windows = ballisticWindows(definition)
   const totalWeight = windows.reduce((sum, window) => sum + window.weight, 0)
   const forwardWeights = new Map<number, number>()
   const reverseWeights = new Map<number, number>()
@@ -823,15 +765,14 @@ function ballisticTouchdownCandidates(definition: BipedPetRootMotionDefinition):
     forwardWeights.set(window.endMs, (forwardWeights.get(window.endMs) ?? 0) + window.weight)
     reverseWeights.set(window.startMs, (reverseWeights.get(window.startMs) ?? 0) + window.weight)
   }
-  const candidates = (weights: ReadonlyMap<number, number>, direction: 1 | -1) => Object.freeze(
+  const candidates = (weights: ReadonlyMap<number, number>) => Object.freeze(
     [...weights]
       .map(([boundaryMs, weight]) => Object.freeze({ boundaryMs, weight }))
-      .filter(candidate => isCompositeTouchdownBoundary(windows, candidate.boundaryMs, direction))
       .sort((left, right) => left.boundaryMs - right.boundaryMs),
   )
   const result = Object.freeze({
-    forward: candidates(forwardWeights, 1),
-    reverse: candidates(reverseWeights, -1),
+    forward: candidates(forwardWeights),
+    reverse: candidates(reverseWeights),
     totalWeight,
   })
   ballisticTouchdownCandidateCache.set(definition, result)
@@ -849,13 +790,13 @@ function ballisticHeight(
 
   let weightedHeight = 0
   let totalWeight = 0
-  const ballisticWindows = effectiveBallisticWindows(definition)
+  const windows = ballisticWindows(definition)
   let maximumWeight = 0
-  for (const window of ballisticWindows) {
+  for (const window of windows) {
     maximumWeight = Math.max(maximumWeight, window.weight)
   }
   if (maximumWeight === 0) return 0
-  for (const window of ballisticWindows) {
+  for (const window of windows) {
     const scaledWeight = window.weight / maximumWeight
     const linearProgress = clamp((timeMs - window.startMs) / (window.endMs - window.startMs), 0, 1)
     const shapedProgress = smoothstep(linearProgress)
@@ -1063,22 +1004,29 @@ function touchdownCandidateIsQualified(
   analysis: BipedPetBallisticTimelineAnalysis,
   candidate: BallisticTouchdownCandidate,
   reverse: boolean,
-  candidates: readonly BallisticTouchdownCandidate[],
 ): boolean {
-  const index = candidates.indexOf(candidate)
-  if (index < 0) return false
-  // 每个候选只检查上一个 touchdown 后属于自己的支撑段，避免后置微尾窗借用主窗的 airborne 峰值取得授权。
-  const firstBoundaryMs = reverse
-    ? candidate.boundaryMs
-    : (candidates[index - 1]?.boundaryMs ?? 0)
-  const secondBoundaryMs = reverse
-    ? (candidates[index + 1]?.boundaryMs ?? input.durationMs)
-    : candidate.boundaryMs
-  return classifyBipedPetBallisticResolvedRange(
+  const incomingDirection: -1 | 1 = reverse ? -1 : 1
+  const before = classifyBipedPetBallisticResolvedBoundarySide(
     analysis,
-    firstBoundaryMs,
-    secondBoundaryMs,
-  ) === 'airborne'
+    candidate.boundaryMs,
+    incomingDirection === 1 ? -1 : 1,
+  )
+
+  let afterBoundaryMs = candidate.boundaryMs
+  let outgoingDirection = incomingDirection
+  if (candidate.boundaryMs === input.durationMs && incomingDirection === 1) {
+    if (input.loopMode === 'loop') afterBoundaryMs = 0
+    else if (input.loopMode === 'ping-pong') outgoingDirection = -1
+  }
+  else if (candidate.boundaryMs === 0 && incomingDirection === -1 && input.loopMode === 'ping-pong') {
+    outgoingDirection = 1
+  }
+  const after = classifyBipedPetBallisticResolvedBoundarySide(
+    analysis,
+    afterBoundaryMs,
+    outgoingDirection,
+  )
+  return before === 'airborne' && after === 'grounded'
 }
 
 function requestedRangeHasProvenTargetAirborne(
@@ -1112,10 +1060,9 @@ function qualifiedTouchdownEventsInRange(
     transitionTimeMs: number,
     candidate: BallisticTouchdownCandidate,
     reverse: boolean,
-    candidates: readonly BallisticTouchdownCandidate[],
   ) => {
     if (!(transitionTimeMs > previousRequestedTimeMs && transitionTimeMs <= input.requestedTimeMs)
-      || !touchdownCandidateIsQualified(input, analysis, candidate, reverse, candidates)) return
+      || !touchdownCandidateIsQualified(input, analysis, candidate, reverse)) return
     const impulse = stableSignal(
       input.definition.jumpHeight * input.actionWeight * candidate.weight / candidateSet.totalWeight,
     )
@@ -1128,7 +1075,7 @@ function qualifiedTouchdownEventsInRange(
 
   if (input.loopMode === 'once') {
     for (const candidate of candidateSet.forward) {
-      considerCandidate(candidate.boundaryMs, candidate, false, candidateSet.forward)
+      considerCandidate(candidate.boundaryMs, candidate, false)
     }
   }
   else {
@@ -1149,7 +1096,7 @@ function qualifiedTouchdownEventsInRange(
         const transitionTimeMs = reverse
           ? segmentStartMs + input.durationMs - candidate.boundaryMs
           : segmentStartMs + candidate.boundaryMs
-        considerCandidate(transitionTimeMs, candidate, reverse, candidates)
+        considerCandidate(transitionTimeMs, candidate, reverse)
       }
     }
   }
@@ -1165,7 +1112,7 @@ function qualifiedTakeoffEventsInRange(
 ): readonly QualifiedTakeoffEvent[] {
   if (input.definition.mode !== 'travel' || input.definition.verticalMode !== 'ballistic'
     || input.definition.jumpHeight <= 0 || input.actionWeight <= 0 || input.requestedTimeMs < 0) return []
-  const windows = effectiveBallisticWindows(input.definition)
+  const windows = ballisticWindows(input.definition)
   const events: QualifiedTakeoffEvent[] = []
   const considerWindow = (transitionTimeMs: number, resolvedBoundaryMs: number) => {
     if (!(transitionTimeMs > previousRequestedTimeMs && transitionTimeMs <= input.requestedTimeMs)
@@ -1231,7 +1178,7 @@ function advanceLandingAuthorization(
   previousRequestedTimeMs: number,
 ): BipedPetLandingAuthorization | undefined {
   const analysis = analyzeBipedPetBallisticTimeline({
-    windows: effectiveBallisticWindows(input.definition),
+    windows: ballisticWindows(input.definition),
     durationMs: input.durationMs,
     loopMode: input.loopMode,
     jumpHeight: input.definition.jumpHeight,

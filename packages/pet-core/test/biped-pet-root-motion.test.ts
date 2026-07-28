@@ -1093,7 +1093,8 @@ test('ballistic 窗口给出连续高度、确定阶段与单次落地冲量', (
   assert.equal(reversePeak.phase, 'airborne')
   assert.equal(reverseLanding.phase, 'landing')
   assert.ok(reverseLanding.deltaLocal[1] < 0)
-  assert.ok(reverseTouchdown.landingImpulse > 0)
+  assert.equal(reverseTouchdown.landingImpulse, 0, 'ping-pong 在 0ms 转折后沿同一窗继续腾空，不得伪造瞬时 touchdown')
+  assert.equal(reverseTouchdown.landingAuthorization, undefined)
 })
 
 test('角色高度、权重、朝向和转向按绝对目标确定缩放', () => {
@@ -1458,7 +1459,7 @@ test('超大有限绝对时间的水平支撑扫描保持有界且不会整数�
   assert.equal(sample.status, 'clamped')
 })
 
-test('target 在窗口内部重新腾空会清除尚未消费的旧 touchdown 授权', () => {
+test('target 在新窗口重新腾空会清除旧授权并只为自身 touchdown 重签', () => {
   const input = {
     ...travelSampleInput,
     definition: {
@@ -1469,7 +1470,7 @@ test('target 在窗口内部重新腾空会清除尚未消费的旧 touchdown �
       jumpHeight: .8,
       windows: [
         { id: 'main', kind: 'ballistic' as const, startMs: 100, endMs: 900, weight: 1 },
-        { id: 'epsilon-tail', kind: 'ballistic' as const, startMs: 899, endMs: 1000, weight: 2e-12 },
+        { id: 'epsilon-tail', kind: 'ballistic' as const, startMs: 901, endMs: 1000, weight: 2e-12 },
       ],
       vfxTags: [] as const,
     },
@@ -1478,6 +1479,7 @@ test('target 在窗口内部重新腾空会清除尚未消费的旧 touchdown �
     characterHeight: 4,
   }
   let previous = sampleRootMotion({ ...input, requestedTimeMs: 500 })
+  let tailAuthorizationImpulse = 0
   for (const requestedTimeMs of [900, 950, 1000, 1050]) {
     previous = sampleRootMotion({
       ...input,
@@ -1487,10 +1489,21 @@ test('target 在窗口内部重新腾空会清除尚未消费的旧 touchdown �
       previousLandingAuthorization: previous.landingAuthorization,
       requestedTimeMs,
     })
-    if (requestedTimeMs === 950) assert.ok(previous.cumulativeWorld[1] > 4e-12, 'epsilon tail 应在窗内形成真实 target takeoff')
+    if (requestedTimeMs === 900) {
+      assert.equal(previous.landingAuthorization?.touchdownRequestedTimeMs, 900, '正 gap 后主窗 touchdown 必须先签发授权')
+    }
+    if (requestedTimeMs === 950) {
+      assert.ok(previous.cumulativeWorld[1] > 4e-12, 'epsilon tail 应在窗内形成真实 target takeoff')
+      assert.equal(previous.landingAuthorization, undefined, '真实 target takeoff 必须清除 900ms 的旧授权')
+    }
+    if (requestedTimeMs === 1000) {
+      assert.equal(previous.landingAuthorization?.touchdownRequestedTimeMs, 1000, '微窗只在自己的 proven airborne→grounded 边界重签')
+      tailAuthorizationImpulse = previous.landingAuthorization?.impulse ?? 0
+    }
   }
   assert.equal(previous.phase, 'grounded')
-  assert.equal(previous.landingImpulse, 0, '窗内 target takeoff 必须清除 900ms 的旧 touchdown 授权')
+  assert.ok(tailAuthorizationImpulse > 0 && tailAuthorizationImpulse < 1e-10)
+  assert.equal(previous.landingImpulse, tailAuthorizationImpulse, 'applied 落地只能消费微窗自身的新授权')
 })
 
 test('低强度微窗未越过实际世界接地阈值时不会误清 touchdown 授权', () => {
@@ -2602,6 +2615,175 @@ test('ballistic touchdown 边界探针区分重叠、精确相邻与极窄正 ga
     reverseChasePreviousTimeMs = requestedTimeMs
   }
   assert.ok(reverseLanding.landingImpulse > 0, 'ping-pong 反向 ULP 级落地使用同一可表示内点语义')
+})
+
+test('action-aware 时间线按相邻与重叠窗的真实强度判定正向 touchdown', () => {
+  const landingAtMainEnd = (
+    loopMode: 'once' | 'loop' | 'ping-pong',
+    continuationStartMs: number,
+    continuationWeight: number,
+  ) => {
+    const definition = {
+      mode: 'travel' as const,
+      distance: 0,
+      turnRadians: 0,
+      verticalMode: 'ballistic' as const,
+      jumpHeight: 1,
+      windows: [
+        { id: 'main', kind: 'ballistic' as const, startMs: 0, endMs: 10, weight: 1 },
+        { id: 'continuation', kind: 'ballistic' as const, startMs: continuationStartMs, endMs: 20, weight: continuationWeight },
+      ],
+      vfxTags: [] as const,
+    }
+    const base = {
+      ...travelSampleInput,
+      definition,
+      durationMs: 100,
+      loopMode,
+      characterHeight: 4,
+      actionWeight: 1e-4,
+    }
+    const previous = sampleRootMotion({ ...base, requestedTimeMs: 5, previousRequestedTimeMs: undefined })
+    return sampleRootMotion({
+      ...base,
+      requestedTimeMs: 10,
+      previousRequestedTimeMs: 5,
+      previousAppliedWorld: previous.appliedWorld,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+
+  for (const loopMode of ['once', 'loop', 'ping-pong'] as const) {
+    for (const continuationStartMs of [10, 9] as const) {
+      const low = landingAtMainEnd(loopMode, continuationStartMs, 7.5e-9)
+      assert.equal(low.phase, 'grounded')
+      assert.ok(low.landingImpulse > 0, `${loopMode} 的低强度 ${continuationStartMs === 10 ? '相邻' : '重叠'}窗不得遮蔽主窗落地`)
+
+      const high = landingAtMainEnd(loopMode, continuationStartMs, 1)
+      assert.equal(high.landingImpulse, 0, `${loopMode} 的高强度 ${continuationStartMs === 10 ? '相邻' : '重叠'}窗仍是连续腾空`)
+      assert.equal(high.landingAuthorization, undefined)
+    }
+  }
+
+  const sameEndDefinition = {
+    mode: 'travel' as const,
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic' as const,
+    jumpHeight: 1,
+    windows: [
+      { id: 'main', kind: 'ballistic' as const, startMs: 0, endMs: 10, weight: 1 },
+      { id: 'same-end', kind: 'ballistic' as const, startMs: 5, endMs: 10, weight: 7.5e-9 },
+    ],
+    vfxTags: [] as const,
+  }
+  const sameEndPrevious = sampleRootMotion({
+    ...travelSampleInput,
+    definition: sameEndDefinition,
+    durationMs: 100,
+    loopMode: 'once',
+    characterHeight: 4,
+    actionWeight: 1e-4,
+    requestedTimeMs: 5,
+    previousRequestedTimeMs: undefined,
+  })
+  const sameEndLanding = sampleRootMotion({
+    ...travelSampleInput,
+    definition: sameEndDefinition,
+    durationMs: 100,
+    loopMode: 'once',
+    characterHeight: 4,
+    actionWeight: 1e-4,
+    requestedTimeMs: 10,
+    previousRequestedTimeMs: 5,
+    previousAppliedWorld: sameEndPrevious.appliedWorld,
+    previousAppliedTurnRadians: sameEndPrevious.appliedTurnRadians,
+  })
+  assert.ok(sameEndLanding.landingImpulse > 0, '同终点贡献窗必须保留一个聚合 touchdown')
+})
+
+test('action-aware 时间线在 ping-pong 反向按相邻与重叠窗强度判定 touchdown', () => {
+  const reverseLandingAtMainStart = (continuationEndMs: number, continuationWeight: number) => {
+    const definition = {
+      mode: 'travel' as const,
+      distance: 0,
+      turnRadians: 0,
+      verticalMode: 'ballistic' as const,
+      jumpHeight: 1,
+      windows: [
+        { id: 'continuation', kind: 'ballistic' as const, startMs: 0, endMs: continuationEndMs, weight: continuationWeight },
+        { id: 'main', kind: 'ballistic' as const, startMs: 10, endMs: 20, weight: 1 },
+      ],
+      vfxTags: [] as const,
+    }
+    const base = {
+      ...travelSampleInput,
+      definition,
+      durationMs: 100,
+      loopMode: 'ping-pong' as const,
+      characterHeight: 4,
+      actionWeight: 1e-4,
+    }
+    const previous = sampleRootMotion({ ...base, requestedTimeMs: 185, previousRequestedTimeMs: undefined })
+    return sampleRootMotion({
+      ...base,
+      requestedTimeMs: 190,
+      previousRequestedTimeMs: 185,
+      previousAppliedWorld: previous.appliedWorld,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+
+  for (const continuationEndMs of [10, 11] as const) {
+    const low = reverseLandingAtMainStart(continuationEndMs, 7.5e-9)
+    assert.equal(low.phase, 'grounded')
+    assert.ok(low.landingImpulse > 0, `反向低强度 ${continuationEndMs === 10 ? '相邻' : '重叠'}窗不得遮蔽主窗落地`)
+
+    const high = reverseLandingAtMainStart(continuationEndMs, 1)
+    assert.equal(high.landingImpulse, 0, `反向高强度 ${continuationEndMs === 10 ? '相邻' : '重叠'}窗仍是连续腾空`)
+    assert.equal(high.landingAuthorization, undefined)
+  }
+})
+
+test('loop 周期缝由下一周期 action-aware 证据决定是否 touchdown', () => {
+  const landingAtLoopSeam = (continuationWeight: number) => {
+    const definition = {
+      mode: 'travel' as const,
+      distance: 0,
+      turnRadians: 0,
+      verticalMode: 'ballistic' as const,
+      jumpHeight: 1,
+      windows: [
+        { id: 'next-cycle', kind: 'ballistic' as const, startMs: 0, endMs: 10, weight: continuationWeight },
+        { id: 'main', kind: 'ballistic' as const, startMs: 20, endMs: 100, weight: 1 },
+      ],
+      vfxTags: [] as const,
+    }
+    const base = {
+      ...travelSampleInput,
+      definition,
+      durationMs: 100,
+      loopMode: 'loop' as const,
+      characterHeight: 4,
+      actionWeight: 1e-4,
+    }
+    const previous = sampleRootMotion({ ...base, requestedTimeMs: 95, previousRequestedTimeMs: undefined })
+    return sampleRootMotion({
+      ...base,
+      requestedTimeMs: 100,
+      previousRequestedTimeMs: 95,
+      previousAppliedWorld: previous.appliedWorld,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+
+  const low = landingAtLoopSeam(7.5e-9)
+  assert.equal(low.phase, 'grounded')
+  assert.ok(low.landingImpulse > 0, '下一周期低强度窗低于世界阈值时应保留 seam touchdown')
+
+  const high = landingAtLoopSeam(1)
+  assert.equal(high.landingImpulse, 0, '下一周期高强度窗证明持续腾空时不得在 seam touchdown')
+  assert.equal(high.landingAuthorization, undefined)
 })
 
 test('Root Motion 规范化、采样和时间解析共用 canonical duration', () => {
