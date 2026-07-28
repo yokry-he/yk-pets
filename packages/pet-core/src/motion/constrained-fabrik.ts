@@ -146,9 +146,8 @@ const computeSuffixReachIntervals = (segmentLengths: readonly number[]): SuffixR
 }
 
 /**
- * 在 Root→Target/Pole 二维平面中逐段构造固定段长链。每一步选择下一节点到 Target 的距离，
- * 该距离必须同时落在当前圆约束区间和剩余后缀的完整可达区间；随后取两个圆在 Pole 正半平面的交点。
- * 因而它覆盖完整物理可达域，不依赖某个连续前后缀刚好能聚合成两段三角形。
+ * 在 Root→Target/Pole 二维平面中构造固定段长链。链段加闭合边组成凸圆内接多边形，
+ * 多边形不等式与链的物理可达域等价；连续求解公共圆半径可避免离散距离采样遗漏窄可行窗。
  */
 const constructPoleHalfPlaneChain = (
   root: RigVector3,
@@ -196,101 +195,89 @@ const constructPoleHalfPlaneChain = (
     return validates(result) ? result : null
   }
 
-  const target2d: [number, number] = [targetDistance, 0]
-  const SEARCH_BUDGET = 16_384
-  let visited = 0
-  const uniqueCandidates = (values: readonly number[], epsilon: number): number[] => {
-    const result: number[] = []
-    for (const value of values) {
-      if (Number.isFinite(value) && !result.some(item => Math.abs(item - value) <= epsilon)) result.push(value)
-    }
-    return result
+  /**
+   * 把链段和闭合边视为一个凸圆内接多边形。多边形不等式与固定段长链物理可达域等价；
+   * 因此只需求解公共外接圆半径这一维连续根，而无需离散采样每层的剩余距离。
+   */
+  const closingSides = [...segmentLengths, targetDistance]
+  const longestIndex = closingSides.indexOf(Math.max(...closingSides))
+  const longestSide = closingSides[longestIndex]!
+  const radiusFloor = longestSide / 2
+  const NUMERICAL_BUDGET = 16_384
+  let evaluations = 0
+  const minorAngles = (radius: number): number[] | null => {
+    evaluations += 1
+    if (evaluations > NUMERICAL_BUDGET || !Number.isFinite(radius) || radius < radiusFloor) return null
+    const angles = closingSides.map(side => 2 * Math.asin(Math.max(-1, Math.min(1, side / (2 * radius)))))
+    return angles.every(Number.isFinite) ? angles : null
   }
-  const buildDistanceCandidates = (minimum: number, maximum: number, preferred: number): number[] => {
-    const span = Math.max(0, maximum - minimum)
-    const values = [minimum, maximum, Math.max(minimum, Math.min(maximum, preferred))]
-    // 以 2→64 等分逐级细化；前一层已访问的偶数格点不重复加入，搜索顺序保持确定。
-    for (const subdivisions of [2, 4, 8, 16, 32, 64]) {
-      for (let numerator = 1; numerator < subdivisions; numerator += 2) {
-        values.push(minimum + span * numerator / subdivisions)
-      }
-    }
-    return uniqueCandidates(values, boundaryTolerance)
-  }
-  const circleIntersections = (
-    current: [number, number],
-    segmentLength: number,
-    nextDistance: number,
-  ): [number, number][] => {
-    const toTargetX = targetDistance - current[0]
-    const toTargetY = -current[1]
-    const currentDistance = Math.hypot(toTargetX, toTargetY)
-    if (!Number.isFinite(currentDistance)) return []
-    const numericalTolerance = Math.max(tolerance, segmentLength * Number.EPSILON * 64)
-    if (currentDistance <= LENGTH_EPSILON) {
-      if (Math.abs(segmentLength - nextDistance) > numericalTolerance) return []
-      return [
-        [current[0], current[1] + segmentLength],
-        [current[0] + segmentLength, current[1]],
-        [current[0] - segmentLength, current[1]],
-      ]
-    }
-    const commonScale = Math.max(segmentLength, nextDistance, currentDistance)
-    const normalizedSegment = segmentLength / commonScale
-    const normalizedNext = nextDistance / commonScale
-    const normalizedCurrent = currentDistance / commonScale
-    const axisDistance = (
-      normalizedSegment * normalizedSegment
-      - normalizedNext * normalizedNext
-      + normalizedCurrent * normalizedCurrent
-    ) / (2 * normalizedCurrent) * commonScale
-    const normalizedHeightSquared = normalizedSegment * normalizedSegment
-      - (axisDistance / commonScale) * (axisDistance / commonScale)
-    if (normalizedHeightSquared < -Number.EPSILON * 64) return []
-    const height = Math.sqrt(Math.max(0, normalizedHeightSquared)) * commonScale
-    const directionX = toTargetX / currentDistance
-    const directionY = toTargetY / currentDistance
-    const baseX = current[0] + directionX * axisDistance
-    const baseY = current[1] + directionY * axisDistance
-    const first: [number, number] = [baseX - directionY * height, baseY + directionX * height]
-    const second: [number, number] = [baseX + directionY * height, baseY - directionX * height]
-    return first[1] >= second[1] ? [first, second] : [second, first]
+  const floorAngles = minorAngles(radiusFloor)
+  if (!floorAngles) return null
+  const floorSum = floorAngles.reduce((sum, angle) => sum + angle, 0)
+  const useMajorArc = floorSum < Math.PI * 2
+  const residual = (radius: number): number | null => {
+    const angles = minorAngles(radius)
+    if (!angles) return null
+    return useMajorArc
+      ? angles[longestIndex]! - angles.reduce((sum, angle, index) => index === longestIndex ? sum : sum + angle, 0)
+      : angles.reduce((sum, angle) => sum + angle, 0) - Math.PI * 2
   }
 
-  const search = (index: number, points: [number, number][]): [number, number][] | null => {
-    visited += 1
-    if (visited > SEARCH_BUDGET) return null
-    const current = points.at(-1)!
-    const segmentLength = segmentLengths[index]!
-    if (index === segmentLengths.length - 1) {
-      if (Math.abs(Math.hypot(target2d[0] - current[0], target2d[1] - current[1]) - segmentLength) > boundaryTolerance) return null
-      return [...points, target2d]
+  const floorResidual = useMajorArc
+    ? floorAngles[longestIndex]! - floorAngles.reduce((sum, angle, index) => index === longestIndex ? sum : sum + angle, 0)
+    : floorSum - Math.PI * 2
+  let radius = radiusFloor
+  if (Math.abs(floorResidual) > Number.EPSILON * 64) {
+    let low = radiusFloor
+    let high = Math.max(radiusFloor * 2, radiusFloor + LENGTH_EPSILON)
+    let highResidual = residual(high)
+    while (highResidual !== null && highResidual > 0 && evaluations < NUMERICAL_BUDGET) {
+      high *= 2
+      if (!Number.isFinite(high)) return null
+      highResidual = residual(high)
     }
-
-    const currentDistance = Math.hypot(target2d[0] - current[0], target2d[1] - current[1])
-    if (!Number.isFinite(currentDistance)) return null
-    const feasibleMinimum = Math.max(
-      Math.abs(currentDistance - segmentLength),
-      suffixReach.minimum[index + 1]!,
-    )
-    const feasibleMaximum = Math.min(
-      currentDistance + segmentLength,
-      suffixReach.maximum[index + 1]!,
-    )
-    if (feasibleMinimum > feasibleMaximum + boundaryTolerance) return null
-    const nextDistanceCandidates = buildDistanceCandidates(feasibleMinimum, feasibleMaximum, currentDistance)
-    for (const nextDistance of nextDistanceCandidates) {
-      for (const candidate of circleIntersections(current, segmentLength, nextDistance)) {
-        if (candidate[1] < -boundaryTolerance) continue
-        const solution = search(index + 1, [...points, candidate])
-        if (solution) return solution
-      }
+    if (highResidual === null || highResidual > 0) return null
+    for (let iteration = 0; iteration < 128 && evaluations < NUMERICAL_BUDGET; iteration += 1) {
+      const middle = (low + high) / 2
+      const middleResidual = residual(middle)
+      if (middleResidual === null) return null
+      if (middleResidual > 0) low = middle
+      else high = middle
+      // 圆半径根误差会累积到整条链的闭合角；必须收敛到机器精度，不能按末端 tolerance 提前停止。
+      if (high - low <= Number.EPSILON * Math.max(1, high) * 8) break
     }
-    return null
+    radius = (low + high) / 2
+  }
+  const solvedMinorAngles = minorAngles(radius)
+  if (!solvedMinorAngles) return null
+  const centralAngles = solvedMinorAngles.map((angle, index) => useMajorArc && index === longestIndex ? Math.PI * 2 - angle : angle)
+  let angle = 0
+  const circlePoints: [number, number][] = [[radius, 0]]
+  for (let index = 0; index < segmentLengths.length; index += 1) {
+    angle += centralAngles[index]!
+    circlePoints.push([radius * Math.cos(angle), radius * Math.sin(angle)])
   }
 
-  const planar = search(0, [[0, 0]])
-  if (!planar) return null
+  let planar: [number, number][]
+  if (targetDistance <= LENGTH_EPSILON) {
+    // 闭合点与根重合时，用根处切线作为主轴、朝圆心方向作为 Pole 正侧。
+    planar = circlePoints.map(point => [point[1], radius - point[0]])
+  } else {
+    const rootPoint = circlePoints[0]!
+    const tipPoint = circlePoints.at(-1)!
+    const tipOffset: [number, number] = [tipPoint[0] - rootPoint[0], tipPoint[1] - rootPoint[1]]
+    const chordLength = Math.hypot(tipOffset[0], tipOffset[1])
+    if (!Number.isFinite(chordLength) || chordLength <= LENGTH_EPSILON) return null
+    const axisX = tipOffset[0] / chordLength
+    const axisY = tipOffset[1] / chordLength
+    planar = circlePoints.map((point) => {
+      const offsetX = point[0] - rootPoint[0]
+      const offsetY = point[1] - rootPoint[1]
+      return [offsetX * axisX + offsetY * axisY, -offsetX * axisY + offsetY * axisX]
+    })
+    const poleSum = planar.slice(1, -1).reduce((sum, point) => sum + point[1], 0)
+    if (poleSum < 0) planar = planar.map(point => [point[0], -point[1]])
+  }
   const result = mapToRig(planar)
   return validates(result) ? result : null
 }

@@ -340,6 +340,35 @@ test('FABRIK 固定种子三至五段链覆盖过近侧内部域搜索', () => {
   }
 })
 
+test('FABRIK 连续圆半径求解覆盖窄连续可行窗', () => {
+  const cases = [
+    { lengths: [1, 1, 2, 2], distance: .108, ratio: .9 },
+    { lengths: [.7897603758960032, 2.6860888144467028, .5802674175356516, 1.169574050162919], distance: .9114898679977737, ratio: 1 },
+    { lengths: [.6098006247193554, 1.1312615046976136, 1.4025073148659433, 2.2846777537371965, 2.0844399266061373], distance: 2.587812901531402, ratio: 1 },
+  ] as const
+  for (const { lengths, distance: targetDistance, ratio } of cases) {
+    let cursor = 0
+    const positions: [number, number, number][] = [[0, 0, 0]]
+    for (const segmentLength of lengths) {
+      cursor += segmentLength
+      positions.push([cursor, 0, 0])
+    }
+    const input = { positions, target: [targetDistance, 0, 0] as const, pole: [0, 1, 0] as const, maxIterations: 1, tolerance: 1e-8, maxStretchRatio: ratio }
+    const result = solveConstrainedFabrik(input)
+
+    assert.equal(result.status, 'solved')
+    assert.deepEqual(result, solveConstrainedFabrik(input))
+    assert.ok(result.error <= 1e-8)
+    for (let index = 0; index < lengths.length; index += 1) {
+      assert.ok(Math.abs(distance(result.positions[index]!, result.positions[index + 1]!) - lengths[index]!) <= lengths[index]! * 1e-8)
+      if (index > 0) {
+        assert.ok(Math.abs(result.positions[index]![2]) <= 1e-8)
+        assert.ok(result.positions[index]![1] >= -1e-8)
+      }
+    }
+  }
+})
+
 test('FABRIK 不突变输入、不共享输出引用并保持确定性', () => {
   const input = {
     positions: [[0, 0, 0], [.2, -1, 0], [.1, -2, 0], [0, -3, 0]] as [number, number, number][],

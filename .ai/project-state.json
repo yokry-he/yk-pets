@@ -97,6 +97,7 @@
     "bipedPetConstrainedFabrikPlaneValidationComplete": true,
     "bipedPetConstrainedFabrikCompleteReachDomainComplete": true,
     "bipedPetConstrainedFabrikBacktrackingFallbackComplete": true,
+    "bipedPetConstrainedFabrikCyclicConstructionComplete": true,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
     "bipedPetRootMotionComplete": false,
