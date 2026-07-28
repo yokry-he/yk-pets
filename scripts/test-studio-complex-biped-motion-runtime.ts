@@ -44,6 +44,14 @@ function readContactWorld(runtime: ReturnType<typeof createRuntime>['runtime'], 
   return bone.position.clone().set(...contact.localPosition).applyMatrix4(bone.matrixWorld)
 }
 
+function readContactWorldRotation(runtime: ReturnType<typeof createRuntime>['runtime'], compilation: CompiledCharacterModel, contactId: string) {
+  const contact = compilation.contacts.find(item => item.id === contactId)!
+  const bone = runtime.bonesById.get(contact.boneId)!
+  const result = bone.quaternion.clone()
+  bone.getWorldQuaternion(result)
+  return result.multiply(bone.quaternion.clone().set(...contact.localRotation)).normalize()
+}
+
 function cloneCompilation(compilation: CompiledCharacterModel): CompiledCharacterModel {
   return structuredClone(compilation)
 }
@@ -366,7 +374,7 @@ function readChainLengths(runtime: ReturnType<typeof createRuntime>['runtime'], 
 }
 
 // clip 切换、时间倒退与跨循环大跳必须清锁，并在当前帧重新捕获而不是拉回旧锚。
-for (const kind of ['time-rewind', 'loop-wrap', 'clip-switch', 'large-jump'] as const) {
+for (const kind of ['time-rewind', 'clip-switch', 'large-jump'] as const) {
   const withIk = createRuntime()
   const baseline = createRuntime()
   const clip = compileBipedPetMotion(walk, { boneIds: withIk.compilation.bones.map(item => item.id) })
@@ -376,15 +384,13 @@ for (const kind of ['time-rewind', 'loop-wrap', 'clip-switch', 'large-jump'] as 
     contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
     activeContacts: ['foot.left'],
   })
-  const start = locked(sampleBipedPetMotion(clip, kind === 'loop-wrap' ? 1100 : 100))
-  const continuous = locked(sampleBipedPetMotion(clip, kind === 'loop-wrap' ? 1150 : 200))
+  const start = locked(sampleBipedPetMotion(clip, 100))
+  const continuous = locked(sampleBipedPetMotion(clip, 200))
   const discontinuity = kind === 'time-rewind'
     ? locked(sampleBipedPetMotion(clip, 80))
-    : kind === 'loop-wrap'
-      ? locked(sampleBipedPetMotion(clip, 1210))
-      : kind === 'clip-switch'
-        ? sampleWith(locked(sampleBipedPetMotion(clip, 220)), { clipHash: `${clip.hash}-next` })
-        : locked(sampleBipedPetMotion(clip, 900))
+    : kind === 'clip-switch'
+      ? sampleWith(locked(sampleBipedPetMotion(clip, 220)), { clipHash: `${clip.hash}-next` })
+      : locked(sampleBipedPetMotion(clip, 900))
   controller.apply(start, 1)
   controller.apply(continuous, 1)
   controller.apply(discontinuity, 1)
@@ -395,6 +401,98 @@ for (const kind of ['time-rewind', 'loop-wrap', 'clip-switch', 'large-jump'] as 
   baselineController.dispose()
   withIk.runtime.dispose()
   baseline.runtime.dispose()
+}
+
+// loop 接缝两侧同一接触仍 active 时必须保留旧锚；不连续接触则释放并在下次重新捕获。
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compileBipedPetMotion(walk, { boneIds: compilation.bones.map(item => item.id) })
+  const fkDriver = createComplexBipedMotionController(runtime)
+  const ikController = createComplexBipedIkController(runtime, compilation)
+  const lockedLeft = (sample: SampledBipedPetMotion) => sampleWith(sample, {
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.left'],
+  })
+  const before = lockedLeft(sampleBipedPetMotion(clip, 1190))
+  fkDriver.apply(before, 1)
+  ikController.apply(before, 1)
+  const anchor = readContactWorld(runtime, compilation, 'foot.left')
+  const wrapped = sampleWith(lockedLeft(sampleBipedPetMotion(clip, 1210)), { rootPosition: [.03, 0, 0] })
+  fkDriver.apply(wrapped, 1)
+  ikController.apply(wrapped, 1)
+  const seamError = readContactWorld(runtime, compilation, 'foot.left').distanceTo(anchor)
+  assert.ok(seamError < .02, `loop seam 锚点误差不得突增：${seamError}`)
+
+  const released = sampleWith(sampleBipedPetMotion(clip, 1220), { contactStates: [], activeContacts: [] })
+  fkDriver.apply(released, 1)
+  ikController.apply(released, 1)
+  const recapture = lockedLeft(sampleBipedPetMotion(clip, 1230))
+  fkDriver.apply(recapture, 1)
+  const fkContact = readContactWorld(runtime, compilation, 'foot.left')
+  ikController.apply(recapture, 1)
+  assert.ok(readContactWorld(runtime, compilation, 'foot.left').distanceTo(fkContact) < 1e-9)
+  ikController.dispose()
+  fkDriver.dispose()
+  runtime.dispose()
+}
+
+// 锁定后脚部扭转必须通过纯 Quaternion 朝向补偿收敛，并保持接触位置受控。
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
+  const fkDriver = createComplexBipedMotionController(runtime)
+  const ikController = createComplexBipedIkController(runtime, compilation)
+  const locked = (timeMs: number) => sampleWith(sampleBipedPetMotion(clip, timeMs), {
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.left'],
+  })
+  fkDriver.apply(locked(100), 1)
+  const targetRotation = readContactWorldRotation(runtime, compilation, 'foot.left')
+  ikController.apply(locked(100), 1)
+  fkDriver.apply(locked(120), 1)
+  ikController.apply(locked(120), 1)
+  const anchor = readContactWorld(runtime, compilation, 'foot.left')
+  const foot = runtime.bonesById.get('foot.left')!
+  foot.rotateY(.6)
+  runtime.object.updateMatrixWorld(true)
+  const beforeError = readContactWorldRotation(runtime, compilation, 'foot.left').angleTo(targetRotation)
+  ikController.apply(locked(120), .01)
+  const lowWeightError = readContactWorldRotation(runtime, compilation, 'foot.left').angleTo(targetRotation)
+  assert.ok(lowWeightError < beforeError && lowWeightError > beforeError * .8, `低权重朝向修正必须按比例受限：${lowWeightError}`)
+  ikController.apply(locked(120), 1)
+  const afterError = readContactWorldRotation(runtime, compilation, 'foot.left').angleTo(targetRotation)
+  assert.ok(afterError < beforeError * .5 && afterError < .2, `朝向误差应明显下降：before=${beforeError}, after=${afterError}`)
+  assert.ok(readContactWorld(runtime, compilation, 'foot.left').distanceTo(anchor) < 1e-2)
+  const beforeWeightZero = foot.quaternion.clone()
+  ikController.apply(locked(120), 0)
+  assert.deepEqual(foot.quaternion.toArray(), beforeWeightZero.toArray())
+  ikController.dispose()
+  fkDriver.dispose()
+  runtime.dispose()
+}
+
+// 任意 Clip 身份 churn 不得让诊断集合无界增长。
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compileBipedPetMotion(walk, { boneIds: compilation.bones.map(item => item.id) })
+  const fkDriver = createComplexBipedMotionController(runtime)
+  const ikController = createComplexBipedIkController(runtime, compilation)
+  for (let index = 0; index < 40; index++) {
+    const withIdentity = (timeMs: number) => sampleWith(sampleBipedPetMotion(clip, timeMs), {
+      clipHash: `${clip.hash}-${index}`,
+      contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+      activeContacts: ['foot.left'],
+    })
+    for (const sample of [withIdentity(100), withIdentity(320)]) {
+      fkDriver.apply(sample, 1)
+      ikController.apply(sample, 1)
+    }
+  }
+  assert.ok(ikController.diagnostics().length <= 64)
+  assert.equal(ikController.diagnostics().filter(item => item.includes('leg.left') && item.includes('clamped')).length, 1)
+  ikController.dispose()
+  fkDriver.dispose()
+  runtime.dispose()
 }
 
 // 显式 FABRIK、auto 标准链和 auto 非标准链路径均可诊断；损坏单肢不得阻断另一肢。

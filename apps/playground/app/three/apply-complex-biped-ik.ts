@@ -38,6 +38,11 @@ interface LimbRuntime {
   poleInput: MutableRigVector
   terminalStart: MutableRigVector
   terminalEnd: MutableRigVector
+  contactLocalRotation: Quaternion
+  contactLocalRotationInverse: Quaternion
+  anchorContactWorldRotation: Quaternion
+  targetContactBoneWorldRotation: Quaternion
+  remainingCorrections: Map<Bone, number>
 }
 
 type MutableRigVector = [number, number, number]
@@ -77,11 +82,19 @@ export function createComplexBipedIkController(
   runtime: ComplexBipedPetObject,
   compilation: CompiledCharacterModel,
 ): ComplexBipedIkController {
+  const MAX_DIAGNOSTICS = 64
   const messages: string[] = []
   const messageIds = new Set<string>()
+  const messageIdQueue: string[] = []
   const report = (id: string, message: string) => {
     if (messageIds.has(id)) return
+    if (messageIdQueue.length >= MAX_DIAGNOSTICS) {
+      const oldestId = messageIdQueue.shift()!
+      messageIds.delete(oldestId)
+      messages.shift()
+    }
     messageIds.add(id)
+    messageIdQueue.push(id)
     messages.push(message)
   }
 
@@ -126,6 +139,11 @@ export function createComplexBipedIkController(
       poleInput: [0, 0, 0],
       terminalStart: [0, 0, 0],
       terminalEnd: [0, 0, 0],
+      contactLocalRotation: new Quaternion(...contact.localRotation).normalize(),
+      contactLocalRotationInverse: new Quaternion(...contact.localRotation).normalize().invert(),
+      anchorContactWorldRotation: new Quaternion(),
+      targetContactBoneWorldRotation: new Quaternion(),
+      remainingCorrections: new Map([...new Set([...(bones as Bone[]), contactBone])].map(bone => [bone, definition.maxCorrectionRadians])),
     })
   }
 
@@ -140,6 +158,8 @@ export function createComplexBipedIkController(
   const parentWorldInverse = new Quaternion()
   const localDelta = new Quaternion()
   const identity = new Quaternion()
+  const currentBoneWorldRotation = new Quaternion()
+  const currentBoneWorldRotationInverse = new Quaternion()
   const currentContact = new Vector3()
   let lastClipHash: string | undefined
   let lastResolvedTimeMs: number | undefined
@@ -159,15 +179,23 @@ export function createComplexBipedIkController(
     if (pelvis && pelvisBindPosition) pelvis.position.copy(pelvisBindPosition)
   }
 
-  const hasDiscontinuity = (sample: SampledBipedPetMotion) => {
-    if (lastClipHash !== undefined && sample.clipHash !== lastClipHash) return true
-    if (lastResolvedTimeMs === undefined) return false
-    if (sample.resolvedTimeMs < lastResolvedTimeMs - 1e-6) return true
+  const classifyTemporalTransition = (sample: SampledBipedPetMotion): 'continuous' | 'loop-seam' | 'reset' => {
+    if (lastClipHash !== undefined && sample.clipHash !== lastClipHash) return 'reset'
+    if (lastResolvedTimeMs === undefined) return 'continuous'
+    if (sample.resolvedTimeMs < lastResolvedTimeMs - 1e-6) {
+      const seamWindow = Math.min(250, sample.durationMs * .25)
+      return sample.loopMode === 'loop'
+        && lastResolvedTimeMs >= sample.durationMs - seamWindow
+        && sample.resolvedTimeMs <= seamWindow
+        ? 'loop-seam'
+        : 'reset'
+    }
     const reasonableJump = Math.max(250, sample.durationMs * .5)
-    return sample.resolvedTimeMs - lastResolvedTimeMs > reasonableJump
+    return sample.resolvedTimeMs - lastResolvedTimeMs > reasonableJump ? 'reset' : 'continuous'
   }
 
   const applyWorldDirectionCorrection = (
+    limb: LimbRuntime,
     bone: Bone,
     currentEndWorld: Vector3,
     solvedStart: readonly number[],
@@ -187,7 +215,9 @@ export function createComplexBipedIkController(
     desiredDirection.normalize()
     deltaWorld.setFromUnitVectors(currentDirection, desiredDirection).normalize()
     const angle = deltaWorld.angleTo(identity)
-    const correctionMix = clamp01(mix) * (angle > maxCorrectionRadians ? maxCorrectionRadians / angle : 1)
+    const remaining = Math.max(0, Math.min(maxCorrectionRadians, limb.remainingCorrections.get(bone) ?? maxCorrectionRadians))
+    const appliedAngle = Math.min(angle * clamp01(mix), remaining)
+    const correctionMix = angle > 1e-12 ? appliedAngle / angle : 0
     limitedWorldDelta.copy(identity).slerp(deltaWorld, correctionMix).normalize()
 
     if (bone.parent) bone.parent.getWorldQuaternion(parentWorld)
@@ -195,14 +225,40 @@ export function createComplexBipedIkController(
     parentWorldInverse.copy(parentWorld).invert()
     localDelta.copy(parentWorldInverse).multiply(limitedWorldDelta).multiply(parentWorld).normalize()
     bone.quaternion.premultiply(localDelta).normalize()
+    limb.remainingCorrections.set(bone, Math.max(0, remaining - appliedAngle))
     runtime.object.updateMatrixWorld(true)
     return bone.quaternion.toArray().every(Number.isFinite)
   }
 
-  const solveLimb = (limb: LimbRuntime, state: SampledBipedPetContactState, actionWeight: number, clipHash: string) => {
+  const applyWorldOrientationCorrection = (
+    limb: LimbRuntime,
+    bone: Bone,
+    targetWorldRotation: Quaternion,
+    mix: number,
+    maxCorrectionRadians: number,
+  ) => {
+    bone.getWorldQuaternion(currentBoneWorldRotation)
+    currentBoneWorldRotationInverse.copy(currentBoneWorldRotation).invert()
+    deltaWorld.copy(targetWorldRotation).multiply(currentBoneWorldRotationInverse).normalize()
+    const angle = deltaWorld.angleTo(identity)
+    const remaining = Math.max(0, Math.min(maxCorrectionRadians, limb.remainingCorrections.get(bone) ?? maxCorrectionRadians))
+    const appliedAngle = Math.min(angle * clamp01(mix), remaining)
+    const correctionMix = angle > 1e-12 ? appliedAngle / angle : 0
+    limitedWorldDelta.copy(identity).slerp(deltaWorld, correctionMix).normalize()
+    if (bone.parent) bone.parent.getWorldQuaternion(parentWorld)
+    else parentWorld.identity()
+    parentWorldInverse.copy(parentWorld).invert()
+    localDelta.copy(parentWorldInverse).multiply(limitedWorldDelta).multiply(parentWorld).normalize()
+    bone.quaternion.premultiply(localDelta).normalize()
+    limb.remainingCorrections.set(bone, Math.max(0, remaining - appliedAngle))
+    runtime.object.updateMatrixWorld(true)
+  }
+
+  const solveLimb = (limb: LimbRuntime, state: SampledBipedPetContactState, actionWeight: number) => {
     if (!limb.anchored) return
     const mix = clamp01(limb.definition.weight) * actionWeight * clamp01(state.weight) * clamp01(state.confidence)
     if (mix <= 0) return
+    for (const bone of limb.remainingCorrections.keys()) limb.remainingCorrections.set(bone, limb.definition.maxCorrectionRadians)
 
     target.copy(limb.anchor).sub(limb.anchorOffset)
     for (const [index, bone] of limb.bones.entries()) {
@@ -233,13 +289,13 @@ export function createComplexBipedIkController(
         return
       }
       if (result.status === 'clamped') report(
-        `clamped:${limb.definition.id}:${clipHash}:analytic-two-bone`,
+        `clamped:${limb.definition.id}:analytic-two-bone`,
         `${limb.definition.id} 的解析式 IK 结果为 clamped，已应用有限可达解并保留物理残差。`,
       )
       limb.bones[1]!.getWorldPosition(childWorldPosition)
-      applyWorldDirectionCorrection(limb.bones[0]!, childWorldPosition, result.positions[0]!, result.positions[1]!, mix, limb.definition.maxCorrectionRadians)
+      applyWorldDirectionCorrection(limb, limb.bones[0]!, childWorldPosition, result.positions[0]!, result.positions[1]!, mix, limb.definition.maxCorrectionRadians)
       limb.bones.at(-1)!.getWorldPosition(childWorldPosition)
-      applyWorldDirectionCorrection(limb.bones[1]!, childWorldPosition, result.positions[1]!, result.positions[2]!, mix, limb.definition.maxCorrectionRadians)
+      applyWorldDirectionCorrection(limb, limb.bones[1]!, childWorldPosition, result.positions[1]!, result.positions[2]!, mix, limb.definition.maxCorrectionRadians)
     }
     else {
       const result = solveConstrainedFabrik({
@@ -255,12 +311,13 @@ export function createComplexBipedIkController(
         return
       }
       if (result.status === 'clamped') report(
-        `clamped:${limb.definition.id}:${clipHash}:fabrik`,
+        `clamped:${limb.definition.id}:fabrik`,
         `${limb.definition.id} 的 FABRIK 结果为 clamped，已应用有限可达解并保留物理残差。`,
       )
       for (let index = 0; index < limb.bones.length - 1; index += 1) {
         limb.bones[index + 1]!.getWorldPosition(childWorldPosition)
         applyWorldDirectionCorrection(
+          limb,
           limb.bones[index]!,
           childWorldPosition,
           result.positions[index]!,
@@ -271,24 +328,35 @@ export function createComplexBipedIkController(
       }
     }
 
-    // 末端只能通过 tip/ankle Quaternion 对齐 contact 方向，禁止改动任何腿或脚骨骼局部 position。
+    // 在同一累计角预算内交替收敛位置与接触朝向；禁止改动任何腿或脚骨骼局部 position。
     const tipBone = limb.bones.at(-1)!
-    tipBone.getWorldPosition(worldPosition)
-    readContactWorld(limb, currentContact)
-    limb.terminalStart[0] = worldPosition.x
-    limb.terminalStart[1] = worldPosition.y
-    limb.terminalStart[2] = worldPosition.z
-    limb.terminalEnd[0] = limb.anchor.x
-    limb.terminalEnd[1] = limb.anchor.y
-    limb.terminalEnd[2] = limb.anchor.z
-    applyWorldDirectionCorrection(
-      tipBone,
-      currentContact,
-      limb.terminalStart,
-      limb.terminalEnd,
-      mix,
-      limb.definition.maxCorrectionRadians,
-    )
+    limb.targetContactBoneWorldRotation.copy(limb.anchorContactWorldRotation).multiply(limb.contactLocalRotationInverse).normalize()
+    for (let iteration = 0; iteration < 3; iteration += 1) {
+      tipBone.getWorldPosition(worldPosition)
+      readContactWorld(limb, currentContact)
+      limb.terminalStart[0] = worldPosition.x
+      limb.terminalStart[1] = worldPosition.y
+      limb.terminalStart[2] = worldPosition.z
+      limb.terminalEnd[0] = limb.anchor.x
+      limb.terminalEnd[1] = limb.anchor.y
+      limb.terminalEnd[2] = limb.anchor.z
+      applyWorldDirectionCorrection(
+        limb,
+        tipBone,
+        currentContact,
+        limb.terminalStart,
+        limb.terminalEnd,
+        mix,
+        limb.definition.maxCorrectionRadians,
+      )
+      applyWorldOrientationCorrection(
+        limb,
+        limb.contactBone,
+        limb.targetContactBoneWorldRotation,
+        mix,
+        limb.definition.maxCorrectionRadians,
+      )
+    }
   }
 
   return {
@@ -308,7 +376,8 @@ export function createComplexBipedIkController(
         clearTemporalState()
         return
       }
-      if (hasDiscontinuity(sample)) for (const limb of limbs) limb.anchored = false
+      const temporalTransition = classifyTemporalTransition(sample)
+      if (temporalTransition === 'reset') for (const limb of limbs) limb.anchored = false
       lastClipHash = sample.clipHash
       lastResolvedTimeMs = sample.resolvedTimeMs
 
@@ -321,6 +390,8 @@ export function createComplexBipedIkController(
           readContactWorld(limb, limb.anchor)
           limb.bones.at(-1)!.getWorldPosition(worldPosition)
           limb.anchorOffset.subVectors(limb.anchor, worldPosition)
+          limb.contactBone.getWorldQuaternion(limb.anchorContactWorldRotation)
+          limb.anchorContactWorldRotation.multiply(limb.contactLocalRotation).normalize()
           limb.anchored = true
           limb.capturedThisFrame = true
         }
@@ -348,7 +419,7 @@ export function createComplexBipedIkController(
         const state = findState(limb.definition.contactId)
         if (!state || state.weight <= 0 || limb.capturedThisFrame) continue
         for (const [index, bone] of limb.bones.entries()) limb.fallbackRotations[index]!.copy(bone.quaternion)
-        try { solveLimb(limb, state, actionWeight, sample.clipHash) }
+        try { solveLimb(limb, state, actionWeight) }
         catch {
           for (const [index, bone] of limb.bones.entries()) bone.quaternion.copy(limb.fallbackRotations[index]!)
           runtime.object.updateMatrixWorld(true)
