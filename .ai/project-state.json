@@ -120,6 +120,7 @@
     "bipedPetHighDetailTopologyComplete": false,
     "bipedPetRootMotionContractComplete": true,
     "bipedPetMotionVfxSignalsComplete": true,
+    "bipedPetBuiltInRootMotionSemanticsComplete": true,
     "bipedPetRootMotionComplete": false,
     "bipedPetMotionVfxComplete": false,
     "crossBrowserGpuManualAcceptanceComplete": false
@@ -239,7 +240,8 @@
     "biped-pet-root-motion-shared-ballistic-timeline",
     "biped-pet-root-motion-action-aware-boundaries",
     "biped-pet-root-motion-canonical-ballistic-transitions",
-    "biped-pet-motion-vfx-signals"
+    "biped-pet-motion-vfx-signals",
+    "biped-pet-built-in-root-motion-semantics"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -258,19 +260,28 @@
   ],
   "nextPhase": "biped-pet-root-motion-vfx-and-acceptance",
   "latestCompletedBatch": {
-    "id": "biped-pet-motion-vfx-signals",
-    "domainPackage": "packages/pet-core",
+    "id": "biped-pet-built-in-root-motion-semantics",
+    "domainPackage": "apps/playground+packages/pet-core",
     "rendererModified": false,
     "visualCasesModified": false,
-    "motionVfxSignalThresholdPolicy": "strictly-greater-than",
-    "motionVfxBurstIdentityPolicy": "clip-kind-rounded-requested-time",
-    "motionVfxSustainIdentityPolicy": "clip-kind-active",
-    "motionVfxSampleTimePolicy": "root-sample-must-match-request",
-    "motionVfxSpeedAuthority": "applied-horizontal-speed",
-    "motionVfxBrakePolicy": "authored-window-times-horizontal-speed",
+    "motionIntensityReferenceBodyHeightsPerSecond": 0.4,
+    "walkDistanceBodyHeights": 0.42,
+    "jumpHeightBodyHeights": 0.28,
+    "sprintDistanceBodyHeights": 2.4,
+    "sprintTravelEndMs": 8300,
+    "sprintBrakeWindowMs": [6300, 8300],
+    "builtInMotionCount": 11,
+    "naturalMovementVfxProbe": {
+      "walkSpeedTrailFrames": 46,
+      "sprintSpeedTrailFrames": 582,
+      "sprintBrakeSparkFrames": 36,
+      "sprintBrakeAt7300": true
+    },
     "automatedCoverage": [
+      "corepack pnpm run test:studio-built-in-assets",
       "corepack pnpm --filter @yk-pets/pet-core test",
       "corepack pnpm --filter @yk-pets/pet-core typecheck",
+      "corepack pnpm --filter @nova/playground typecheck",
       "corepack pnpm run test:studio-biped-root-motion-probe",
       "corepack pnpm typecheck",
       "node scripts/check-documentation.mjs",

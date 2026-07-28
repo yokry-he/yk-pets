@@ -257,6 +257,8 @@ export interface SampledBipedPetRootMotion {
 
 安全预算固定为每帧不超过 `0.25 × characterHeight` 位移和 `π/4` 转向；超过时按方向等比钳制并返回 `clamped`，不改变累计 target，后续帧继续从 applied 追赶欠量。`footResidual` 只读取有限 X/Z，正值推动根节点沿对应局部轴正向修正，完全忽略 Y；仅在整个帧间时间映射都被连续 `travel/warp` 支撑组件覆盖时作为局部水平反馈，跨入、跨出或穿越 gap 的帧不消费残差。预算随真实时间差、动作权重和水平追赶误差缩放；纯函数不持有低通状态。
 
+`motionIntensity` 只读取实际 applied 世界 X/Z 水平速度，并使用公开常量 `BIPED_PET_ROOT_MOTION_REFERENCE_SPEED_BODY_HEIGHTS_PER_SECOND=.4`：`hypot(vx,vz)/(characterHeight×0.4)` 后钳制到 `[0,1]`。纯转向、纯垂直弹道和零水平位移必须保持为零。
+
 - [ ] **步骤 4：运行数值测试与随机边界探针**
 
 运行：
@@ -340,7 +342,7 @@ export interface BipedPetMotionVfxSignal {
 }
 ```
 
-`landing-ring` 阈值为落地冲量 `.25`，`landing-dust` 为 `.4`，`speed-trail` 为实际 applied 水平速度强度 `.55`，`brake-sparks` 为“authored brake 窗包络 × 实际水平速度”的急停强度 `.45`。纯垂直弹道、原地转向和零水平位移 brake 窗不得触发移动特效；若未来需要物理减速度，必须由调用方显式携带连续速度状态，不能在纯函数中加入隐藏历史。burst ID 使用 `${clipHash}:${kind}:${Math.round(requestedTimeMs)}`，sustain ID 使用 `${clipHash}:${kind}:active`。Root Motion 样本的 `requestedTimeMs` 必须严格等于外层请求时间；`reset/blocked`、时间身份错配、时间倒退或未授权标签返回空数组。
+`landing-ring` 阈值为落地冲量 `.25`，`landing-dust` 为 `.4`，`speed-trail` 为实际 applied 水平速度按 `0.4` 个角色身高/秒参考速度归一化后的强度 `.55`，`brake-sparks` 为“authored brake 窗包络 × 实际水平速度强度”的急停强度 `.45`。纯垂直弹道、原地转向和零水平位移 brake 窗不得触发移动特效；若未来需要物理减速度，必须由调用方显式携带连续速度状态，不能在纯函数中加入隐藏历史。burst ID 使用 `${clipHash}:${kind}:${Math.round(requestedTimeMs)}`，sustain ID 使用 `${clipHash}:${kind}:active`。Root Motion 样本的 `requestedTimeMs` 必须严格等于外层请求时间；`reset/blocked`、时间身份错配、时间倒退或未授权标签返回空数组。
 
 - [ ] **步骤 4：验证绿灯并提交推送**
 
@@ -402,7 +404,7 @@ extensions: {
       mode: 'travel', distance: 2.4, turnRadians: 0,
       verticalMode: 'grounded', jumpHeight: 0,
       windows: [
-        { id: 'sprint', kind: 'travel', startMs: 0, endMs: 6300, weight: 1 },
+        { id: 'sprint', kind: 'travel', startMs: 0, endMs: 8300, weight: 1 },
         { id: 'brake', kind: 'brake', startMs: 6300, endMs: 8300, weight: 1 },
       ],
       vfxTags: ['speed-trail', 'brake-sparks'],
@@ -418,7 +420,7 @@ corepack pnpm run test:studio-built-in-assets
 corepack pnpm --filter @yk-pets/pet-core test
 ```
 
-预期：通过；11 个内置动作数量、时长、轨道和道具依赖不变。
+预期：通过；11 个内置动作数量、时长、轨道和道具依赖不变。测试必须以 `actionWeight=1` 从头逐帧携带 previous applied/turn/authorization，验证自然行走中段触发速度拖尾、自然冲刺移动段触发拖尾、约 `7300ms` 的重叠制动段触发急停火花，以及跳跃真实落地触发落地环；不得用权重突变或人为欠量伪造速度。
 
 - [ ] **步骤 5：提交推送**
 

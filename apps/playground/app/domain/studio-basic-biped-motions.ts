@@ -5,6 +5,10 @@
 
 import {
   createStudioMotionAsset,
+  type BipedPetMotionVfxTag,
+  type BipedPetRootMotionMode,
+  type BipedPetRootMotionWindowKind,
+  type BipedPetRootVerticalMode,
   type CloudFoxRigChannelId,
   type MotionTrack,
   type StudioMotionAssetV2,
@@ -25,6 +29,22 @@ export interface BasicBipedMotionOptions {
 type Point = readonly [progress: number, value: number]
 type TrackSpec = readonly [channelId: CloudFoxRigChannelId, points: readonly Point[]]
 
+interface TemplateRootMotionDefinition {
+  mode: BipedPetRootMotionMode
+  distance: number
+  turnRadians: number
+  verticalMode: BipedPetRootVerticalMode
+  jumpHeight: number
+  windows: readonly {
+    id: string
+    kind: BipedPetRootMotionWindowKind
+    start: number
+    end: number
+    weight: number
+  }[]
+  vfxTags: readonly BipedPetMotionVfxTag[]
+}
+
 interface TemplateDefinition {
   id: `builtin-biped-${string}`
   nameZh: string
@@ -34,6 +54,7 @@ interface TemplateDefinition {
   tracks: readonly TrackSpec[]
   contacts?: readonly { contactId: 'foot.left' | 'foot.right', start: number, end: number, confidence: number }[]
   events?: readonly { id: string, kind: 'takeoff' | 'landing' | 'wave-peak' | 'hit', progress: number }[]
+  rootMotion: TemplateRootMotionDefinition
 }
 
 const clamp = (value: number | undefined, fallback: number, minimum: number, maximum: number) => {
@@ -42,9 +63,22 @@ const clamp = (value: number | undefined, fallback: number, minimum: number, max
 }
 const emotionScale: Readonly<Record<BasicBipedMotionEmotion, number>> = { gentle: .82, cheerful: 1.08, focused: 1 }
 
+function inPlaceRootMotion(): TemplateRootMotionDefinition {
+  return {
+    mode: 'in-place',
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'grounded',
+    jumpHeight: 0,
+    windows: [],
+    vfxTags: [],
+  }
+}
+
 const templates: Readonly<Record<BasicBipedMotionTemplateId, TemplateDefinition>> = {
   idle: {
     id: 'builtin-biped-idle', nameZh: '待机呼吸', nameEn: 'Idle Breathing', durationMs: 3600, loopMode: 'loop',
+    rootMotion: inPlaceRootMotion(),
     contacts: [
       { contactId: 'foot.left', start: 0, end: 1, confidence: .95 },
       { contactId: 'foot.right', start: 0, end: 1, confidence: .95 },
@@ -62,6 +96,11 @@ const templates: Readonly<Record<BasicBipedMotionTemplateId, TemplateDefinition>
   },
   walk: {
     id: 'builtin-biped-walk', nameZh: '行走循环', nameEn: 'Walk Cycle', durationMs: 1200, loopMode: 'loop',
+    rootMotion: {
+      mode: 'travel', distance: .42, turnRadians: 0, verticalMode: 'grounded', jumpHeight: 0,
+      windows: [{ id: 'walk-travel', kind: 'travel', start: 0, end: 1, weight: 1 }],
+      vfxTags: ['speed-trail'],
+    },
     contacts: [
       { contactId: 'foot.left', start: 0, end: .5, confidence: .9 },
       { contactId: 'foot.right', start: 0, end: .06, confidence: .9 },
@@ -81,6 +120,12 @@ const templates: Readonly<Record<BasicBipedMotionTemplateId, TemplateDefinition>
   },
   jump: {
     id: 'builtin-biped-jump', nameZh: '起跳与落地', nameEn: 'Jump and Landing', durationMs: 2400, loopMode: 'once',
+    rootMotion: {
+      mode: 'travel', distance: 0, turnRadians: 0, verticalMode: 'ballistic', jumpHeight: .28,
+      windows: [{ id: 'jump-ballistic', kind: 'ballistic', start: .3, end: .76, weight: 1 }],
+      // 故意以语义顺序声明；编译器会按稳定 code point 顺序输出标签。
+      vfxTags: ['landing-ring', 'landing-dust'],
+    },
     contacts: [
       { contactId: 'foot.left', start: 0, end: .3, confidence: .95 },
       { contactId: 'foot.right', start: 0, end: .3, confidence: .95 },
@@ -104,6 +149,7 @@ const templates: Readonly<Record<BasicBipedMotionTemplateId, TemplateDefinition>
   },
   wave: {
     id: 'builtin-biped-wave', nameZh: '招手', nameEn: 'Friendly Wave', durationMs: 3200, loopMode: 'once',
+    rootMotion: inPlaceRootMotion(),
     contacts: [
       { contactId: 'foot.left', start: 0, end: 1, confidence: .9 },
       { contactId: 'foot.right', start: 0, end: 1, confidence: .9 },
@@ -124,6 +170,7 @@ const templates: Readonly<Record<BasicBipedMotionTemplateId, TemplateDefinition>
   },
   'straight-punch': {
     id: 'builtin-biped-straight-punch', nameZh: '直拳组合', nameEn: 'Straight Punch Combo', durationMs: 4000, loopMode: 'once',
+    rootMotion: inPlaceRootMotion(),
     contacts: [
       { contactId: 'foot.left', start: 0, end: 1, confidence: .82 },
       { contactId: 'foot.right', start: 0, end: 1, confidence: .9 },
@@ -183,6 +230,21 @@ export function createBasicBipedStudioMotion(templateId: BasicBipedMotionTemplat
       kind: item.kind,
       timeMs: Math.round(durationMs * item.progress),
     })),
+    rootMotion: {
+      mode: template.rootMotion.mode,
+      distance: template.rootMotion.distance,
+      turnRadians: template.rootMotion.turnRadians,
+      verticalMode: template.rootMotion.verticalMode,
+      jumpHeight: template.rootMotion.jumpHeight,
+      windows: template.rootMotion.windows.map(window => ({
+        id: window.id,
+        kind: window.kind,
+        startMs: Math.round(durationMs * window.start),
+        endMs: Math.round(durationMs * window.end),
+        weight: window.weight,
+      })),
+      vfxTags: [...template.rootMotion.vfxTags],
+    },
   }
   return createStudioMotionAsset({
     id: template.id,

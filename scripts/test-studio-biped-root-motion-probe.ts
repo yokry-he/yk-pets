@@ -6,6 +6,8 @@
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import {
+  BIPED_PET_ROOT_MOTION_REFERENCE_SPEED_BODY_HEIGHTS_PER_SECOND,
+  deriveBipedPetMotionVfxSignals,
   normalizeBipedPetRootMotion,
   sampleBipedPetRootMotion,
   type BipedPetLandingAuthorization,
@@ -729,6 +731,72 @@ function runContinuousBallisticPerformanceObservation() {
   }
 }
 
+function runNaturalMovementVfxProbe() {
+  assert.equal(BIPED_PET_ROOT_MOTION_REFERENCE_SPEED_BODY_HEIGHTS_PER_SECOND, .4)
+  const run = (
+    definition: BipedPetRootMotionDefinition,
+    durationMs: number,
+    loopMode: 'once' | 'loop',
+    stepMs: number,
+  ) => {
+    const base = {
+      definition,
+      durationMs,
+      loopMode,
+      characterHeight: 1,
+      facingRadians: 0,
+      actionWeight: 1,
+      footResidual: [0, 0, 0] as const,
+    }
+    let previous = sampleDeterministically({ ...base, requestedTimeMs: 0 })
+    let speedTrailFrames = 0
+    let brakeSparkFrames = 0
+    let brakeAt7300 = false
+    for (let requestedTimeMs = stepMs; requestedTimeMs <= durationMs; requestedTimeMs += stepMs) {
+      const sample = sampleDeterministically({
+        ...base,
+        requestedTimeMs,
+        previousRequestedTimeMs: previous.requestedTimeMs,
+        previousAppliedWorld: previous.appliedWorld,
+        previousAppliedTurnRadians: previous.appliedTurnRadians,
+        previousLandingAuthorization: previous.landingAuthorization,
+      })
+      const signals = deriveBipedPetMotionVfxSignals({
+        clipHash: 'natural-motion-vfx-probe',
+        previousRequestedTimeMs: previous.requestedTimeMs,
+        requestedTimeMs,
+        tags: definition.vfxTags,
+        rootMotion: sample,
+      })
+      assert.ok(signals.every(signal => signal.timeMs === requestedTimeMs))
+      if (signals.some(signal => signal.kind === 'speed-trail')) speedTrailFrames += 1
+      if (signals.some(signal => signal.kind === 'brake-sparks')) brakeSparkFrames += 1
+      if (requestedTimeMs === 7300) brakeAt7300 = signals.some(signal => signal.kind === 'brake-sparks')
+      previous = sample
+    }
+    return { speedTrailFrames, brakeSparkFrames, brakeAt7300 }
+  }
+
+  const walk = run(normalizeBipedPetRootMotion({
+    mode: 'travel', distance: .42, turnRadians: 0, verticalMode: 'grounded', jumpHeight: 0,
+    windows: [{ id: 'walk-travel', kind: 'travel', startMs: 0, endMs: 1200, weight: 1 }],
+    vfxTags: ['speed-trail'],
+  }, 1200).value, 1200, 'loop', 20)
+  const sprint = run(normalizeBipedPetRootMotion({
+    mode: 'travel', distance: 2.4, turnRadians: 0, verticalMode: 'grounded', jumpHeight: 0,
+    windows: [
+      { id: 'sprint', kind: 'travel', startMs: 0, endMs: 8300, weight: 1 },
+      { id: 'brake', kind: 'brake', startMs: 6300, endMs: 8300, weight: 1 },
+    ],
+    vfxTags: ['speed-trail', 'brake-sparks'],
+  }, 9200).value, 9200, 'once', 10)
+  assert.equal(walk.speedTrailFrames, 46, '自然行走速度拖尾帧数必须确定')
+  assert.equal(sprint.speedTrailFrames, 582, '自然冲刺速度拖尾帧数必须确定')
+  assert.equal(sprint.brakeSparkFrames, 36, '自然冲刺急停火花帧数必须确定')
+  assert.ok(sprint.brakeAt7300, '冲刺制动段必须在约 7300ms 触发急停火花')
+  return { referenceSpeedBodyHeightsPerSecond: .4, walk, sprint }
+}
+
 const result = {
   stateful: runStatefulProbe(),
   ulp: runUlpProbes(),
@@ -738,6 +806,7 @@ const result = {
   frameSubdivision: runFrameSubdivisionProbe(),
   normalizationCostObservation: runNormalizationCostObservation(),
   continuousBallisticObservation: runContinuousBallisticPerformanceObservation(),
+  naturalMovementVfx: runNaturalMovementVfxProbe(),
 }
 
 console.log('Root Motion 可复现探针通过；耗时仅作本机观测，不设置脆弱阈值。')

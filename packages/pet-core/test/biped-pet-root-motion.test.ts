@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import * as petCore from '../src/index.ts'
 import {
+  BIPED_PET_ROOT_MOTION_REFERENCE_SPEED_BODY_HEIGHTS_PER_SECOND,
   BIPED_PET_RIG_PROFILE,
   compileBipedPetMotion,
   createStudioMotionAsset,
@@ -3503,6 +3504,16 @@ test('移动强度只读取实际水平速度，制动窗只调制实际水平�
   assert.equal(turning.brakeIntensity, 0)
   assert.equal(jumping.motionIntensity, 0)
   assert.equal(jumping.brakeIntensity, 0)
+
+  const normalizedSpeed = continuous({
+    mode: 'travel', distance: .02, turnRadians: 0, verticalMode: 'grounded', jumpHeight: 0,
+    windows: [{ id: 'travel', kind: 'travel', startMs: 0, endMs: 100, weight: 1 }],
+    vfxTags: [],
+  }, 49, 50)
+  assert.equal(BIPED_PET_ROOT_MOTION_REFERENCE_SPEED_BODY_HEIGHTS_PER_SECOND, .4)
+  const horizontalSpeed = Math.hypot(normalizedSpeed.linearVelocity[0], normalizedSpeed.linearVelocity[2])
+  assert.ok(horizontalSpeed > 0 && horizontalSpeed < 4 * .4)
+  assert.ok(Math.abs(normalizedSpeed.motionIntensity - horizontalSpeed / (4 * .4)) <= 1e-12, '移动强度基准必须是每秒 0.4 个角色身高')
 
   const horizontalBrakeDefinition = {
     mode: 'travel', distance: 4, turnRadians: 0, verticalMode: 'grounded', jumpHeight: 0,

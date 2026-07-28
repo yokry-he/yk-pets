@@ -94,6 +94,8 @@ export interface SampledBipedPetRootMotion {
 
 export const MAX_BIPED_PET_ROOT_MOTION_WINDOWS = 64
 export const MAX_BIPED_PET_MOTION_VFX_TAG_INPUTS = 16
+/** 把实际水平速度转换为移动特效强度的参考速度，单位为“角色身高/秒”。 */
+export const BIPED_PET_ROOT_MOTION_REFERENCE_SPEED_BODY_HEIGHTS_PER_SECOND = .4
 
 type RootMotionDiagnostic = BipedPetRootMotionNormalizationResult['diagnostics'][number]
 type SafeProperty = { ok: true; value: unknown } | { ok: false; value: undefined }
@@ -1149,7 +1151,8 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
 
   // 移动特效只消费实际 applied 水平速度；垂直弹道和原地转向不能伪造速度拖尾。 / Movement VFX consumes actual applied horizontal speed only; vertical ballistics and in-place turns cannot fabricate speed trails.
   const motionIntensity = stableSignal(
-    Math.hypot(linearVelocity[0], linearVelocity[2]) / (safeInput.characterHeight * 4),
+    Math.hypot(linearVelocity[0], linearVelocity[2])
+      / (safeInput.characterHeight * BIPED_PET_ROOT_MOTION_REFERENCE_SPEED_BODY_HEIGHTS_PER_SECOND),
   )
   // brake 窗只授权并调制真实水平移动，不单独充当物理减速度。 / A brake window authorizes and modulates real horizontal motion; it is not standalone physical deceleration.
   const brakeIntensity = stableSignal(

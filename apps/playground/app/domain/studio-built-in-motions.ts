@@ -5,6 +5,7 @@
  */
 import {
   createStudioMotionAsset,
+  type BipedPetRootMotionDefinition,
   type CloudFoxRigChannelId,
   type MotionPropEvent,
   type MotionPropEventTrack,
@@ -66,8 +67,40 @@ function propTrack(
   }
 }
 
-function motion(input: Pick<StudioMotionAssetV2, 'id' | 'nameZh' | 'nameEn' | 'durationMs' | 'loopMode'> & { tracks: MotionTrack[]; propIds?: string[]; propEventTracks?: MotionPropEventTrack[] }) {
-  return createStudioMotionAsset({ ...input, displayFps: 30, propIds: input.propIds || [], propEventTracks: input.propEventTracks || [], createdAt: 1, updatedAt: 1 })
+type BuiltInMotionExtensions = {
+  'yk-pets/biped-motion/v1': {
+    rootMotion: BipedPetRootMotionDefinition
+  }
+}
+
+function motion(input: Pick<StudioMotionAssetV2, 'id' | 'nameZh' | 'nameEn' | 'durationMs' | 'loopMode'> & {
+  tracks: MotionTrack[]
+  propIds?: string[]
+  propEventTracks?: MotionPropEventTrack[]
+  extensions?: BuiltInMotionExtensions
+}) {
+  const sourceRootMotion = input.extensions?.['yk-pets/biped-motion/v1'].rootMotion
+  // helper 拥有自己的版本化扩展副本，避免编译或后续模板复用共享嵌套窗口。
+  const extensions: BuiltInMotionExtensions | undefined = sourceRootMotion
+    ? {
+        'yk-pets/biped-motion/v1': {
+          rootMotion: {
+            ...sourceRootMotion,
+            windows: sourceRootMotion.windows.map(window => ({ ...window })),
+            vfxTags: [...sourceRootMotion.vfxTags],
+          },
+        },
+      }
+    : undefined
+  return createStudioMotionAsset({
+    ...input,
+    displayFps: 30,
+    propIds: input.propIds || [],
+    propEventTracks: input.propEventTracks || [],
+    ...(extensions ? { extensions } : {}),
+    createdAt: 1,
+    updatedAt: 1,
+  })
 }
 
 const energeticDuration = 8000
@@ -187,6 +220,18 @@ const cartwheel = motion({
 
 const sprintStop = motion({
   id: 'builtin-sprint-stop', nameZh: '冲刺急停挑战', nameEn: 'Sprint Stop Challenge', durationMs: 9200, loopMode: 'once',
+  extensions: {
+    'yk-pets/biped-motion/v1': {
+      rootMotion: {
+        mode: 'travel', distance: 2.4, turnRadians: 0, verticalMode: 'grounded', jumpHeight: 0,
+        windows: [
+          { id: 'sprint', kind: 'travel', startMs: 0, endMs: 8300, weight: 1 },
+          { id: 'brake', kind: 'brake', startMs: 6300, endMs: 8300, weight: 1 },
+        ],
+        vfxTags: ['speed-trail', 'brake-sparks'],
+      },
+    },
+  },
   tracks: [
     track('root.position.x', [[0, -3], [700, -2.95], [1400, -2.7], [2100, -2.2], [2800, -1.45], [3500, -.5], [4200, .55], [4900, 1.55], [5600, 2.35], [6300, 2.85], [7000, 3.05], [7600, 3.12], [8300, 3.12], [9200, 3.12]]),
     track('root.position.y', [[0, 0], [700, -.18], [1050, .08], [1400, 0], [1750, .15], [2100, 0], [2450, .2], [2800, 0], [3150, .22], [3500, 0], [3850, .24], [4200, 0], [4550, .22], [4900, 0], [5250, .18], [5600, 0], [6300, -.12], [7000, -.28], [7600, -.1], [8300, .06], [9200, 0]]),

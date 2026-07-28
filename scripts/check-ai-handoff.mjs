@@ -201,6 +201,8 @@ if (state) {
   expect((state.completed || []).includes('biped-pet-root-motion-shared-ballistic-timeline'), '必须标记 Root Motion 共享弹道时间线完成 / Shared Root Motion ballistic timeline must be complete')
   expect(state.architecture?.bipedPetMotionVfxSignalsComplete === true, '必须标记确定性运动 VFX 信号模块完成 / Deterministic motion-VFX signal module must be complete')
   expect((state.completed || []).includes('biped-pet-motion-vfx-signals'), '必须记录确定性运动 VFX 信号批次 / Deterministic motion-VFX signal batch must be recorded')
+  expect(state.architecture?.bipedPetBuiltInRootMotionSemanticsComplete === true, '必须标记内置动作 Root Motion 语义完成 / Built-in Root Motion semantics must be complete')
+  expect((state.completed || []).includes('biped-pet-built-in-root-motion-semantics'), '必须记录内置动作 Root Motion 语义批次 / Built-in Root Motion semantics batch must be recorded')
   for (const key of ['biped-pet-hybrid-ik-profile-contract', 'biped-pet-analytic-two-bone-ik', 'biped-pet-constrained-fabrik', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-hybrid-ik-phase-delivery']) expect((state.completed || []).includes(key), `必须标记混合 IK 交付项完成 / Hybrid-IK delivery item must be complete: ${key}`)
   expect((state.completed || []).includes('hybrid-ik-legacy-history-migration'), '必须标记混合 IK 历史门禁迁移完成 / Hybrid-IK history-gate migration must be complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
@@ -209,24 +211,32 @@ if (state) {
   for (const key of ['biped-pet-runtime-ik', 'biped-pet-foot-lock']) expect(!(state.notCompleted || []).includes(key), `已完成的混合 IK 交付项不得继续列为未完成 / Completed hybrid-IK item must not remain incomplete: ${key}`)
   expect(!(state.notCompleted || []).includes('biped-pet-quaternion-motion-compiler'), 'Quaternion 动作编译器已完成，不得继续列为未完成 / Completed Quaternion motion compiler must not remain incomplete')
   expect(state.nextPhase === 'biped-pet-root-motion-vfx-and-acceptance', '下一阶段必须是 Root Motion、动作特效与验收 / Next phase must be Root Motion, motion VFX, and acceptance')
-  const motionVfxSignalCoverage = [
+  const builtInRootMotionCoverage = [
+    'corepack pnpm run test:studio-built-in-assets',
     'corepack pnpm --filter @yk-pets/pet-core test',
     'corepack pnpm --filter @yk-pets/pet-core typecheck',
+    'corepack pnpm --filter @nova/playground typecheck',
     'corepack pnpm run test:studio-biped-root-motion-probe',
     'corepack pnpm typecheck',
     'node scripts/check-documentation.mjs',
     'node scripts/check-ai-handoff.mjs',
     'git diff --check',
   ]
-  expect(state.latestCompletedBatch?.id === 'biped-pet-motion-vfx-signals', '最新批次必须是确定性运动 VFX 信号 / Latest batch must be deterministic motion-VFX signals')
-  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(motionVfxSignalCoverage), '运动 VFX 信号批次 automatedCoverage 必须且只能列出真实验证项 / Motion-VFX signal automatedCoverage must contain only the actual verification items')
-  expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, '纯领域 VFX 信号批次不得声明渲染器或视觉案例修改 / Domain-only VFX signals must not claim renderer or visual-case changes')
-  expect(state.latestCompletedBatch?.motionVfxSignalThresholdPolicy === 'strictly-greater-than', '运动 VFX 信号必须使用严格大于阈值 / Motion-VFX signals must use strict greater-than thresholds')
-  expect(state.latestCompletedBatch?.motionVfxBurstIdentityPolicy === 'clip-kind-rounded-requested-time', 'burst VFX 身份必须由 Clip、种类和舍入请求时间组成 / Burst VFX identity must use Clip, kind, and rounded requested time')
-  expect(state.latestCompletedBatch?.motionVfxSustainIdentityPolicy === 'clip-kind-active', 'sustain VFX 身份必须复用 active 身份 / Sustain VFX identity must reuse the active identity')
-  expect(state.latestCompletedBatch?.motionVfxSampleTimePolicy === 'root-sample-must-match-request', 'VFX 外层请求时间必须与 Root Motion 样本时间一致 / VFX request time must match the Root Motion sample time')
-  expect(state.latestCompletedBatch?.motionVfxSpeedAuthority === 'applied-horizontal-speed', '速度拖尾必须只使用实际 applied 水平速度 / Speed trails must use actual applied horizontal speed only')
-  expect(state.latestCompletedBatch?.motionVfxBrakePolicy === 'authored-window-times-horizontal-speed', '制动信号必须由 authored 窗口调制实际水平速度 / Brake signals must use authored-window-modulated horizontal speed')
+  expect(state.latestCompletedBatch?.id === 'biped-pet-built-in-root-motion-semantics', '最新批次必须是内置动作 Root Motion 语义 / Latest batch must be built-in Root Motion semantics')
+  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(builtInRootMotionCoverage), '内置动作语义批次 automatedCoverage 必须且只能列出真实验证项 / Built-in motion semantics automatedCoverage must contain only actual validation')
+  expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, '内置动作语义批次不得声明渲染器或视觉案例修改 / Built-in motion semantics must not claim renderer or visual-case changes')
+  expect(state.latestCompletedBatch?.motionIntensityReferenceBodyHeightsPerSecond === .4, '移动强度参考速度必须是每秒 0.4 个角色身高 / Motion-intensity reference speed must be 0.4 body-heights per second')
+  expect(state.latestCompletedBatch?.walkDistanceBodyHeights === .42, '行走距离必须保持 0.42 个角色身高 / Walk distance must remain 0.42 body-heights')
+  expect(state.latestCompletedBatch?.jumpHeightBodyHeights === .28, '跳跃高度必须保持 0.28 个角色身高 / Jump height must remain 0.28 body-heights')
+  expect(state.latestCompletedBatch?.sprintDistanceBodyHeights === 2.4, '冲刺距离必须保持 2.4 个角色身高 / Sprint distance must remain 2.4 body-heights')
+  expect(state.latestCompletedBatch?.sprintTravelEndMs === 8300 && JSON.stringify(state.latestCompletedBatch?.sprintBrakeWindowMs) === JSON.stringify([6300, 8300]), '冲刺 travel 与 brake 必须在 6300→8300ms 重叠 / Sprint travel and brake must overlap from 6300 to 8300ms')
+  expect(state.latestCompletedBatch?.builtInMotionCount === 11, '内置动作数量必须保持 11 / Built-in motion count must remain 11')
+  expect(JSON.stringify(state.latestCompletedBatch?.naturalMovementVfxProbe) === JSON.stringify({
+    walkSpeedTrailFrames: 46,
+    sprintSpeedTrailFrames: 582,
+    sprintBrakeSparkFrames: 36,
+    sprintBrakeAt7300: true,
+  }), '自然播放 VFX 探针计数必须稳定 / Natural-playback VFX probe counts must remain stable')
   expect((state.completed || []).includes('biped-pet-root-motion-action-aware-boundaries'), 'Root Motion action-aware 边界修复必须进入完成状态 / Action-aware Root Motion boundary repair must be recorded as complete')
   expect((state.completed || []).includes('biped-pet-root-motion-canonical-ballistic-transitions'), 'Root Motion canonical 弹道转换必须进入完成状态 / Canonical Root Motion ballistic transitions must be recorded as complete')
 }
