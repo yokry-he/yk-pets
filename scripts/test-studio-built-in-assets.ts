@@ -76,22 +76,30 @@ const waveClip = compileBipedPetMotion(BASIC_BIPED_STUDIO_MOTIONS.find(item => i
 const punchClip = compileBipedPetMotion(BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-straight-punch'))
 assert.deepEqual(jumpClip.events.map(item => item.kind), ['takeoff', 'landing'])
 
-function assertFullDurationDoubleSupport(clip: ReturnType<typeof compileBipedPetMotion>, motionId: string) {
+const nearlyEqual = (actual: number, expected: number) => Math.abs(actual - expected) <= 1e-12
+
+function assertFullDurationDoubleSupport(
+  clip: ReturnType<typeof compileBipedPetMotion>,
+  motionId: string,
+  expectedConfidence: Readonly<Record<'foot.left' | 'foot.right', number>>,
+) {
   assert.deepEqual(clip.contacts.map(item => ({ contactId: item.contactId, startMs: item.startMs, endMs: item.endMs })), [
     { contactId: 'foot.left', startMs: 0, endMs: clip.durationMs },
     { contactId: 'foot.right', startMs: 0, endMs: clip.durationMs },
   ], `${motionId} 必须声明覆盖完整时长的左右脚支撑区间`)
-  for (const [timeMs, phase] of [[40, 'acquiring'], [clip.durationMs / 2, 'locked'], [clip.durationMs - 40, 'releasing']] as const) {
+  for (const [timeMs, phase, expectedWeight] of [[40, 'acquiring', .5], [clip.durationMs / 2, 'locked', 1], [clip.durationMs - 40, 'releasing', .5]] as const) {
     const sample = sampleBipedPetMotion(clip, timeMs)
     assert.deepEqual(sample.contactStates.map(item => item.contactId), ['foot.left', 'foot.right'], `${motionId}/${timeMs} 必须采样到双脚接触状态`)
     assert.ok(sample.contactStates.every(item => item.phase === phase), `${motionId}/${timeMs} 接触阶段必须为 ${phase}`)
-    assert.ok(sample.contactStates.every(item => item.weight > 0), `${motionId}/${timeMs} 接触权重必须大于 0`)
+    assert.ok(sample.contactStates.every(item => nearlyEqual(item.weight, expectedWeight)), `${motionId}/${timeMs} 接触权重必须为 ${expectedWeight}`)
+    assert.ok(sample.contactStates.every(item => Number.isFinite(item.confidence)), `${motionId}/${timeMs} 接触置信度必须有限`)
+    assert.ok(sample.contactStates.every(item => nearlyEqual(item.confidence, expectedConfidence[item.contactId as 'foot.left' | 'foot.right'])), `${motionId}/${timeMs} 必须保留模板接触置信度`)
     assert.deepEqual(sample.activeContacts, ['foot.left', 'foot.right'], `${motionId}/${timeMs} 必须保持双脚有效支撑`)
   }
 }
-assertFullDurationDoubleSupport(idleClip, 'builtin-biped-idle')
-assertFullDurationDoubleSupport(waveClip, 'builtin-biped-wave')
-assertFullDurationDoubleSupport(punchClip, 'builtin-biped-straight-punch')
+assertFullDurationDoubleSupport(idleClip, 'builtin-biped-idle', { 'foot.left': .95, 'foot.right': .95 })
+assertFullDurationDoubleSupport(waveClip, 'builtin-biped-wave', { 'foot.left': .9, 'foot.right': .9 })
+assertFullDurationDoubleSupport(punchClip, 'builtin-biped-straight-punch', { 'foot.left': .82, 'foot.right': .9 })
 assert.deepEqual(sampleBipedPetMotion(jumpClip, 200).activeContacts, ['foot.left', 'foot.right'])
 assert.deepEqual(sampleBipedPetMotion(jumpClip, 1200).activeContacts, [])
 assert.deepEqual(sampleBipedPetMotion(jumpClip, 2100).activeContacts, ['foot.left', 'foot.right'])
