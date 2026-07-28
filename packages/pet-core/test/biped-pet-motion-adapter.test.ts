@@ -246,3 +246,80 @@ test('接触采样裁剪极短区间淡变并对 once 与 ping-pong 使用解析
   const pingPong = makeClip('ping-pong')
   assert.deepEqual(sampleBipedPetMotion(pingPong, 170).contactStates, sampleBipedPetMotion(pingPong, 30).contactStates)
 })
+
+test('重叠与相邻接触在编译期合并且只在并集外边界淡变', () => {
+  const compile = (contacts: readonly Record<string, unknown>[]) => compileBipedPetMotion(createStudioMotionAsset({
+    id: 'motion-contact-union', nameZh: '接触并集', nameEn: 'Contact union', durationMs: 200, loopMode: 'once',
+    extensions: { 'yk-pets/biped-motion/v1': { contacts } }, createdAt: 1, updatedAt: 1,
+  }))
+  const overlapping = compile([
+    { contactId: 'foot.left', startMs: 0, endMs: 100, confidence: .5 },
+    { contactId: 'foot.left', startMs: 50, endMs: 150, confidence: .9 },
+  ])
+
+  assert.deepEqual(overlapping.contacts.map(item => ({ contactId: item.contactId, startMs: item.startMs, endMs: item.endMs, confidence: item.confidence })), [
+    { contactId: 'foot.left', startMs: 0, endMs: 150, confidence: .9 },
+  ])
+  for (const timeMs of [49, 50, 74, 75, 76, 100, 149]) {
+    const state = sampleBipedPetMotion(overlapping, timeMs).contactStates[0]
+    assert.ok(state && state.weight > 0, `${timeMs}ms 的合并接触不能出现 V 形归零`)
+    assert.equal(state.confidence, .9)
+  }
+  assert.equal(sampleBipedPetMotion(overlapping, 75).contactStates[0]?.weight, 1)
+
+  const adjacent = compile([
+    { contactId: 'foot.right', startMs: 0, endMs: 100, confidence: .7 },
+    { contactId: 'foot.right', startMs: 100, endMs: 200, confidence: .8 },
+  ])
+  assert.equal(adjacent.contacts.length, 1)
+  assert.deepEqual(sampleBipedPetMotion(adjacent, 100).contactStates, [{ contactId: 'foot.right', phase: 'locked', weight: 1, confidence: .8 }])
+})
+
+test('循环接触把首尾组件视为环形并集并在精确接缝保持锁定', () => {
+  const clip = compileBipedPetMotion(createStudioMotionAsset({
+    id: 'motion-contact-seam', nameZh: '循环接缝', nameEn: 'Loop seam', durationMs: 1200, loopMode: 'loop',
+    extensions: { 'yk-pets/biped-motion/v1': { contacts: [
+      { contactId: 'foot.left', startMs: 0, endMs: 120, confidence: .7 },
+      { contactId: 'foot.left', startMs: 1080, endMs: 1200, confidence: .9 },
+      { contactId: 'foot.right', startMs: 0, endMs: 1200, confidence: .8 },
+    ] } }, createdAt: 1, updatedAt: 1,
+  }))
+
+  for (const timeMs of [-1, 0, 1, 1199, 1200, 1201]) {
+    assert.deepEqual(sampleBipedPetMotion(clip, timeMs).contactStates, [
+      { contactId: 'foot.left', phase: 'locked', weight: 1, confidence: .9 },
+      { contactId: 'foot.right', phase: 'locked', weight: 1, confidence: .8 },
+    ])
+    assert.deepEqual(sampleBipedPetMotion(clip, timeMs).activeContacts, ['foot.left', 'foot.right'])
+  }
+})
+
+test('零长度与反向接触不会进入编译结果或改变哈希', () => {
+  const create = (contacts: readonly Record<string, unknown>[]) => createStudioMotionAsset({
+    id: 'motion-invalid-contact', nameZh: '无效接触', nameEn: 'Invalid contacts', durationMs: 1000,
+    extensions: { 'yk-pets/biped-motion/v1': { contacts } }, createdAt: 1, updatedAt: 1,
+  })
+  const clean = compileBipedPetMotion(create([]))
+  const invalid = compileBipedPetMotion(create([
+    { contactId: 'foot.left', startMs: 100, endMs: 100, confidence: .7 },
+    { contactId: 'foot.right', startMs: 500, endMs: 200, confidence: .8 },
+  ]))
+
+  assert.deepEqual(invalid.contacts, [])
+  assert.equal(invalid.hash, clean.hash)
+})
+
+test('ping-pong 转折点遵循线性边界且完整覆盖接触始终锁定', () => {
+  const compile = (startMs: number) => compileBipedPetMotion(createStudioMotionAsset({
+    id: `motion-contact-turn-${startMs}`, nameZh: '往返转折', nameEn: 'Ping pong turn', durationMs: 100, loopMode: 'ping-pong',
+    extensions: { 'yk-pets/biped-motion/v1': { contacts: [{ contactId: 'foot.left', startMs, endMs: 100, confidence: .9 }] } },
+    createdAt: 1, updatedAt: 1,
+  }))
+  const ending = compile(20)
+  assert.deepEqual(sampleBipedPetMotion(ending, 99).contactStates, sampleBipedPetMotion(ending, 101).contactStates)
+  assert.deepEqual(sampleBipedPetMotion(ending, 100).activeContacts, [])
+  const full = compile(0)
+  for (const timeMs of [99, 100, 101]) {
+    assert.deepEqual(sampleBipedPetMotion(full, timeMs).contactStates, [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: .9 }])
+  }
+})

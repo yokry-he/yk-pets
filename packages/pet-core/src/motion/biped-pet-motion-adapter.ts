@@ -33,6 +33,8 @@ export interface BipedPetMotionContactCandidate {
   startMs: number
   endMs: number
   confidence: number
+  fadeIn: boolean
+  fadeOut: boolean
 }
 
 export interface BipedPetMotionSemanticEvent {
@@ -258,8 +260,10 @@ function readBipedMotionMetadata(asset: StudioMotionAssetV2, profile: CharacterR
       continue
     }
     const startMs = clamp(Number(value.startMs), 0, asset.durationMs)
-    const endMs = clamp(Number(value.endMs), startMs, asset.durationMs)
-    contacts.push({ contactId: value.contactId, startMs, endMs, confidence: clamp(Number(value.confidence), 0, 1) })
+    const endMs = clamp(Number(value.endMs), 0, asset.durationMs)
+    // 零长度或反向区间没有可采样接触；静默移除可保证它们不会只改变 Clip 哈希。
+    if (endMs <= startMs) continue
+    contacts.push({ contactId: value.contactId, startMs, endMs, confidence: clamp(Number(value.confidence), 0, 1), fadeIn: true, fadeOut: true })
   }
   const eventKinds = new Set<BipedPetMotionSemanticEvent['kind']>(['takeoff', 'landing', 'wave-peak', 'hit'])
   if (Array.isArray(record.events)) for (const [index, item] of record.events.entries()) {
@@ -274,9 +278,44 @@ function readBipedMotionMetadata(asset: StudioMotionAssetV2, profile: CharacterR
     }
     events.push({ id: value.id.trim(), kind: value.kind as BipedPetMotionSemanticEvent['kind'], timeMs: clamp(Number(value.timeMs), 0, asset.durationMs) })
   }
-  contacts.sort((left, right) => left.startMs - right.startMs || left.contactId.localeCompare(right.contactId))
+  const mergedContacts: BipedPetMotionContactCandidate[] = []
+  const contactsById = new Map<string, BipedPetMotionContactCandidate[]>()
+  for (const contact of contacts) {
+    const group = contactsById.get(contact.contactId) ?? []
+    group.push(contact)
+    contactsById.set(contact.contactId, group)
+  }
+  for (const contactId of [...contactsById.keys()].sort()) {
+    const group = contactsById.get(contactId)!
+      .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs || right.confidence - left.confidence)
+    const components: BipedPetMotionContactCandidate[] = []
+    for (const contact of group) {
+      const previous = components.at(-1)
+      if (previous && contact.startMs <= previous.endMs) {
+        previous.endMs = Math.max(previous.endMs, contact.endMs)
+        previous.confidence = Math.max(previous.confidence, contact.confidence)
+      }
+      else components.push({ ...contact })
+    }
+    const first = components[0]
+    const last = components.at(-1)
+    if (first && last && first.startMs === 0 && last.endMs === asset.durationMs) {
+      if (asset.loopMode === 'loop') {
+        const seamConfidence = Math.max(first.confidence, last.confidence)
+        first.fadeIn = false
+        last.fadeOut = false
+        first.confidence = seamConfidence
+        last.confidence = seamConfidence
+      }
+      else if (asset.loopMode === 'ping-pong' && first === last) {
+        first.fadeIn = false
+        first.fadeOut = false
+      }
+    }
+    mergedContacts.push(...components)
+  }
   events.sort((left, right) => left.timeMs - right.timeMs || left.id.localeCompare(right.id))
-  return { contacts, events, diagnostics }
+  return { contacts: mergedContacts, events, diagnostics }
 }
 
 function sameQuaternion(left: MotionQuaternion, right: MotionQuaternion) {
@@ -404,10 +443,10 @@ function sampleContactState(contact: BipedPetMotionContactCandidate, timeMs: num
   const durationMs = contact.endMs - contact.startMs
   if (durationMs <= 0 || timeMs < contact.startMs || timeMs > contact.endMs) return undefined
   const fadeMs = Math.min(CONTACT_FADE_MS, durationMs / 2)
-  if (timeMs < contact.startMs + fadeMs) {
+  if (contact.fadeIn && timeMs < contact.startMs + fadeMs) {
     return { contactId: contact.contactId, phase: 'acquiring', weight: clamp((timeMs - contact.startMs) / fadeMs, 0, 1), confidence: contact.confidence }
   }
-  if (timeMs >= contact.endMs - fadeMs) {
+  if (contact.fadeOut && timeMs >= contact.endMs - fadeMs) {
     return { contactId: contact.contactId, phase: 'releasing', weight: clamp((contact.endMs - timeMs) / fadeMs, 0, 1), confidence: contact.confidence }
   }
   return { contactId: contact.contactId, phase: 'locked', weight: 1, confidence: contact.confidence }

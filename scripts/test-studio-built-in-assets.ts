@@ -87,7 +87,10 @@ function assertFullDurationDoubleSupport(
     { contactId: 'foot.left', startMs: 0, endMs: clip.durationMs },
     { contactId: 'foot.right', startMs: 0, endMs: clip.durationMs },
   ], `${motionId} 必须声明覆盖完整时长的左右脚支撑区间`)
-  for (const [timeMs, phase, expectedWeight] of [[40, 'acquiring', .5], [clip.durationMs / 2, 'locked', 1], [clip.durationMs - 40, 'releasing', .5]] as const) {
+  const expectations = clip.loopMode === 'loop'
+    ? [[-1, 'locked', 1], [0, 'locked', 1], [1, 'locked', 1], [clip.durationMs - 1, 'locked', 1], [clip.durationMs, 'locked', 1], [clip.durationMs + 1, 'locked', 1]] as const
+    : [[40, 'acquiring', .5], [clip.durationMs / 2, 'locked', 1], [clip.durationMs - 40, 'releasing', .5]] as const
+  for (const [timeMs, phase, expectedWeight] of expectations) {
     const sample = sampleBipedPetMotion(clip, timeMs)
     assert.deepEqual(sample.contactStates.map(item => item.contactId), ['foot.left', 'foot.right'], `${motionId}/${timeMs} 必须采样到双脚接触状态`)
     assert.ok(sample.contactStates.every(item => item.phase === phase), `${motionId}/${timeMs} 接触阶段必须为 ${phase}`)
@@ -107,6 +110,18 @@ assert.deepEqual(sampleBipedPetMotion(walkClip, 40).activeContacts, ['foot.left'
 assert.deepEqual(sampleBipedPetMotion(walkClip, 300).activeContacts, ['foot.left'])
 assert.deepEqual(sampleBipedPetMotion(walkClip, 640).activeContacts, ['foot.right'])
 assert.deepEqual(sampleBipedPetMotion(walkClip, 1180).activeContacts, ['foot.left', 'foot.right'])
+for (const timeMs of [-1, 0, 1, 1199, 1200, 1201]) {
+  assert.ok(sampleBipedPetMotion(walkClip, timeMs).contactStates.every(item => item.phase === 'locked' && nearlyEqual(item.weight, 1)))
+  assert.deepEqual(sampleBipedPetMotion(walkClip, timeMs).activeContacts, ['foot.left', 'foot.right'])
+}
+assert.deepEqual(sampleBipedPetMotion(walkClip, 576).contactStates, [
+  { contactId: 'foot.left', phase: 'releasing', weight: .3, confidence: .9 },
+  { contactId: 'foot.right', phase: 'acquiring', weight: 0, confidence: .9 },
+])
+assert.deepEqual(sampleBipedPetMotion(walkClip, 600).contactStates, [
+  { contactId: 'foot.left', phase: 'releasing', weight: 0, confidence: .9 },
+  { contactId: 'foot.right', phase: 'acquiring', weight: .3, confidence: .9 },
+])
 
 assert.ok(BUILT_IN_STUDIO_MOTIONS.some(item => item.propIds.includes('builtin-nebula-staff')))
 assert.ok(BUILT_IN_STUDIO_MOTIONS.some(item => item.propIds.includes('builtin-glow-sticks')))
