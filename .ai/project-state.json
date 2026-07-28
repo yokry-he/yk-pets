@@ -101,8 +101,8 @@
     "bipedPetConstrainedFabrikZeroDistanceBoundaryComplete": true,
     "bipedPetDeterministicContactPhasesComplete": true,
     "bipedPetBasicMotionContactDataComplete": true,
-    "bipedPetRuntimeIkComplete": false,
-    "bipedPetFootLockComplete": false,
+    "bipedPetRuntimeIkComplete": true,
+    "bipedPetFootLockComplete": true,
     "bipedPetRootMotionComplete": false,
     "bipedPetMotionVfxComplete": false,
     "crossBrowserGpuManualAcceptanceComplete": false

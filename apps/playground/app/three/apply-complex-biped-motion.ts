@@ -4,8 +4,9 @@
  */
 
 import { Quaternion, Vector3 } from 'three'
-import type { SampledBipedPetMotion } from '@yk-pets/pet-core'
+import type { CompiledCharacterModel, SampledBipedPetMotion } from '@yk-pets/pet-core'
 import type { ComplexBipedPetObject } from './create-complex-biped-pet-object'
+import { createComplexBipedIkController } from './apply-complex-biped-ik'
 
 export interface ComplexBipedMotionController {
   apply(sample: SampledBipedPetMotion, weight?: number): void
@@ -15,7 +16,7 @@ export interface ComplexBipedMotionController {
 
 const clampWeight = (value: number | undefined) => Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 1))
 
-export function createComplexBipedMotionController(runtime: ComplexBipedPetObject): ComplexBipedMotionController {
+export function createComplexBipedMotionController(runtime: ComplexBipedPetObject, compilation?: CompiledCharacterModel): ComplexBipedMotionController {
   const bindRotations = new Map([...runtime.bonesById].map(([boneId, bone]) => [boneId, bone.quaternion.clone()]))
   const root = runtime.bonesById.get('root')
   if (!root) throw new Error('复杂双足萌宠动作控制器缺少 root 骨骼。')
@@ -25,6 +26,7 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
   const blendedOffset = new Quaternion()
   const weightedRootOffset = new Vector3()
   let disposed = false
+  const ikController = compilation ? createComplexBipedIkController(runtime, compilation) : undefined
 
   const assertUsable = () => {
     if (disposed || runtime.isDisposed()) throw new Error('复杂双足萌宠动作控制器已释放，不能继续写入骨骼。')
@@ -50,14 +52,17 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
       weightedRootOffset.set(...sample.rootPosition).multiplyScalar(weight)
       root.position.copy(bindRootPosition).add(weightedRootOffset)
       runtime.object.updateMatrixWorld(true)
+      ikController?.apply(sample, weight)
     },
     reset() {
       assertUsable()
       restoreBindPose()
+      ikController?.reset()
       runtime.object.updateMatrixWorld(true)
     },
     dispose() {
       if (disposed) return
+      ikController?.dispose()
       if (!runtime.isDisposed()) {
         restoreBindPose()
         runtime.object.updateMatrixWorld(true)
