@@ -233,7 +233,8 @@
     "biped-pet-hybrid-ik-phase-delivery",
     "hybrid-ik-legacy-history-migration",
     "biped-pet-hybrid-root-motion-vfx-design",
-    "biped-pet-hybrid-root-motion-vfx-plan"
+    "biped-pet-hybrid-root-motion-vfx-plan",
+    "biped-pet-root-motion-solver"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

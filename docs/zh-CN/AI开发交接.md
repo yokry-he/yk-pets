@@ -399,3 +399,15 @@
 - Root Motion 的完整语义参与 Clip 哈希；表驱动测试锁定既有 ASCII 基线，并覆盖模式、距离、转向、垂直策略、跳高、窗口 ID/类型/起止/权重与 VFX 标签的逐字段变化。补充平面窗口 ID 按完整 Unicode code point 消费，ASCII 路径保持兼容；无效 Profile 仍在 Root Motion 规范化之后阻塞，因此同时保留 Profile error 与清洗 warning。
 - 自动验证已通过 `corepack pnpm --filter @yk-pets/pet-core test`（143 项）、`corepack pnpm --filter @yk-pets/pet-core typecheck`、10,000 长度资源预算探针、编译 Clip 改时长与跨 Clip 复用的两个独立时长探针、`__proto__` JSON 往返探针、`node scripts/check-ai-handoff.mjs`、`node scripts/check-documentation.mjs` 和 `git diff --check`。
 - 本批只完成契约、清洗、编译和采样结果传播，不计算单帧或累计世界位移，不修改 Three 运行时容器，也不生成 VFX。下一批应实现框架无关的 Root Motion 数值采样器；`bipedPetRootMotionComplete` 与 `bipedPetMotionVfxComplete` 继续保持 `false`。
+
+## 39. 双足萌宠确定性 Root Motion 数值采样批次
+
+- `@yk-pets/pet-core` 新增框架无关的 `sampleBipedPetRootMotion`、输入契约与只读采样结果。累计局部位移、世界位移和转向不做逐帧积分，而是由规范化定义、角色高度、动作权重及当前绝对动作时间直接求值；不同采样频率到达同一时间会得到相同累计目标，单帧预算只限制增量，不会反写或污染累计目标。
+- 水平移动只消费 `travel` 与 `warp` 窗口，并把每个窗口的 `smoothstep(t)=t²(3-2t)` 完成量按权重归一化；`ballistic` 仅贡献垂直弹道，`brake` 仅贡献制动信号。`loop` 通过 `iteration + progress` 保持完整周期累计与接缝连续，`once` 停在终点，`ping-pong` 明确沿同一路径往返。时间映射统一复用 `resolveMotionTime`，没有复制三种循环算法。
+- 弹道高度使用 `4 × jumpHeight × characterHeight × p × (1-p)`，其中 `p` 是 ballistic 窗口的 smoothstep 进度；窗口外高度归零，起点、峰值和落点连续，阶段稳定划分为 `takeoff`、`airborne`、`landing` 与 `grounded`，ping-pong 返程会反转物理阶段但保持高度路径连续。只有合法连续前进时间跨过实际落点时才产生一次有限正 `landingImpulse`，进入 landing 区间只改变阶段，暂停、回拖、大跳重置不会重复触发。
+- 局部前进轴固定为 `+X`；世界变换遵循 Three.js 右手坐标的正 Y 旋转，因此 `facingRadians=+π/2` 会把局部 `+X` 映射为世界 `-Z`。`actionWeight` 钳制到 `[0,1]`，角色高度要求正有限值；畸形定义、非有限时间/朝向/权重和非法足底残差返回全有限 `blocked` 结果。
+- 连续身份阈值固定为 `min(250ms, duration×0.25)`，与现有足底锁定一致。首次采样、普通倒退/回拖或超过阈值的非连续大跳返回 `reset`：仍提供当前确定性累计目标与阶段，但增量、速度、角速度和瞬时强度全部清零；相同时间返回 `solved` 且不会持续移动。调用方在 Clip 切换、停止或 runtime 重建时继续通过不传 `previousRequestedTimeMs` 建立新身份。
+- 单帧位移长度限制为角色高度的 `0.25`，单帧转向限制为 `π/4`；超过任一预算返回 `clamped` 并按原方向限制增量。足底残差以每秒 `0.25` 的反馈增益按真实时间差加入局部修正，并受每秒角色高度 `0.02` 的独立预算限制，因此 30/60 FPS 累计修正、速度和强度一致，过大残差也不能支配定义的根运动。速度始终使用真实请求时间差按秒计算，不使用显示 FPS。
+- `motionIntensity` 由实际有限线速度与角速度归一化，`brakeIntensity` 使用 brake 窗口内的有界 smoothstep 脉冲，`landingImpulse` 使用合法落地跨越；三者都受动作权重和 `1e-12` 稳定零阈值约束，只作为后续特效消费信号，本批不创建任何 VFX。
+- 自动测试覆盖累计帧率无关、角色高度/权重/朝向、累计与增量转向、多窗口重叠与空隙、四种窗口 kind、loop 接缝、once 终点、ping-pong 返程、弹道连续性与阶段、落地事件、暂停/回拖/大跳、单帧预算、极大足底残差、畸形 Proxy、输入不突变、输出冻结无共享引用，以及固定种子边界探针。`pet-core` 共 154 项测试；独立固定种子探针再执行 10,000 次有效样本，逐次复核全字段有限、相同输入确定、累计目标不受 previous 影响、位移/转向预算，结果为 `4000 solved / 0 clamped / 6000 reset / 0 blocked`，本机总耗时约 `87.33ms`、平均约 `0.0087ms/sample`。类型检查、AI 交接、文档与 diff 门禁均在提交前重新执行。
+- 本批仍未让 Three 运行时容器消费这些累计/增量结果，也未实现任务 3 的确定性 VFX 信号消费或对象池。`.ai/project-state.json` 只追加 `biped-pet-root-motion-solver` 完成项；`bipedPetRootMotionComplete`、`bipedPetMotionVfxComplete` 与跨浏览器 GPU 验收继续保持 `false`。
