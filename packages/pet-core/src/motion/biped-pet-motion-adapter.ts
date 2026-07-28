@@ -5,9 +5,10 @@
 
 import { BIPED_PET_RIG_PROFILE } from '../character/biped-pet-profile'
 import { validateRigProfile, type CharacterRigProfile, type RigVector3 } from '../character/rig-profile'
-import type { EvaluatedCloudFoxPose } from './motion-evaluator'
-import type { StudioMotionLoopMode } from './motion-time'
-import { motionEulerToQuaternion, type MotionQuaternion } from './quaternion-motion'
+import { evaluateNormalizedMotionAsset, type EvaluatedCloudFoxPose } from './motion-evaluator'
+import { normalizeMotionAsset, type StudioMotionAssetV2 } from './motion-asset'
+import { resolveMotionTime, type StudioMotionLoopMode } from './motion-time'
+import { IDENTITY_MOTION_QUATERNION, motionEulerToQuaternion, slerpMotionQuaternion, type MotionQuaternion } from './quaternion-motion'
 
 export const BIPED_PET_MOTION_ADAPTER_ID = 'biped-pet-motion-adapter/v1' as const
 export const BIPED_PET_QUATERNION_CLIP_SCHEMA_VERSION = 1 as const
@@ -79,6 +80,13 @@ export interface AdaptedBipedPetPose {
   diagnostics: readonly BipedPetMotionDiagnostic[]
 }
 
+export interface SampledBipedPetMotion {
+  resolvedTimeMs: number
+  bones: readonly { boneId: string, rotation: MotionQuaternion }[]
+  rootPosition: RigVector3
+  activeContacts: readonly string[]
+}
+
 type RotationDistribution = readonly (readonly [boneId: string, weight: number])[]
 type MutableVector3 = [number, number, number]
 
@@ -129,7 +137,7 @@ export function adaptCloudFoxPoseToBipedPet(
     return 0
   }
   const addAxis = (boneId: string, axis: 0 | 1 | 2, value: number) => {
-    if (!availableBoneIds.has(boneId) || value === 0) return
+    if (!availableBoneIds.has(boneId)) return
     const rotation = rotations.get(boneId) ?? [0, 0, 0]
     rotation[axis] += value
     rotations.set(boneId, rotation)
@@ -201,4 +209,151 @@ export function adaptCloudFoxPoseToBipedPet(
   ]
 
   return { bones, rootPosition, diagnostics }
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const record = value as Record<string, unknown>
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`
+}
+
+function motionHash(value: unknown) {
+  let result = 2166136261
+  for (const character of stableStringify(value)) {
+    result ^= character.charCodeAt(0)
+    result = Math.imul(result, 16777619)
+  }
+  return `bpm-${(result >>> 0).toString(16).padStart(8, '0')}`
+}
+
+function sameQuaternion(left: MotionQuaternion, right: MotionQuaternion) {
+  return Math.abs(
+    left[0] * right[0]
+    + left[1] * right[1]
+    + left[2] * right[2]
+    + left[3] * right[3],
+  ) > 1 - 1e-12
+}
+
+function blockedMotionClip(asset: StudioMotionAssetV2, profile: CharacterRigProfile, diagnostics: readonly BipedPetMotionDiagnostic[]): BipedPetQuaternionClip {
+  const value = {
+    schemaVersion: BIPED_PET_QUATERNION_CLIP_SCHEMA_VERSION,
+    adapterId: BIPED_PET_MOTION_ADAPTER_ID,
+    profileId: 'biped-pet/v1' as const,
+    sourceMotionId: asset.id,
+    durationMs: asset.durationMs,
+    loopMode: asset.loopMode,
+    status: 'blocked' as const,
+    boneTracks: [],
+    rootPositionTrack: [],
+    contacts: [],
+    events: [],
+    diagnostics: diagnostics.map(item => ({ ...item })),
+  }
+  return { ...value, hash: motionHash({ ...value, profileId: profile.id }) }
+}
+
+/** 将完整语义动作资产编译为当前真实骨骼集合可消费的确定性 Quaternion Clip。 */
+export function compileBipedPetMotion(input: unknown, target: BipedPetMotionCompileTarget = {}): BipedPetQuaternionClip {
+  const normalized = normalizeMotionAsset(input)
+  const asset = normalized.asset
+  const profile = target.profile ?? BIPED_PET_RIG_PROFILE
+  const profileDiagnostics = validateRigProfile(profile)
+  if (profile.id !== 'biped-pet/v1' || profileDiagnostics.length) {
+    return blockedMotionClip(asset, profile, profileDiagnostics.map((message, index) => ({
+      id: `motion-profile-validation-${index}`,
+      severity: 'error',
+      message: `双足萌宠动作 Profile 无法安全编译：${message}`,
+    })))
+  }
+
+  const times = [...new Set([0, asset.durationMs, ...asset.tracks.flatMap(track => track.keyframes.map(keyframe => keyframe.timeMs))])]
+    .sort((left, right) => left - right)
+  const boneKeyframes = new Map<string, BipedPetBoneQuaternionKeyframe[]>()
+  const rootPositionTrack: BipedPetRootPositionKeyframe[] = []
+  // 编译关键帧必须读取原始 0..duration 区间；循环只属于运行时采样，否则 duration 端点会提前回绕到 0。 / Compile the raw 0..duration range; looping belongs to runtime sampling so the duration endpoint does not wrap to zero.
+  const evaluationAsset: StudioMotionAssetV2 = asset.loopMode === 'once' ? asset : { ...asset, loopMode: 'once' }
+  const diagnostics: BipedPetMotionDiagnostic[] = normalized.diagnostics.map((item, index) => ({
+    id: `motion-normalization-${index}`,
+    severity: 'warning',
+    message: `动作资产已规范化：${item.code}:${item.path}`,
+  }))
+  const hasRootPosition = asset.tracks.some(track => track.channelId.startsWith('root.position.'))
+
+  for (const timeMs of times) {
+    const adapted = adaptCloudFoxPoseToBipedPet(evaluateNormalizedMotionAsset(evaluationAsset, timeMs), target)
+    diagnostics.push(...adapted.diagnostics)
+    for (const bone of adapted.bones) {
+      const keyframes = boneKeyframes.get(bone.boneId) ?? []
+      const previous = keyframes.at(-1)
+      if (!previous || !sameQuaternion(previous.value, bone.rotation) || timeMs === asset.durationMs) {
+        keyframes.push({ timeMs, value: bone.rotation })
+        boneKeyframes.set(bone.boneId, keyframes)
+      }
+    }
+    if (hasRootPosition) {
+      const previous = rootPositionTrack.at(-1)
+      if (!previous || previous.value.some((value, index) => Math.abs(value - adapted.rootPosition[index]!) > 1e-12) || timeMs === asset.durationMs) {
+        rootPositionTrack.push({ timeMs, value: adapted.rootPosition })
+      }
+    }
+  }
+  if (diagnostics.some(item => item.severity === 'error')) return blockedMotionClip(asset, profile, diagnostics)
+
+  const value = {
+    schemaVersion: BIPED_PET_QUATERNION_CLIP_SCHEMA_VERSION,
+    adapterId: BIPED_PET_MOTION_ADAPTER_ID,
+    profileId: 'biped-pet/v1' as const,
+    sourceMotionId: asset.id,
+    durationMs: asset.durationMs,
+    loopMode: asset.loopMode,
+    status: 'ready' as const,
+    boneTracks: [...boneKeyframes].map(([boneId, keyframes]) => ({ boneId, keyframes })),
+    rootPositionTrack,
+    contacts: [] as BipedPetMotionContactCandidate[],
+    events: [] as BipedPetMotionSemanticEvent[],
+    diagnostics,
+  }
+  return { ...value, hash: motionHash(value) }
+}
+
+function sampleVectorTrack(track: readonly BipedPetRootPositionKeyframe[], timeMs: number): RigVector3 {
+  if (!track.length) return [0, 0, 0]
+  const first = track[0]!
+  const last = track.at(-1)!
+  if (timeMs <= first.timeMs) return [...first.value]
+  if (timeMs >= last.timeMs) return [...last.value]
+  const nextIndex = track.findIndex(keyframe => keyframe.timeMs > timeMs)
+  const next = track[nextIndex]!
+  const previous = track[nextIndex - 1]!
+  const progress = (timeMs - previous.timeMs) / Math.max(1, next.timeMs - previous.timeMs)
+  return previous.value.map((value, index) => value + (next.value[index]! - value) * progress) as [number, number, number]
+}
+
+function sampleBoneTrack(track: BipedPetBoneQuaternionTrack, timeMs: number): MotionQuaternion {
+  if (!track.keyframes.length) return [...IDENTITY_MOTION_QUATERNION]
+  const first = track.keyframes[0]!
+  const last = track.keyframes.at(-1)!
+  if (timeMs <= first.timeMs) return [...first.value]
+  if (timeMs >= last.timeMs) return [...last.value]
+  const nextIndex = track.keyframes.findIndex(keyframe => keyframe.timeMs > timeMs)
+  const next = track.keyframes[nextIndex]!
+  const previous = track.keyframes[nextIndex - 1]!
+  const progress = (timeMs - previous.timeMs) / Math.max(1, next.timeMs - previous.timeMs)
+  return slerpMotionQuaternion(previous.value, next.value, progress)
+}
+
+/** 在任意时间采样 Clip；blocked 输入始终返回可直接忽略的空姿态。 */
+export function sampleBipedPetMotion(clip: BipedPetQuaternionClip, timeMs: number): SampledBipedPetMotion {
+  if (clip.status !== 'ready') return { resolvedTimeMs: 0, bones: [], rootPosition: [0, 0, 0], activeContacts: [] }
+  const resolved = resolveMotionTime(timeMs, clip.durationMs, clip.loopMode)
+  return {
+    resolvedTimeMs: resolved.resolvedTimeMs,
+    bones: clip.boneTracks.map(track => ({ boneId: track.boneId, rotation: sampleBoneTrack(track, resolved.resolvedTimeMs) })),
+    rootPosition: sampleVectorTrack(clip.rootPositionTrack, resolved.resolvedTimeMs),
+    activeContacts: clip.contacts
+      .filter(contact => resolved.resolvedTimeMs >= contact.startMs && resolved.resolvedTimeMs <= contact.endMs)
+      .map(contact => contact.contactId),
+  }
 }

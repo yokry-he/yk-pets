@@ -10,12 +10,16 @@ import {
   BIPED_PET_MOTION_ADAPTER_ID,
   BIPED_PET_RIG_PROFILE,
   CLOUD_FOX_SEMANTIC_RIG_ID,
+  compileBipedPetMotion,
+  createStudioMotionAsset,
   createNeutralCloudFoxPoseValues,
   motionEulerToQuaternion,
   normalizeMotionQuaternion,
+  sampleBipedPetMotion,
   slerpMotionQuaternion,
   type CloudFoxRigChannelId,
   type EvaluatedCloudFoxPose,
+  type MotionTrack,
 } from '../src/index.ts'
 
 function createPose(values: Partial<Record<CloudFoxRigChannelId, number>>): EvaluatedCloudFoxPose {
@@ -33,6 +37,21 @@ function createPose(values: Partial<Record<CloudFoxRigChannelId, number>>): Eval
 
 function quaternionDot(left: readonly number[], right: readonly number[]) {
   return Math.abs(left.reduce((sum, value, index) => sum + value * right[index]!, 0))
+}
+
+function track(channelId: CloudFoxRigChannelId, points: readonly (readonly [number, number])[]): MotionTrack {
+  return {
+    id: `track-${channelId}`,
+    layerId: 'base',
+    channelId,
+    muted: false,
+    keyframes: points.map(([timeMs, value], index) => ({
+      id: `key-${channelId}-${index}`,
+      timeMs,
+      value,
+      interpolation: 'linear',
+    })),
+  }
 }
 
 test('Quaternion 规范化会把零长度和非有限输入恢复为单位旋转', () => {
@@ -103,4 +122,63 @@ test('不存在的可选骨骼链会跳过而不会产生坏引用', () => {
 
   assert.equal(adapted.bones.some(item => item.boneId.startsWith('tail.')), false)
   assert.equal(adapted.diagnostics.some(item => item.severity === 'error'), false)
+})
+
+test('动作资产会确定性编译为真实骨骼 Quaternion Clip', () => {
+  const asset = createStudioMotionAsset({
+    id: 'motion-turn',
+    nameZh: '转体测试',
+    nameEn: 'Turn fixture',
+    durationMs: 1000,
+    loopMode: 'once',
+    tracks: [
+      track('body.rotation.y', [[0, 0], [1000, Math.PI]]),
+      track('root.position.x', [[0, 0], [1000, 1]]),
+    ],
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  const target = { profile: BIPED_PET_RIG_PROFILE, boneIds: BIPED_PET_RIG_PROFILE.bones.map(item => item.id) }
+  const first = compileBipedPetMotion(asset, target)
+  const second = compileBipedPetMotion(structuredClone(asset), target)
+
+  assert.equal(first.status, 'ready')
+  assert.equal(first.hash, second.hash)
+  assert.deepEqual(first, second)
+  assert.ok(first.boneTracks.some(item => item.boneId === 'pelvis'))
+  assert.ok(first.boneTracks.some(item => item.boneId === 'chest'))
+  assert.deepEqual(first.rootPositionTrack.map(item => item.timeMs), [0, 1000])
+})
+
+test('Clip 采样使用动作循环时间、Quaternion 最短路径和根位移线性插值', () => {
+  const asset = createStudioMotionAsset({
+    id: 'motion-loop',
+    nameZh: '循环测试',
+    nameEn: 'Loop fixture',
+    durationMs: 1000,
+    loopMode: 'loop',
+    tracks: [
+      track('head.rotation.z', [[0, 0], [1000, Math.PI / 2]]),
+      track('root.position.y', [[0, 0], [1000, 1]]),
+    ],
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  const clip = compileBipedPetMotion(asset)
+  const sample = sampleBipedPetMotion(clip, 1500)
+
+  assert.equal(sample.resolvedTimeMs, 500)
+  assert.ok(sample.bones.every(item => Math.abs(Math.hypot(...item.rotation) - 1) < 1e-8))
+  assert.ok(Math.abs(sample.rootPosition[1] - .12) < 1e-8)
+})
+
+test('损坏 Profile 会阻塞 Clip 且采样安全回退为空姿态', () => {
+  const asset = createStudioMotionAsset({ id: 'fixture', nameZh: '测试', nameEn: 'Fixture', durationMs: 1000 })
+  const clip = compileBipedPetMotion(asset, { profile: { ...BIPED_PET_RIG_PROFILE, bones: [] } })
+  const sample = sampleBipedPetMotion(clip, 100)
+
+  assert.equal(clip.status, 'blocked')
+  assert.ok(clip.diagnostics.some(item => item.severity === 'error'))
+  assert.deepEqual(sample.bones, [])
+  assert.deepEqual(sample.rootPosition, [0, 0, 0])
 })
