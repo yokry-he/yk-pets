@@ -253,7 +253,7 @@ export interface SampledBipedPetRootMotion {
 }
 ```
 
-`cumulative*` 必须由动作定义、`requestedTimeMs` 和 `iteration` 直接计算，作为帧率无关 target；调用方通过 `previousAppliedWorld/previousAppliedTurnRadians` 提供上一帧已应用状态，并把上一帧返回的 `landingAuthorization` 作为 `previousLandingAuthorization` 原样回传。求解器在世界空间从 applied 指向 target 计算误差和预算，使用实际可表示的 `appliedWorld - previousAppliedWorld` 输出 `deltaWorld` 与速度，再以当前朝向的逆旋转派生 `appliedLocal/deltaLocal`；朝向改变不得重解释既有世界位置。缺 applied、倒退、Clip 身份变化或超过 `max(250ms, duration×0.5)` 时 reset 并把 applied 初始化为 target，同时清除授权且不发速度或瞬时事件。窗口使用 `smoothstep(t)=t²(3-2t)`，多个有效窗口按权重归一化；弹道高度使用 `4h·p·(1-p)`，但阶段由实际 applied 高度与纵向增量判定。共享 action-aware 时间线必须成为唯一事件权威：请求端点不进入结构边界，窗口首尾只提示初始切分；时间线在一个 `512` work-unit 预算内直接输出 proven airborne 组件、双向 takeoff/touchdown 的 canonical resolved 时间与组件强度，复杂度为 `O(W log W + 512W)`。混合增减贡献区间必须以复合高度和导数上下界生成有序证明叶，不得用单个 airborne midpoint 代表整段；组件强度必须取阈值组件内 action-aware 复合归一化高度的真实峰值乘纵向动作意图并钳制到 `[0,1]`，不能取决于 proof 切分、witness 或成员窗中点。单窗、共同峰心与同向区间使用解析快路；其余 active-set 结构区间必须用 de Casteljau 限制固定六次 Bernstein 控制多边形并按全局动作权重归一化，一个组件内共享真实 sample 最大值与稳定的凸包上界优先队列。上界相同按 start/end/序号稳定排序，只有上界仍可能高于 `max(1, |best|)×1e-13` 有证误差的节点才继续细分；细分与新 sample 均计入结构证明的共享预算，耗尽时整个分析 unknown，控制上界不能作为强度。两侧 proven airborne 且窗口精确相邻时合并零宽接地点；任意正宽 proven grounded gap（包括 `.001ms` 和一个 ULP）拆分；低于阈值的相邻/重叠窗口不得改变主组件，实际 touchdown 可早于窗口 end。`unknown` 不输出转换、不签发也不清除授权。loop/ping-pong、周期缝与转折点先在 canonical 局部区间筛选并保持同 timestamp 的转换顺序，再映射到最多四段绝对请求区间，不能重新枚举窗口端点候选；转换与区间分类必须共用 iteration 锚、段宽和 modulo 一致性检查，不可表示时统一回退 incomplete/unknown。授权跨后续 `actionWeight` 淡出与不合格微尾窗保持，只有 applied 随后真实越过接地阈值才消费一次并输出无量纲 `landingImpulse`；后续 canonical takeoff 清除旧授权。暂停保留授权但不触发，倒退、reset、大跳和未授权 applied 落地均不触发。
+`cumulative*` 必须由动作定义、`requestedTimeMs` 和 `iteration` 直接计算，作为帧率无关 target；调用方通过 `previousAppliedWorld/previousAppliedTurnRadians` 提供上一帧已应用状态，并把上一帧返回的 `landingAuthorization` 作为 `previousLandingAuthorization` 原样回传。求解器在世界空间从 applied 指向 target 计算误差和预算，使用实际可表示的 `appliedWorld - previousAppliedWorld` 输出 `deltaWorld` 与速度，再以当前朝向的逆旋转派生 `appliedLocal/deltaLocal`；朝向改变不得重解释既有世界位置。缺 applied、倒退、Clip 身份变化或超过 `max(250ms, duration×0.5)` 时 reset 并把 applied 初始化为 target，同时清除授权且不发速度或瞬时事件。窗口使用 `smoothstep(t)=t²(3-2t)`，多个有效窗口按权重归一化；弹道高度使用 `4h·p·(1-p)`，但阶段由实际 applied 高度与纵向增量判定。共享 action-aware 时间线必须成为唯一事件权威：请求端点不进入结构边界，窗口首尾只提示初始切分；时间线在一个 `512` work-unit 预算内直接输出 proven airborne 组件、双向 takeoff/touchdown 的 canonical resolved 时间与归一化复合峰高，复杂度为 `O(W log W + 512W)`。混合增减贡献区间必须以复合高度和导数上下界生成有序证明叶，不得用单个 airborne midpoint 代表整段；组件强度必须取阈值组件内 action-aware 复合归一化高度的真实峰值乘纵向动作意图并钳制到 `[0,1]`，不能取决于 proof 切分、witness 或成员窗中点。求解器使用 `landingImpulse = sqrt(normalizedCompositePeakHeight)` 把该峰高转为无量纲落地速度启发式，依据是自由落体 `v²=2gh` 的归一化关系。单窗、共同峰心与同向区间使用解析快路；其余 active-set 结构区间必须用 de Casteljau 限制固定六次 Bernstein 控制多边形并按全局动作权重归一化，一个组件内共享真实 sample 最大值与稳定的凸包上界优先队列。上界相同按 start/end/序号稳定排序，只有上界仍可能高于 `max(1, |best|)×1e-13` 有证误差的节点才继续细分；细分与新 sample 均计入结构证明的共享预算，耗尽时整个分析 unknown，控制上界不能作为强度。两侧 proven airborne 且窗口精确相邻时合并零宽接地点；任意正宽 proven grounded gap（包括 `.001ms` 和一个 ULP）拆分；低于阈值的相邻/重叠窗口不得改变主组件，实际 touchdown 可早于窗口 end。`unknown` 不输出转换、不签发也不清除授权。loop/ping-pong、周期缝与转折点先在 canonical 局部区间筛选并保持同 timestamp 的转换顺序，再映射到最多四段绝对请求区间，不能重新枚举窗口端点候选；转换与区间分类必须共用 iteration 锚、段宽和 modulo 一致性检查，不可表示时统一回退 incomplete/unknown。授权跨后续 `actionWeight` 淡出与不合格微尾窗保持，只有 applied 随后真实越过接地阈值才消费一次并输出无量纲 `landingImpulse`；后续 canonical takeoff 清除旧授权。暂停保留授权但不触发，倒退、reset、大跳和未授权 applied 落地均不触发。
 
 安全预算固定为每帧不超过 `0.25 × characterHeight` 位移和 `π/4` 转向；超过时按方向等比钳制并返回 `clamped`，不改变累计 target，后续帧继续从 applied 追赶欠量。`footResidual` 只读取有限 X/Z，正值推动根节点沿对应局部轴正向修正，完全忽略 Y；仅在整个帧间时间映射都被连续 `travel/warp` 支撑组件覆盖时作为局部水平反馈，跨入、跨出或穿越 gap 的帧不消费残差。预算随真实时间差、动作权重和水平追赶误差缩放；纯函数不持有低通状态。
 
@@ -342,7 +342,7 @@ export interface BipedPetMotionVfxSignal {
 }
 ```
 
-`landing-ring` 阈值为落地冲量 `.25`，`landing-dust` 为 `.4`，`speed-trail` 为实际 applied 水平速度按 `0.4` 个角色身高/秒参考速度归一化后的强度 `.55`，`brake-sparks` 为“authored brake 窗包络 × 实际水平速度强度”的急停强度 `.45`。纯垂直弹道、原地转向和零水平位移 brake 窗不得触发移动特效；若未来需要物理减速度，必须由调用方显式携带连续速度状态，不能在纯函数中加入隐藏历史。burst ID 使用 `${clipHash}:${kind}:${Math.round(requestedTimeMs)}`，sustain ID 使用 `${clipHash}:${kind}:active`。Root Motion 样本的 `requestedTimeMs` 必须严格等于外层请求时间；`reset/blocked`、时间身份错配、时间倒退或未授权标签返回空数组。
+`landing-ring` 阈值为落地冲量 `.25`，`landing-dust` 为 `.4`，两者都使用严格 `>`，不能为适配单个动作而改阈值。`landingImpulse=sqrt(normalizedCompositePeakHeight)`，所以两个阈值分别对应 `.0625` 与 `.16` 的峰高边界；等于边界仍静默，内置 `.28` 跳跃产生 `sqrt(.28)≈.529` 并同时授权环与尘效。`speed-trail` 为实际 applied 水平速度按 `0.4` 个角色身高/秒参考速度归一化后的强度 `.55`，`brake-sparks` 为“authored brake 窗包络 × 实际水平速度强度”的急停强度 `.45`。纯垂直弹道、原地转向和零水平位移 brake 窗不得触发移动特效；若未来需要物理减速度，必须由调用方显式携带连续速度状态，不能在纯函数中加入隐藏历史。burst ID 使用 `${clipHash}:${kind}:${Math.round(requestedTimeMs)}`，sustain ID 使用 `${clipHash}:${kind}:active`。Root Motion 样本的 `requestedTimeMs` 必须严格等于外层请求时间；`reset/blocked`、时间身份错配、时间倒退或未授权标签返回空数组。
 
 - [ ] **步骤 4：验证绿灯并提交推送**
 
@@ -420,7 +420,7 @@ corepack pnpm run test:studio-built-in-assets
 corepack pnpm --filter @yk-pets/pet-core test
 ```
 
-预期：通过；11 个内置动作数量、时长、轨道和道具依赖不变。测试必须以 `actionWeight=1` 从头逐帧携带 previous applied/turn/authorization，验证自然行走中段触发速度拖尾、自然冲刺移动段触发拖尾、约 `7300ms` 的重叠制动段触发急停火花，以及跳跃真实落地触发落地环；不得用权重突变或人为欠量伪造速度。
+预期：通过；11 个内置动作数量、时长、轨道和道具依赖不变。测试必须以 `actionWeight=1` 从头逐帧携带 previous applied/turn/authorization，验证自然行走中段触发速度拖尾、自然冲刺移动段触发拖尾、约 `7300ms` 的重叠制动段触发急停火花，以及 `.28` 跳跃的真实落地在同一帧各触发一次落地环与落地尘效；不得用权重突变、人为欠量或标签特判伪造强度。
 
 - [ ] **步骤 5：提交推送**
 

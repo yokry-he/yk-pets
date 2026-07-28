@@ -751,6 +751,9 @@ function runNaturalMovementVfxProbe() {
     let previous = sampleDeterministically({ ...base, requestedTimeMs: 0 })
     let speedTrailFrames = 0
     let brakeSparkFrames = 0
+    let landingRingBursts = 0
+    let landingDustBursts = 0
+    let maximumLandingImpulse = 0
     let brakeAt7300 = false
     for (let requestedTimeMs = stepMs; requestedTimeMs <= durationMs; requestedTimeMs += stepMs) {
       const sample = sampleDeterministically({
@@ -771,10 +774,20 @@ function runNaturalMovementVfxProbe() {
       assert.ok(signals.every(signal => signal.timeMs === requestedTimeMs))
       if (signals.some(signal => signal.kind === 'speed-trail')) speedTrailFrames += 1
       if (signals.some(signal => signal.kind === 'brake-sparks')) brakeSparkFrames += 1
+      if (signals.some(signal => signal.kind === 'landing-ring')) landingRingBursts += 1
+      if (signals.some(signal => signal.kind === 'landing-dust')) landingDustBursts += 1
+      maximumLandingImpulse = Math.max(maximumLandingImpulse, sample.landingImpulse)
       if (requestedTimeMs === 7300) brakeAt7300 = signals.some(signal => signal.kind === 'brake-sparks')
       previous = sample
     }
-    return { speedTrailFrames, brakeSparkFrames, brakeAt7300 }
+    return {
+      speedTrailFrames,
+      brakeSparkFrames,
+      landingRingBursts,
+      landingDustBursts,
+      maximumLandingImpulse,
+      brakeAt7300,
+    }
   }
 
   const walk = run(normalizeBipedPetRootMotion({
@@ -790,11 +803,19 @@ function runNaturalMovementVfxProbe() {
     ],
     vfxTags: ['speed-trail', 'brake-sparks'],
   }, 9200).value, 9200, 'once', 10)
+  const jump = run(normalizeBipedPetRootMotion({
+    mode: 'travel', distance: 0, turnRadians: 0, verticalMode: 'ballistic', jumpHeight: .28,
+    windows: [{ id: 'jump-ballistic', kind: 'ballistic', startMs: 720, endMs: 1824, weight: 1 }],
+    vfxTags: ['landing-ring', 'landing-dust'],
+  }, 2400).value, 2400, 'once', 40)
   assert.equal(walk.speedTrailFrames, 46, '自然行走速度拖尾帧数必须确定')
   assert.equal(sprint.speedTrailFrames, 582, '自然冲刺速度拖尾帧数必须确定')
   assert.equal(sprint.brakeSparkFrames, 36, '自然冲刺急停火花帧数必须确定')
   assert.ok(sprint.brakeAt7300, '冲刺制动段必须在约 7300ms 触发急停火花')
-  return { referenceSpeedBodyHeightsPerSecond: .4, walk, sprint }
+  assert.equal(jump.landingRingBursts, 1, '内置 .28 跳跃的真实 touchdown 必须且只能授权一次落地环')
+  assert.equal(jump.landingDustBursts, 1, '内置 .28 跳跃的真实 touchdown 必须且只能授权一次落地尘效')
+  assert.equal(jump.maximumLandingImpulse, Math.sqrt(.28), '内置跳跃冲量必须由归一化峰高的平方根派生')
+  return { referenceSpeedBodyHeightsPerSecond: .4, walk, sprint, jump }
 }
 
 const result = {

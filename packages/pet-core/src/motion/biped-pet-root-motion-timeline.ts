@@ -61,6 +61,7 @@ export interface BipedPetBallisticTimelineComponent {
   readonly endMs: number
   readonly startGroundedMs: number
   readonly endGroundedMs: number
+  /** 组件内 action-aware 复合峰高相对角色身高的归一化比例；Root Motion 消费时再派生落地冲击速度。 */
   readonly strength: number
 }
 
@@ -69,6 +70,7 @@ export interface BipedPetBallisticTimelineTransition {
   readonly resolvedTimeMs: number
   readonly traversalDirection: -1 | 1
   readonly kind: BipedPetBallisticTimelineTransitionKind
+  /** 与所属组件一致的归一化复合峰高，不是最终 landingImpulse。 */
   readonly strength: number
 }
 

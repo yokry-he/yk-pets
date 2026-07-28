@@ -41,7 +41,7 @@ export interface BipedPetRootMotionNormalizationResult {
 
 /**
  * 由采样器签发、调用方逐帧原样回传的最小落地授权。
- * 令牌只冻结一次合法 target touchdown 的绝对请求时间与强度，不持有任何可变引用。
+ * 令牌只冻结一次合法 target touchdown 的绝对请求时间与无量纲冲击速度启发式，不持有任何可变引用。
  */
 export interface BipedPetLandingAuthorization {
   readonly touchdownRequestedTimeMs: number
@@ -85,7 +85,7 @@ export interface SampledBipedPetRootMotion {
   /** 实际 applied 高度与本帧实际垂直差值决定的运行时相位，不是 target 时间相位。 */
   readonly phase: 'grounded' | 'takeoff' | 'airborne' | 'landing'
   readonly motionIntensity: number
-  /** 仅在合法 target touchdown 已发生且 applied 本帧真实穿入 grounded 时输出一次。 */
+  /** 仅在合法 target touchdown 已发生且 applied 本帧真实穿入 grounded 时输出一次归一化冲击速度启发式。 */
   readonly landingImpulse: number
   /** 尚未被真实 applied touchdown 消费的授权；调用方负责在下一连续帧原样回传。 */
   readonly landingAuthorization?: BipedPetLandingAuthorization
@@ -839,6 +839,15 @@ function stableSignal(value: number): number {
   return bounded <= ROOT_MOTION_SIGNAL_EPSILON ? 0 : bounded
 }
 
+/**
+ * 时间线的 component strength 表示相对角色身高的真实复合峰高。
+ * 根据自由落体 `v² = 2gh` 将速度以 `sqrt(2g·characterHeight)` 归一化，落地冲击启发式为 `sqrt(peakHeightRatio)`。
+ * 该映射不依赖窗口时长或请求帧细分；阈值等于 `.25/.4` 时仍由 VFX 层的严格 `>` 保持静默。
+ */
+function landingImpulseFromPeakHeightRatio(peakHeightRatio: number): number {
+  return stableSignal(Math.sqrt(clamp(peakHeightRatio, 0, 1)))
+}
+
 function brakeWindowIntensity(windows: readonly BipedPetRootMotionWindow[], timeMs: number): number {
   let maximumWeight = 0
   for (const window of windows) {
@@ -1026,7 +1035,7 @@ function advanceLandingAuthorization(
     else {
       authorization = Object.freeze({
         touchdownRequestedTimeMs: event.requestedTimeMs,
-        impulse: event.strength,
+        impulse: landingImpulseFromPeakHeightRatio(event.strength),
       })
     }
   }

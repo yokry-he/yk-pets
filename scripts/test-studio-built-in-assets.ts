@@ -247,7 +247,11 @@ for (let index = 1; index < jumpVfxSamples.length; index += 1) {
     rootMotion: jumpVfxSamples[index]!,
   }).map(signal => signal.kind)) jumpVfxKinds.add(kind)
 }
-assert.ok(jumpVfxKinds.has('landing-ring'), '跳跃资产必须通过真实弹道落地授权落地环')
+assert.deepEqual(
+  [...jumpVfxKinds].sort(),
+  ['landing-dust', 'landing-ring'],
+  '跳跃资产必须通过同一次真实弹道 touchdown 同时授权落地尘效与落地环',
+)
 
 const nearlyEqual = (actual: number, expected: number) => Math.abs(actual - expected) <= 1e-12
 

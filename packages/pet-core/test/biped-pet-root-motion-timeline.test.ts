@@ -434,18 +434,19 @@ test('2/3/4/5/6 个常规错峰窗口的授权与冲量在独立帧和细分帧�
   }
 
   for (const fixture of representativeOffsetOverlapCases) {
-    const expectedStrength = fixture.expectedStrength
+    const expectedPeakHeight = fixture.expectedStrength
       ?? referenceCompositePeakStrength(fixture.windows, .69, 1)
+    const expectedLandingImpulse = Math.sqrt(expectedPeakHeight)
     const independentFrames = run(fixture, 20)
     const subdividedFrames = run(fixture, 5)
 
     assert.equal(independentFrames.impulses.length, 1, `${fixture.name} 的独立帧必须消费一次落地冲量`)
     assert.equal(subdividedFrames.impulses.length, 1, `${fixture.name} 的细分帧必须消费一次落地冲量`)
-    assert.ok(Math.abs(independentFrames.impulses[0]! - expectedStrength) <= 2e-12)
+    assert.ok(Math.abs(independentFrames.impulses[0]! - expectedLandingImpulse) <= 2e-12)
     assert.deepEqual(subdividedFrames.impulses, independentFrames.impulses, `${fixture.name} 的落地冲量不得依赖帧细分`)
     assert.ok(
       [...independentFrames.authorizationImpulses, ...subdividedFrames.authorizationImpulses]
-        .every(impulse => Math.abs(impulse - expectedStrength) <= 2e-12),
+        .every(impulse => Math.abs(impulse - expectedLandingImpulse) <= 2e-12),
       `${fixture.name} 若跨帧保留授权，其强度必须与最终冲量一致`,
     )
   }

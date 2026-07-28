@@ -226,6 +226,9 @@ if (state) {
   expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(builtInRootMotionCoverage), '内置动作语义批次 automatedCoverage 必须且只能列出真实验证项 / Built-in motion semantics automatedCoverage must contain only actual validation')
   expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, '内置动作语义批次不得声明渲染器或视觉案例修改 / Built-in motion semantics must not claim renderer or visual-case changes')
   expect(state.latestCompletedBatch?.motionIntensityReferenceBodyHeightsPerSecond === .4, '移动强度参考速度必须是每秒 0.4 个角色身高 / Motion-intensity reference speed must be 0.4 body-heights per second')
+  expect(state.latestCompletedBatch?.landingImpulseFormula === 'sqrt(normalizedCompositePeakHeight)', '落地冲量必须由归一化复合峰高的平方根派生 / Landing impulse must derive from the square root of normalized composite peak height')
+  expect(state.latestCompletedBatch?.landingRingThreshold === .25 && state.latestCompletedBatch?.landingDustThreshold === .4, '落地环与尘效必须保持既定严格阈值 / Landing ring and dust must retain their strict thresholds')
+  expect(state.latestCompletedBatch?.landingRingPeakHeightBoundary === .0625 && state.latestCompletedBatch?.landingDustPeakHeightBoundary === .16, '落地特效的峰高平方边界必须与速度启发式一致 / Peak-height square boundaries must match the velocity heuristic')
   expect(state.latestCompletedBatch?.walkDistanceBodyHeights === .42, '行走距离必须保持 0.42 个角色身高 / Walk distance must remain 0.42 body-heights')
   expect(state.latestCompletedBatch?.jumpHeightBodyHeights === .28, '跳跃高度必须保持 0.28 个角色身高 / Jump height must remain 0.28 body-heights')
   expect(state.latestCompletedBatch?.sprintDistanceBodyHeights === 2.4, '冲刺距离必须保持 2.4 个角色身高 / Sprint distance must remain 2.4 body-heights')
@@ -236,6 +239,9 @@ if (state) {
     sprintSpeedTrailFrames: 582,
     sprintBrakeSparkFrames: 36,
     sprintBrakeAt7300: true,
+    jumpLandingRingBursts: 1,
+    jumpLandingDustBursts: 1,
+    jumpLandingImpulse: Math.sqrt(.28),
   }), '自然播放 VFX 探针计数必须稳定 / Natural-playback VFX probe counts must remain stable')
   expect((state.completed || []).includes('biped-pet-root-motion-action-aware-boundaries'), 'Root Motion action-aware 边界修复必须进入完成状态 / Action-aware Root Motion boundary repair must be recorded as complete')
   expect((state.completed || []).includes('biped-pet-root-motion-canonical-ballistic-transitions'), 'Root Motion canonical 弹道转换必须进入完成状态 / Canonical Root Motion ballistic transitions must be recorded as complete')

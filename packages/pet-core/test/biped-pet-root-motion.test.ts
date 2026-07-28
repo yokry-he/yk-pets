@@ -1098,6 +1098,52 @@ test('ballistic 窗口给出连续高度、确定阶段与单次落地冲量', (
   assert.equal(reverseTouchdown.landingAuthorization, undefined)
 })
 
+test('landingImpulse 以归一化峰高平方根表达落地速度启发式且不依赖帧细分', () => {
+  const run = (jumpHeight: number, actionWeight: number, times: readonly number[]) => {
+    const base = {
+      ...travelSampleInput,
+      definition: {
+        mode: 'travel' as const,
+        distance: 0,
+        turnRadians: 0,
+        verticalMode: 'ballistic' as const,
+        jumpHeight,
+        windows: [{ id: 'impulse-jump', kind: 'ballistic' as const, startMs: 20, endMs: 100, weight: 1 }],
+        vfxTags: [] as const,
+      },
+      durationMs: 120,
+      loopMode: 'once' as const,
+      characterHeight: 4,
+      actionWeight,
+    }
+    let previous = sampleRootMotion({ ...base, requestedTimeMs: times[0], previousRequestedTimeMs: undefined })
+    const impulses: number[] = []
+    for (const requestedTimeMs of times.slice(1)) {
+      previous = sampleRootMotion({
+        ...base,
+        requestedTimeMs,
+        previousRequestedTimeMs: previous.requestedTimeMs,
+        previousAppliedWorld: previous.appliedWorld,
+        previousAppliedTurnRadians: previous.appliedTurnRadians,
+        previousLandingAuthorization: previous.landingAuthorization,
+      })
+      if (previous.landingImpulse > 0) impulses.push(previous.landingImpulse)
+    }
+    assert.equal(impulses.length, 1, '每次合法 touchdown 只能消费一次冲量')
+    return impulses[0]!
+  }
+  const coarseTimes = [0, 80, 101] as const
+  const subdividedTimes = [0, 20, 40, 60, 80, 90, 99, 101] as const
+
+  assert.equal(run(.0625, 1, coarseTimes), .25, `ring 阈值对应峰高 (.25²)`)
+  assert.equal(run(.16, 1, coarseTimes), .4, `dust 阈值对应峰高 (.4²)`)
+  assert.equal(run(.64, .25, coarseTimes), .4, '动作权重必须先进入峰高意图，再派生速度启发式')
+  assert.ok(run(.159999, 1, coarseTimes) < .4, '弱于 dust 峰高边界的落地不得越过 dust 冲量阈值')
+  const authoredImpulse = run(.28, 1, coarseTimes)
+  assert.equal(authoredImpulse, Math.sqrt(.28))
+  assert.equal(run(.28, 1, subdividedTimes), authoredImpulse, '请求帧细分不得改变峰高派生的落地冲量')
+})
+
 test('角色高度、权重、朝向和转向按绝对目标确定缩放', () => {
   const heightTwo = sampleRootMotion({ ...travelSampleInput, characterHeight: 2, previousRequestedTimeMs: 600 })
   const heightFour = sampleRootMotion({ ...travelSampleInput, characterHeight: 4, previousRequestedTimeMs: 600 })
@@ -1559,7 +1605,9 @@ test('target 在新窗口重新腾空会清除旧授权并只为自身 touchdown
     }
   }
   assert.equal(previous.phase, 'grounded')
-  assert.ok(tailAuthorizationImpulse > 0 && tailAuthorizationImpulse < 1e-10)
+  const tailPeakHeight = 2e-12 / (1 + 2e-12) * .8
+  assert.ok(Math.abs(tailAuthorizationImpulse - Math.sqrt(tailPeakHeight)) <= 1e-18)
+  assert.ok(tailAuthorizationImpulse < .25, '微尾窗真实重签的冲量仍必须低于落地环阈值')
   assert.equal(previous.landingImpulse, tailAuthorizationImpulse, 'applied 落地只能消费微窗自身的新授权')
 })
 

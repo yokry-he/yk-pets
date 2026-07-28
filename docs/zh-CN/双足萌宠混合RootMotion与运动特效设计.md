@@ -101,7 +101,7 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 - 蓄力阶段保持双脚接触，降低骨盆并积累起跳强度；
 - 离地时释放接触锚，按模板高度与角色尺寸生成连续抛物线；
 - 空中阶段不启用足底锁定；
-- 移动阶段由实际 applied 轨迹决定：高度在角色身高的 `1e-12` 阈值内为 `grounded`，正的实际纵向增量为 `takeoff`，负增量为 `landing`，正高度且纵向静止为 `airborne`。target 复合弹道使用 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))` 归一化阈值；内部 action-aware 时间线是唯一事件权威，先在与请求帧无关的 canonical 轴上证明 airborne 组件及其正反向 takeoff/touchdown 转换，再由请求区间只做绝对时间筛选和映射。混合增减贡献区间使用复合高度与导数上下界生成有序证明叶，不能用单个 airborne midpoint 代替整段证明。窗口首尾只可作为结构切分提示，不能直接成为候选事件；低于阈值的窗口边界不得改变已证明组件与转换，touchdown 时间取复合曲线真正进入 grounded 的可表示阈值交点，因此允许早于原始窗口 end。两侧均有 proven airborne 且窗口精确首尾相接时，中间零宽接地点合并为连续组件；任何正宽 proven grounded gap（含 `.001ms` 与一个可表示 ULP）都拆分组件。`unknown`、预算耗尽或不可表示的超大 iteration 不输出转换，不签发新授权，也不清除旧授权。每次连续采样仅有一个 `512` work-unit 预算，复杂度上界为 `O(W log W + 512W)`，没有按窗口重置或跨调用续算。loop、ping-pong、周期缝与转折点先在 canonical 局部区间判定包含关系，再映射 canonical 双向转换及 resolved 锚点到绝对请求时间，最大四段且不会从请求端点反向制造结构；同 timestamp 事件保留 canonical 顺序，转换查询和区间 evidence 共用不可表示 iteration 检查并统一回退 incomplete/unknown。组件强度取阈值组件内 action-aware 复合归一化高度的真实峰值，再乘纵向动作意图并钳制到 `[0,1]`；单窗、共同峰心和同向区间使用解析快路，其余 active-set 结构区间用 de Casteljau 限制六次 Bernstein 控制多边形并按全局动作权重合成。组件内所有区间共享真实 sample 最大值与稳定上界优先队列，只有控制凸包仍可能高于 `max(1, |best|)×1e-13` 有证误差的节点才细分；每次细分和 sample 都纳入同一固定预算，耗尽时保持 unknown，控制上界与 proof witness 均不能作为强度。调用方逐帧原样回传授权；只有 applied 世界高度随后真实越地才消费一次并输出 `landingImpulse`，后续 canonical takeoff 清除旧授权。暂停保留授权但不触发，reset、倒退、异常大跳、Clip/runtime 切换会清除授权；该强度仍是无量纲启发式信号，不是物理碰撞速度。
+- 移动阶段由实际 applied 轨迹决定：高度在角色身高的 `1e-12` 阈值内为 `grounded`，正的实际纵向增量为 `takeoff`，负增量为 `landing`，正高度且纵向静止为 `airborne`。target 复合弹道使用 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))` 归一化阈值；内部 action-aware 时间线是唯一事件权威，先在与请求帧无关的 canonical 轴上证明 airborne 组件及其正反向 takeoff/touchdown 转换，再由请求区间只做绝对时间筛选和映射。混合增减贡献区间使用复合高度与导数上下界生成有序证明叶，不能用单个 airborne midpoint 代替整段证明。窗口首尾只可作为结构切分提示，不能直接成为候选事件；低于阈值的窗口边界不得改变已证明组件与转换，touchdown 时间取复合曲线真正进入 grounded 的可表示阈值交点，因此允许早于原始窗口 end。两侧均有 proven airborne 且窗口精确首尾相接时，中间零宽接地点合并为连续组件；任何正宽 proven grounded gap（含 `.001ms` 与一个可表示 ULP）都拆分组件。`unknown`、预算耗尽或不可表示的超大 iteration 不输出转换，不签发新授权，也不清除旧授权。每次连续采样仅有一个 `512` work-unit 预算，复杂度上界为 `O(W log W + 512W)`，没有按窗口重置或跨调用续算。loop、ping-pong、周期缝与转折点先在 canonical 局部区间判定包含关系，再映射 canonical 双向转换及 resolved 锚点到绝对请求时间，最大四段且不会从请求端点反向制造结构；同 timestamp 事件保留 canonical 顺序，转换查询和区间 evidence 共用不可表示 iteration 检查并统一回退 incomplete/unknown。时间线组件强度取阈值组件内 action-aware 复合归一化高度的真实峰值，再乘纵向动作意图并钳制到 `[0,1]`；Root Motion 签发授权时再以 `landingImpulse = sqrt(normalizedCompositePeakHeight)` 派生无量纲冲击速度启发式。该公式来自自由落体 `v²=2gh` 的归一化关系，对角色尺寸、窗口时长和请求帧细分无关。单窗、共同峰心和同向区间使用解析快路，其余 active-set 结构区间用 de Casteljau 限制六次 Bernstein 控制多边形并按全局动作权重合成。组件内所有区间共享真实 sample 最大值与稳定上界优先队列，只有控制凸包仍可能高于 `max(1, |best|)×1e-13` 有证误差的节点才细分；每次细分和 sample 都纳入同一固定预算，耗尽时保持 unknown，控制上界与 proof witness 均不能作为强度。调用方逐帧原样回传授权；只有 applied 世界高度随后真实越地才消费一次并输出 `landingImpulse`，后续 canonical takeoff 清除旧授权。暂停保留授权但不触发，reset、倒退、异常大跳、Clip/runtime 切换会清除授权；`landingImpulse` 是与物理关系一致的无量纲速度启发式，不声称是场景碰撞求解器给出的真实速度。
 
 第一阶段地面固定为角色预览平面，不做射线地形、坡度、台阶或碰撞体响应。
 
@@ -126,7 +126,7 @@ Root Motion 是角色整体水平位移和转向的唯一所有者；现有 IK �
 第一批 VFX 只覆盖运动反馈，不建设通用节点式特效编辑器：
 
 - `landing-ring`：首次有效落地时生成扩散环；
-- `landing-dust`：无量纲落地启发式强度超过阈值时生成少量尘点；
+- `landing-dust`：无量纲落地速度启发式严格超过 `.4` 时生成少量尘点；落地环保持 `.25` 阈值，等于阈值均静默。在平方根映射下，两者分别对应 `.0625` 与 `.16` 的峰高边界；因此内置 `.28` 跳跃触发两者，峰高不高于 `.16` 的弱落地不会误触发尘效；
 - `speed-trail`：实际 applied 水平速度超过阈值时沿角色后方显示短拖尾；`motionIntensity` 以明确的 `0.4` 个角色身高/秒为参考速度，即 `hypot(vx,vz)/(characterHeight×0.4)` 并钳制到 `[0,1]`；纯垂直弹道与原地转向不触发；
 - `brake-sparks`：接地时由 authored `brake` 窗包络调制实际 applied 水平速度，组合强度超过阈值时生成急停摩擦粒子；零水平位移时窗口本身不能构造火花。
 

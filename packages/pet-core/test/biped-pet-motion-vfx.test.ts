@@ -183,42 +183,54 @@ test('落地冲量兼容求解器真实 touchdown 的 grounded 相位并拒绝�
 })
 
 test('真实 ballistic Root Motion touchdown 可直接生成落地特效', () => {
-  const definition = {
-    mode: 'travel' as const,
-    distance: 0,
-    turnRadians: 0,
-    verticalMode: 'ballistic' as const,
-    jumpHeight: .8,
-    windows: [{ id: 'jump', kind: 'ballistic' as const, startMs: 200, endMs: 1000, weight: 1 }],
-    vfxTags: ['landing-ring', 'landing-dust'] as const,
+  const solveTouchdown = (jumpHeight: number) => {
+    const definition = {
+      mode: 'travel' as const,
+      distance: 0,
+      turnRadians: 0,
+      verticalMode: 'ballistic' as const,
+      jumpHeight,
+      windows: [{ id: 'jump', kind: 'ballistic' as const, startMs: 200, endMs: 1000, weight: 1 }],
+      vfxTags: ['landing-ring', 'landing-dust'] as const,
+    }
+    const base = {
+      definition,
+      durationMs: 1200,
+      loopMode: 'once' as const,
+      characterHeight: 4,
+      facingRadians: 0,
+      actionWeight: 1,
+      footResidual: [0, 0, 0] as const,
+    }
+    const beforeTouchdown = sampleBipedPetRootMotion({
+      ...base,
+      requestedTimeMs: 999,
+      previousRequestedTimeMs: 999,
+    })
+    const touchdown = sampleBipedPetRootMotion({
+      ...base,
+      requestedTimeMs: 1001,
+      previousRequestedTimeMs: 999,
+      previousAppliedWorld: beforeTouchdown.appliedWorld,
+      previousAppliedTurnRadians: beforeTouchdown.appliedTurnRadians,
+    })
+    return { definition, touchdown }
   }
-  const beforeTouchdown = sampleBipedPetRootMotion({
-    definition,
-    requestedTimeMs: 999,
+
+  const boundary = solveTouchdown(.16)
+  assert.equal(boundary.touchdown.landingImpulse, .4)
+  assert.deepEqual(deriveSignals({
+    clipHash: 'clip-boundary',
     previousRequestedTimeMs: 999,
-    durationMs: 1200,
-    loopMode: 'once',
-    characterHeight: 4,
-    facingRadians: 0,
-    actionWeight: 1,
-    footResidual: [0, 0, 0],
-  })
-  const touchdown = sampleBipedPetRootMotion({
-    definition,
     requestedTimeMs: 1001,
-    previousRequestedTimeMs: 999,
-    durationMs: 1200,
-    loopMode: 'once',
-    characterHeight: 4,
-    facingRadians: 0,
-    actionWeight: 1,
-    previousAppliedWorld: beforeTouchdown.appliedWorld,
-    previousAppliedTurnRadians: beforeTouchdown.appliedTurnRadians,
-    footResidual: [0, 0, 0],
-  })
+    tags: boundary.definition.vfxTags,
+    rootMotion: boundary.touchdown,
+  }).map(item => item.kind), ['landing-ring'], 'dust 冲量等于严格阈值时必须保持静默')
+
+  const { definition, touchdown } = solveTouchdown(.28)
 
   assert.equal(touchdown.phase, 'grounded')
-  assert.ok(touchdown.landingImpulse > .4)
+  assert.equal(touchdown.landingImpulse, Math.sqrt(.28))
   assert.deepEqual(deriveSignals({
     clipHash: 'clip-integration',
     previousRequestedTimeMs: 999,

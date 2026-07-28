@@ -265,6 +265,11 @@
     "rendererModified": false,
     "visualCasesModified": false,
     "motionIntensityReferenceBodyHeightsPerSecond": 0.4,
+    "landingImpulseFormula": "sqrt(normalizedCompositePeakHeight)",
+    "landingRingThreshold": 0.25,
+    "landingDustThreshold": 0.4,
+    "landingRingPeakHeightBoundary": 0.0625,
+    "landingDustPeakHeightBoundary": 0.16,
     "walkDistanceBodyHeights": 0.42,
     "jumpHeightBodyHeights": 0.28,
     "sprintDistanceBodyHeights": 2.4,
@@ -275,7 +280,10 @@
       "walkSpeedTrailFrames": 46,
       "sprintSpeedTrailFrames": 582,
       "sprintBrakeSparkFrames": 36,
-      "sprintBrakeAt7300": true
+      "sprintBrakeAt7300": true,
+      "jumpLandingRingBursts": 1,
+      "jumpLandingDustBursts": 1,
+      "jumpLandingImpulse": 0.5291502622129182
     },
     "automatedCoverage": [
       "corepack pnpm run test:studio-built-in-assets",
