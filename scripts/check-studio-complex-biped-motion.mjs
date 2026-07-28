@@ -47,6 +47,33 @@ function withoutComments(source) {
 
 let stringQuote = ''
 
+function canStartRegexLiteral(code) {
+  const trimmed = code.trimEnd()
+  if (!trimmed) return true
+  if (trimmed.endsWith('++') || trimmed.endsWith('--')) return false
+  if (trimmed.endsWith('=>')) return true
+  const previous = trimmed.at(-1)
+  if (previous && '=(:,!?{[;+-*%&|^~<>'.includes(previous)) return true
+  const previousWord = /[$\w]+$/.exec(trimmed)?.[0]
+  return previousWord !== undefined && new Set(['return', 'case', 'throw', 'typeof', 'instanceof', 'in', 'of', 'yield', 'await', 'delete', 'void', 'new']).has(previousWord)
+}
+
+function regexLiteralEnd(source, openingIndex) {
+  let inCharacterClass = false
+  for (let index = openingIndex + 1; index < source.length; index += 1) {
+    const current = source[index]
+    if (current === '\n' || current === '\r') return -1
+    if (current === '\\') { index += 1; continue }
+    if (current === '[' && !inCharacterClass) { inCharacterClass = true; continue }
+    if (current === ']' && inCharacterClass) { inCharacterClass = false; continue }
+    if (current !== '/' || inCharacterClass) continue
+    let end = index + 1
+    while (/[a-z]/i.test(source[end] ?? '')) end += 1
+    return end
+  }
+  return -1
+}
+
 function withoutCommentsAndStrings(source) {
   let result = ''
   let mode = 'code'
@@ -74,6 +101,8 @@ function withoutCommentsAndStrings(source) {
     }
     if (current === '/' && next === '/') { result += '  '; index += 1; mode = 'line-comment'; continue }
     if (current === '/' && next === '*') { result += '  '; index += 1; mode = 'block-comment'; continue }
+    // 正则字面量内容可能伪造方法调用；识别到合法表达式位置和闭合字面量时保守拒绝本段源码。
+    if (current === '/' && canStartRegexLiteral(result) && regexLiteralEnd(source, index) >= 0) return ''
     // 模板插值可能包含可执行调用；小型门禁无法完整解析时保守拒绝，避免把真实调用误当字符串通过。
     if (current === '"' || current === "'" || current === '`') { result += ' '; mode = 'string'; quote = current; continue }
     result += current
@@ -155,6 +184,15 @@ const cleanupTemplateFixture = renderer
   .replace('try { newController?.dispose() }', 'const proof = `escaped \\` text newController?.dispose() newRuntime?.dispose()`')
   .replace('try { newRuntime?.dispose() }', '')
 expect(rendererLifecycleFailures(cleanupTemplateFixture).includes(cleanupFailure), '门禁自身必须拒绝用含转义的模板字符串伪造释放调用')
+const cleanupRegexFixture = renderer
+  .replace('try { newController?.dispose() }', 'const proof = /newController?.dispose() newRuntime?.dispose()/')
+  .replace('try { newRuntime?.dispose() }', '')
+expect(rendererLifecycleFailures(cleanupRegexFixture).includes(cleanupFailure), '门禁自身必须拒绝用正则字面量伪造释放调用')
+const cleanupEscapedRegexFixture = renderer
+  .replace('try { newController?.dispose() }', String.raw`const proof = /newController?.dispose()[\/]newRuntime?.dispose()\/end/gi`)
+  .replace('try { newRuntime?.dispose() }', '')
+expect(rendererLifecycleFailures(cleanupEscapedRegexFixture).includes(cleanupFailure), '门禁自身必须拒绝用含转义斜杠、字符类和 flags 的正则伪造释放调用')
+expect(withoutCommentsAndStrings('const ratio = a / b').includes('/'), '词法归一化必须保留除法运算，不能误判为正则字面量')
 const cleanupCommentFixture = renderer
   .replace('try { newController?.dispose() }', '/* newController?.dispose() */')
   .replace('try { newRuntime?.dispose() }', '/* newRuntime?.dispose() */')
