@@ -241,7 +241,8 @@ export function validateRigProfile(profile: unknown): string[] {
     }
     if (!isText(limb.contactId)) diagnostics.push(`${path}.contactId: expected non-empty string`)
     else if (!contactIds.has(limb.contactId)) diagnostics.push(`${path}.contactId: unknown contact "${limb.contactId}"`)
-    if (!isFiniteVector3(limb.poleAxis) || Math.hypot(...limb.poleAxis) === 0) diagnostics.push(`${path}.poleAxis: expected non-zero finite Vector3`)
+    const poleLength = isFiniteVector3(limb.poleAxis) ? Math.hypot(...limb.poleAxis) : Number.NaN
+    if (!Number.isFinite(poleLength) || poleLength <= 0) diagnostics.push(`${path}.poleAxis: expected non-zero finite Vector3`)
     if (typeof limb.maxStretchRatio !== 'number' || !Number.isFinite(limb.maxStretchRatio) || limb.maxStretchRatio < .8 || limb.maxStretchRatio > 1) diagnostics.push(`${path}.maxStretchRatio: expected finite number in [0.8, 1]`)
     if (typeof limb.maxCorrectionRadians !== 'number' || !Number.isFinite(limb.maxCorrectionRadians) || limb.maxCorrectionRadians <= 0 || limb.maxCorrectionRadians > Math.PI) diagnostics.push(`${path}.maxCorrectionRadians: expected finite number in (0, Math.PI]`)
     if (typeof limb.weight !== 'number' || !Number.isFinite(limb.weight) || limb.weight < 0 || limb.weight > 1) diagnostics.push(`${path}.weight: expected finite number in [0, 1]`)

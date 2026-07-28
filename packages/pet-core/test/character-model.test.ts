@@ -171,18 +171,101 @@ test('biped-pet/v1 为左右腿声明可验证的自动混合 IK', () => {
   assert.deepEqual(validateRigProfile(BIPED_PET_RIG_PROFILE), [])
 })
 
-test('Rig Profile 会拒绝断裂链、未知接触点和非法 IK 限制', () => {
-  const profile = { ...structuredClone(BIPED_PET_RIG_PROFILE), limbIk: [{
+const createValidLimbIk = () => structuredClone(BIPED_PET_RIG_PROFILE.limbIk![0]!)
+const createProfileWithLimbIk = (limbIk: unknown) => ({ ...structuredClone(BIPED_PET_RIG_PROFILE), limbIk })
+
+test('Rig Profile 会按稳定顺序诊断断裂链、未知接触点和非法 IK 限制', () => {
+  const profile = createProfileWithLimbIk([{
     id: 'broken', solver: 'auto' as const, boneIds: ['thigh.left', 'ankle.right'],
     contactId: 'missing', poleAxis: [0, 0, 0] as const, maxStretchRatio: 2,
     maxCorrectionRadians: Number.NaN, weight: -1,
-  }] }
-  const diagnostics = validateRigProfile(profile)
-  assert.ok(diagnostics.some(item => item.includes('broken parent path')))
-  assert.ok(diagnostics.some(item => item.includes('unknown contact')))
-  assert.ok(diagnostics.some(item => item.includes('poleAxis')))
-  assert.ok(diagnostics.some(item => item.includes('maxStretchRatio')))
-  assert.ok(diagnostics.some(item => item.includes('weight')))
+  }])
+
+  assert.deepEqual(validateRigProfile(profile), [
+    'limbIk[0].boneIds: expected at least 3 bones',
+    'limbIk[0].boneIds: broken parent path between "thigh.left" and "ankle.right"',
+    'limbIk[0].contactId: unknown contact "missing"',
+    'limbIk[0].poleAxis: expected non-zero finite Vector3',
+    'limbIk[0].maxStretchRatio: expected finite number in [0.8, 1]',
+    'limbIk[0].maxCorrectionRadians: expected finite number in (0, Math.PI]',
+    'limbIk[0].weight: expected finite number in [0, 1]',
+  ])
+})
+
+test('Rig Profile 会完整且确定地诊断畸形 IK 结构', () => {
+  const valid = createValidLimbIk()
+  const cases: readonly { name: string; profile: unknown; diagnostics: readonly string[] }[] = [
+    { name: 'limbIk 不是数组', profile: createProfileWithLimbIk(null), diagnostics: ['limbIk: expected array'] },
+    { name: '肢体不是对象', profile: createProfileWithLimbIk([null]), diagnostics: ['limbIk[0]: expected object'] },
+    {
+      name: '肢体 ID 重复',
+      profile: createProfileWithLimbIk([valid, { ...valid }]),
+      diagnostics: ['limbIk[1].id: duplicate limb IK id "leg.left"'],
+    },
+    {
+      name: '求解器非法',
+      profile: createProfileWithLimbIk([{ ...valid, solver: 'ccd' }]),
+      diagnostics: ['limbIk[0].solver: expected analytic-two-bone, fabrik, or auto'],
+    },
+    {
+      name: '骨骼链过短',
+      profile: createProfileWithLimbIk([{ ...valid, boneIds: ['thigh.left', 'knee.left'] }]),
+      diagnostics: ['limbIk[0].boneIds: expected at least 3 bones'],
+    },
+    {
+      name: '骨骼链包含未知骨骼',
+      profile: createProfileWithLimbIk([{ ...valid, boneIds: ['thigh.left', 'knee.left', 'missing'] }]),
+      diagnostics: [
+        'limbIk[0].boneIds[2]: unknown bone "missing"',
+        'limbIk[0].boneIds: broken parent path between "knee.left" and "missing"',
+      ],
+    },
+    {
+      name: 'boneIds 不是数组',
+      profile: createProfileWithLimbIk([{ ...valid, boneIds: null }]),
+      diagnostics: ['limbIk[0].boneIds: expected array'],
+    },
+    {
+      name: 'boneIds 包含错误元素',
+      profile: createProfileWithLimbIk([{ ...valid, boneIds: ['thigh.left', 42, 'calf.left'] }]),
+      diagnostics: ['limbIk[0].boneIds[1]: expected non-empty string'],
+    },
+    {
+      name: '极向量分量有限但模长溢出',
+      profile: createProfileWithLimbIk([{ ...valid, poleAxis: [Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE] }]),
+      diagnostics: ['limbIk[0].poleAxis: expected non-zero finite Vector3'],
+    },
+  ]
+
+  for (const item of cases) {
+    assert.doesNotThrow(() => validateRigProfile(item.profile), item.name)
+    assert.deepEqual(validateRigProfile(item.profile), item.diagnostics, item.name)
+  }
+})
+
+test('Rig Profile 严格遵守 IK 数值边界并拒绝相邻非法值', () => {
+  const valid = createValidLimbIk()
+  const validBoundaries = [
+    { ...valid, maxStretchRatio: .8, maxCorrectionRadians: Number.MIN_VALUE, weight: 0 },
+    { ...valid, id: 'leg.upper-boundary', maxStretchRatio: 1, maxCorrectionRadians: Math.PI, weight: 1 },
+  ]
+  assert.deepEqual(validateRigProfile(createProfileWithLimbIk(validBoundaries)), [])
+
+  const cases = [
+    ['maxStretchRatio', .8 - Number.EPSILON, 'limbIk[0].maxStretchRatio: expected finite number in [0.8, 1]'],
+    ['maxStretchRatio', 1 + Number.EPSILON, 'limbIk[0].maxStretchRatio: expected finite number in [0.8, 1]'],
+    ['maxCorrectionRadians', 0, 'limbIk[0].maxCorrectionRadians: expected finite number in (0, Math.PI]'],
+    ['maxCorrectionRadians', Number.NaN, 'limbIk[0].maxCorrectionRadians: expected finite number in (0, Math.PI]'],
+    ['maxCorrectionRadians', Math.PI + Number.EPSILON * 4, 'limbIk[0].maxCorrectionRadians: expected finite number in (0, Math.PI]'],
+    ['weight', -Number.EPSILON, 'limbIk[0].weight: expected finite number in [0, 1]'],
+    ['weight', 1 + Number.EPSILON, 'limbIk[0].weight: expected finite number in [0, 1]'],
+  ] as const
+
+  for (const [field, value, diagnostic] of cases) {
+    const profile = createProfileWithLimbIk([{ ...valid, [field]: value }])
+    assert.doesNotThrow(() => validateRigProfile(profile), `${field}=${String(value)}`)
+    assert.deepEqual(validateRigProfile(profile), [diagnostic], `${field}=${String(value)}`)
+  }
 })
 
 test('Rig Profile 校验对畸形输入不抛异常且返回稳定诊断', () => {
