@@ -194,7 +194,7 @@
     "biped-pet-hybrid-ik-design",
     "biped-pet-hybrid-ik-plan",
     "biped-pet-hybrid-ik-compilation-propagation",
-    "biped-pet-analytic-two-bone-ik-numerically-hardened"
+    "biped-pet-analytic-two-bone-ik-strict-success-validated"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

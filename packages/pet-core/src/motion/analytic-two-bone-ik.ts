@@ -26,6 +26,8 @@ export interface AnalyticTwoBoneIkResult {
 const MIN_REACH_EPSILON = 1e-6
 const LENGTH_EPSILON = 1e-12
 const ORTHOGONAL_EPSILON = 1e-10
+const HERON_ROUNDING_EPSILON = Number.EPSILON * 16
+const MAX_SEGMENT_RELATIVE_ERROR = 1e-8
 
 type UnknownRecord = Record<string, unknown>
 
@@ -90,13 +92,15 @@ const stableTriangleHeight = (upperLength: number, lowerLength: number, targetDi
   const largest = sides[0]!
   const middle = sides[1]!
   const smallest = sides[2]!
-  const factors = [
+  const rawFactors = [
     largest + (middle + smallest),
     smallest - (largest - middle),
     smallest + (largest - middle),
     largest + (middle - smallest),
   ]
-  if (factors.some(factor => !Number.isFinite(factor) || factor < 0)) return null
+  if (rawFactors.some(factor => !Number.isFinite(factor) || factor < -HERON_ROUNDING_EPSILON)) return null
+  // 归一化边界运算最多吸收 EPSILON 量级的负舍入；明显违反三角不等式的负因子仍会被拒绝。
+  const factors = rawFactors.map(factor => factor < 0 ? 0 : factor)
   const product = factors.reduce((result, factor) => result * factor, 1)
   const normalizedTarget = targetDistance / scale
   if (!Number.isFinite(product) || !Number.isFinite(normalizedTarget) || normalizedTarget <= 0) return null
@@ -108,10 +112,10 @@ const segmentLengthIsValid = (start: RigVector3, end: RigVector3, expected: numb
   const offset = subtract(end, start)
   if (!isFiniteVector(offset)) return false
   const actual = length(offset)
-  // 坐标量级决定可实现精度，但容差最多只能占段长四分之一，防止短段坍缩为零仍被误判通过。
+  // 坐标量级用于估计浮点误差，但硬性封顶为 1e-8 相对误差；无法表达的巨大平移必须阻塞。
   const tolerance = Math.min(
-    expected * 0.25,
-    Math.max(Number.MIN_VALUE, expected * 1e-10, coordinateScale * Number.EPSILON * 32),
+    expected * MAX_SEGMENT_RELATIVE_ERROR,
+    Math.max(Number.MIN_VALUE, expected * Number.EPSILON * 32, coordinateScale * Number.EPSILON * 32),
   )
   return Number.isFinite(actual) && Math.abs(actual - expected) <= tolerance
 }
@@ -150,7 +154,14 @@ export function solveAnalyticTwoBoneIk(input: AnalyticTwoBoneIkInput): AnalyticT
   const maximumDistance = (upperLength + lowerLength) * input.maxStretchRatio
   // 有限非零的链仍可能因固定下界高于配置上限而没有可行区间；此时不能抬高上限伪造解。
   if (minimumDistance > maximumDistance) return blockedResult(input)
-  const solvedDistance = Math.min(maximumDistance, Math.max(minimumDistance, targetDistance))
+  // 只吸收由输入坐标求段长时产生的少量 ULP 边界漂移；明显越界（包括既有 5e-13 回归）仍严格钳制。
+  const boundaryRoundingTolerance = Number.EPSILON * 8 * Math.max(1, minimumDistance, maximumDistance, targetDistance)
+  const comparableTargetDistance = targetDistance < minimumDistance && minimumDistance - targetDistance <= boundaryRoundingTolerance
+    ? minimumDistance
+    : targetDistance > maximumDistance && targetDistance - maximumDistance <= boundaryRoundingTolerance
+      ? maximumDistance
+      : targetDistance
+  const solvedDistance = Math.min(maximumDistance, Math.max(minimumDistance, comparableTargetDistance))
   if (![minimumDistance, maximumDistance, solvedDistance].every(Number.isFinite) || solvedDistance <= 0) return blockedResult(input)
 
   const normalizedPole = normalize(input.pole)
@@ -210,7 +221,7 @@ export function solveAnalyticTwoBoneIk(input: AnalyticTwoBoneIkInput): AnalyticT
     || !segmentLengthIsValid(mid, tip, lowerLength, coordinateScale)
   ) return blockedResult(input)
 
-  // 可达域是闭区间；只要原始距离严格越界，就必须报告发生过钳制，不使用误差容差掩盖边界变化。
-  const status = targetDistance < minimumDistance || targetDistance > maximumDistance ? 'clamped' : 'solved'
+  // 可达域是闭区间；除上述输入坐标重建产生的少量 ULP 外，原始距离严格越界就必须报告钳制。
+  const status = comparableTargetDistance < minimumDistance || comparableTargetDistance > maximumDistance ? 'clamped' : 'solved'
   return { status, root, mid, tip, positions: [root, mid, tip], error }
 }

@@ -11,6 +11,16 @@ const distance = (left: readonly number[], right: readonly number[]) => Math.hyp
   left[0]! - right[0]!, left[1]! - right[1]!, left[2]! - right[2]!,
 )
 
+const assertStrictSegmentLengths = (
+  result: ReturnType<typeof solveAnalyticTwoBoneIk>,
+  upperLength: number,
+  lowerLength: number,
+) => {
+  assert.notEqual(result.status, 'blocked')
+  assert.ok(Math.abs(distance(result.root, result.mid) - upperLength) / upperLength <= 1e-8)
+  assert.ok(Math.abs(distance(result.mid, result.tip) - lowerLength) / lowerLength <= 1e-8)
+}
+
 test('解析式两段 IK 到达目标并保持段长', () => {
   const result = solveAnalyticTwoBoneIk({
     root: [0, 0, 0], mid: [0, -1, 0], tip: [0, -2, 0],
@@ -129,6 +139,31 @@ test('解析式两段 IK 把上下边界视为可达闭区间', () => {
   assert.equal(solveAnalyticTwoBoneIk({ ...base, target: [1e-6, 0, 0] }).status, 'solved')
 })
 
+test('解析式两段 IK 稳定接受非整数不等长链的闭区间边界', () => {
+  const cases = [
+    [382.2746907750368, 351.20629099367557],
+    [17.375, 3.8125],
+    [9.123456789, 7.987654321],
+  ] as const
+
+  for (const [upperLength, lowerLength] of cases) {
+    const base = {
+      root: [0, 0, 0] as const,
+      mid: [upperLength, 0, 0] as const,
+      tip: [upperLength + lowerLength, 0, 0] as const,
+      pole: [0, 1, 0] as const,
+      maxStretchRatio: 1,
+    }
+    const maximum = solveAnalyticTwoBoneIk({ ...base, target: [upperLength + lowerLength, 0, 0] })
+    const minimum = solveAnalyticTwoBoneIk({ ...base, target: [Math.abs(upperLength - lowerLength) + 1e-6, 0, 0] })
+
+    assert.equal(maximum.status, 'solved')
+    assert.equal(minimum.status, 'solved')
+    assertStrictSegmentLengths(maximum, upperLength, lowerLength)
+    assertStrictSegmentLengths(minimum, upperLength, lowerLength)
+  }
+})
+
 test('解析式两段 IK 不突变输入', () => {
   const input = {
     root: [0, 0, 0] as [number, number, number],
@@ -188,6 +223,26 @@ test('解析式两段 IK 在一亿比一的合法链上保持短段长度', () =
   assert.equal(result.status, 'solved')
   assert.ok(Math.abs(distance(result.root, result.mid) - 1e8) < 1e-6)
   assert.ok(Math.abs(distance(result.mid, result.tip) - 1) < 1e-6)
+})
+
+test('解析式两段 IK 在大平移导致段长无法精确保持时阻塞', () => {
+  const result = solveAnalyticTwoBoneIk({
+    root: [1e16, 0, 0], mid: [1e16, 5, 0], tip: [1e16, 10, 0],
+    target: [1e16 + 6, 6, 0], pole: [0, 0, 1], maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'blocked')
+  assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
+})
+
+test('解析式两段 IK 在仍可表达的普通大平移下保持严格段长', () => {
+  const result = solveAnalyticTwoBoneIk({
+    root: [1e12, 0, 0], mid: [1e12, 1e6, 0], tip: [1e12, 2e6, 0],
+    target: [1e12 + 8e5, 1.2e6, 0], pole: [0, 0, 1], maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'solved')
+  assertStrictSegmentLengths(result, 1e6, 1e6)
 })
 
 test('解析式两段 IK 对运行时畸形向量安全阻塞且返回有限 residual', () => {
