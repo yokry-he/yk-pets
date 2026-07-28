@@ -123,25 +123,84 @@ test('FABRIK 最终所有内部关节点位于 Pole 定义的统一弯曲半平�
   }
 })
 
-test('FABRIK 找不到可行聚合分割且未收敛时安全阻塞', () => {
+test('FABRIK 对无连续聚合分割的链在迭代后使用一般构造', () => {
   const result = solveConstrainedFabrik({
     positions: [[0, 0, 0], [4, 0, 0], [7, 0, 0], [9, 0, 0]],
     target: [.5, 0, 0], pole: [0, 1, 0], maxIterations: 1, tolerance: 1e-12, maxStretchRatio: 1,
   })
 
-  assert.equal(result.status, 'blocked')
-  assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
+  assert.equal(result.status, 'solved')
+  assert.equal(result.iterations, 1)
+  assert.ok(result.error <= 1e-12)
+  for (const [index, expected] of [4, 3, 2].entries()) {
+    assert.ok(Math.abs(distance(result.positions[index]!, result.positions[index + 1]!) - expected) <= expected * 1e-8)
+  }
 })
 
-test('FABRIK 无可行聚合分割时拒绝末端命中但脱离统一 Pole 平面的解', () => {
+test('FABRIK 末端命中但脱离统一 Pole 平面时改用一般平面构造', () => {
   const result = solveConstrainedFabrik({
     positions: [[0, 0, 0], [0, 0, 4], [3, 0, 4], [3, 2, 4]],
     target: [.5, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1,
   })
 
-  assert.equal(result.status, 'blocked')
+  assert.equal(result.status, 'solved')
   assert.equal(result.iterations, 3)
-  assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
+  assert.ok(result.error <= 1e-4)
+  for (const position of result.positions.slice(1, -1)) {
+    assert.ok(Math.abs(position[2]) <= 1e-8)
+    assert.ok(position[1] >= -1e-8)
+  }
+})
+
+test('FABRIK 圆交回溯覆盖中点贪心会误阻塞的内部域', () => {
+  const input = {
+    positions: [[0, 0, 0], [1, 0, 0], [3, 0, 0], [4, 0, 0]] as const,
+    target: [.18, 0, 0] as const,
+    pole: [0, 1, 0] as const,
+    maxStretchRatio: .9,
+    tolerance: 1e-8,
+  }
+  const first = solveConstrainedFabrik(input)
+  const second = solveConstrainedFabrik(input)
+
+  assert.equal(first.status, 'solved')
+  assert.deepEqual(first, second)
+  assert.ok(first.error <= 1e-8)
+  for (const [index, expected] of [1, 2, 1].entries()) {
+    assert.ok(Math.abs(distance(first.positions[index]!, first.positions[index + 1]!) - expected) <= expected * 1e-8)
+  }
+})
+
+test('FABRIK 非整数异长链在物理最小边界稳定构造', () => {
+  const lengths = [.6811218742, 4.9246562266, 2.1426970179] as const
+  const physicalMinimum = 2 * Math.max(...lengths) - lengths.reduce((sum, item) => sum + item, 0)
+  let cursor = 0
+  const positions: [number, number, number][] = [[0, 0, 0]]
+  for (const segmentLength of lengths) {
+    cursor += segmentLength
+    positions.push([cursor, 0, 0])
+  }
+  const result = solveConstrainedFabrik({ positions, target: [.1, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1, tolerance: 1e-8 })
+
+  assert.equal(result.status, 'clamped')
+  assert.ok(Math.abs(distance(result.positions[0]!, result.positions.at(-1)!) - physicalMinimum) <= 1e-8)
+  for (let index = 0; index < lengths.length; index += 1) {
+    assert.ok(Math.abs(distance(result.positions[index]!, result.positions[index + 1]!) - lengths[index]!) <= lengths[index]! * 1e-8)
+  }
+})
+
+test('FABRIK 两段单位链在目标等于根节点时由 Pole 决定折叠方向', () => {
+  const result = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [1, 0, 0], [2, 0, 0]],
+    target: [0, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'solved')
+  assert.ok(result.error <= 1e-4)
+  assert.ok(result.positions[1]![1] > 0)
+  assert.ok(Math.abs(result.positions[1]![2]) <= 1e-8)
+  assert.ok(Math.abs(distance(result.positions[0]!, result.positions[1]!) - 1) <= 1e-8)
+  assert.ok(Math.abs(distance(result.positions[1]!, result.positions[2]!) - 1) <= 1e-8)
 })
 
 test('FABRIK 使用 Pole 打破直链同轴收缩奇异', () => {
@@ -252,6 +311,35 @@ test('FABRIK 固定种子异长链覆盖三段、四段和五段完整可达域'
   }
 })
 
+test('FABRIK 固定种子三至五段链覆盖过近侧内部域搜索', () => {
+  const cases = [
+    { lengths: [.4, 1.3, .6], distance: .7 },
+    { lengths: [.25, 1.1, .45, .8], distance: .32 },
+    { lengths: [.3, .9, .2, 1.4, .5], distance: .27 },
+  ] as const
+  for (const { lengths, distance: targetDistance } of cases) {
+    let cursor = 0
+    const positions: [number, number, number][] = [[0, 0, 0]]
+    for (const segmentLength of lengths) {
+      cursor += segmentLength
+      positions.push([cursor, 0, 0])
+    }
+    const input = { positions, target: [targetDistance, 0, 0] as const, pole: [0, 1, 0] as const, maxIterations: 1, tolerance: 1e-10, maxStretchRatio: 1 }
+    const result = solveConstrainedFabrik(input)
+
+    assert.equal(result.status, 'solved')
+    assert.deepEqual(result, solveConstrainedFabrik(input))
+    assert.ok(result.error <= 1e-10)
+    for (let index = 0; index < lengths.length; index += 1) {
+      assert.ok(Math.abs(distance(result.positions[index]!, result.positions[index + 1]!) - lengths[index]!) <= lengths[index]! * 1e-8)
+      if (index > 0) {
+        assert.ok(Math.abs(result.positions[index]![2]) <= 1e-8)
+        assert.ok(result.positions[index]![1] >= -1e-8)
+      }
+    }
+  }
+})
+
 test('FABRIK 不突变输入、不共享输出引用并保持确定性', () => {
   const input = {
     positions: [[0, 0, 0], [.2, -1, 0], [.1, -2, 0], [0, -3, 0]] as [number, number, number][],
@@ -344,15 +432,19 @@ test('FABRIK 对无效向量和会溢出的有限坐标安全阻塞', () => {
   }
 })
 
-test('FABRIK 未在指定迭代内收敛时不会伪称 solved', () => {
+test('FABRIK 未在指定迭代内收敛时由一般构造补全且保留实际迭代数', () => {
   const result = solveConstrainedFabrik({
     positions: [[0, 0, 0], [0, -1, 0], [0, -2, 0], [0, -3, 0]],
     target: [1.2, -2.2, .3], pole: [0, 0, 1], maxIterations: 1, tolerance: 1e-12, maxStretchRatio: 1,
   })
 
-  assert.equal(result.status, 'blocked')
+  assert.equal(result.status, 'solved')
   assert.equal(result.iterations, 1)
+  assert.ok(result.error <= 1e-12)
   assert.ok(result.positions.flat().every(Number.isFinite))
+  for (let index = 1; index < result.positions.length; index += 1) {
+    assert.ok(Math.abs(distance(result.positions[index - 1]!, result.positions[index]!) - 1) < 1e-8)
+  }
 })
 
 const assertStrictSegmentLengths = (

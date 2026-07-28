@@ -161,32 +161,80 @@ const constructPoleHalfPlaneChain = (
   const targetDistance = distance(root, target)
   if (!Number.isFinite(targetDistance)) return null
   const suffixReach = computeSuffixReachIntervals(segmentLengths)
-  const planar: [number, number][] = [[0, 0]]
-  for (let index = 0; index < segmentLengths.length - 1; index += 1) {
-    const current = planar[index]!
-    const segmentLength = segmentLengths[index]!
+  const totalLength = suffixReach.maximum[0]!
+  const minimumReach = suffixReach.minimum[0]!
+  const boundaryTolerance = Math.max(tolerance, totalLength * Number.EPSILON * 64)
+
+  const mapToRig = (planar: readonly [number, number][]): RigVector3[] => planar.map(([axisDistance, poleDistance]) => add(
+    addScaled(root, targetDirection, axisDistance),
+    scale(bendDirection, poleDistance),
+  ))
+  const validates = (result: readonly RigVector3[]): boolean => result.every(isFiniteVector)
+    && segmentLengthsArePreserved(result, segmentLengths)
+    && distance(result.at(-1)!, target) <= tolerance
+
+  // 物理最大边界和非零最小边界具有唯一的共线折叠语义，直接解析构造可避免圆相切误差。
+  if (Math.abs(targetDistance - totalLength) <= boundaryTolerance) {
+    let travelled = 0
+    const planar: [number, number][] = [[0, 0]]
+    for (const segmentLength of segmentLengths) {
+      travelled += segmentLength
+      planar.push([travelled, 0])
+    }
+    const result = mapToRig(planar)
+    return validates(result) ? result : null
+  }
+  if (minimumReach > 0 && Math.abs(targetDistance - minimumReach) <= boundaryTolerance) {
+    const longestIndex = segmentLengths.indexOf(Math.max(...segmentLengths))
+    let travelled = 0
+    const planar: [number, number][] = [[0, 0]]
+    for (let index = 0; index < segmentLengths.length; index += 1) {
+      travelled += segmentLengths[index]! * (index === longestIndex ? 1 : -1)
+      planar.push([travelled, 0])
+    }
+    const result = mapToRig(planar)
+    return validates(result) ? result : null
+  }
+
+  const target2d: [number, number] = [targetDistance, 0]
+  const SEARCH_BUDGET = 16_384
+  let visited = 0
+  const uniqueCandidates = (values: readonly number[], epsilon: number): number[] => {
+    const result: number[] = []
+    for (const value of values) {
+      if (Number.isFinite(value) && !result.some(item => Math.abs(item - value) <= epsilon)) result.push(value)
+    }
+    return result
+  }
+  const buildDistanceCandidates = (minimum: number, maximum: number, preferred: number): number[] => {
+    const span = Math.max(0, maximum - minimum)
+    const values = [minimum, maximum, Math.max(minimum, Math.min(maximum, preferred))]
+    // 以 2→64 等分逐级细化；前一层已访问的偶数格点不重复加入，搜索顺序保持确定。
+    for (const subdivisions of [2, 4, 8, 16, 32, 64]) {
+      for (let numerator = 1; numerator < subdivisions; numerator += 2) {
+        values.push(minimum + span * numerator / subdivisions)
+      }
+    }
+    return uniqueCandidates(values, boundaryTolerance)
+  }
+  const circleIntersections = (
+    current: [number, number],
+    segmentLength: number,
+    nextDistance: number,
+  ): [number, number][] => {
     const toTargetX = targetDistance - current[0]
     const toTargetY = -current[1]
     const currentDistance = Math.hypot(toTargetX, toTargetY)
-    if (!Number.isFinite(currentDistance)) return null
-    const numericalTolerance = Math.max(tolerance, segmentLength * Number.EPSILON * 32)
-    const feasibleMinimum = Math.max(
-      Math.abs(currentDistance - segmentLength),
-      suffixReach.minimum[index + 1]!,
-    )
-    const feasibleMaximum = Math.min(
-      currentDistance + segmentLength,
-      suffixReach.maximum[index + 1]!,
-    )
-    if (feasibleMinimum > feasibleMaximum + numericalTolerance) return null
-    const nextDistance = (feasibleMinimum + feasibleMaximum) / 2
-
+    if (!Number.isFinite(currentDistance)) return []
+    const numericalTolerance = Math.max(tolerance, segmentLength * Number.EPSILON * 64)
     if (currentDistance <= LENGTH_EPSILON) {
-      if (Math.abs(segmentLength - nextDistance) > numericalTolerance) return null
-      planar.push([current[0], current[1] + segmentLength])
-      continue
+      if (Math.abs(segmentLength - nextDistance) > numericalTolerance) return []
+      return [
+        [current[0], current[1] + segmentLength],
+        [current[0] + segmentLength, current[1]],
+        [current[0] - segmentLength, current[1]],
+      ]
     }
-
     const commonScale = Math.max(segmentLength, nextDistance, currentDistance)
     const normalizedSegment = segmentLength / commonScale
     const normalizedNext = nextDistance / commonScale
@@ -198,7 +246,7 @@ const constructPoleHalfPlaneChain = (
     ) / (2 * normalizedCurrent) * commonScale
     const normalizedHeightSquared = normalizedSegment * normalizedSegment
       - (axisDistance / commonScale) * (axisDistance / commonScale)
-    if (normalizedHeightSquared < -Number.EPSILON * 64) return null
+    if (normalizedHeightSquared < -Number.EPSILON * 64) return []
     const height = Math.sqrt(Math.max(0, normalizedHeightSquared)) * commonScale
     const directionX = toTargetX / currentDistance
     const directionY = toTargetY / currentDistance
@@ -206,29 +254,45 @@ const constructPoleHalfPlaneChain = (
     const baseY = current[1] + directionY * axisDistance
     const first: [number, number] = [baseX - directionY * height, baseY + directionX * height]
     const second: [number, number] = [baseX + directionY * height, baseY - directionX * height]
-    planar.push(first[1] >= second[1] ? first : second)
+    return first[1] >= second[1] ? [first, second] : [second, first]
   }
-  planar.push([targetDistance, 0])
 
-  const result = planar.map(([axisDistance, poleDistance]) => add(
-    addScaled(root, targetDirection, axisDistance),
-    scale(bendDirection, poleDistance),
-  ))
-  if (!result.every(isFiniteVector)
-    || !segmentLengthsArePreserved(result, segmentLengths)
-    || distance(result.at(-1)!, target) > tolerance) return null
-  return result
-}
+  const search = (index: number, points: [number, number][]): [number, number][] | null => {
+    visited += 1
+    if (visited > SEARCH_BUDGET) return null
+    const current = points.at(-1)!
+    const segmentLength = segmentLengths[index]!
+    if (index === segmentLengths.length - 1) {
+      if (Math.abs(Math.hypot(target2d[0] - current[0], target2d[1] - current[1]) - segmentLength) > boundaryTolerance) return null
+      return [...points, target2d]
+    }
 
-const hasContinuousAggregateSplit = (segmentLengths: readonly number[], targetDistance: number): boolean => {
-  const totalLength = segmentLengths.reduce((sum, item) => sum + item, 0)
-  let prefixLength = 0
-  for (let index = 0; index < segmentLengths.length - 1; index += 1) {
-    prefixLength += segmentLengths[index]!
-    const suffixLength = totalLength - prefixLength
-    if (targetDistance >= Math.abs(prefixLength - suffixLength) && targetDistance <= totalLength) return true
+    const currentDistance = Math.hypot(target2d[0] - current[0], target2d[1] - current[1])
+    if (!Number.isFinite(currentDistance)) return null
+    const feasibleMinimum = Math.max(
+      Math.abs(currentDistance - segmentLength),
+      suffixReach.minimum[index + 1]!,
+    )
+    const feasibleMaximum = Math.min(
+      currentDistance + segmentLength,
+      suffixReach.maximum[index + 1]!,
+    )
+    if (feasibleMinimum > feasibleMaximum + boundaryTolerance) return null
+    const nextDistanceCandidates = buildDistanceCandidates(feasibleMinimum, feasibleMaximum, currentDistance)
+    for (const nextDistance of nextDistanceCandidates) {
+      for (const candidate of circleIntersections(current, segmentLength, nextDistance)) {
+        if (candidate[1] < -boundaryTolerance) continue
+        const solution = search(index + 1, [...points, candidate])
+        if (solution) return solution
+      }
+    }
+    return null
   }
-  return false
+
+  const planar = search(0, [[0, 0]])
+  if (!planar) return null
+  const result = mapToRig(planar)
+  return validates(result) ? result : null
 }
 
 const satisfiesPolePlaneConstraint = (
@@ -324,51 +388,60 @@ export const solveConstrainedFabrik = (input: ConstrainedFabrikInput): Constrain
 
   let iterations = 0
   let solveError = distance(positions.at(-1)!, effectiveTarget)
-  while (iterations < maxIterations && solveError > tolerance) {
+  let iterationFailed = false
+  iterationLoop: while (iterations < maxIterations && solveError > tolerance) {
     positions[positions.length - 1] = [...effectiveTarget] as RigVector3
     for (let index = positions.length - 2; index >= 0; index -= 1) {
       const direction = normalize(subtract(positions[index]!, positions[index + 1]!))
-      if (!direction) return blockedResult(input, positions, iterations)
+      if (!direction) {
+        iterationFailed = true
+        break iterationLoop
+      }
       positions[index] = addScaled(positions[index + 1]!, direction, segmentLengths[index]!)
-      if (!isFiniteVector(positions[index])) return blockedResult(input, positions, iterations)
+      if (!isFiniteVector(positions[index])) {
+        iterationFailed = true
+        break iterationLoop
+      }
     }
 
     positions[0] = [...root] as RigVector3
     for (let index = 1; index < positions.length; index += 1) {
       const direction = normalize(subtract(positions[index]!, positions[index - 1]!))
-      if (!direction) return blockedResult(input, positions, iterations)
+      if (!direction) {
+        iterationFailed = true
+        break iterationLoop
+      }
       positions[index] = addScaled(positions[index - 1]!, direction, segmentLengths[index - 1]!)
-      if (!isFiniteVector(positions[index])) return blockedResult(input, positions, iterations)
+      if (!isFiniteVector(positions[index])) {
+        iterationFailed = true
+        break iterationLoop
+      }
     }
     for (let index = 1; index < positions.length - 1; index += 1) {
-      if (!projectJointTowardsPole(positions, index, polePoint)) return blockedResult(input, positions, iterations)
+      if (!projectJointTowardsPole(positions, index, polePoint)) {
+        iterationFailed = true
+        break iterationLoop
+      }
     }
     iterations += 1
     solveError = distance(positions.at(-1)!, effectiveTarget)
-    if (!Number.isFinite(solveError)) return blockedResult(input, positions, iterations)
+    if (!Number.isFinite(solveError)) {
+      iterationFailed = true
+      break
+    }
   }
 
-  if (!segmentLengthsArePreserved(positions, segmentLengths)) return blockedResult(input, positions, iterations)
-  if (solveError > tolerance) {
-    if (maxIterations < DEFAULT_MAX_ITERATIONS) return blockedResult(input, positions, iterations)
+  const iterativeLengthsAreValid = segmentLengthsArePreserved(positions, segmentLengths)
+  const iterativePlaneIsValid = iterativeLengthsAreValid
+    && satisfiesPolePlaneConstraint(positions, root, mainAxis, bendDirection, totalLength)
+  if (iterationFailed || solveError > tolerance || !iterativePlaneIsValid) {
     const fallbackPositions = constructPoleHalfPlaneChain(root, effectiveTarget, mainAxis, bendDirection, segmentLengths, tolerance)
     if (!fallbackPositions || !satisfiesPolePlaneConstraint(fallbackPositions, root, mainAxis, bendDirection, totalLength)) {
       return blockedResult(input, positions, iterations)
     }
     return { status: 'solved', positions: fallbackPositions, iterations, error: distance(fallbackPositions.at(-1)!, input.target) }
   }
-  // 顺序 Pole 投影可能被后续关节再次改变局部轴；成功返回前统一复核全链半平面，
-  // 可用连续前后缀聚合证明平面可行时，改用一般二维构造恢复约束；否则绝不伪称 solved。
-  const iterativePositionsAreValid = satisfiesPolePlaneConstraint(positions, root, mainAxis, bendDirection, totalLength)
-  const constrainedPositions = !iterativePositionsAreValid && hasContinuousAggregateSplit(segmentLengths, effectiveDistance)
-    ? constructPoleHalfPlaneChain(root, effectiveTarget, mainAxis, bendDirection, segmentLengths, tolerance)
-    : null
-  const resultPositions = iterativePositionsAreValid
-    ? positions.map(position => [...position] as RigVector3)
-    : constrainedPositions && satisfiesPolePlaneConstraint(constrainedPositions, root, mainAxis, bendDirection, totalLength)
-      ? constrainedPositions
-      : null
-  if (!resultPositions) return blockedResult(input, positions, iterations)
+  const resultPositions = positions.map(position => [...position] as RigVector3)
   return {
     status: 'solved',
     positions: resultPositions,
