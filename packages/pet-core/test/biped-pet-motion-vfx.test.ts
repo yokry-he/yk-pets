@@ -112,13 +112,13 @@ test('速度拖尾持续复用 active 身份，急停火花只在接地时生成
   const firstTrail = deriveSignals(vfxInput({
     requestedTimeMs: 1800,
     tags: ['speed-trail', 'speed-trail'],
-    rootMotion: { ...rootSample, phase: 'grounded', motionIntensity: .9 },
+    rootMotion: { ...rootSample, requestedTimeMs: 1800, phase: 'grounded', motionIntensity: .9 },
   }))
   const secondTrail = deriveSignals(vfxInput({
     previousRequestedTimeMs: 1800,
     requestedTimeMs: 1816,
     tags: ['speed-trail'],
-    rootMotion: { ...rootSample, phase: 'grounded', motionIntensity: .9 },
+    rootMotion: { ...rootSample, requestedTimeMs: 1816, phase: 'grounded', motionIntensity: .9 },
   }))
   assert.equal(firstTrail.length, 1)
   assert.equal(firstTrail[0]?.mode, 'sustain')
@@ -226,14 +226,107 @@ test('真实 ballistic Root Motion touchdown 可直接生成落地特效', () =>
     tags: definition.vfxTags,
     rootMotion: touchdown,
   }).map(item => item.kind), ['landing-dust', 'landing-ring'])
+
+  for (const [previousRequestedTimeMs, requestedTimeMs] of [[1001, 1017], [1017, 1033]] as const) {
+    assert.deepEqual(deriveSignals({
+      clipHash: 'clip-integration',
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      tags: definition.vfxTags,
+      rootMotion: touchdown,
+    }), [], '旧 touchdown 样本不得配合后续外层时间生成新 burst ID')
+  }
 })
 
-test('空白、控制字符、超预算和非字符串 Clip 哈希安全返回空数组，同时保留合法 Unicode 身份', () => {
-  for (const clipHash of ['', '   ', 'bad\u0000hash', 'x'.repeat(257), 12, null, undefined]) {
+test('纯转向、纯垂直弹道和零位移制动窗不生成移动特效，真实水平制动仍生成', () => {
+  const continuous = (
+    definition: Parameters<typeof sampleBipedPetRootMotion>[0]['definition'],
+    previousRequestedTimeMs: number,
+    requestedTimeMs: number,
+  ) => {
+    const base = {
+      definition,
+      durationMs: 100,
+      loopMode: 'once' as const,
+      characterHeight: 4,
+      facingRadians: 0,
+      actionWeight: 1,
+      footResidual: [0, 0, 0] as const,
+    }
+    const previous = sampleBipedPetRootMotion({ ...base, requestedTimeMs: previousRequestedTimeMs })
+    return sampleBipedPetRootMotion({
+      ...base,
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      previousAppliedWorld: previous.appliedWorld,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+  const turning = continuous({
+    mode: 'travel', distance: 0, turnRadians: Math.PI * 2, verticalMode: 'grounded', jumpHeight: 0,
+    windows: [
+      { id: 'turn', kind: 'travel', startMs: 0, endMs: 100, weight: 1 },
+      { id: 'brake', kind: 'brake', startMs: 0, endMs: 100, weight: 1 },
+    ],
+    vfxTags: ['speed-trail', 'brake-sparks'],
+  }, 24, 25)
+  const jumping = continuous({
+    mode: 'travel', distance: 0, turnRadians: 0, verticalMode: 'ballistic', jumpHeight: 1,
+    windows: [{ id: 'jump', kind: 'ballistic', startMs: 0, endMs: 100, weight: 1 }],
+    vfxTags: ['speed-trail'],
+  }, 24, 25)
+  for (const sample of [turning, jumping]) {
+    assert.deepEqual(deriveSignals({
+      clipHash: 'clip-non-horizontal',
+      previousRequestedTimeMs: 24,
+      requestedTimeMs: 25,
+      tags: sample === turning ? ['speed-trail', 'brake-sparks'] : ['speed-trail'],
+      rootMotion: sample,
+    }), [])
+  }
+
+  const horizontalBrake = continuous({
+    mode: 'travel', distance: 4, turnRadians: 0, verticalMode: 'grounded', jumpHeight: 0,
+    windows: [
+      { id: 'travel', kind: 'travel', startMs: 0, endMs: 100, weight: 1 },
+      { id: 'brake', kind: 'brake', startMs: 0, endMs: 100, weight: 1 },
+    ],
+    vfxTags: ['speed-trail', 'brake-sparks'],
+  }, 49, 50)
+  assert.ok(horizontalBrake.motionIntensity > .55)
+  assert.ok(horizontalBrake.brakeIntensity > .45)
+  assert.deepEqual(deriveSignals({
+    clipHash: 'clip-horizontal-brake',
+    previousRequestedTimeMs: 49,
+    requestedTimeMs: 50,
+    tags: ['speed-trail', 'brake-sparks'],
+    rootMotion: horizontalBrake,
+  }).map(item => item.kind), ['brake-sparks', 'speed-trail'])
+})
+
+test('空白、全部 Cc、双向格式控制、超预算和非字符串 Clip 哈希安全返回空数组，同时保留合法 ZWJ 身份', () => {
+  for (const clipHash of [
+    '',
+    '   ',
+    'bad\u0000hash',
+    'bad\u0085hash',
+    'bad\u009fhash',
+    'bad\u061chash',
+    'bad\u200ehash',
+    'bad\u200fhash',
+    'bad\u202ahash',
+    'bad\u202ehash',
+    'bad\u2066hash',
+    'bad\u2069hash',
+    'x'.repeat(257),
+    12,
+    null,
+    undefined,
+  ]) {
     assert.deepEqual(deriveSignals(vfxInput({ clipHash })), [], `非法 Clip 哈希 ${String(clipHash)} 必须被拒绝`)
   }
-  const unicode = deriveSignals(vfxInput({ clipHash: '动作-🐾', tags: ['landing-ring'] }))
-  assert.equal(unicode[0]?.id, '动作-🐾:landing-ring:1820')
+  const unicode = deriveSignals(vfxInput({ clipHash: '家庭-👩‍👩‍👧‍👦', tags: ['landing-ring'] }))
+  assert.equal(unicode[0]?.id, '家庭-👩‍👩‍👧‍👦:landing-ring:1820')
 })
 
 test('畸形对象、数组和 Proxy 访问异常不会向调用方抛出', () => {
@@ -253,6 +346,13 @@ test('畸形对象、数组和 Proxy 访问异常不会向调用方抛出', () =
     vfxInput({ rootMotion: throwingProxy }),
     vfxInput({ tags: ['unknown-tag'] }),
     vfxInput({ rootMotion: { ...rootSample, status: 'unknown' } }),
+    vfxInput({ rootMotion: { ...rootSample, requestedTimeMs: Number.NaN } }),
+    vfxInput({ rootMotion: { ...rootSample, requestedTimeMs: Number.POSITIVE_INFINITY } }),
+    vfxInput({ rootMotion: Object.defineProperty({ ...rootSample }, 'requestedTimeMs', {
+      get() {
+        throw new Error('不得泄漏时间 getter')
+      },
+    }) }),
     vfxInput({ previousRequestedTimeMs: -10, requestedTimeMs: -5 }),
     vfxInput({ previousRequestedTimeMs: 0, requestedTimeMs: -1 }),
     vfxInput({ previousRequestedTimeMs: Number.NaN }),

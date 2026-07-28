@@ -25,7 +25,7 @@ export interface DeriveBipedPetMotionVfxSignalsInput {
   readonly tags: readonly BipedPetMotionVfxTag[]
   readonly rootMotion: Pick<
     SampledBipedPetRootMotion,
-    'status' | 'phase' | 'motionIntensity' | 'landingImpulse' | 'brakeIntensity'
+    'requestedTimeMs' | 'status' | 'phase' | 'motionIntensity' | 'landingImpulse' | 'brakeIntensity'
   >
 }
 
@@ -76,7 +76,8 @@ function isValidClipHash(value: unknown): value is string {
   const points = Array.from(value)
   return points.length > 0
     && points.length <= 256
-    && !/[\u0000-\u001f\u007f]/u.test(value)
+    && !/\p{Cc}/u.test(value)
+    && !/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(value)
     && !/[\ud800-\udfff]/u.test(value)
 }
 
@@ -134,11 +135,14 @@ function parseInput(input: unknown): SafeMotionVfxInput | undefined {
 
     const status = Reflect.get(rootMotion, 'status')
     const phase = Reflect.get(rootMotion, 'phase')
+    const rootRequestedTimeMs = readFiniteNumber(rootMotion, 'requestedTimeMs')
     const motionIntensity = readFiniteNumber(rootMotion, 'motionIntensity')
     const landingImpulse = readFiniteNumber(rootMotion, 'landingImpulse')
     const brakeIntensity = readFiniteNumber(rootMotion, 'brakeIntensity')
     if ((status !== 'solved' && status !== 'clamped')
       || (phase !== 'grounded' && phase !== 'takeoff' && phase !== 'airborne' && phase !== 'landing')
+      || rootRequestedTimeMs === undefined
+      || rootRequestedTimeMs !== requestedTimeMs
       || motionIntensity === undefined
       || landingImpulse === undefined
       || brakeIntensity === undefined) return undefined

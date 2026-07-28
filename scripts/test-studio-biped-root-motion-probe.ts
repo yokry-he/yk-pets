@@ -135,7 +135,7 @@ function runStatefulProbe() {
   assert.ok(counts.blocked >= 10, JSON.stringify(counts))
   assert.ok(counts.seam > 500, JSON.stringify(counts))
   assert.ok(counts.landing > 100, JSON.stringify(counts))
-  assert.ok(counts.brake > 1_000, JSON.stringify(counts))
+  assert.equal(counts.brake, 3_722, `制动信号必须只由时间窗调制实际水平速度：${JSON.stringify(counts)}`)
   return { logicalCases: STATEFUL_PROBE_CASES, counts, elapsedMs }
 }
 

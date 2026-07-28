@@ -212,6 +212,7 @@ if (state) {
   const motionVfxSignalCoverage = [
     'corepack pnpm --filter @yk-pets/pet-core test',
     'corepack pnpm --filter @yk-pets/pet-core typecheck',
+    'corepack pnpm run test:studio-biped-root-motion-probe',
     'corepack pnpm typecheck',
     'node scripts/check-documentation.mjs',
     'node scripts/check-ai-handoff.mjs',
@@ -223,6 +224,9 @@ if (state) {
   expect(state.latestCompletedBatch?.motionVfxSignalThresholdPolicy === 'strictly-greater-than', '运动 VFX 信号必须使用严格大于阈值 / Motion-VFX signals must use strict greater-than thresholds')
   expect(state.latestCompletedBatch?.motionVfxBurstIdentityPolicy === 'clip-kind-rounded-requested-time', 'burst VFX 身份必须由 Clip、种类和舍入请求时间组成 / Burst VFX identity must use Clip, kind, and rounded requested time')
   expect(state.latestCompletedBatch?.motionVfxSustainIdentityPolicy === 'clip-kind-active', 'sustain VFX 身份必须复用 active 身份 / Sustain VFX identity must reuse the active identity')
+  expect(state.latestCompletedBatch?.motionVfxSampleTimePolicy === 'root-sample-must-match-request', 'VFX 外层请求时间必须与 Root Motion 样本时间一致 / VFX request time must match the Root Motion sample time')
+  expect(state.latestCompletedBatch?.motionVfxSpeedAuthority === 'applied-horizontal-speed', '速度拖尾必须只使用实际 applied 水平速度 / Speed trails must use actual applied horizontal speed only')
+  expect(state.latestCompletedBatch?.motionVfxBrakePolicy === 'authored-window-times-horizontal-speed', '制动信号必须由 authored 窗口调制实际水平速度 / Brake signals must use authored-window-modulated horizontal speed')
   expect((state.completed || []).includes('biped-pet-root-motion-action-aware-boundaries'), 'Root Motion action-aware 边界修复必须进入完成状态 / Action-aware Root Motion boundary repair must be recorded as complete')
   expect((state.completed || []).includes('biped-pet-root-motion-canonical-ballistic-transitions'), 'Root Motion canonical 弹道转换必须进入完成状态 / Canonical Root Motion ballistic transitions must be recorded as complete')
 }

@@ -14,7 +14,7 @@
 
 - `packages/pet-core/src/motion/biped-pet-root-motion.ts`：Root Motion 契约、规范化、累计采样、时间连续性和安全预算。
 - `packages/pet-core/src/motion/biped-pet-root-motion-timeline.ts`：内部复合弹道时间线、唯一边界/支撑分量与单帧共享工作预算；不从包入口公开导出。
-- `packages/pet-core/src/motion/biped-pet-motion-vfx.ts`：由速度、减速度、接触和语义标签生成确定性 VFX 信号。
+- `packages/pet-core/src/motion/biped-pet-motion-vfx.ts`：由实际 applied 水平速度、制动窗口调制、接触和语义标签生成确定性 VFX 信号。
 - `packages/pet-core/src/motion/biped-pet-motion-adapter.ts`：从现有动作扩展读取 Root Motion，编译进 Quaternion Clip，并把原始时间身份带入采样结果。
 - `apps/playground/app/domain/studio-basic-biped-motions.ts`：待机、行走、跳跃、招手和直拳的默认移动语义。
 - `apps/playground/app/domain/studio-built-in-motions.ts`：冲刺急停的移动窗、制动窗和 VFX 标签。
@@ -340,7 +340,7 @@ export interface BipedPetMotionVfxSignal {
 }
 ```
 
-`landing-ring` 阈值为落地冲量 `.25`，`landing-dust` 为 `.4`，`speed-trail` 为运动强度 `.55`，`brake-sparks` 为急停强度 `.45`。burst ID 使用 `${clipHash}:${kind}:${Math.round(requestedTimeMs)}`，sustain ID 使用 `${clipHash}:${kind}:active`。`reset/blocked`、时间倒退或未授权标签返回空数组。
+`landing-ring` 阈值为落地冲量 `.25`，`landing-dust` 为 `.4`，`speed-trail` 为实际 applied 水平速度强度 `.55`，`brake-sparks` 为“authored brake 窗包络 × 实际水平速度”的急停强度 `.45`。纯垂直弹道、原地转向和零水平位移 brake 窗不得触发移动特效；若未来需要物理减速度，必须由调用方显式携带连续速度状态，不能在纯函数中加入隐藏历史。burst ID 使用 `${clipHash}:${kind}:${Math.round(requestedTimeMs)}`，sustain ID 使用 `${clipHash}:${kind}:active`。Root Motion 样本的 `requestedTimeMs` 必须严格等于外层请求时间；`reset/blocked`、时间身份错配、时间倒退或未授权标签返回空数组。
 
 - [ ] **步骤 4：验证绿灯并提交推送**
 

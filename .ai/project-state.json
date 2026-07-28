@@ -265,9 +265,13 @@
     "motionVfxSignalThresholdPolicy": "strictly-greater-than",
     "motionVfxBurstIdentityPolicy": "clip-kind-rounded-requested-time",
     "motionVfxSustainIdentityPolicy": "clip-kind-active",
+    "motionVfxSampleTimePolicy": "root-sample-must-match-request",
+    "motionVfxSpeedAuthority": "applied-horizontal-speed",
+    "motionVfxBrakePolicy": "authored-window-times-horizontal-speed",
     "automatedCoverage": [
       "corepack pnpm --filter @yk-pets/pet-core test",
       "corepack pnpm --filter @yk-pets/pet-core typecheck",
+      "corepack pnpm run test:studio-biped-root-motion-probe",
       "corepack pnpm typecheck",
       "node scripts/check-documentation.mjs",
       "node scripts/check-ai-handoff.mjs",

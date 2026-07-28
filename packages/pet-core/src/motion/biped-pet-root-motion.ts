@@ -1147,12 +1147,14 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
     return blockedRootMotionSample(currentResolved)
   }
 
-  const motionIntensity = stableSignal(Math.max(
-    Math.hypot(...linearVelocity) / (safeInput.characterHeight * 4),
-    Math.abs(angularVelocity) / (Math.PI * 2),
-  ))
+  // 移动特效只消费实际 applied 水平速度；垂直弹道和原地转向不能伪造速度拖尾。 / Movement VFX consumes actual applied horizontal speed only; vertical ballistics and in-place turns cannot fabricate speed trails.
+  const motionIntensity = stableSignal(
+    Math.hypot(linearVelocity[0], linearVelocity[2]) / (safeInput.characterHeight * 4),
+  )
+  // brake 窗只授权并调制真实水平移动，不单独充当物理减速度。 / A brake window authorizes and modulates real horizontal motion; it is not standalone physical deceleration.
   const brakeIntensity = stableSignal(
-    brakeWindowIntensity(safeInput.definition.windows, currentResolved.resolvedTimeMs) * safeInput.actionWeight,
+    brakeWindowIntensity(safeInput.definition.windows, currentResolved.resolvedTimeMs)
+      * motionIntensity,
   )
   const groundedThreshold = safeInput.characterHeight * ROOT_MOTION_SIGNAL_EPSILON
   const appliedTouchedDown = previousApplied.world[1] > groundedThreshold && appliedWorld[1] <= groundedThreshold

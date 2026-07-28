@@ -3459,6 +3459,68 @@ test('运动、落地与制动强度在边界稳定且暂停或 reset 不重复�
   assert.equal(reset.brakeIntensity, 0)
 })
 
+test('移动强度只读取实际水平速度，制动窗只调制实际水平移动', () => {
+  const continuous = (
+    definition: unknown,
+    previousRequestedTimeMs: number,
+    requestedTimeMs: number,
+    actionWeight = 1,
+  ) => {
+    const base = {
+      definition,
+      durationMs: 100,
+      loopMode: 'once' as const,
+      characterHeight: 4,
+      facingRadians: 0,
+      actionWeight,
+      footResidual: [0, 0, 0] as const,
+    }
+    const previous = sampleRootMotion({ ...base, requestedTimeMs: previousRequestedTimeMs })
+    return sampleRootMotion({
+      ...base,
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      previousAppliedWorld: previous.appliedWorld,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+  const turning = continuous({
+    mode: 'travel', distance: 0, turnRadians: Math.PI * 2, verticalMode: 'grounded', jumpHeight: 0,
+    windows: [
+      { id: 'turn', kind: 'travel', startMs: 0, endMs: 100, weight: 1 },
+      { id: 'brake', kind: 'brake', startMs: 0, endMs: 100, weight: 1 },
+    ],
+    vfxTags: [],
+  }, 24, 25)
+  const jumping = continuous({
+    mode: 'travel', distance: 0, turnRadians: 0, verticalMode: 'ballistic', jumpHeight: 1,
+    windows: [{ id: 'jump', kind: 'ballistic', startMs: 0, endMs: 100, weight: 1 }],
+    vfxTags: [],
+  }, 24, 25)
+  assert.ok(Math.abs(turning.angularVelocity) > 0)
+  assert.ok(Math.abs(jumping.linearVelocity[1]) > 0)
+  assert.equal(turning.motionIntensity, 0)
+  assert.equal(turning.brakeIntensity, 0)
+  assert.equal(jumping.motionIntensity, 0)
+  assert.equal(jumping.brakeIntensity, 0)
+
+  const horizontalBrakeDefinition = {
+    mode: 'travel', distance: 4, turnRadians: 0, verticalMode: 'grounded', jumpHeight: 0,
+    windows: [
+      { id: 'travel', kind: 'travel' as const, startMs: 0, endMs: 100, weight: 1 },
+      { id: 'brake', kind: 'brake' as const, startMs: 0, endMs: 100, weight: 1 },
+    ],
+    vfxTags: [] as const,
+  } as const
+  const horizontalBrake = continuous(horizontalBrakeDefinition, 49, 50)
+  assert.ok(horizontalBrake.motionIntensity > .55 && horizontalBrake.motionIntensity <= 1)
+  assert.ok(horizontalBrake.brakeIntensity > .45 && horizontalBrake.brakeIntensity <= 1)
+
+  const weightedHorizontalBrake = continuous(horizontalBrakeDefinition, 49, 50, .5)
+  assert.ok(weightedHorizontalBrake.motionIntensity > 0)
+  assert.equal(weightedHorizontalBrake.brakeIntensity, weightedHorizontalBrake.motionIntensity, '峰值 brake 包络不得再次乘动作权重')
+})
+
 test('固定种子有状态序列真实命中求解、钳制、重置、阻塞、接缝和运动信号', () => {
   let state = 0x6d2b79f5
   const random = () => {
