@@ -5,11 +5,161 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { solveAnalyticTwoBoneIk } from '../src/index.ts'
+import { solveAnalyticTwoBoneIk, solveConstrainedFabrik } from '../src/index.ts'
 
 const distance = (left: readonly number[], right: readonly number[]) => Math.hypot(
   left[0]! - right[0]!, left[1]! - right[1]!, left[2]! - right[2]!,
 )
+
+test('FABRIK 多段链收敛并保持每段长度', () => {
+  const input = [[0, 0, 0], [0, -1, 0], [0, -2, 0], [0, -3, 0]] as const
+  const result = solveConstrainedFabrik({
+    positions: input,
+    target: [1.2, -2.2, .3],
+    pole: [0, 0, 1],
+    maxIterations: 8,
+    tolerance: 1e-4,
+    maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'solved')
+  assert.ok(result.error <= 1e-4)
+  for (let index = 1; index < result.positions.length; index += 1) {
+    assert.ok(Math.abs(distance(result.positions[index - 1]!, result.positions[index]!) - 1) < 1e-6)
+  }
+})
+
+test('FABRIK 对不可达目标使用有限的最大伸展结果', () => {
+  const result = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [0, -1, 0], [0, -2, 0]],
+    target: [20, 0, 0],
+    pole: [0, 0, 1],
+    maxIterations: 8,
+    tolerance: 1e-4,
+    maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'clamped')
+  assert.ok(result.positions.flat().every(Number.isFinite))
+})
+
+test('FABRIK 按伸展比例钳制目标且不伪造段长', () => {
+  const result = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [0, -1, 0], [0, -2, 0], [0, -3, 0]],
+    target: [10, 0, 0],
+    pole: [0, 0, 1],
+    maxStretchRatio: .8,
+  })
+
+  assert.equal(result.status, 'clamped')
+  assert.ok(Math.abs(distance(result.positions[0]!, result.positions.at(-1)!) - 2.4) <= 1e-4)
+  for (let index = 1; index < result.positions.length; index += 1) {
+    assert.ok(Math.abs(distance(result.positions[index - 1]!, result.positions[index]!) - 1) < 1e-6)
+  }
+})
+
+test('FABRIK 不突变输入、不共享输出引用并保持确定性', () => {
+  const input = {
+    positions: [[0, 0, 0], [.2, -1, 0], [.1, -2, 0], [0, -3, 0]] as [number, number, number][],
+    target: [1, -2.4, .4] as [number, number, number],
+    pole: [0, 0, 1] as [number, number, number],
+    maxStretchRatio: 1,
+  }
+  const snapshot = structuredClone(input)
+  const first = solveConstrainedFabrik(input)
+  const second = solveConstrainedFabrik(input)
+
+  assert.deepEqual(input, snapshot)
+  assert.deepEqual(first, second)
+  assert.notEqual(first.positions, input.positions)
+  for (let index = 0; index < first.positions.length; index += 1) assert.notEqual(first.positions[index], input.positions[index])
+})
+
+test('FABRIK 支持三点和更多段链并受八次迭代上限约束', () => {
+  for (const positions of [
+    [[0, 0, 0], [0, -1, 0], [0, -2, 0]],
+    [[0, 0, 0], [0, -.6, 0], [0, -1.2, 0], [0, -1.8, 0], [0, -2.4, 0], [0, -3, 0]],
+  ] as const) {
+    const result = solveConstrainedFabrik({ positions, target: [.6, -1.5, .2], pole: [0, 0, 1], maxStretchRatio: 1 })
+    assert.equal(result.status, 'solved')
+    assert.ok(result.iterations >= 0 && result.iterations <= 8)
+    assert.ok(result.error <= 1e-4)
+  }
+})
+
+test('FABRIK 对 Pole 等比例缩放和共线输入保持有限确定弯曲面', () => {
+  const base = {
+    positions: [[0, 0, 0], [0, -1, 0], [0, -2, 0], [0, -3, 0]] as const,
+    target: [1, -2.3, .2] as const,
+    maxStretchRatio: 1,
+  }
+  const unit = solveConstrainedFabrik({ ...base, pole: [0, 0, 1] })
+  const scaled = solveConstrainedFabrik({ ...base, pole: [0, 0, Number.MAX_VALUE] })
+  const collinear = solveConstrainedFabrik({ ...base, pole: [10, -23, 2] })
+
+  assert.equal(unit.status, 'solved')
+  assert.equal(scaled.status, 'solved')
+  assert.equal(collinear.status, 'solved')
+  assert.deepEqual(unit, scaled)
+  assert.ok(collinear.positions.flat().every(Number.isFinite))
+})
+
+test('FABRIK 安全阻塞零段长、畸形链和非法求解参数', () => {
+  const base = {
+    positions: [[0, 0, 0], [0, -1, 0], [0, -2, 0]],
+    target: [1, -1, 0], pole: [0, 0, 1], maxStretchRatio: 1,
+  }
+  const malformedPositions = [
+    [],
+    [[0, 0, 0], [0, -1, 0]],
+    [[0, 0, 0], [0, 0, 0], [0, -1, 0]],
+    [[0, 0, 0], null, [0, -1, 0]],
+    [[0, 0, 0], [0, 'bad', 0], [0, -1, 0]],
+  ]
+  for (const positions of malformedPositions) {
+    const result = solveConstrainedFabrik({ ...base, positions } as never)
+    assert.equal(result.status, 'blocked')
+    assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
+  }
+  for (const maxIterations of [0, -1, 9, 1.5, Number.NaN]) {
+    assert.equal(solveConstrainedFabrik({ ...base, maxIterations }).status, 'blocked')
+  }
+  for (const tolerance of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(solveConstrainedFabrik({ ...base, tolerance }).status, 'blocked')
+  }
+  for (const maxStretchRatio of [.79, 1.01, -1, Number.NaN]) {
+    assert.equal(solveConstrainedFabrik({ ...base, maxStretchRatio }).status, 'blocked')
+  }
+})
+
+test('FABRIK 对无效向量和会溢出的有限坐标安全阻塞', () => {
+  const base = {
+    positions: [[0, 0, 0], [0, -1, 0], [0, -2, 0]],
+    target: [1, -1, 0], pole: [0, 0, 1], maxStretchRatio: 1,
+  }
+  for (const patch of [
+    { target: [NaN, 0, 0] },
+    { pole: [0, Number.POSITIVE_INFINITY, 0] },
+    { target: [0, 0] },
+    { pole: null },
+    { positions: [[Number.MAX_VALUE, 0, 0], [-Number.MAX_VALUE, 0, 0], [0, 0, 0]] },
+  ]) {
+    const result = solveConstrainedFabrik({ ...base, ...patch } as never)
+    assert.equal(result.status, 'blocked')
+    assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
+  }
+})
+
+test('FABRIK 未在指定迭代内收敛时不会伪称 solved', () => {
+  const result = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [0, -1, 0], [0, -2, 0], [0, -3, 0]],
+    target: [1.2, -2.2, .3], pole: [0, 0, 1], maxIterations: 1, tolerance: 1e-12, maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'blocked')
+  assert.equal(result.iterations, 1)
+  assert.ok(result.positions.flat().every(Number.isFinite))
+})
 
 const assertStrictSegmentLengths = (
   result: ReturnType<typeof solveAnalyticTwoBoneIk>,
