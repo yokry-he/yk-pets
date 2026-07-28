@@ -21,6 +21,7 @@ import { useStudioModelVariantsStore } from '~/stores/studio-model-variants'
 import { useStudioSessionStore } from '~/stores/studio-session'
 import type { StudioMotionLoopMode } from '~/domain/studio-workspace'
 import { BUILT_IN_STUDIO_PROPS } from '~/domain/studio-built-in-props'
+import { BASIC_BIPED_STUDIO_MOTIONS } from '~/domain/studio-basic-biped-motions'
 
 type PropertyTab = 'basic' | 'pose' | 'advanced' | 'props'
 
@@ -112,6 +113,14 @@ function createMotion() {
   if (editor.requestPlaybackInterruption()) switchMotionNow(motion.id)
   else pendingMotionId.value = motion.id
 }
+function useBasicMotionTemplate(templateId: string) {
+  if (editor.isDirty) saveCurrent('已自动保存上一动作')
+  const motion = assets.copyBuiltInMotion(templateId)
+  if (!motion) return
+  editor.stopPlayback()
+  switchMotionNow(motion.id)
+  status.value = `已创建“${motion.nameZh}”，可直接播放或继续调整`
+}
 function patchName(field: 'nameZh' | 'nameEn', event: Event) {
   editor.updateMetadata({ [field]: (event.target as HTMLInputElement).value })
 }
@@ -189,6 +198,24 @@ onBeforeUnmount(() => {
     <aside class="asset-panel">
       <header><div><small>动作资产</small><h1>动作工坊</h1></div><button @click="createMotion">新建动作</button></header>
       <p>动作资产使用语义 Rig；时间轴只保存相对于外观的姿态偏移，不修改外观配方。</p>
+      <section class="basic-motion-templates" aria-labelledby="basic-motion-template-title">
+        <header>
+          <div><strong id="basic-motion-template-title">基础动作模板</strong><small>点击即自动创建，无需手动绑骨</small></div>
+        </header>
+        <div class="basic-motion-template-grid">
+          <button
+            v-for="template in BASIC_BIPED_STUDIO_MOTIONS"
+            :key="template.id"
+            type="button"
+            class="basic-motion-template"
+            :aria-label="`使用动作模板：${template.nameZh}`"
+            @click="useBasicMotionTemplate(template.id)"
+          >
+            <strong>{{ template.nameZh }}</strong>
+            <small>{{ (template.durationMs / 1000).toFixed(1) }} 秒 · {{ template.loopMode === 'loop' ? '循环' : '单次' }}</small>
+          </button>
+        </div>
+      </section>
       <button v-for="motion in assets.motions" :key="motion.id" class="asset-item" :class="{ active: motion.id === session.selectedMotionId }" @click="selectMotion(motion.id)">
         <strong>{{ motion.nameZh }}</strong><small>{{ motion.durationMs }} 毫秒 · {{ motion.displayFps }} 帧/秒</small>
       </button>
@@ -377,6 +404,7 @@ h1,h2,h3,p{margin:0}
 .asset-item{display:grid;gap:3px;padding:9px;text-align:left}
 .asset-item.active{border-color:#52e0d066;background:#52e0d010}
 .asset-item small{font:400 8px/1.3 system-ui;color:#7883a3}
+.basic-motion-templates{display:grid;gap:7px;padding:8px;border:1px solid #52e0d02b;border-radius:11px;background:#52e0d008}.basic-motion-templates>header{display:block}.basic-motion-templates>header>div{display:grid;gap:3px}.basic-motion-templates>header strong{color:#dffffa;font-size:10px}.basic-motion-templates>header small{font:400 8px/1.35 system-ui;color:#7f8fa7;letter-spacing:0}.basic-motion-template-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.basic-motion-template{display:grid;gap:3px;min-width:0;padding:7px;text-align:left}.basic-motion-template strong{overflow:hidden;font-size:9px;text-overflow:ellipsis;white-space:nowrap}.basic-motion-template small{font:400 7px/1.3 system-ui;color:#7883a3}.basic-motion-template:focus-visible{outline:2px solid #72dfd1;outline-offset:2px}
 .editor-area{display:grid;grid-template-rows:auto minmax(380px,1fr) minmax(300px,.8fr);overflow:hidden}
 .editor-header{padding:10px 12px;border-bottom:1px solid #ffffff13}
 .editor-header>div:first-child{display:grid;gap:3px;min-width:0}

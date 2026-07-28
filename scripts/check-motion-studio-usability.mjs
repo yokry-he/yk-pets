@@ -18,6 +18,7 @@ const curveEditor = read('apps/playground/app/components/studio/StudioMotionCurv
 const propEvents = read('apps/playground/app/components/studio/StudioMotionPropEvents.vue')
 const timeline = read('apps/playground/app/components/studio/StudioMotionTimeline.vue')
 const layout = read('apps/playground/app/layouts/studio.vue')
+const basicMotions = read('apps/playground/app/domain/studio-basic-biped-motions.ts')
 
 const checks = [
   ['motion preview defaults smaller and exposes a bounded scale control', motionPage.includes('defaultScale: .72') && previewToolbar.includes('min=".4" max="1.2"') && previewToolbar.includes('预览大小')],
@@ -33,6 +34,7 @@ const checks = [
   ['advanced layers and prop styles use shrinkable responsive grids', advancedTools.includes('grid-template-columns:minmax(0,1fr) minmax(0,78px) 58px') && propEvents.includes('grid-template-columns:repeat(2,minmax(0,1fr))') && propEvents.includes('overflow-x:hidden')],
   ['primary motion UI is Chinese-first', motionPage.includes('<small>动作编辑器</small>') && previewToolbar.includes('正面') && transformEditor.includes('<small>直接操控</small>') && poseEditor.includes('<small>逐通道编辑</small>') && curveEditor.includes('入切线') && timeline.includes('>轨道<')],
   ['motion layer interpolation and prop event choices are localized', advancedTools.includes('>覆盖</option>') && advancedTools.includes('>叠加</option>') && poseEditor.includes("step: '阶梯'") && propEvents.includes("create: '创建'") && propEvents.includes("destroy: '销毁'")],
+  ['five beginner biped templates are visible and copy through the existing asset flow', ['待机呼吸', '行走循环', '起跳与落地', '招手', '直拳组合'].every(label => basicMotions.includes(label)) && motionPage.includes('BASIC_BIPED_STUDIO_MOTIONS') && motionPage.includes('copyBuiltInMotion') && motionPage.includes('使用动作模板：')],
   ['Studio navigation uses Chinese descriptions instead of English subtitles', layout.includes('{{ item.description }}') && !layout.includes('{{ item.labelEn }}') && layout.includes('<span>工坊</span>')],
 ]
 
