@@ -292,4 +292,10 @@
 - `CharacterRigProfile` 新增可选的 `limbIk` 契约，统一声明肢体链、自动/解析式/FABRIK 求解偏好、接触点、极向量、伸展上限、单帧最大修正角和混合权重；旧 Profile 不声明该字段时保持兼容。
 - Profile 校验现已覆盖肢体 ID 唯一性、至少三骨骼、骨骼存在且父级路径连续、接触点存在、非零有限极向量，以及伸展、修正角和权重的安全范围，并继续按声明顺序返回稳定诊断。
 - `biped-pet/v1` 已为左右腿声明 `auto` 混合 IK 链，后续运行时可优先选择解析式 Two Bone IK，并在不满足标准链条件时回退受约束 FABRIK。
-- 本批只完成框架无关的 Profile 契约。角色编译传播、解析式求解器、受约束 FABRIK、动作接触采样、Three 足底锁定和浏览器验收仍未完成；`bipedPetRuntimeIkComplete` 与 `bipedPetFootLockComplete` 必须继续保持 `false`。
+- 该批只完成框架无关的 Profile 契约；角色编译传播已在第 30 节完成。解析式求解器、受约束 FABRIK、动作接触采样、Three 足底锁定和浏览器验收仍未完成；`bipedPetRuntimeIkComplete` 与 `bipedPetFootLockComplete` 必须继续保持 `false`。
+
+## 30. 混合 IK 角色编译传播批次
+
+- `compileBipedPetCharacter` 现已将 Profile 的左右腿混合 IK 定义编译进 `CompiledCharacterModel.limbIk`，并将该约束纳入确定性角色哈希，后续约束变更不会误复用旧编译摘要。
+- 每次 ready 编译都会独立克隆肢体定义、`boneIds` 和 `poleAxis`，不与 Profile 或其他编译结果共享可变引用；Profile 校验或编译异常导致的 blocked 结果则返回全新空 `limbIk` 集合。
+- 本批仅完成角色编译传播。解析式 Two Bone IK、受约束 FABRIK、动作接触采样、Three 运行时 IK 与足底锁定仍未完成；`bipedPetRuntimeIkComplete` 和 `bipedPetFootLockComplete` 保持 `false`。

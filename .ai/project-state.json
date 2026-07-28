@@ -90,6 +90,7 @@
     "bipedPetHybridIkDesignComplete": true,
     "bipedPetHybridIkPlanComplete": true,
     "bipedPetHybridIkProfileContractComplete": true,
+    "bipedPetHybridIkCompilationPropagationComplete": true,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
     "bipedPetRootMotionComplete": false,
@@ -190,7 +191,8 @@
     "studio-model-variant-lazy-hydration-review",
     "biped-pet-semantic-motion-phase1-delivery",
     "biped-pet-hybrid-ik-design",
-    "biped-pet-hybrid-ik-plan"
+    "biped-pet-hybrid-ik-plan",
+    "biped-pet-hybrid-ik-compilation-propagation"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

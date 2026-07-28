@@ -420,6 +420,44 @@ test('双足萌宠编译器生成确定性、可蒙皮且可直接渲染的模�
   }
 })
 
+test('角色编译结果携带独立克隆的混合 IK 定义', () => {
+  const first = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+  const second = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+
+  assert.equal(first.status, 'ready')
+  assert.deepEqual(first.limbIk.map(item => item.id), ['leg.left', 'leg.right'])
+  assert.notEqual(first.limbIk, second.limbIk)
+  assert.notEqual(first.limbIk[0], second.limbIk[0])
+  assert.notEqual(first.limbIk[0]?.boneIds, second.limbIk[0]?.boneIds)
+  assert.notEqual(first.limbIk[0]?.poleAxis, second.limbIk[0]?.poleAxis)
+  assert.notEqual(first.limbIk[0]?.boneIds, BIPED_PET_RIG_PROFILE.limbIk?.[0]?.boneIds)
+  assert.notEqual(first.limbIk[0]?.poleAxis, BIPED_PET_RIG_PROFILE.limbIk?.[0]?.poleAxis)
+})
+
+test('角色编译哈希包含混合 IK 约束且 blocked 结果持有独立空集合', () => {
+  const profile = BIPED_PET_RIG_PROFILE as unknown as {
+    bones: Array<{ parentId?: string }>
+    limbIk: Array<{ weight: number }>
+  }
+  const originalWeight = profile.limbIk[0]!.weight
+  const originalParentId = profile.bones[1]!.parentId
+  try {
+    const firstHash = compileBipedPetCharacter(createBipedPetModelRecipe(200)).hash
+    profile.limbIk[0]!.weight = originalWeight / 2
+    assert.notEqual(compileBipedPetCharacter(createBipedPetModelRecipe(200)).hash, firstHash)
+
+    profile.bones[1]!.parentId = 'missing-parent'
+    const firstBlocked = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+    const secondBlocked = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+    assert.equal(firstBlocked.status, 'blocked')
+    assert.deepEqual(firstBlocked.limbIk, [])
+    assert.notEqual(firstBlocked.limbIk, secondBlocked.limbIk)
+  } finally {
+    profile.limbIk[0]!.weight = originalWeight
+    profile.bones[1]!.parentId = originalParentId
+  }
+})
+
 test('双足萌宠编译器输出引用均安全且骨骼按父子顺序排列', () => {
   const compiled = compileBipedPetCharacter(createBipedPetModelRecipe(200))
   assert.equal(compiled.status, 'ready')

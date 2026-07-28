@@ -5,7 +5,7 @@
 
 import { BIPED_PET_RIG_PROFILE } from './biped-pet-profile'
 import { normalizeBipedPetModelRecipe, type CharacterModelRecipeV1 } from './model-recipe'
-import { validateRigProfile, type JointLimitDefinition, type RigContactDefinition, type RigQuaternion, type RigSocketDefinition, type RigVector3 } from './rig-profile'
+import { validateRigProfile, type CharacterIkSolver, type CharacterLimbIkDefinition, type JointLimitDefinition, type RigContactDefinition, type RigQuaternion, type RigSocketDefinition, type RigVector3 } from './rig-profile'
 
 export interface CompiledCharacterBone {
   id: string
@@ -52,6 +52,17 @@ export interface CompiledCharacterSocket {
   localRotation: [number, number, number, number]
 }
 
+export interface CompiledCharacterLimbIk {
+  id: string
+  solver: CharacterIkSolver
+  boneIds: string[]
+  contactId: string
+  poleAxis: [number, number, number]
+  maxStretchRatio: number
+  maxCorrectionRadians: number
+  weight: number
+}
+
 export interface CompiledCharacterModel {
   status: 'ready' | 'blocked'
   hash: string
@@ -62,6 +73,7 @@ export interface CompiledCharacterModel {
   jointLimits: CompiledCharacterJointLimit[]
   contacts: CompiledCharacterContact[]
   sockets: CompiledCharacterSocket[]
+  limbIk: CompiledCharacterLimbIk[]
   diagnostics: CharacterCompilationDiagnostic[]
 }
 
@@ -239,6 +251,18 @@ function cloneContact(contact: RigContactDefinition): CompiledCharacterContact {
 function cloneSocket(socket: RigSocketDefinition): CompiledCharacterSocket {
   return { id: socket.id, boneId: socket.boneId, localPosition: clone3(socket.localPosition), localRotation: clone4(socket.localRotation) }
 }
+function cloneLimbIk(limb: CharacterLimbIkDefinition): CompiledCharacterLimbIk {
+  return {
+    id: limb.id,
+    solver: limb.solver,
+    boneIds: [...limb.boneIds],
+    contactId: limb.contactId,
+    poleAxis: clone3(limb.poleAxis),
+    maxStretchRatio: limb.maxStretchRatio,
+    maxCorrectionRadians: limb.maxCorrectionRadians,
+    weight: limb.weight,
+  }
+}
 
 /**
  * 接触点与 Socket 是几何编译结果的一部分，而不是固定 Profile 常量：局部偏移必须随实际生成的末端尺寸变化。
@@ -318,6 +342,7 @@ function blockedByProfile(recipe: CharacterModelRecipeV1, profileDiagnostics: re
     jointLimits: [],
     contacts: [],
     sockets: [],
+    limbIk: [],
     diagnostics,
   }
 }
@@ -428,6 +453,7 @@ export function compileBipedPetCharacter(input: unknown): CompiledCharacterModel
       jointLimits: BIPED_PET_RIG_PROFILE.jointLimits.map(cloneJointLimit),
       contacts: compileContacts(recipe),
       sockets: compileSockets(recipe),
+      limbIk: (BIPED_PET_RIG_PROFILE.limbIk ?? []).map(cloneLimbIk),
       diagnostics: [] as CharacterCompilationDiagnostic[],
     }
     const errors = ensureCompiledData(model)
@@ -446,6 +472,7 @@ export function compileBipedPetCharacter(input: unknown): CompiledCharacterModel
       jointLimits: [],
       contacts: [],
       sockets: [],
+      limbIk: [],
       diagnostics,
     }
   }
