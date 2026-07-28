@@ -108,15 +108,12 @@ const stableTriangleHeight = (upperLength: number, lowerLength: number, targetDi
   return Number.isFinite(height) ? height : null
 }
 
-const segmentLengthIsValid = (start: RigVector3, end: RigVector3, expected: number, coordinateScale: number): boolean => {
+const segmentLengthIsValid = (start: RigVector3, end: RigVector3, expected: number): boolean => {
   const offset = subtract(end, start)
   if (!isFiniteVector(offset)) return false
   const actual = length(offset)
-  // 坐标量级用于估计浮点误差，但硬性封顶为 1e-8 相对误差；无法表达的巨大平移必须阻塞。
-  const tolerance = Math.min(
-    expected * MAX_SEGMENT_RELATIVE_ERROR,
-    Math.max(Number.MIN_VALUE, expected * Number.EPSILON * 32, coordinateScale * Number.EPSILON * 32),
-  )
+  // 成功契约直接采用每段 1e-8 相对误差；大坐标无法满足时阻塞，普通边界不会被 ULP 估算过度收紧。
+  const tolerance = expected * MAX_SEGMENT_RELATIVE_ERROR
   return Number.isFinite(actual) && Math.abs(actual - expected) <= tolerance
 }
 
@@ -208,17 +205,9 @@ export function solveAnalyticTwoBoneIk(input: AnalyticTwoBoneIkInput): AnalyticT
   const error = Math.abs(targetDistance - solvedDistance)
   if (![root, mid, tip].every(isFiniteVector) || !Number.isFinite(error)) return blockedResult(input)
 
-  const coordinateScale = Math.max(
-    upperLength,
-    lowerLength,
-    ...root.map(Math.abs),
-    ...mid.map(Math.abs),
-    ...tip.map(Math.abs),
-  )
   if (
-    !Number.isFinite(coordinateScale)
-    || !segmentLengthIsValid(root, mid, upperLength, coordinateScale)
-    || !segmentLengthIsValid(mid, tip, lowerLength, coordinateScale)
+    !segmentLengthIsValid(root, mid, upperLength)
+    || !segmentLengthIsValid(mid, tip, lowerLength)
   ) return blockedResult(input)
 
   // 可达域是闭区间；除上述输入坐标重建产生的少量 ULP 外，原始距离严格越界就必须报告钳制。
