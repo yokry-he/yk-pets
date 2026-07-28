@@ -68,13 +68,22 @@ function emitCompilationIfChanged(compilation: CompiledCharacterModel) {
   })
 }
 
+function disposeResources(controller?: ComplexBipedMotionController, currentRuntime?: ComplexBipedPetObject) {
+  let firstError: unknown
+  try { controller?.dispose() }
+  catch (error) { firstError = error }
+  try { currentRuntime?.dispose() }
+  catch (error) { firstError ??= error }
+  if (firstError) throw firstError
+}
+
 function disposeRuntime() {
-  motionController.value?.dispose()
+  const previousController = motionController.value
+  const previousRuntime = runtime.value
   motionController.value = undefined
   motionClip.value = undefined
-  const previous = runtime.value
   runtime.value = undefined
-  previous?.dispose()
+  disposeResources(previousController, previousRuntime)
 }
 
 function applyMotion() {
@@ -91,14 +100,32 @@ function applyMotion() {
 function compileMotion() {
   const currentRuntime = runtime.value
   const controller = motionController.value
-  if (!currentRuntime || !controller) return
+  if (!currentRuntime || !controller) {
+    motionClip.value = undefined
+    return
+  }
   if (!props.motionAsset) {
     motionClip.value = undefined
     controller.reset()
     return
   }
-  motionClip.value = compileBipedPetMotion(props.motionAsset, { boneIds: [...currentRuntime.bonesById.keys()] })
-  applyMotion()
+
+  // 新动作可能使用相同的播放时间或重叠接触区间；替换前必须主动清除上一动作的足底锚点。 / Clear the previous foot anchors before replacing a clip, even when playback times or contact ranges overlap.
+  controller.reset()
+  try {
+    const compiledClip = compileBipedPetMotion(props.motionAsset, { boneIds: [...currentRuntime.bonesById.keys()] })
+    if (compiledClip.status !== 'ready') {
+      motionClip.value = undefined
+      controller.reset()
+      return
+    }
+    motionClip.value = compiledClip
+    applyMotion()
+  } catch {
+    // 外部草稿损坏时保留当前模型并回到绑定姿态，不能沿用旧 clip 或旧足底锁。 / Keep the model but restore its bind pose when an external draft is invalid; never retain the old clip or foot lock.
+    motionClip.value = undefined
+    controller.reset()
+  }
 }
 
 function createRuntime(recipe: CharacterModelRecipeV1) {
@@ -128,12 +155,24 @@ function createRuntime(recipe: CharacterModelRecipeV1) {
     return
   }
 
+  let newRuntime: ComplexBipedPetObject | undefined
+  let newController: ComplexBipedMotionController | undefined
   try {
-    runtime.value = createComplexBipedPetObject(compilation, normalizedRecipe.material)
-    motionController.value = createComplexBipedMotionController(runtime.value)
+    newRuntime = createComplexBipedPetObject(compilation, normalizedRecipe.material)
+    runtime.value = newRuntime
+    newController = createComplexBipedMotionController(runtime.value, compilation)
+    motionController.value = newController
     compileMotion()
     emitCompilationIfChanged(compilation)
   } catch {
+    // 创建中途失败时先解除响应式引用，再按创建逆序释放；不得让 primitive 继续持有半成品对象。 / On partial creation failure, detach reactive references and release in reverse order so primitive never retains a partial object.
+    if (motionController.value === newController) motionController.value = undefined
+    if (runtime.value === newRuntime) runtime.value = undefined
+    motionClip.value = undefined
+    try { newController?.dispose() }
+    catch { /* 继续释放 runtime，最终统一返回阻塞诊断。 */ }
+    try { newRuntime?.dispose() }
+    catch { /* 所有已取得资源均已尽力释放。 */ }
     // 运行时异常必须转为可恢复诊断，不能让场景组件在更新配方时崩溃。 / Runtime failures become recoverable diagnostics instead of crashing the scene.
     emitCompilationIfChanged({
       ...compilation,

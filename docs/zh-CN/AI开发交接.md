@@ -360,3 +360,10 @@
 - 双支撑阶段会先根据两脚垂直锚点误差修正骨盆局部 Y，严格钳制在绑定值的 `[-0.08, 0.08]` 范围；单支撑不启用该骨盆策略。可达的双支撑 wave 窗口以纯旋转把足底误差保持在 `1e-3` 内；walk 单支撑 `t=100→320ms` 的 tip 目标距离为 `0.9749188396`，而聚合链最大可达距离为 `0.9609095903`，超出 `0.0140092493` 时保留有限残差并报告 `clamped`，不会硬拉骨骼。`clamped` 诊断按肢体、求解器和状态去重，全部诊断采用 64 项 FIFO 硬上限；有限合法解仍会应用，不会被误当成失败回退。该边界需要后续 Root Motion/重心策略解决，当前 `bipedPetRootMotionComplete` 仍为 `false`。
 - 缺失骨骼、断链、缺失接触点、blocked 编译或单肢数值异常只让对应肢体回退 FK，诊断按原因去重，另一肢仍可继续。每肢在写入前会快照 `limb.bones + contactBone` 的唯一 Quaternion 集合；任何链段或脚部朝向更新失败都会完整恢复该帧 FK，不留下半肢 IK。IK 对局部位移的所有权仅限双支撑骨盆 Y：外部写入的 foot/ankle position 在 active、weight 0、`reset` 与 `dispose` 中均保持不变。控制器的 `reset` 会恢复自身修改的骨盆局部位置并清空时间身份，`dispose` 幂等；释放后的直接 IK 调用为安全 no-op 并记录一次诊断，外层动作控制器仍维持原有释放后拒绝写入语义。
 - 自动测试每帧先经外层动作控制器写入真实 FK，再覆盖左右脚独立锁定、普通倒退/Clip 切换/异常大跳清锁、loop 接缝连续保锚与非连续释放、0.6rad 脚部扭转朝向误差收敛、解析式/FABRIK 实际末端改善、非法映射与损坏单肢完整 FK 回退、双/单支撑骨盆边界、低权重近似缩放、weight 0 与纯 FK 完整一致、40 个 Clip 身份下诊断有界、输入不突变、绑定局部 position、链段长度、有限单位 Quaternion、重置和重复释放。本批不实现完整 Root Motion、地形法线检测、动作特效或正式四足/机甲 Profile；`bipedPetRootMotionComplete` 与 `bipedPetMotionVfxComplete` 继续保持 `false`。
+
+## 35. 复杂模型混合 IK 正式渲染链路批次
+
+- `ComplexBipedPetRenderer` 现在把创建当前 Three runtime 的同一份 `CompiledCharacterModel` 传给唯一动作控制器；复杂模式因此正式启用第 34 节的混合 IK 与足底锁定，简单模式仍走互斥的 `ProceduralPet` 路径，不创建复杂控制器、第二 Canvas 或隐藏循环。
+- 动作资产切换会在编译新 Clip 前先恢复绑定姿态并清空旧足底锚点；无动作、blocked Clip 和动作编译异常都会清除旧 Clip 并再次复位。播放时间与权重变化仍只执行采样和应用，不重建 runtime 或 controller。
+- 模型配方或编译摘要变化时，会先清理旧 controller/runtime，再用同一 compilation 创建新对象。中途失败会解除响应式引用并按 controller、runtime 的逆序释放已取得资源，再上报 blocked 诊断；卸载继续执行幂等释放，不让 Tres primitive 保留半成品 Canvas 对象。
+- 静态门禁新增生命周期语义检查及注释伪装、错误复位顺序负例，避免只依赖单一源码片段。本批已接通正式生产渲染链路，但性能、真实浏览器逐动作与 GPU/WebGL 验收留给第 8 个任务；完整 Root Motion 和动作特效仍未实现，`bipedPetRootMotionComplete` 与 `bipedPetMotionVfxComplete` 必须保持 `false`。
