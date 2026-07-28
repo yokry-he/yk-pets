@@ -75,9 +75,23 @@ const idleClip = compileBipedPetMotion(BASIC_BIPED_STUDIO_MOTIONS.find(item => i
 const waveClip = compileBipedPetMotion(BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-wave'))
 const punchClip = compileBipedPetMotion(BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-straight-punch'))
 assert.deepEqual(jumpClip.events.map(item => item.kind), ['takeoff', 'landing'])
-for (const clip of [idleClip, waveClip]) {
-  assert.deepEqual(sampleBipedPetMotion(clip, clip.durationMs / 2).activeContacts, ['foot.left', 'foot.right'])
+
+function assertFullDurationDoubleSupport(clip: ReturnType<typeof compileBipedPetMotion>, motionId: string) {
+  assert.deepEqual(clip.contacts.map(item => ({ contactId: item.contactId, startMs: item.startMs, endMs: item.endMs })), [
+    { contactId: 'foot.left', startMs: 0, endMs: clip.durationMs },
+    { contactId: 'foot.right', startMs: 0, endMs: clip.durationMs },
+  ], `${motionId} 必须声明覆盖完整时长的左右脚支撑区间`)
+  for (const [timeMs, phase] of [[40, 'acquiring'], [clip.durationMs / 2, 'locked'], [clip.durationMs - 40, 'releasing']] as const) {
+    const sample = sampleBipedPetMotion(clip, timeMs)
+    assert.deepEqual(sample.contactStates.map(item => item.contactId), ['foot.left', 'foot.right'], `${motionId}/${timeMs} 必须采样到双脚接触状态`)
+    assert.ok(sample.contactStates.every(item => item.phase === phase), `${motionId}/${timeMs} 接触阶段必须为 ${phase}`)
+    assert.ok(sample.contactStates.every(item => item.weight > 0), `${motionId}/${timeMs} 接触权重必须大于 0`)
+    assert.deepEqual(sample.activeContacts, ['foot.left', 'foot.right'], `${motionId}/${timeMs} 必须保持双脚有效支撑`)
+  }
 }
+assertFullDurationDoubleSupport(idleClip, 'builtin-biped-idle')
+assertFullDurationDoubleSupport(waveClip, 'builtin-biped-wave')
+assertFullDurationDoubleSupport(punchClip, 'builtin-biped-straight-punch')
 assert.deepEqual(sampleBipedPetMotion(jumpClip, 200).activeContacts, ['foot.left', 'foot.right'])
 assert.deepEqual(sampleBipedPetMotion(jumpClip, 1200).activeContacts, [])
 assert.deepEqual(sampleBipedPetMotion(jumpClip, 2100).activeContacts, ['foot.left', 'foot.right'])
@@ -85,8 +99,6 @@ assert.deepEqual(sampleBipedPetMotion(walkClip, 40).activeContacts, ['foot.left'
 assert.deepEqual(sampleBipedPetMotion(walkClip, 300).activeContacts, ['foot.left'])
 assert.deepEqual(sampleBipedPetMotion(walkClip, 640).activeContacts, ['foot.right'])
 assert.deepEqual(sampleBipedPetMotion(walkClip, 1180).activeContacts, ['foot.left', 'foot.right'])
-assert.ok(punchClip.contacts.some(item => item.contactId === 'foot.left'))
-assert.ok(punchClip.contacts.some(item => item.contactId === 'foot.right'))
 
 assert.ok(BUILT_IN_STUDIO_MOTIONS.some(item => item.propIds.includes('builtin-nebula-staff')))
 assert.ok(BUILT_IN_STUDIO_MOTIONS.some(item => item.propIds.includes('builtin-glow-sticks')))
