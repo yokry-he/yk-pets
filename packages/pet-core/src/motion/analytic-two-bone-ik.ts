@@ -95,8 +95,9 @@ export function solveAnalyticTwoBoneIk(input: AnalyticTwoBoneIkInput): AnalyticT
   if (!axis) return blockedResult(input)
 
   const minimumDistance = Math.abs(upperLength - lowerLength) + MIN_REACH_EPSILON
-  if (minimumDistance > upperLength + lowerLength) return blockedResult(input)
-  const maximumDistance = Math.max(minimumDistance, (upperLength + lowerLength) * input.maxStretchRatio)
+  const maximumDistance = (upperLength + lowerLength) * input.maxStretchRatio
+  // 有限非零的链仍可能因固定下界高于配置上限而没有可行区间；此时不能抬高上限伪造解。
+  if (minimumDistance > maximumDistance) return blockedResult(input)
   const solvedDistance = Math.min(maximumDistance, Math.max(minimumDistance, targetDistance))
   if (![minimumDistance, maximumDistance, solvedDistance].every(Number.isFinite) || solvedDistance <= 0) return blockedResult(input)
 
@@ -123,6 +124,7 @@ export function solveAnalyticTwoBoneIk(input: AnalyticTwoBoneIkInput): AnalyticT
   const error = Math.abs(targetDistance - solvedDistance)
   if (![root, mid, tip].every(isFiniteVector) || !Number.isFinite(error)) return blockedResult(input)
 
-  const status = Math.abs(targetDistance - solvedDistance) <= LENGTH_EPSILON ? 'solved' : 'clamped'
+  // 可达域是闭区间；只要原始距离严格越界，就必须报告发生过钳制，不使用误差容差掩盖边界变化。
+  const status = targetDistance < minimumDistance || targetDistance > maximumDistance ? 'clamped' : 'solved'
   return { status, root, mid, tip, positions: [root, mid, tip], error }
 }

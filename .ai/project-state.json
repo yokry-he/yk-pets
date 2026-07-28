@@ -194,7 +194,7 @@
     "biped-pet-hybrid-ik-design",
     "biped-pet-hybrid-ik-plan",
     "biped-pet-hybrid-ik-compilation-propagation",
-    "biped-pet-analytic-two-bone-ik"
+    "biped-pet-analytic-two-bone-ik-boundary-corrected"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

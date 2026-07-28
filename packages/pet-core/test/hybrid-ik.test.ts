@@ -94,14 +94,46 @@ test('解析式两段 IK 阻塞非法伸展比例和会溢出的有限输入', (
   assert.ok([...poleOverflow.positions.flat(), poleOverflow.error].every(Number.isFinite))
 })
 
-test('解析式两段 IK 在最小距离余量超过物理链长时安全阻塞', () => {
+test('解析式两段 IK 在有限非零链的约束区间为空时安全阻塞', () => {
   const result = solveAnalyticTwoBoneIk({
-    root: [0, 0, 0], mid: [1, 0, 0], tip: [1.0000001, 0, 0],
-    target: [0, 0, 0], pole: [0, 0, 1], maxStretchRatio: 1,
+    root: [0, 0, 0], mid: [100, 0, 0], tip: [101, 0, 0],
+    target: [50, 0, 0], pole: [0, 0, 1], maxStretchRatio: 0.8,
   })
 
   assert.equal(result.status, 'blocked')
   assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
+})
+
+test('解析式两段 IK 对闭区间外的微小距离差也标记为 clamped', () => {
+  const base = {
+    root: [0, 0, 0] as const,
+    mid: [1, 0, 0] as const,
+    tip: [2, 0, 0] as const,
+    pole: [0, 1, 0] as const,
+    maxStretchRatio: 1,
+  }
+  const aboveMaximum = solveAnalyticTwoBoneIk({ ...base, target: [2 + 5e-13, 0, 0] })
+  const belowMinimum = solveAnalyticTwoBoneIk({ ...base, target: [1e-6 - 5e-13, 0, 0] })
+
+  assert.equal(aboveMaximum.status, 'clamped')
+  assert.equal(belowMinimum.status, 'clamped')
+  assert.ok(Math.abs(distance(aboveMaximum.root, aboveMaximum.mid) - 1) < 1e-8)
+  assert.ok(Math.abs(distance(aboveMaximum.mid, aboveMaximum.tip) - 1) < 1e-8)
+  assert.ok(Math.abs(distance(belowMinimum.root, belowMinimum.mid) - 1) < 1e-8)
+  assert.ok(Math.abs(distance(belowMinimum.mid, belowMinimum.tip) - 1) < 1e-8)
+})
+
+test('解析式两段 IK 把上下边界视为可达闭区间', () => {
+  const base = {
+    root: [0, 0, 0] as const,
+    mid: [1, 0, 0] as const,
+    tip: [2, 0, 0] as const,
+    pole: [0, 1, 0] as const,
+    maxStretchRatio: 1,
+  }
+
+  assert.equal(solveAnalyticTwoBoneIk({ ...base, target: [2, 0, 0] }).status, 'solved')
+  assert.equal(solveAnalyticTwoBoneIk({ ...base, target: [1e-6, 0, 0] }).status, 'solved')
 })
 
 test('解析式两段 IK 不突变输入', () => {
