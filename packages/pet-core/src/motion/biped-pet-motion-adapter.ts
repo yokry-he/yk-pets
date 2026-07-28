@@ -227,6 +227,46 @@ function motionHash(value: unknown) {
   return `bpm-${(result >>> 0).toString(16).padStart(8, '0')}`
 }
 
+function readBipedMotionMetadata(asset: StudioMotionAssetV2, profile: CharacterRigProfile) {
+  const diagnostics: BipedPetMotionDiagnostic[] = []
+  const contacts: BipedPetMotionContactCandidate[] = []
+  const events: BipedPetMotionSemanticEvent[] = []
+  const source = asset.extensions?.['yk-pets/biped-motion/v1']
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return { contacts, events, diagnostics }
+  const record = source as Record<string, unknown>
+  const contactIds = new Set(profile.contacts.map(item => item.id))
+  if (Array.isArray(record.contacts)) for (const [index, item] of record.contacts.entries()) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      diagnostics.push({ id: `invalid-contact-metadata-${index}`, severity: 'warning', message: '复杂动作接触候选不是对象，已忽略。' })
+      continue
+    }
+    const value = item as Record<string, unknown>
+    if (typeof value.contactId !== 'string' || !contactIds.has(value.contactId) || !Number.isFinite(value.startMs) || !Number.isFinite(value.endMs) || !Number.isFinite(value.confidence)) {
+      diagnostics.push({ id: `invalid-contact-metadata-${index}`, severity: 'warning', message: '复杂动作接触候选字段无效，已忽略。' })
+      continue
+    }
+    const startMs = clamp(Number(value.startMs), 0, asset.durationMs)
+    const endMs = clamp(Number(value.endMs), startMs, asset.durationMs)
+    contacts.push({ contactId: value.contactId, startMs, endMs, confidence: clamp(Number(value.confidence), 0, 1) })
+  }
+  const eventKinds = new Set<BipedPetMotionSemanticEvent['kind']>(['takeoff', 'landing', 'wave-peak', 'hit'])
+  if (Array.isArray(record.events)) for (const [index, item] of record.events.entries()) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      diagnostics.push({ id: `invalid-event-metadata-${index}`, severity: 'warning', message: '复杂动作语义事件不是对象，已忽略。' })
+      continue
+    }
+    const value = item as Record<string, unknown>
+    if (typeof value.id !== 'string' || !value.id.trim() || !eventKinds.has(value.kind as BipedPetMotionSemanticEvent['kind']) || !Number.isFinite(value.timeMs)) {
+      diagnostics.push({ id: `invalid-event-metadata-${index}`, severity: 'warning', message: '复杂动作语义事件字段无效，已忽略。' })
+      continue
+    }
+    events.push({ id: value.id.trim(), kind: value.kind as BipedPetMotionSemanticEvent['kind'], timeMs: clamp(Number(value.timeMs), 0, asset.durationMs) })
+  }
+  contacts.sort((left, right) => left.startMs - right.startMs || left.contactId.localeCompare(right.contactId))
+  events.sort((left, right) => left.timeMs - right.timeMs || left.id.localeCompare(right.id))
+  return { contacts, events, diagnostics }
+}
+
 function sameQuaternion(left: MotionQuaternion, right: MotionQuaternion) {
   return Math.abs(
     left[0] * right[0]
@@ -279,6 +319,8 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
     severity: 'warning',
     message: `动作资产已规范化：${item.code}:${item.path}`,
   }))
+  const metadata = readBipedMotionMetadata(asset, profile)
+  diagnostics.push(...metadata.diagnostics)
   const hasRootPosition = asset.tracks.some(track => track.channelId.startsWith('root.position.'))
 
   for (const timeMs of times) {
@@ -311,8 +353,8 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
     status: 'ready' as const,
     boneTracks: [...boneKeyframes].map(([boneId, keyframes]) => ({ boneId, keyframes })),
     rootPositionTrack,
-    contacts: [] as BipedPetMotionContactCandidate[],
-    events: [] as BipedPetMotionSemanticEvent[],
+    contacts: metadata.contacts,
+    events: metadata.events,
     diagnostics,
   }
   return { ...value, hash: motionHash(value) }

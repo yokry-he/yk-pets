@@ -11,6 +11,7 @@ import {
   type MotionTrack,
   type StudioMotionAssetV2,
 } from '@yk-pets/pet-core'
+import { BASIC_BIPED_STUDIO_MOTIONS } from './studio-basic-biped-motions'
 
 type Point = readonly [timeMs: number, value: number]
 type NormalizedPoint = readonly [progress: number, value: number]
@@ -207,6 +208,7 @@ const sprintStop = motion({
 })
 
 export const BUILT_IN_STUDIO_MOTIONS: readonly StudioMotionAssetV2[] = Object.freeze([
+  ...BASIC_BIPED_STUDIO_MOTIONS,
   energeticStep, starlightSway, horseStancePunch, nebulaStaffSpin, cartwheel, sprintStop,
 ])
 
