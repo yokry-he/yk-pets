@@ -299,3 +299,11 @@
 - `compileBipedPetCharacter` 现已将 Profile 的左右腿混合 IK 定义编译进 `CompiledCharacterModel.limbIk`，并将该约束纳入确定性角色哈希，后续约束变更不会误复用旧编译摘要。
 - 每次 ready 编译都会独立克隆肢体定义、`boneIds` 和 `poleAxis`，不与 Profile 或其他编译结果共享可变引用；Profile 校验或编译异常导致的 blocked 结果则返回全新空 `limbIk` 集合。
 - 本批仅完成角色编译传播。解析式 Two Bone IK、受约束 FABRIK、动作接触采样、Three 运行时 IK 与足底锁定仍未完成；`bipedPetRuntimeIkComplete` 和 `bipedPetFootLockComplete` 保持 `false`。
+
+## 31. 解析式两段链 IK 求解器批次
+
+- `@yk-pets/pet-core` 新增框架无关的 `solveAnalyticTwoBoneIk`：使用余弦定理保持上下两段原始长度，以根节点到目标的方向作为主轴，并把 Pole 正交化为稳定弯曲方向。
+- 目标距离会钳制在两段长度差加安全余量与配置伸展上限之间；原目标超出或低于物理可达区时返回 `clamped`，可达时返回 `solved`。Pole 为零或与主轴共线时，求解器会按主轴绝对值最小分量选择确定性正交轴，不依赖随机扰动。
+- 零长度段、非法伸展比例、非有限输入、有限大数导致的中间溢出，以及安全余量大于物理链长等退化条件会返回 `blocked`；阻塞结果本身仍保证位置与误差有限，且求解过程不突变调用方输入。
+- 自动测试覆盖可达目标、远端与近根钳制、段长保持、零/共线 Pole、非法比例、数值溢出、确定性和输入不突变。
+- 本批只完成纯数值解析式求解器。受约束 FABRIK、动作接触采样、Three 运行时 IK 和足底锁定仍未完成；`bipedPetRuntimeIkComplete` 与 `bipedPetFootLockComplete` 继续保持 `false`。
