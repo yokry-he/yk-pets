@@ -860,6 +860,34 @@ function positiveModulo(value: number, modulus: number): number {
   return ((value % modulus) + modulus) % modulus
 }
 
+function canonicalOffsetsAgree(left: number, right: number, durationMs: number): boolean {
+  return Math.abs(left - right) <= Number.EPSILON * Math.max(1, durationMs) * 8
+}
+
+function canonicalHorizontalIterationSegment(
+  iteration: number,
+  durationMs: number,
+): { readonly startMs: number; readonly endMs: number } | undefined {
+  const startMs = iteration * durationMs
+  const endMs = startMs + durationMs
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)
+    || !canonicalOffsetsAgree(positiveModulo(startMs, durationMs), 0, durationMs)
+    || !canonicalOffsetsAgree(endMs - startMs, durationMs, durationMs)) return undefined
+  return { startMs, endMs }
+}
+
+function canonicalHorizontalRequestedOffset(
+  requestedTimeMs: number,
+  segmentStartMs: number,
+  durationMs: number,
+): number | undefined {
+  const derivedOffsetMs = requestedTimeMs - segmentStartMs
+  const resolvedOffsetMs = positiveModulo(requestedTimeMs, durationMs)
+  return canonicalOffsetsAgree(derivedOffsetMs, resolvedOffsetMs, durationMs)
+    ? resolvedOffsetMs
+    : undefined
+}
+
 function rootMotionContinuityLimitMs(durationMs: number): number {
   // 与足锁身份策略统一：短动作至少保留 250ms，长动作允许半个周期内连续追赶。
   return Math.max(ROOT_MOTION_CONTINUITY_BASE_MS, durationMs * ROOT_MOTION_CONTINUITY_DURATION_RATIO)
@@ -893,20 +921,20 @@ function horizontalSupportComponents(definition: BipedPetRootMotionDefinition): 
 function supportCoversRange(components: readonly HorizontalSupportComponent[], firstMs: number, secondMs: number): boolean {
   const startMs = Math.min(firstMs, secondMs)
   const endMs = Math.max(firstMs, secondMs)
-  if (endMs <= startMs) return true
+  // once 钳制平台会把正时长请求退化为单点；该点仍必须被合并支撑的闭区间实际包含。
   return components.some(component => component.startMs <= startMs && component.endMs >= endMs)
 }
 
 function isContinuouslyActiveHorizontalWindow(
   input: SafeSampleInput,
   previousRequestedTimeMs: number,
-  currentResolved: ResolvedMotionTime,
 ): boolean {
   if (input.definition.mode !== 'travel' || input.actionWeight <= 0) return false
   const components = horizontalSupportComponents(input.definition)
 
   if (input.loopMode === 'once') {
     const previousResolved = resolveMotionTime(previousRequestedTimeMs, input.durationMs, input.loopMode)
+    const currentResolved = resolveMotionTime(input.requestedTimeMs, input.durationMs, input.loopMode)
     return supportCoversRange(components, previousResolved.resolvedTimeMs, currentResolved.resolvedTimeMs)
   }
 
@@ -915,23 +943,32 @@ function isContinuouslyActiveHorizontalWindow(
   const segmentCount = lastIteration - firstIteration + 1
   if (!Number.isInteger(segmentCount) || segmentCount < 1 || segmentCount > MAX_ROOT_MOTION_CONTINUITY_SEGMENTS) return false
   let priorIteration: number | undefined
+  let verifiedSegment = false
   for (let offset = 0; offset < segmentCount; offset += 1) {
     const iteration = offset === segmentCount - 1 ? lastIteration : firstIteration + offset
     // 超安全整数范围后相邻 iteration 可能不可表示；此时保守停用残差，而不是让扫描停滞或重复消费同一段。 / Adjacent iterations may be unrepresentable above the safe range; disable residual feedback instead of stalling or reusing a segment.
     if (priorIteration !== undefined && iteration <= priorIteration) return false
     priorIteration = iteration
-    const segmentStartMs = iteration * input.durationMs
-    const requestStartMs = Math.max(previousRequestedTimeMs, segmentStartMs)
-    const requestEndMs = Math.min(input.requestedTimeMs, segmentStartMs + input.durationMs)
+    const segment = canonicalHorizontalIterationSegment(iteration, input.durationMs)
+    if (!segment) return false
+    const requestStartMs = Math.max(previousRequestedTimeMs, segment.startMs)
+    const requestEndMs = Math.min(input.requestedTimeMs, segment.endMs)
     if (requestEndMs <= requestStartMs) continue
-    const localStartMs = requestStartMs - segmentStartMs
-    const localEndMs = requestEndMs - segmentStartMs
+    const localStartMs = offset === 0
+      ? canonicalHorizontalRequestedOffset(requestStartMs, segment.startMs, input.durationMs)
+      : 0
+    const localEndMs = offset === segmentCount - 1
+      ? canonicalHorizontalRequestedOffset(requestEndMs, segment.startMs, input.durationMs)
+      : input.durationMs
+    if (localStartMs === undefined || localEndMs === undefined) return false
     const reverse = input.loopMode === 'ping-pong' && positiveModulo(iteration, 2) !== 0
     const resolvedStartMs = reverse ? input.durationMs - localStartMs : localStartMs
     const resolvedEndMs = reverse ? input.durationMs - localEndMs : localEndMs
     if (!supportCoversRange(components, resolvedStartMs, resolvedEndMs)) return false
+    verifiedSegment = true
   }
-  return true
+  // 正 elapsed 在超大时间上可能全部舍入为空段；未验证任何 canonical 段时必须保守禁用反馈。
+  return verifiedSegment
 }
 
 function appliedState(
@@ -1051,7 +1088,7 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
     0,
     1,
   )
-  const residualActive = isContinuouslyActiveHorizontalWindow(safeInput, previousTimeMs, currentResolved)
+  const residualActive = isContinuouslyActiveHorizontalWindow(safeInput, previousTimeMs)
     && horizontalTargetError > ROOT_MOTION_SIGNAL_EPSILON
   const residualCorrection = clampVectorLength(
     residualActive

@@ -1477,6 +1477,36 @@ test('超大有限绝对时间的水平支撑扫描保持有界且不会整数�
   assertFiniteSample(sample)
   assertVectorClose(sample.deltaWorld, baseline.deltaWorld)
   assert.equal(sample.deltaWorld[2], 0, '不可表示的相邻 iteration 必须保守禁用残差')
+
+  const partialDefinition = {
+    ...definition,
+    windows: [{ id: 'huge-time-partial', kind: 'travel' as const, startMs: 0, endMs: 20, weight: 1 }],
+  }
+  const partialRequestedTimeMs = segmentBoundaryMs + 256
+  const partialTarget = sampleRootMotion({
+    ...travelSampleInput,
+    definition: partialDefinition,
+    loopMode: 'loop',
+    durationMs,
+    characterHeight: 1e10,
+    requestedTimeMs: partialRequestedTimeMs,
+    previousRequestedTimeMs: undefined,
+  })
+  const partialIntervalInput = {
+    ...travelSampleInput,
+    definition: partialDefinition,
+    loopMode: 'loop' as const,
+    durationMs,
+    characterHeight: 1e10,
+    requestedTimeMs: partialRequestedTimeMs,
+    previousRequestedTimeMs: segmentBoundaryMs + 128,
+    previousAppliedWorld: [partialTarget.appliedWorld[0] - 100, 0, 0] as const,
+    previousAppliedTurnRadians: 0,
+  }
+  const partialBaseline = sampleRootMotion({ ...partialIntervalInput, footResidual: [0, 0, 0] })
+  const partialSample = sampleRootMotion({ ...partialIntervalInput, footResidual: [0, 0, 1e9] })
+  assertVectorClose(partialSample.deltaWorld, partialBaseline.deltaWorld)
+  assert.equal(partialSample.deltaWorld[2], 0, '全部退化为空段的超大 loop 扫描不得默认支撑成功')
 })
 
 test('target 在新窗口重新腾空会清除旧授权并只为自身 touchdown 重签', () => {
@@ -2304,6 +2334,21 @@ test('足底残差仅在连续移动支撑内按闭区间端点与追赶误差�
       previousAppliedWorld[2] + corrected.deltaWorld[2],
     ])
   }
+  const assertResidualIgnored = (
+    definition: unknown,
+    previousRequestedTimeMs: number,
+    requestedTimeMs: number,
+    message: string,
+  ) => {
+    const baseline = sampleInterval(
+      definition, 'once', previousRequestedTimeMs, requestedTimeMs, [0, 0, 0], -.1,
+    )
+    const corrected = sampleInterval(
+      definition, 'once', previousRequestedTimeMs, requestedTimeMs, [1, 0, 0], -.1,
+    )
+    assertVectorClose(corrected.deltaWorld, baseline.deltaWorld)
+    assert.equal(corrected.deltaWorld[0], baseline.deltaWorld[0], message)
+  }
 
   for (const kind of ['travel', 'warp'] as const) {
     const supportDefinition = {
@@ -2354,6 +2399,26 @@ test('足底残差仅在连续移动支撑内按闭区间端点与追赶误差�
   }
   assertResidualConsumed(onceDefinition, 'once', 20, 30, 'once 窗的 start 端点应按包含语义消费残差')
   assertResidualConsumed(onceDefinition, 'once', 70, 80, 'once 窗的 end 端点应按包含语义消费残差')
+  for (const [previousRequestedTimeMs, requestedTimeMs] of [[-10, 0], [100, 110]] as const) {
+    assertResidualIgnored(
+      onceDefinition,
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      'once 部分窗之外的零宽钳制平台不得消费残差',
+    )
+  }
+  for (const windows of [
+    [] as const,
+    [{ id: 'ballistic-only', kind: 'ballistic' as const, startMs: 20, endMs: 80, weight: 1 }] as const,
+  ]) assertResidualIgnored(
+    { ...fullCycleDefinition, verticalMode: 'ballistic', jumpHeight: .5, windows },
+    100,
+    110,
+    '缺少 travel/warp 支撑的 once 零宽平台不得消费残差',
+  )
+  assertResidualConsumed(
+    fullCycleDefinition, 'once', 100, 110, 'once full-cycle 窗的 duration 端点平台应继续消费残差', -.1,
+  )
 
   for (const [previousRequestedTimeMs, requestedTimeMs] of [[19, 21], [79, 81]] as const) {
     const baseline = sampleInterval(onceDefinition, 'once', previousRequestedTimeMs, requestedTimeMs, [0, 0, 0])
