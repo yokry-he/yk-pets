@@ -222,7 +222,7 @@ onBeforeUnmount(() => {
         />
         <div class="preview-stage">
           <ClientOnly>
-            <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :prop-instances="evaluatedProps.instances" :prop-assets="allPropAssets" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" :model-mode="session.modelMode" :complex-pet-id="currentPetId" :complex-recipe="complexRecipe" />
+            <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :motion-asset="draft" :motion-time-ms="editor.playheadTimeMs" :motion-weight="editor.playbackWeight" :prop-instances="evaluatedProps.instances" :prop-assets="allPropAssets" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" :model-mode="session.modelMode" :complex-pet-id="currentPetId" :complex-recipe="complexRecipe" />
           </ClientOnly>
           <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
           <div

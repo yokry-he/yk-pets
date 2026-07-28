@@ -6,18 +6,22 @@
 <script setup lang="ts">
 import { onBeforeUnmount, shallowRef, watch } from 'vue'
 import {
+  compileBipedPetMotion,
   compileBipedPetCharacter,
   normalizeBipedPetModelRecipe,
+  sampleBipedPetMotion,
   type CharacterCompilationDiagnostic,
   type CharacterModelRecipeV1,
   type CompiledCharacterModel,
   type EvaluatedMotionPropInstance,
   type StudioPropAssetV2,
+  type StudioMotionAssetV2,
 } from '@yk-pets/pet-core'
 import {
   createComplexBipedPetObject,
   type ComplexBipedPetObject,
 } from '~/three/create-complex-biped-pet-object'
+import { createComplexBipedMotionController, type ComplexBipedMotionController } from '~/three/apply-complex-biped-motion'
 import ComplexBipedPropInstances from './ComplexBipedPropInstances.vue'
 
 const props = defineProps<{
@@ -25,6 +29,9 @@ const props = defineProps<{
   propInstances?: readonly EvaluatedMotionPropInstance[]
   propAssets?: readonly StudioPropAssetV2[]
   preservePropMaterials?: boolean
+  motionAsset?: StudioMotionAssetV2 | null
+  motionTimeMs?: number
+  motionWeight?: number
 }>()
 const emit = defineEmits<{
   compilation: [payload: Pick<CompiledCharacterModel, 'hash' | 'status' | 'diagnostics'>]
@@ -34,6 +41,8 @@ const emit = defineEmits<{
 const runtime = shallowRef<ComplexBipedPetObject>()
 const lastEmitted = shallowRef<{ hash: string, status: CompiledCharacterModel['status'], diagnosticsKey: string }>()
 const lastRuntimeKey = shallowRef<string>()
+const motionController = shallowRef<ComplexBipedMotionController>()
+const motionClip = shallowRef<ReturnType<typeof compileBipedPetMotion>>()
 
 function diagnosticsKey(diagnostics: readonly CharacterCompilationDiagnostic[]) {
   return diagnostics.map(item => [item.id, item.severity, item.message, item.affectedSemantic ?? ''].join('\u0000')).join('\u0001')
@@ -60,9 +69,36 @@ function emitCompilationIfChanged(compilation: CompiledCharacterModel) {
 }
 
 function disposeRuntime() {
+  motionController.value?.dispose()
+  motionController.value = undefined
+  motionClip.value = undefined
   const previous = runtime.value
   runtime.value = undefined
   previous?.dispose()
+}
+
+function applyMotion() {
+  const controller = motionController.value
+  const clip = motionClip.value
+  if (!controller) return
+  if (!clip || clip.status !== 'ready') {
+    controller.reset()
+    return
+  }
+  controller.apply(sampleBipedPetMotion(clip, props.motionTimeMs ?? 0), props.motionWeight ?? 1)
+}
+
+function compileMotion() {
+  const currentRuntime = runtime.value
+  const controller = motionController.value
+  if (!currentRuntime || !controller) return
+  if (!props.motionAsset) {
+    motionClip.value = undefined
+    controller.reset()
+    return
+  }
+  motionClip.value = compileBipedPetMotion(props.motionAsset, { boneIds: [...currentRuntime.bonesById.keys()] })
+  applyMotion()
 }
 
 function createRuntime(recipe: CharacterModelRecipeV1) {
@@ -94,6 +130,8 @@ function createRuntime(recipe: CharacterModelRecipeV1) {
 
   try {
     runtime.value = createComplexBipedPetObject(compilation, normalizedRecipe.material)
+    motionController.value = createComplexBipedMotionController(runtime.value)
+    compileMotion()
     emitCompilationIfChanged(compilation)
   } catch {
     // 运行时异常必须转为可恢复诊断，不能让场景组件在更新配方时崩溃。 / Runtime failures become recoverable diagnostics instead of crashing the scene.
@@ -110,6 +148,8 @@ function createRuntime(recipe: CharacterModelRecipeV1) {
 }
 
 watch(() => props.recipe, createRuntime, { deep: true, immediate: true })
+watch(() => props.motionAsset, compileMotion, { deep: true })
+watch(() => [props.motionTimeMs, props.motionWeight] as const, applyMotion)
 onBeforeUnmount(() => {
   try { disposeRuntime() }
   catch { /* 卸载期间资源已尽力释放，避免把释放异常抛回 Vue 生命周期。 / Resource disposal was attempted during unmount; do not throw into Vue lifecycle. */ }

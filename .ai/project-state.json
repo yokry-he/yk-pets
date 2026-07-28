@@ -84,6 +84,7 @@
     "bipedPetBasicMotionTemplatesComplete": true,
     "bipedPetSemanticMotionCompilerComplete": true,
     "bipedPetThreeMotionControllerComplete": true,
+    "bipedPetComplexMotionPreviewWiringComplete": true,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
     "bipedPetRootMotionComplete": false,

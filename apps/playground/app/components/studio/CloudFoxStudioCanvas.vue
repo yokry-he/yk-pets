@@ -14,7 +14,7 @@ import { calculatePetStudioVisualBounds } from '~/domain/pet-studio-phase2'
 import { getCloudFoxBodyProfile, getCloudFoxHeadProfile } from '~/domain/cloud-fox-shape-profile'
 import { createExtensionClassicAppearance, createExtensionClassicScene, isExtensionClassicScene } from '~/domain/extension-cloud-fox-default'
 import { createDefaultPetScene, getPetScenePreset, resolveSceneContrast, type PetSceneRecipe } from '~/domain/pet-scene'
-import { normalizeBipedPetModelRecipe, type CharacterModelRecipeV1, type CompiledCharacterModel, type EvaluatedCloudFoxPose, type EvaluatedMotionPropInstance } from '@yk-pets/pet-core'
+import { normalizeBipedPetModelRecipe, type CharacterModelRecipeV1, type CompiledCharacterModel, type EvaluatedCloudFoxPose, type EvaluatedMotionPropInstance, type StudioMotionAssetV2 } from '@yk-pets/pet-core'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
@@ -40,6 +40,9 @@ const props = withDefaults(defineProps<{
   modelMode?: StudioModelMode
   complexRecipe?: CharacterModelRecipeV1
   complexPetId?: string
+  motionAsset?: StudioMotionAssetV2 | null
+  motionTimeMs?: number
+  motionWeight?: number
 }>(), {
   motionKey: 0,
   focus: 'full',
@@ -48,6 +51,8 @@ const props = withDefaults(defineProps<{
   previewPosition: () => [0, 0, 0],
   modelMode: 'simple',
   complexPetId: 'active-appearance',
+  motionTimeMs: 0,
+  motionWeight: 1,
 })
 type ComplexCompilationPayload = Pick<CompiledCharacterModel, 'hash' | 'status' | 'diagnostics'>
 const emit = defineEmits<{
@@ -167,7 +172,7 @@ const sceneStyle = computed(() => ({
       <TresPointLight :position="vec3(scheme.scene.lights.secondaryPosition)" :intensity="scheme.scene.lights.secondaryIntensity" :color="appearance.palette.secondaryGlow" />
       <PetSceneEffects :scene="activeScene" :behavior="behavior" />
       <TresGroup v-if="showComplexRenderer" :position="vec3(previewPosition)" :rotation="complexPreviewEuler" :scale="vec3([previewScale, previewScale, previewScale])">
-        <ComplexBipedPetRenderer :key="complexPreviewKey" :recipe="complexRecipe!" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" @compilation="onComplexCompilation" />
+        <ComplexBipedPetRenderer :key="complexPreviewKey" :recipe="complexRecipe!" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" :motion-asset="motionAsset" :motion-time-ms="motionTimeMs" :motion-weight="motionWeight" @compilation="onComplexCompilation" />
       </TresGroup>
       <ProceduralPet v-else :appearance="appearance" :behavior="behavior" :motion-key="motionKey" :view="view" :custom-pose="customPose" :prop-instances="propInstances" :prop-assets="propAssets" :preserve-prop-materials="preservePropMaterials" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotation" :preview-position="previewPosition" />
     </TresCanvas>
