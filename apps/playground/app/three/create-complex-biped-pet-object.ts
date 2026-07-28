@@ -40,6 +40,7 @@ export interface ComplexBipedPetObject {
   object: SkinnedMesh
   bonesById: ReadonlyMap<string, Bone>
   sockets: Readonly<Record<string, ComplexBipedPetSocket>>
+  isDisposed(): boolean
   dispose(): void
 }
 
@@ -183,6 +184,7 @@ export function createComplexBipedPetObject(compiled: CompiledCharacterModel, co
       object,
       bonesById,
       sockets,
+      isDisposed: () => disposed,
       dispose: disposeResources,
     }
   } catch (error) {
