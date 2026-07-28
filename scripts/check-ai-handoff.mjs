@@ -102,7 +102,39 @@ if (state) {
   expect(state.architecture?.bipedPetSemanticMotionPhase1DeliveryComplete === true, '双足萌宠语义动作第一阶段交付必须标记完成 / Biped-pet semantic-motion Phase 1 delivery must be complete')
   expect(state.architecture?.bipedPetHybridIkDesignComplete === true, '双足与多骨骼链混合 IK 设计必须标记完成 / Hybrid biped and multi-chain IK design must be complete')
   expect(state.architecture?.bipedPetHybridIkPlanComplete === true, '双足与多骨骼链混合 IK 计划必须标记完成 / Hybrid biped and multi-chain IK plan must be complete')
-  for (const key of ['bipedPetRuntimeIkComplete', 'bipedPetFootLockComplete', 'bipedPetRootMotionComplete', 'bipedPetMotionVfxComplete', 'crossBrowserGpuManualAcceptanceComplete']) expect(state.architecture?.[key] === false, `双足萌宠未完成边界错误 / Incorrect incomplete biped-pet boundary: ${key}`)
+  const completedHybridIkFlags = [
+    'bipedPetHybridIkProfileContractComplete',
+    'bipedPetHybridIkCompilationPropagationComplete',
+    'bipedPetAnalyticTwoBoneIkComplete',
+    'bipedPetConstrainedFabrikSolverComplete',
+    'bipedPetDeterministicContactPhasesComplete',
+    'bipedPetBasicMotionContactDataComplete',
+    'bipedPetRuntimeIkComplete',
+    'bipedPetFootLockComplete',
+    'bipedPetComplexMotionRendererLifecycleComplete',
+    'bipedPetComplexMotionProductionWiringComplete',
+    'bipedPetHybridIkPhaseDeliveryComplete',
+  ]
+  const incompleteHybridIkBoundaries = [
+    'bipedPetRootMotionComplete',
+    'bipedPetMotionVfxComplete',
+    'bipedPetProductionQuadrupedProfileComplete',
+    'bipedPetProductionMechProfileComplete',
+    'bipedPetHighDetailTopologyComplete',
+    'crossBrowserGpuManualAcceptanceComplete',
+  ]
+  for (const key of completedHybridIkFlags) expect(state.architecture?.[key] === true, `双足萌宠混合 IK 完成状态缺失 / Missing completed hybrid-IK state: ${key}`)
+  for (const key of incompleteHybridIkBoundaries) expect(state.architecture?.[key] === false, `双足萌宠未完成边界错误 / Incorrect incomplete biped-pet boundary: ${key}`)
+  // 内建正反夹具用于防止后续把已交付能力改回 false，或把明确边界误改为 true。
+  const positiveHybridIkFixture = Object.fromEntries([
+    ...completedHybridIkFlags.map(key => [key, true]),
+    ...incompleteHybridIkBoundaries.map(key => [key, false]),
+  ])
+  const negativeHybridIkFixture = { ...positiveHybridIkFixture, bipedPetRootMotionComplete: true }
+  const matchesHybridIkBoundary = fixture => completedHybridIkFlags.every(key => fixture[key] === true)
+    && incompleteHybridIkBoundaries.every(key => fixture[key] === false)
+  expect(matchesHybridIkBoundary(positiveHybridIkFixture), '混合 IK 正向状态夹具必须通过 / Positive hybrid-IK state fixture must pass')
+  expect(!matchesHybridIkBoundary(negativeHybridIkFixture), '混合 IK 负向状态夹具必须失败 / Negative hybrid-IK state fixture must fail')
   expect(state.mandatoryDevelopmentPolicy?.updateAiPackageForEveryFeatureCommit === true, '必须启用每个功能提交更新 AI 包 / Per-feature-commit AI update policy must be enabled')
   expect((state.completed || []).includes('motion-semantic-rig'), '必须标记语义 Rig 领域已完成 / Semantic Rig domain must be marked complete')
   expect((state.completed || []).includes('motion-domain-evaluator'), '必须标记无 UI 动作求值器已完成 / UI-free motion evaluator must be marked complete')
@@ -130,12 +162,14 @@ if (state) {
   expect((state.completed || []).includes('biped-pet-semantic-motion-phase1-delivery'), '必须标记双足萌宠语义动作第一阶段交付完成 / Biped-pet semantic-motion Phase 1 delivery must be marked complete')
   expect((state.completed || []).includes('biped-pet-hybrid-ik-design'), '必须标记双足与多骨骼链混合 IK 设计完成 / Hybrid biped and multi-chain IK design must be marked complete')
   expect((state.completed || []).includes('biped-pet-hybrid-ik-plan'), '必须标记双足与多骨骼链混合 IK 计划完成 / Hybrid biped and multi-chain IK plan must be marked complete')
+  for (const key of ['biped-pet-hybrid-ik-profile-contract', 'biped-pet-analytic-two-bone-ik', 'biped-pet-constrained-fabrik', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-hybrid-ik-phase-delivery']) expect((state.completed || []).includes(key), `必须标记混合 IK 交付项完成 / Hybrid-IK delivery item must be complete: ${key}`)
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
   expect((state.notCompleted || []).includes('browser-screenshot-baselines'), '必须保留浏览器截图基线未完成 / Browser screenshot baselines must remain incomplete')
-  for (const key of ['biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-root-motion', 'biped-pet-complex-motion-library', 'biped-pet-motion-vfx', 'biped-pet-profile-runtime-expansion', 'cross-browser-gpu-manual-acceptance']) expect((state.notCompleted || []).includes(key), `必须保留双足萌宠后续边界 / Biped-pet future boundary must remain incomplete: ${key}`)
+  for (const key of ['biped-pet-root-motion', 'biped-pet-complex-motion-library', 'biped-pet-motion-vfx', 'biped-pet-profile-runtime-expansion', 'cross-browser-gpu-manual-acceptance']) expect((state.notCompleted || []).includes(key), `必须保留双足萌宠后续边界 / Biped-pet future boundary must remain incomplete: ${key}`)
+  for (const key of ['biped-pet-runtime-ik', 'biped-pet-foot-lock']) expect(!(state.notCompleted || []).includes(key), `已完成的混合 IK 交付项不得继续列为未完成 / Completed hybrid-IK item must not remain incomplete: ${key}`)
   expect(!(state.notCompleted || []).includes('biped-pet-quaternion-motion-compiler'), 'Quaternion 动作编译器已完成，不得继续列为未完成 / Completed Quaternion motion compiler must not remain incomplete')
-  expect(state.nextPhase === 'biped-pet-ik-foot-lock-and-motion-quality', '下一阶段必须是 IK、足底锁定与动作质量 / Next phase must be IK, foot locking, and motion quality')
-  const semanticMotionCoverage = [
+  expect(state.nextPhase === 'biped-pet-root-motion-vfx-and-acceptance', '下一阶段必须是 Root Motion、动作特效与验收 / Next phase must be Root Motion, motion VFX, and acceptance')
+  const hybridIkCoverage = [
     'corepack pnpm typecheck',
     'corepack pnpm test',
     'corepack pnpm build:playground',
@@ -143,8 +177,8 @@ if (state) {
     'node scripts/check-ai-handoff.mjs',
     'git diff --check',
   ]
-  expect(state.latestCompletedBatch?.id === 'biped-pet-semantic-motion-phase1-delivery', '最新批次必须是双足萌宠语义动作第一阶段 / Latest batch must be biped-pet semantic-motion Phase 1')
-  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(semanticMotionCoverage), '语义动作第一阶段 automatedCoverage 必须且只能列出真实验证命令 / Semantic-motion Phase 1 automatedCoverage must contain only the actual verification commands')
+  expect(state.latestCompletedBatch?.id === 'biped-pet-hybrid-ik-phase-delivery', '最新批次必须是双足萌宠混合 IK 与足底锁定 / Latest batch must be biped-pet hybrid IK and foot locking')
+  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(hybridIkCoverage), '混合 IK 批次 automatedCoverage 必须且只能列出真实验证命令 / Hybrid-IK automatedCoverage must contain only the actual verification commands')
 }
 
 for (const routeFile of ['appearance.vue', 'motion.vue', 'props.vue', 'library.vue']) expect(existsSync(path.join(root, 'apps/playground/app/pages/studio', routeFile)), `缺少 Studio 路由文件 / Missing Studio route file: ${routeFile}`)
@@ -167,6 +201,7 @@ if (visualCases) {
   const propSocketCase = visualCases.cases.find(item => item.id === 'biped-pet-complex-prop-socket-preview')
   const lazyHydrationCase = visualCases.cases.find(item => item.id === 'studio-model-variant-lazy-hydration-review')
   const semanticMotionCase = visualCases.cases.find(item => item.id === 'biped-pet-semantic-motion-phase1')
+  const hybridIkCase = visualCases.cases.find(item => item.id === 'biped-pet-hybrid-ik-foot-lock')
   expect(Boolean(phaseOneCase), '缺少双足萌宠第一阶段人工验收案例 / Missing biped-pet Phase 1 manual acceptance case')
   expect(JSON.stringify(phaseOneCase?.setup?.viewports) === JSON.stringify([[1440, 900], [760, 900]]), '第一阶段人工案例必须覆盖 1440×900 与 760×900 / Phase 1 manual case must cover 1440×900 and 760×900')
   expect(['soft', 'athletic', 'round', 'slender'].every(style => phaseOneCase?.setup?.bodyStyles?.includes(style)), '第一阶段人工案例必须覆盖四个体型模板 / Phase 1 manual case must cover four body styles')
@@ -177,6 +212,9 @@ if (visualCases) {
   expect(Boolean(lazyHydrationCase) && lazyHydrationManualChecks.some(check => check.startsWith('passed-')) && lazyHydrationManualChecks.some(check => check.startsWith('pending:')), '复杂模型历史数据懒复核必须同时记录已完成的功能复测与剩余浏览器案例 / Lazy historical model review must record both the completed functional recheck and remaining browser cases')
   const semanticMotionManualChecks = semanticMotionCase?.manualChecks || []
   expect(Boolean(semanticMotionCase) && semanticMotionManualChecks.some(check => check.startsWith('passed-')) && semanticMotionManualChecks.some(check => check.startsWith('pending:')), '语义动作第一阶段必须同时记录已完成功能验收与动作质量边界 / Semantic-motion Phase 1 must record passed functional checks and pending motion-quality boundaries')
+  const hybridIkManualChecks = hybridIkCase?.manualChecks || []
+  expect(Boolean(hybridIkCase) && JSON.stringify(hybridIkCase?.setup?.viewports) === JSON.stringify([[1440, 900], [760, 900]]), '混合 IK 人工案例必须覆盖 1440×900 与 760×900 / Hybrid-IK manual case must cover 1440×900 and 760×900')
+  expect(hybridIkManualChecks.some(check => check.startsWith('passed-')) && hybridIkManualChecks.some(check => check.startsWith('pending:')), '混合 IK 人工案例必须同时记录 Chromium 功能验收与剩余图形边界 / Hybrid-IK manual case must record both Chromium functional acceptance and remaining graphics boundaries')
 }
 
 const sessionStart = safeRead('.ai/session-start.md')
@@ -196,6 +234,7 @@ expect(handoffZh.includes('动作直接操控批次') && handoffEn.includes('Dir
 expect(handoffZh.includes('动作工坊预览与中文化可用性批次') && handoffEn.includes('Motion Studio preview and Chinese-first usability batch'), '中英文交接必须记录动作工坊预览与中文化批次 / Handoffs must record the Motion Studio preview and localization batch')
 expect(handoffZh.includes('双足萌宠第一阶段交付状态') && handoffEn.includes('Biped-pet Phase 1 delivery status'), '中英文交接必须同步双足萌宠第一阶段状态 / Handoffs must synchronize biped-pet Phase 1 status')
 expect(handoffZh.includes('已回退简单模型') && handoffEn.includes('simple-model fallback'), '中英文交接必须说明复杂模型失败回退 / Handoffs must document complex-model fallback')
+expect(handoffZh.includes('混合 IK 与足底锁定阶段交付') && handoffEn.includes('Hybrid IK and foot-lock phase delivery'), '中英文交接必须同步混合 IK 与足底锁定阶段 / Handoffs must synchronize the hybrid IK and foot-lock phase')
 expect(knownZh.includes('HANDOFF-001') && knownEn.includes('HANDOFF-001'), '中英文已知问题必须记录强制 AI 更新 / Known issues must record mandatory AI updates')
 expect(knownZh.includes('MOTION-004') && knownEn.includes('MOTION-004'), '中英文已知问题必须记录旧数据浏览器验收 / Known issues must record legacy-data browser acceptance')
 expect(knownZh.includes('MOTION-006') && knownEn.includes('MOTION-006'), '中英文已知问题必须记录动作预览与窄侧栏复验 / Known issues must record Motion Studio preview and narrow-sidebar recheck')

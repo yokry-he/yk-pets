@@ -507,6 +507,31 @@
         "pending: 在真实复杂角色拓扑完成后逐动作复核足底滑动、重心、穿模、肢体弧线和最终像素；当前低细节程序化网格只能证明编译与播放链路",
         "pending: Safari/Firefox、不同 GPU/WebGL 驱动与最终像素仍属于 cross-browser-gpu-manual-acceptance，不由本次 Chrome 功能验收替代"
       ]
+    },
+    {
+      "id": "biped-pet-hybrid-ik-foot-lock",
+      "route": "/studio/motion",
+      "setup": {
+        "modelMode": "complex",
+        "templates": ["待机呼吸", "行走循环", "起跳与落地", "招手", "直拳组合"],
+        "viewports": [[1440, 900], [760, 900]]
+      },
+      "automatedChecks": [
+        "hybrid-ik-profile-and-compiled-contract",
+        "analytic-two-bone-reach-and-pole-constraints",
+        "constrained-fabrik-complete-reach-domain",
+        "deterministic-contact-phase-sampling",
+        "three-runtime-foot-anchor-locking",
+        "renderer-controller-lifecycle-and-fallback",
+        "walk-clamped-residual-remains-finite"
+      ],
+      "manualChecks": [
+        "passed-2026-07-28-chromium-1440: 在本地开发环境实际选择并播放待机、行走、起跳落地、招手和直拳；行走暂停/停止、起跳中切换招手归零、3000ms 回拖到 300ms、简单与复杂模式切换均正常，未见旧足锚残留",
+        "passed-2026-07-28-chromium-motion-quality: 未见明显支撑脚水平漂移、膝盖翻折、踝朝向突变、落地穿插或双支撑骨盆突跳；跳跃离地符合动作语义",
+        "passed-2026-07-28-chromium-responsive-console: 1440×900 与 760×900 均满足 scrollWidth === clientWidth；窄屏工具栏、动作列表和编辑器单列可操作，播放/暂停/停止可用；两个新标签 reload 后控制台 error 为空，未见 hydration mismatch",
+        "pending: 行走单支撑超出纯旋转可达域时允许有限 clamped 残差，不得把它描述为完整 Root Motion 已完成",
+        "pending: Safari/Firefox、不同 GPU/WebGL 驱动、高细节拓扑与最终像素仍属于后续人工验收"
+      ]
     }
   ]
 }

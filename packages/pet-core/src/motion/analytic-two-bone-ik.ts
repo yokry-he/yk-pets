@@ -149,9 +149,9 @@ export function solveAnalyticTwoBoneIk(input: AnalyticTwoBoneIkInput): AnalyticT
 
   const minimumDistance = Math.abs(upperLength - lowerLength) + MIN_REACH_EPSILON
   const maximumDistance = (upperLength + lowerLength) * input.maxStretchRatio
-  // 有限非零的链仍可能因固定下界高于配置上限而没有可行区间；此时不能抬高上限伪造解。
+  // 有限非零的链仍可能因固定下界高于配置上限而没有可行区间；此时不能抬高上限伪造解。 / A finite non-zero chain may still have no feasible interval when its fixed lower bound exceeds the configured upper bound; never raise the upper bound to fabricate a solution.
   if (minimumDistance > maximumDistance) return blockedResult(input)
-  // 只吸收由输入坐标求段长时产生的少量 ULP 边界漂移；明显越界（包括既有 5e-13 回归）仍严格钳制。
+  // 只吸收由输入坐标求段长时产生的少量 ULP 边界漂移；明显越界（包括既有 5e-13 回归）仍严格钳制。 / Absorb only a few ULPs of boundary drift from deriving lengths from coordinates; material overflow, including the existing 5e-13 regression, remains strictly clamped.
   const boundaryRoundingTolerance = Number.EPSILON * 8 * Math.max(1, minimumDistance, maximumDistance, targetDistance)
   const comparableTargetDistance = targetDistance < minimumDistance && minimumDistance - targetDistance <= boundaryRoundingTolerance
     ? minimumDistance

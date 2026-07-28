@@ -172,7 +172,7 @@ const constructPoleHalfPlaneChain = (
     && segmentLengthsArePreserved(result, segmentLengths)
     && distance(result.at(-1)!, target) <= tolerance
 
-  // 物理最大边界和非零最小边界具有唯一的共线折叠语义，直接解析构造可避免圆相切误差。
+  // 物理最大边界和非零最小边界具有唯一的共线折叠语义，直接解析构造可避免圆相切误差。 / Physical maximum and non-zero minimum boundaries have unique collinear-fold semantics, so direct analytic construction avoids circle-tangency error.
   if (Math.abs(targetDistance - totalLength) <= boundaryTolerance) {
     let travelled = 0
     const planar: [number, number][] = [[0, 0]]
@@ -382,7 +382,7 @@ export const solveConstrainedFabrik = (input: ConstrainedFabrikInput): Constrain
   const polePoint = addScaled(root, bendDirection, totalLength)
   if (!isFiniteVector(polePoint)) return blockedResult(input)
 
-  // 所有越界目标都由完整二维可达域构造直接命中上下边界，避免直线奇异与骨骼缩放。
+  // 所有越界目标都由完整二维可达域构造直接命中上下边界，避免直线奇异与骨骼缩放。 / Every out-of-domain target uses the complete planar reachable-domain construction to hit its boundary directly, avoiding straight-line singularities and bone scaling.
   if (wasClamped) {
     const constrainedPositions = constructPoleHalfPlaneChain(root, effectiveTarget, mainAxis, bendDirection, segmentLengths, tolerance)
     if (!constrainedPositions || !satisfiesPolePlaneConstraint(constrainedPositions, root, mainAxis, bendDirection, totalLength)) {

@@ -111,6 +111,10 @@
     "bipedPetComplexMotionProductionWiringComplete": true,
     "bipedPetComplexMotionAstCleanupGateComplete": true,
     "bipedPetComplexMotionCreateFailureCleanupComplete": true,
+    "bipedPetHybridIkPhaseDeliveryComplete": true,
+    "bipedPetProductionQuadrupedProfileComplete": false,
+    "bipedPetProductionMechProfileComplete": false,
+    "bipedPetHighDetailTopologyComplete": false,
     "bipedPetRootMotionComplete": false,
     "bipedPetMotionVfxComplete": false,
     "crossBrowserGpuManualAcceptanceComplete": false
@@ -216,7 +220,13 @@
     "biped-pet-basic-motion-contact-data",
     "biped-pet-complex-motion-renderer-lifecycle",
     "biped-pet-complex-motion-ast-cleanup-gate",
-    "biped-pet-complex-motion-create-failure-cleanup"
+    "biped-pet-complex-motion-create-failure-cleanup",
+    "biped-pet-hybrid-ik-profile-contract",
+    "biped-pet-analytic-two-bone-ik",
+    "biped-pet-constrained-fabrik",
+    "biped-pet-runtime-ik",
+    "biped-pet-foot-lock",
+    "biped-pet-hybrid-ik-phase-delivery"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -224,20 +234,18 @@
     "real-gpu-webgl-manual-acceptance",
     "true-3d-raycast-gizmo-manipulation",
     "parametric-rig-skin-and-socket-validation",
-    "semantic-motion-solving-ik-foot-lock-root-motion",
+    "semantic-motion-root-motion",
     "motion-driven-deterministic-vfx",
     "simple-complex-motion-variants-and-publishing",
-    "biped-pet-runtime-ik",
-    "biped-pet-foot-lock",
     "biped-pet-root-motion",
     "biped-pet-complex-motion-library",
     "biped-pet-motion-vfx",
     "biped-pet-profile-runtime-expansion",
     "cross-browser-gpu-manual-acceptance"
   ],
-  "nextPhase": "biped-pet-ik-foot-lock-and-motion-quality",
+  "nextPhase": "biped-pet-root-motion-vfx-and-acceptance",
   "latestCompletedBatch": {
-    "id": "biped-pet-semantic-motion-phase1-delivery",
+    "id": "biped-pet-hybrid-ik-phase-delivery",
     "domainPackage": "packages/pet-core + apps/playground",
     "rendererModified": true,
     "visualCasesModified": true,
@@ -250,8 +258,8 @@
       "git diff --check"
     ],
     "browserCoverage": [
-      "Chrome 1440×900：五个基础动作模板、复杂模型 ready、播放/暂停/停止、简单/复杂切换、无横向溢出、控制台无错误",
-      "Chrome 760×900：五个模板入口可见、复杂模型 ready、无横向溢出、控制台无错误"
+      "Chromium 1440×900：五个基础动作、播放/暂停/停止、切换动作清锚、时间回拖、简单/复杂切换、无明显足滑或关节突变、无横向溢出、reload 控制台无错误",
+      "Chromium 760×900：单列工具栏与编辑器、播放/暂停/停止、无横向溢出、reload 控制台无错误；不替代跨浏览器 GPU/WebGL 验收"
     ]
   },
   "mandatoryDevelopmentPolicy": {

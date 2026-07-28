@@ -285,7 +285,7 @@ function readChainLengths(runtime: ReturnType<typeof createRuntime>['runtime'], 
   fkOnly.runtime.dispose()
 }
 
-// 左右脚分别捕获锚点，释放一侧不能覆盖或清除另一侧。
+// 左右脚分别捕获锚点，释放一侧不能覆盖或清除另一侧。 / Each foot captures its own anchor; releasing one side must not overwrite or clear the other.
 {
   const { compilation, runtime } = createRuntime()
   const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
