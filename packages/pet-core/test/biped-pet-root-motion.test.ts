@@ -35,6 +35,10 @@ type RootMotionSampler = (input: unknown) => {
   phase: 'grounded' | 'takeoff' | 'airborne' | 'landing'
   motionIntensity: number
   landingImpulse: number
+  landingAuthorization?: {
+    readonly touchdownRequestedTimeMs: number
+    readonly impulse: number
+  }
   brakeIntensity: number
 }
 
@@ -77,6 +81,9 @@ function assertFiniteSample(sample: ReturnType<RootMotionSampler>) {
     sample.motionIntensity,
     sample.landingImpulse,
     sample.brakeIntensity,
+    ...(sample.landingAuthorization
+      ? [sample.landingAuthorization.touchdownRequestedTimeMs, sample.landingAuthorization.impulse]
+      : []),
   ]) assert.ok(Number.isFinite(value), `Root Motion 输出必须有限，收到 ${String(value)}`)
 }
 
@@ -1330,6 +1337,7 @@ test('应用态垂直轨迹决定 phase 且只在真实 applied touchdown 时消
     let previousRequestedTimeMs = targetTouchdownTimeMs - 1
     let previousAppliedWorld = [0, 6, 0] as const
     let previousAppliedTurnRadians = 0
+    let previousLandingAuthorization: ReturnType<RootMotionSampler>['landingAuthorization']
     let firstDescending: ReturnType<RootMotionSampler> | undefined
     for (let frame = 1; frame <= 6; frame += 1) {
       const requestedTimeMs = targetTouchdownTimeMs + frame
@@ -1339,6 +1347,7 @@ test('应用态垂直轨迹决定 phase 且只在真实 applied touchdown 时消
         previousRequestedTimeMs,
         previousAppliedWorld,
         previousAppliedTurnRadians,
+        previousLandingAuthorization,
         requestedTimeMs,
       })
       firstDescending ??= sample
@@ -1349,6 +1358,7 @@ test('应用态垂直轨迹决定 phase 且只在真实 applied touchdown 时消
       previousRequestedTimeMs = requestedTimeMs
       previousAppliedWorld = sample.appliedWorld
       previousAppliedTurnRadians = sample.appliedTurnRadians
+      previousLandingAuthorization = sample.landingAuthorization
     }
     const repeated = sampleRootMotion({
       ...input,
@@ -1367,6 +1377,7 @@ test('应用态垂直轨迹决定 phase 且只在真实 applied touchdown 时消
       previousRequestedTimeMs: targetTouchdownTimeMs + 1,
       previousAppliedWorld: firstDescending!.appliedWorld,
       previousAppliedTurnRadians: firstDescending!.appliedTurnRadians,
+      previousLandingAuthorization: firstDescending!.landingAuthorization,
       requestedTimeMs: targetTouchdownTimeMs + 1,
     })
     assert.equal(paused.appliedWorld[1], 5)
@@ -1472,6 +1483,7 @@ test('target 在窗口内部重新腾空会清除尚未消费的旧 touchdown �
       previousRequestedTimeMs: previous.requestedTimeMs,
       previousAppliedWorld: previous.appliedWorld,
       previousAppliedTurnRadians: previous.appliedTurnRadians,
+      previousLandingAuthorization: previous.landingAuthorization,
       requestedTimeMs,
     })
     if (requestedTimeMs === 950) assert.ok(previous.cumulativeWorld[1] > 4e-12, 'epsilon tail 应在窗内形成真实 target takeoff')
@@ -1512,11 +1524,142 @@ test('低强度微窗未越过实际世界接地阈值时不会误清 touchdown 
     previousRequestedTimeMs: 300,
     previousAppliedWorld: chasing.appliedWorld,
     previousAppliedTurnRadians: chasing.appliedTurnRadians,
+    previousLandingAuthorization: chasing.landingAuthorization,
     requestedTimeMs: 450,
   })
   assert.ok(touchdown.cumulativeWorld[1] > 0 && touchdown.cumulativeWorld[1] < 4e-12)
   assert.equal(touchdown.phase, 'grounded')
   assert.ok(touchdown.landingImpulse > 0, '从未越过世界接地阈值的微窗不得清除主窗 touchdown 授权')
+})
+
+test('caller-owned 落地授权跨 actionWeight 淡出与不合格微尾窗保持并仅消费一次', () => {
+  const input = {
+    ...travelSampleInput,
+    definition: {
+      mode: 'travel' as const,
+      distance: 0,
+      turnRadians: 0,
+      verticalMode: 'ballistic' as const,
+      jumpHeight: 1.5,
+      windows: [
+        { id: 'main', kind: 'ballistic' as const, startMs: 100, endMs: 300, weight: 1 },
+        { id: 'grounded-tail', kind: 'ballistic' as const, startMs: 400, endMs: 500, weight: 1e-9 },
+      ],
+      vfxTags: [] as const,
+    },
+    durationMs: 600,
+    loopMode: 'once' as const,
+    characterHeight: 4,
+  }
+  let previous = sampleRootMotion({ ...input, requestedTimeMs: 200 })
+  previous = sampleRootMotion({
+    ...input,
+    previousRequestedTimeMs: 200,
+    previousAppliedWorld: previous.appliedWorld,
+    previousAppliedTurnRadians: previous.appliedTurnRadians,
+    requestedTimeMs: 300,
+  })
+  assert.ok(previous.landingAuthorization)
+  assert.ok(Object.isFrozen(previous.landingAuthorization))
+  assert.equal(previous.landingAuthorization!.touchdownRequestedTimeMs, 300)
+  const authorizedImpulse = previous.landingAuthorization!.impulse
+  assert.ok(authorizedImpulse > 0)
+
+  for (const requestedTimeMs of [350, 400, 450, 500, 554]) {
+    previous = sampleRootMotion({
+      ...input,
+      actionWeight: 1e-4,
+      previousRequestedTimeMs: previous.requestedTimeMs,
+      previousAppliedWorld: previous.appliedWorld,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+      previousLandingAuthorization: previous.landingAuthorization,
+      requestedTimeMs,
+    })
+    if (requestedTimeMs < 554) {
+      assert.deepEqual(previous.landingAuthorization, {
+        touchdownRequestedTimeMs: 300,
+        impulse: authorizedImpulse,
+      })
+      assert.equal(previous.landingImpulse, 0)
+    }
+  }
+  assert.equal(previous.phase, 'grounded')
+  assert.equal(previous.landingImpulse, authorizedImpulse)
+  assert.equal(previous.landingAuthorization, undefined)
+
+  const repeated = sampleRootMotion({
+    ...input,
+    actionWeight: 1e-4,
+    previousRequestedTimeMs: 554,
+    previousAppliedWorld: previous.appliedWorld,
+    previousAppliedTurnRadians: previous.appliedTurnRadians,
+    requestedTimeMs: 555,
+  })
+  assert.equal(repeated.landingImpulse, 0)
+  assert.equal(repeated.landingAuthorization, undefined)
+})
+
+test('后续真实腾空清除旧授权，暂停保留而 reset 清除 caller-owned 令牌', () => {
+  const definition = {
+    mode: 'travel' as const,
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic' as const,
+    jumpHeight: 1,
+    windows: [
+      { id: 'first', kind: 'ballistic' as const, startMs: 100, endMs: 300, weight: 1 },
+      { id: 'second', kind: 'ballistic' as const, startMs: 400, endMs: 500, weight: 1 },
+    ],
+    vfxTags: [] as const,
+  }
+  const input = {
+    ...travelSampleInput,
+    definition,
+    durationMs: 600,
+    loopMode: 'once' as const,
+    characterHeight: 4,
+  }
+  const airborne = sampleRootMotion({ ...input, requestedTimeMs: 200 })
+  const authorized = sampleRootMotion({
+    ...input,
+    previousRequestedTimeMs: 200,
+    previousAppliedWorld: airborne.appliedWorld,
+    previousAppliedTurnRadians: airborne.appliedTurnRadians,
+    requestedTimeMs: 300,
+  })
+  assert.ok(authorized.landingAuthorization)
+
+  const paused = sampleRootMotion({
+    ...input,
+    previousRequestedTimeMs: 300,
+    previousAppliedWorld: authorized.appliedWorld,
+    previousAppliedTurnRadians: authorized.appliedTurnRadians,
+    previousLandingAuthorization: authorized.landingAuthorization,
+    requestedTimeMs: 300,
+  })
+  assert.deepEqual(paused.landingAuthorization, authorized.landingAuthorization)
+  assert.equal(paused.landingImpulse, 0)
+
+  const secondAirborne = sampleRootMotion({
+    ...input,
+    previousRequestedTimeMs: 300,
+    previousAppliedWorld: paused.appliedWorld,
+    previousAppliedTurnRadians: paused.appliedTurnRadians,
+    previousLandingAuthorization: paused.landingAuthorization,
+    requestedTimeMs: 450,
+  })
+  assert.ok(secondAirborne.cumulativeWorld[1] > 0)
+  assert.equal(secondAirborne.landingAuthorization, undefined)
+  assert.equal(secondAirborne.landingImpulse, 0)
+
+  const reset = sampleRootMotion({
+    ...input,
+    previousLandingAuthorization: authorized.landingAuthorization,
+    requestedTimeMs: 301,
+  })
+  assert.equal(reset.status, 'reset')
+  assert.equal(reset.landingAuthorization, undefined)
+  assert.equal(reset.landingImpulse, 0)
 })
 
 test('高强度微窗仍被 target 相对零阈值归零时不会提前清除授权', () => {
@@ -1545,6 +1688,7 @@ test('高强度微窗仍被 target 相对零阈值归零时不会提前清除授
       previousRequestedTimeMs: previous.requestedTimeMs,
       previousAppliedWorld: previous.appliedWorld,
       previousAppliedTurnRadians: previous.appliedTurnRadians,
+      previousLandingAuthorization: previous.landingAuthorization,
       requestedTimeMs,
     })
   }
@@ -1638,6 +1782,50 @@ test('极大有限 applied 按可表示新旧值重算实际位移与转向', ()
   assert.equal(sample.appliedTurnRadians, Number.MAX_VALUE)
   assert.equal(sample.deltaTurnRadians, 0)
   assert.equal(sample.angularVelocity, 0)
+})
+
+test('任意有限 applied 输入在暂停、连续追赶与朝向变化时都不会输出非有限值', () => {
+  const base = {
+    ...travelSampleInput,
+    definition: { ...travelDefinition, mode: 'in-place' as const, distance: 0, turnRadians: 0, windows: [] as const },
+    loopMode: 'once' as const,
+    durationMs: 1000,
+    previousAppliedWorld: [Number.MAX_VALUE, 0, Number.MAX_VALUE] as const,
+    previousAppliedTurnRadians: Number.MAX_VALUE,
+    facingRadians: Math.PI / 4,
+  }
+  for (const sample of [
+    sampleRootMotion({ ...base, previousRequestedTimeMs: 1, requestedTimeMs: 1 }),
+    sampleRootMotion({ ...base, previousRequestedTimeMs: 1, requestedTimeMs: 2 }),
+    sampleRootMotion({ ...base, facingRadians: -Math.PI / 4, previousRequestedTimeMs: 2, requestedTimeMs: 3 }),
+  ]) {
+    assert.equal(sample.status, 'blocked')
+    assertFiniteSample(sample)
+  }
+})
+
+test('reset 直接复用已验证 target，极端有限目标溢出时返回有限 blocked', () => {
+  const regular = sampleRootMotion({
+    ...travelSampleInput,
+    facingRadians: Math.PI / 4,
+    previousRequestedTimeMs: undefined,
+    requestedTimeMs: 600,
+  })
+  assert.equal(regular.status, 'reset')
+  assert.deepEqual(regular.appliedLocal, regular.cumulativeLocal)
+  assert.deepEqual(regular.appliedWorld, regular.cumulativeWorld)
+  assertFiniteSample(regular)
+
+  const overflow = sampleRootMotion({
+    ...travelSampleInput,
+    definition: { ...travelDefinition, distance: 4 },
+    characterHeight: Number.MAX_VALUE,
+    facingRadians: Math.PI / 4,
+    previousRequestedTimeMs: undefined,
+    requestedTimeMs: 1200,
+  })
+  assert.equal(overflow.status, 'blocked')
+  assertFiniteSample(overflow)
 })
 
 test('100/200ms 短动作在 24/30/60FPS 连续采样且正常轨迹最终一致', () => {
@@ -2056,6 +2244,7 @@ test('短循环可有界跨越多个真实 touchdown 且 loop/ping-pong 每区�
       previousRequestedTimeMs: 300,
       previousAppliedWorld: crossed.appliedWorld,
       previousAppliedTurnRadians: crossed.appliedTurnRadians,
+      previousLandingAuthorization: crossed.landingAuthorization,
     })
     assert.equal(appliedTouchdown.phase, 'grounded')
     assert.ok(appliedTouchdown.landingImpulse > 0 && appliedTouchdown.landingImpulse <= 1)
@@ -2068,6 +2257,7 @@ test('短循环可有界跨越多个真实 touchdown 且 loop/ping-pong 每区�
       previousRequestedTimeMs: 301,
       previousAppliedWorld: appliedTouchdown.appliedWorld,
       previousAppliedTurnRadians: appliedTouchdown.appliedTurnRadians,
+      previousLandingAuthorization: appliedTouchdown.landingAuthorization,
     })
     assert.equal(paused.landingImpulse, 0)
   }
@@ -2165,6 +2355,7 @@ test('ballistic touchdown 边界探针区分重叠、精确相邻与极窄正 ga
       requestedTimeMs,
       previousAppliedWorld: ultraLanding.appliedWorld,
       previousAppliedTurnRadians: ultraLanding.appliedTurnRadians,
+      previousLandingAuthorization: ultraLanding.landingAuthorization,
     })
     ultraPreviousTimeMs = requestedTimeMs
   }
@@ -2186,6 +2377,7 @@ test('ballistic touchdown 边界探针区分重叠、精确相邻与极窄正 ga
       requestedTimeMs,
       previousAppliedWorld: reverseLanding.appliedWorld,
       previousAppliedTurnRadians: reverseLanding.appliedTurnRadians,
+      previousLandingAuthorization: reverseLanding.landingAuthorization,
     })
     reverseChasePreviousTimeMs = requestedTimeMs
   }
@@ -2242,6 +2434,9 @@ test('畸形输入安全 blocked，输入不突变且输出不共享可变引用
     { ...travelSampleInput, definition: { ...travelDefinition, distance: Number.POSITIVE_INFINITY } },
     { ...travelSampleInput, previousAppliedWorld: [0, 0, 0] },
     { ...travelSampleInput, previousAppliedLocal: [0, 0, 0], previousAppliedTurnRadians: 0 },
+    { ...travelSampleInput, previousLandingAuthorization: { touchdownRequestedTimeMs: 0, impulse: Number.NaN } },
+    { ...travelSampleInput, previousLandingAuthorization: { touchdownRequestedTimeMs: 301, impulse: .5 } },
+    { ...travelSampleInput, previousLandingAuthorization: new Proxy({}, { get() { throw new Error('授权 getter 不应逃逸') } }) },
     { ...travelSampleInput, definition: throwingDefinition },
   ]
   for (const input of invalidInputs) {
@@ -2331,6 +2526,7 @@ test('固定种子有状态序列真实命中求解、钳制、重置、阻塞�
   let previousRequestedTimeMs: number | undefined
   let previousAppliedWorld: readonly [number, number, number] | undefined
   let previousAppliedTurnRadians: number | undefined
+  let previousLandingAuthorization: ReturnType<RootMotionSampler>['landingAuthorization']
   let previousIteration = 0
   for (let index = 0; index < 1024; index += 1) {
     if (index > 0) requestedTimeMs += 7 + Math.floor(random() * 34)
@@ -2340,7 +2536,7 @@ test('固定种子有状态序列真实命中求解、钳制、重置、阻塞�
       requestedTimeMs,
       ...(forceReset || previousRequestedTimeMs === undefined
         ? {}
-        : { previousRequestedTimeMs, previousAppliedWorld, previousAppliedTurnRadians }),
+        : { previousRequestedTimeMs, previousAppliedWorld, previousAppliedTurnRadians, previousLandingAuthorization }),
       durationMs,
       loopMode: 'loop' as const,
       characterHeight: 4,
@@ -2360,6 +2556,7 @@ test('固定种子有状态序列真实命中求解、钳制、重置、阻塞�
     previousRequestedTimeMs = requestedTimeMs
     previousAppliedWorld = first.appliedWorld
     previousAppliedTurnRadians = first.appliedTurnRadians
+    previousLandingAuthorization = first.landingAuthorization
 
     if (index % 211 === 0) {
       const blocked = sampleRootMotion({ ...input, footResidual: [Number.NaN, 0, 0] })

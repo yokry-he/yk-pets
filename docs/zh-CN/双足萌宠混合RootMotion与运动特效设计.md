@@ -58,9 +58,9 @@
 
 ### 4.2 框架无关领域层
 
-`packages/pet-core` 新增纯数值 Root Motion 求解器，输入当前与上一采样时间、动作时长与循环身份、归一化移动描述、角色身高和朝向、动作权重、调用方上一帧已经应用的世界位移与转向，以及可选的局部水平接触残差。调用方只拥有 `previousAppliedWorld` 与 `previousAppliedTurnRadians` 这一组连续状态；局部 applied 状态不得作为第二份权威历史。
+`packages/pet-core` 新增纯数值 Root Motion 求解器，输入当前与上一采样时间、动作时长与循环身份、归一化移动描述、角色身高和朝向、动作权重、调用方上一帧已经应用的世界位移与转向、尚未消费的 `previousLandingAuthorization`，以及可选的局部水平接触残差。调用方只拥有 `previousAppliedWorld`、`previousAppliedTurnRadians` 和采样器签发的只读落地授权这一组连续状态；局部 applied 状态不得作为第二份权威历史。落地授权只冻结 touchdown 的绝对请求时间与无量纲强度，不包含可变引用。
 
-输出把状态明确分为两层：`cumulativeLocal/World` 与 `cumulativeTurnRadians` 是由绝对动作时间直接求出的帧率无关期望目标；`appliedLocal/World` 与 `appliedTurnRadians` 是从调用方上一帧世界 applied 状态出发、经过单帧安全预算后本帧可以实际写入的绝对状态。求解器在世界空间追赶 `cumulativeWorld`，再用当前朝向的逆旋转派生 `appliedLocal` 与 `deltaLocal`。`deltaWorld` 必须等于 JavaScript 实际可表示的 `appliedWorld - previousAppliedWorld`，线速度、转向增量与角速度也只由实际写入值派生；因此极值加法没有改变位置时会返回零增量，而不会报告未实际发生的移动。另外输出移动阶段、归一化运动强度、无量纲启发式落地强度、急停强度，以及 `solved | clamped | reset | blocked` 状态。
+输出把状态明确分为两层：`cumulativeLocal/World` 与 `cumulativeTurnRadians` 是由绝对动作时间直接求出的帧率无关期望目标；`appliedLocal/World` 与 `appliedTurnRadians` 是从调用方上一帧世界 applied 状态出发、经过单帧安全预算后本帧可以实际写入的绝对状态。求解器在世界空间追赶 `cumulativeWorld`，再用当前朝向的逆旋转派生 `appliedLocal` 与 `deltaLocal`。`deltaWorld` 必须等于 JavaScript 实际可表示的 `appliedWorld - previousAppliedWorld`，线速度、转向增量与角速度也只由实际写入值派生；因此极值加法没有改变位置时会返回零增量，而不会报告未实际发生的移动。另外输出移动阶段、归一化运动强度、待下一连续帧原样回传的 `landingAuthorization`、只在真实 applied 落地时消费的无量纲启发式强度、急停强度，以及 `solved | clamped | reset | blocked` 状态。
 
 领域层不依赖 Vue、Pinia、TresJS、Three.js 或浏览器时钟。相同输入必须返回相同结果，调用方输入不得被修改。高频运行时必须在资产编译阶段规范化一次并复用与 canonical duration 绑定的冻结定义；公开 raw/unknown 输入路径每次都执行防御读取、复制、校验与冻结，供边界 API 使用，不应成为逐帧热路径，也不得用可变对象身份缓存掩盖调用方后续修改。
 
@@ -101,14 +101,14 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 - 蓄力阶段保持双脚接触，降低骨盆并积累起跳强度；
 - 离地时释放接触锚，按模板高度与角色尺寸生成连续抛物线；
 - 空中阶段不启用足底锁定；
-- 移动阶段由实际 applied 轨迹决定：高度在角色身高的 `1e-12` 阈值内为 `grounded`，正的实际纵向增量为 `takeoff`，负增量为 `landing`，正高度且纵向静止为 `airborne`。target 的合成弹道只负责授权落地候选，不得提前驱动阶段或冲量。只有最近一个有效 target 转换是 touchdown、且 applied 世界高度本帧从阈值上方真正跨到地面时，才消费一次 `landingImpulse`；touchdown 后任何真实 target airborne（包括窗口内部越过稳定零阈值）都会清除过期授权。归一化 airborne 阈值固定为 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))`，同时匹配 target 自身相对零化和实际世界接地；查询通过固定节点预算和区间上界保持有界。低强度微窗若始终低于世界接地阈值、高强度微窗若仍被 target 相对阈值归零，都不得误清授权。暂停、reset、倒退、同时间重复采样、异常大跳、目标尚未经历 touchdown 或 stale touchdown 均不触发。候选仍用有界双侧探测区分重叠、重复、精确相邻与正 gap，强度仍由跳高意图、动作权重及结束贡献窗权重占比得到，是 `[0,1]` 无量纲启发式信号而非物理碰撞速度。
+- 移动阶段由实际 applied 轨迹决定：高度在角色身高的 `1e-12` 阈值内为 `grounded`，正的实际纵向增量为 `takeoff`，负增量为 `landing`，正高度且纵向静止为 `airborne`。target 的合成弹道只负责授权落地候选，不得提前驱动阶段或冲量。候选必须先证明其前置支撑区间在当前有效强度下真实经历 airborne→grounded，才可签发只读 `landingAuthorization`；调用方逐帧原样回传，`actionWeight` 后续淡出或不越过世界接地阈值的微尾窗不得覆盖它。只有 applied 世界高度本帧从阈值上方真正跨到地面时，才消费一次授权并输出 `landingImpulse`；后续真实 target airborne 会清除旧授权。归一化 airborne 阈值固定为 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))`，同时匹配 target 自身相对零化和实际世界接地；查询通过固定节点预算和区间上界保持有界。暂停保留授权但不触发，reset、倒退、异常大跳、Clip/runtime 切换会清除授权；目标尚未经历合格 touchdown 或 stale touchdown 均不触发。候选仍用有界双侧探测区分重叠、重复、精确相邻与正 gap，强度仍由跳高意图、动作权重及结束贡献窗权重占比得到，是 `[0,1]` 无量纲启发式信号而非物理碰撞速度。
 
 第一阶段地面固定为角色预览平面，不做射线地形、坡度、台阶或碰撞体响应。
 
 ### 5.4 暂停、停止与切换
 
-- 暂停：保持累计位姿和 VFX 当前状态，不继续积分；
-- 停止：恢复动作起点，清空速度、累计周期、足底锚和瞬时 VFX；
+- 暂停：保持累计位姿、尚未消费的落地授权和 VFX 当前状态，不继续积分；
+- 停止：恢复动作起点，清空速度、累计周期、落地授权、足底锚和瞬时 VFX；
 - 普通倒退拖动：重建目标时间的确定性姿态，但不生成反向速度或重复冲击；
 - Clip 切换：先释放旧 VFX 和运动身份，再编译并应用新 Clip；
 - runtime 重建与释放：幂等清理，不保留旧 Object3D、Bone、材质或几何引用。
@@ -138,7 +138,7 @@ Three 层复用小型对象池；同类几何优先使用 `InstancedMesh` 降低
 
 - 非有限时间、尺寸、距离、速度或角度：Root Motion 返回 `blocked`，该帧保持 FK/IK 原地路径；
 - 单帧水平位移、纵向位移和转向超过预算：返回 `clamped` 并使用安全上限；
-- 时间身份不连续：超过 `max(250ms, duration×0.5)`、倒退或缺少调用方 applied 状态时返回 `reset`，把 applied 初始化为当前 target，但不继承旧速度、支撑误差或 VFX；
+- 时间身份不连续：超过 `max(250ms, duration×0.5)`、倒退或缺少调用方 applied 状态时返回 `reset`，把 applied 初始化为当前 target，但不继承旧速度、落地授权、支撑误差或 VFX；
 - 单个 VFX 创建失败：只禁用对应效果，不阻塞角色动作和其他效果；
 - 诊断按 Clip、原因和阶段去重并保持有界，不记录堆栈或用户本地敏感路径；
 - 简单模型继续走现有程序化动作和特效链路，不创建复杂 Root Motion 控制器。

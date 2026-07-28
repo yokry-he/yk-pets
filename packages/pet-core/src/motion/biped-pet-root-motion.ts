@@ -33,6 +33,15 @@ export interface BipedPetRootMotionNormalizationResult {
   diagnostics: readonly { id: string; severity: 'warning'; message: string }[]
 }
 
+/**
+ * 由采样器签发、调用方逐帧原样回传的最小落地授权。
+ * 令牌只冻结一次合法 target touchdown 的绝对请求时间与强度，不持有任何可变引用。
+ */
+export interface BipedPetLandingAuthorization {
+  readonly touchdownRequestedTimeMs: number
+  readonly impulse: number
+}
+
 export interface SampleBipedPetRootMotionInput {
   readonly definition: BipedPetRootMotionDefinition
   readonly requestedTimeMs: number
@@ -45,6 +54,8 @@ export interface SampleBipedPetRootMotionInput {
   /** 调用方上一帧实际写入容器的世界状态；与 previousAppliedTurnRadians 成对提供。 */
   readonly previousAppliedWorld?: readonly [number, number, number]
   readonly previousAppliedTurnRadians?: number
+  /** 上一帧采样器返回且尚未消费的落地授权；reset 时调用方与采样器都必须清除。 */
+  readonly previousLandingAuthorization?: BipedPetLandingAuthorization
   /** 局部水平接触残差；有限 X/Z 正值推动根节点沿同轴正向修正，Y 完全忽略。 */
   readonly footResidual: readonly [number, number, number]
 }
@@ -70,6 +81,8 @@ export interface SampledBipedPetRootMotion {
   readonly motionIntensity: number
   /** 仅在合法 target touchdown 已发生且 applied 本帧真实穿入 grounded 时输出一次。 */
   readonly landingImpulse: number
+  /** 尚未被真实 applied touchdown 消费的授权；调用方负责在下一连续帧原样回传。 */
+  readonly landingAuthorization?: BipedPetLandingAuthorization
   readonly brakeIntensity: number
 }
 
@@ -386,6 +399,7 @@ interface SafeSampleInput {
   actionWeight: number
   previousAppliedWorld?: RootMotionVector3
   previousAppliedTurnRadians?: number
+  previousLandingAuthorization?: BipedPetLandingAuthorization
   footResidual: RootMotionVector3
 }
 
@@ -462,6 +476,7 @@ function stationaryRootMotionSample(
   target: RootMotionTarget,
   applied: RootMotionAppliedState,
   characterHeight: number,
+  landingAuthorization?: BipedPetLandingAuthorization,
 ): SampledBipedPetRootMotion {
   return frozenSample({
     status,
@@ -482,6 +497,7 @@ function stationaryRootMotionSample(
     phase: appliedPhase(applied.world, zeroVector3(), characterHeight),
     motionIntensity: 0,
     landingImpulse: 0,
+    ...(landingAuthorization === undefined ? {} : { landingAuthorization }),
     brakeIntensity: 0,
   })
 }
@@ -515,6 +531,27 @@ function copyFiniteHorizontalResidual(value: unknown): RootMotionVector3 | undef
     return typeof x === 'number' && Number.isFinite(x)
       && typeof z === 'number' && Number.isFinite(z)
       ? frozenVector3(x, 0, z)
+      : undefined
+  }
+  catch {
+    return undefined
+  }
+}
+
+function copyLandingAuthorization(value: unknown): BipedPetLandingAuthorization | undefined {
+  try {
+    const source = safeRecord(value)
+    if (!source) return undefined
+    const touchdownRequestedTimeMs = Reflect.get(source, 'touchdownRequestedTimeMs')
+    const impulse = Reflect.get(source, 'impulse')
+    return typeof touchdownRequestedTimeMs === 'number'
+      && Number.isFinite(touchdownRequestedTimeMs)
+      && touchdownRequestedTimeMs >= 0
+      && typeof impulse === 'number'
+      && Number.isFinite(impulse)
+      && impulse > 0
+      && impulse <= 1
+      ? Object.freeze({ touchdownRequestedTimeMs, impulse })
       : undefined
   }
   catch {
@@ -610,9 +647,13 @@ function parseSampleInput(input: unknown): SafeSampleParseResult {
     const actionWeight = Reflect.get(source, 'actionWeight')
     const rawPreviousAppliedWorld = Reflect.get(source, 'previousAppliedWorld')
     const previousAppliedTurnRadians = Reflect.get(source, 'previousAppliedTurnRadians')
+    const rawPreviousLandingAuthorization = Reflect.get(source, 'previousLandingAuthorization')
     const previousAppliedWorld = rawPreviousAppliedWorld === undefined
       ? undefined
       : copyFiniteVector3(rawPreviousAppliedWorld)
+    const previousLandingAuthorization = rawPreviousLandingAuthorization === undefined
+      ? undefined
+      : copyLandingAuthorization(rawPreviousLandingAuthorization)
     const footResidual = copyFiniteHorizontalResidual(Reflect.get(source, 'footResidual'))
     const hasPreviousAppliedWorld = rawPreviousAppliedWorld !== undefined
     const hasPreviousAppliedTurn = previousAppliedTurnRadians !== undefined
@@ -622,6 +663,9 @@ function parseSampleInput(input: unknown): SafeSampleParseResult {
       || hasPreviousAppliedWorld !== hasPreviousAppliedTurn
       || (hasPreviousAppliedWorld && !previousAppliedWorld)
       || (hasPreviousAppliedTurn && (typeof previousAppliedTurnRadians !== 'number' || !Number.isFinite(previousAppliedTurnRadians)))
+      || (rawPreviousLandingAuthorization !== undefined && !previousLandingAuthorization)
+      || (previousLandingAuthorization !== undefined && previousRequestedTimeMs !== undefined
+        && previousLandingAuthorization.touchdownRequestedTimeMs > previousRequestedTimeMs)
       || !footResidual) return { identity }
 
     return {
@@ -639,6 +683,7 @@ function parseSampleInput(input: unknown): SafeSampleParseResult {
           previousAppliedWorld,
           previousAppliedTurnRadians: previousAppliedTurnRadians as number,
         }),
+        ...(previousLandingAuthorization === undefined ? {} : { previousLandingAuthorization }),
         footResidual,
       },
     }
@@ -1065,109 +1110,250 @@ function isContinuouslyActiveHorizontalWindow(
   return true
 }
 
-function appliedState(world: RootMotionVector3, turnRadians: number, facingRadians: number): RootMotionAppliedState {
-  return { local: rotateWorldVector(world, facingRadians), world, turnRadians }
+function appliedState(
+  world: RootMotionVector3,
+  turnRadians: number,
+  facingRadians: number,
+): RootMotionAppliedState | undefined {
+  const local = rotateWorldVector(world, facingRadians)
+  return [...local, ...world, turnRadians].every(Number.isFinite)
+    ? { local, world, turnRadians }
+    : undefined
 }
 
-interface TargetTouchdownAuthorization {
-  readonly boundaryMs: number
+interface QualifiedTouchdownEvent {
+  readonly transitionTimeMs: number
   readonly impulse: number
-  readonly iteration: number
-  readonly reverse: boolean
+}
+
+interface QualifiedTakeoffEvent {
   readonly transitionTimeMs: number
 }
 
-function targetWasAirborneAfterTouchdown(
+function touchdownCandidateIsQualified(
   input: SafeSampleInput,
-  touchdown: TargetTouchdownAuthorization,
-  currentResolved: ResolvedMotionTime,
+  candidate: BallisticTouchdownCandidate,
+  reverse: boolean,
+  candidates: readonly BallisticTouchdownCandidate[],
 ): boolean {
-  if (touchdown.transitionTimeMs >= currentResolved.requestedTimeMs) return false
-  if (input.loopMode === 'once') {
-    return hasCompositeBallisticAirborneInRange(
-      input.definition,
-      input.durationMs,
-      input.actionWeight,
-      touchdown.boundaryMs,
-      currentResolved.resolvedTimeMs,
-    )
-  }
-
-  if (touchdown.iteration === currentResolved.iteration) {
-    return hasCompositeBallisticAirborneInRange(
-      input.definition,
-      input.durationMs,
-      input.actionWeight,
-      touchdown.boundaryMs,
-      currentResolved.resolvedTimeMs,
-    )
-  }
-
-  const touchdownRemainderAirborne = touchdown.reverse
-    ? hasCompositeBallisticAirborneInRange(input.definition, input.durationMs, input.actionWeight, 0, touchdown.boundaryMs)
-    : hasCompositeBallisticAirborneInRange(input.definition, input.durationMs, input.actionWeight, touchdown.boundaryMs, input.durationMs)
-  if (touchdownRemainderAirborne) return true
-  const currentReverse = input.loopMode === 'ping-pong'
-    && positiveModulo(currentResolved.iteration, 2) !== 0
-  return currentReverse
-    ? hasCompositeBallisticAirborneInRange(input.definition, input.durationMs, input.actionWeight, currentResolved.resolvedTimeMs, input.durationMs)
-    : hasCompositeBallisticAirborneInRange(input.definition, input.durationMs, input.actionWeight, 0, currentResolved.resolvedTimeMs)
+  const index = candidates.indexOf(candidate)
+  if (index < 0) return false
+  // 每个候选只检查上一个 touchdown 后属于自己的支撑段，避免后置微尾窗借用主窗的 airborne 峰值取得授权。
+  const firstBoundaryMs = reverse
+    ? candidate.boundaryMs
+    : (candidates[index - 1]?.boundaryMs ?? 0)
+  const secondBoundaryMs = reverse
+    ? (candidates[index + 1]?.boundaryMs ?? input.durationMs)
+    : candidate.boundaryMs
+  return hasCompositeBallisticAirborneInRange(
+    input.definition,
+    input.durationMs,
+    input.actionWeight,
+    firstBoundaryMs,
+    secondBoundaryMs,
+  )
 }
 
-function authorizedLandingImpulseAtOrBefore(input: SafeSampleInput, currentResolved: ResolvedMotionTime): number {
-  const currentTimeMs = currentResolved.requestedTimeMs
-  if (input.definition.mode !== 'travel' || input.definition.verticalMode !== 'ballistic'
-    || input.definition.jumpHeight <= 0 || input.actionWeight <= 0 || currentTimeMs < 0) return 0
-  const candidateSet = ballisticTouchdownCandidates(input.definition)
-  if (!Number.isFinite(candidateSet.totalWeight) || candidateSet.totalWeight <= 0) return 0
-  const strength = (candidate: BallisticTouchdownCandidate) => stableSignal(
-    input.definition.jumpHeight * input.actionWeight * candidate.weight / candidateSet.totalWeight,
-  )
-  let latestTouchdown: TargetTouchdownAuthorization | undefined
-  const considerTouchdown = (
-    transitionTimeMs: number,
-    candidate: BallisticTouchdownCandidate,
-    iteration: number,
-    reverse: boolean,
-  ) => {
-    if (transitionTimeMs > currentTimeMs
-      || (latestTouchdown && transitionTimeMs < latestTouchdown.transitionTimeMs)) return
-    const impulse = strength(candidate)
-    if (!latestTouchdown || transitionTimeMs > latestTouchdown.transitionTimeMs) {
-      latestTouchdown = { boundaryMs: candidate.boundaryMs, impulse, iteration, reverse, transitionTimeMs }
-      return
-    }
-    if (impulse > latestTouchdown.impulse) {
-      latestTouchdown = { boundaryMs: candidate.boundaryMs, impulse, iteration, reverse, transitionTimeMs }
-    }
-  }
+function requestedRangeHasTargetAirborne(
+  input: SafeSampleInput,
+  firstRequestedTimeMs: number,
+  secondRequestedTimeMs: number,
+): boolean {
+  const startRequestedTimeMs = Math.max(0, Math.min(firstRequestedTimeMs, secondRequestedTimeMs))
+  const endRequestedTimeMs = Math.max(0, Math.max(firstRequestedTimeMs, secondRequestedTimeMs))
+  if (!(endRequestedTimeMs > startRequestedTimeMs)) return false
   if (input.loopMode === 'once') {
-    for (const candidate of candidateSet.forward) considerTouchdown(candidate.boundaryMs, candidate, 0, false)
-    return latestTouchdown && !targetWasAirborneAfterTouchdown(input, latestTouchdown, currentResolved)
-      ? latestTouchdown.impulse
-      : 0
+    const start = resolveMotionTime(startRequestedTimeMs, input.durationMs, input.loopMode)
+    const end = resolveMotionTime(endRequestedTimeMs, input.durationMs, input.loopMode)
+    return hasCompositeBallisticAirborneInRange(
+      input.definition,
+      input.durationMs,
+      input.actionWeight,
+      start.resolvedTimeMs,
+      end.resolvedTimeMs,
+    )
   }
 
-  const currentIteration = Math.floor(currentTimeMs / input.durationMs)
-  // 超过安全整数后 `iteration += 1` 可能不再前进；固定枚举当前与前一段并去重，保持授权查询严格有界。 / Above the safe-integer range, incrementing may stall; enumerate and deduplicate at most two segments instead.
-  const candidateIterations = [...new Set([
-    Math.max(0, currentIteration - 1),
-    currentIteration,
-  ])]
-  for (const iteration of candidateIterations) {
+  const firstIteration = Math.floor(startRequestedTimeMs / input.durationMs)
+  const lastIteration = Math.floor(endRequestedTimeMs / input.durationMs)
+  const segmentCount = lastIteration - firstIteration + 1
+  if (!Number.isInteger(segmentCount) || segmentCount < 1 || segmentCount > MAX_ROOT_MOTION_CONTINUITY_SEGMENTS) return true
+  let priorIteration: number | undefined
+  for (let offset = 0; offset < segmentCount; offset += 1) {
+    const iteration = offset === segmentCount - 1 ? lastIteration : firstIteration + offset
+    if (priorIteration !== undefined && iteration <= priorIteration) return true
+    priorIteration = iteration
     const segmentStartMs = iteration * input.durationMs
+    const segmentEndMs = segmentStartMs + input.durationMs
+    const requestStartMs = Math.max(startRequestedTimeMs, segmentStartMs)
+    const requestEndMs = Math.min(endRequestedTimeMs, segmentEndMs)
+    if (!(requestEndMs > requestStartMs)) continue
+    const localStartMs = requestStartMs - segmentStartMs
+    const localEndMs = requestEndMs - segmentStartMs
     const reverse = input.loopMode === 'ping-pong' && positiveModulo(iteration, 2) !== 0
-    const touchdowns = reverse ? candidateSet.reverse : candidateSet.forward
-    for (const candidate of touchdowns) {
-      const transitionTimeMs = reverse
-        ? segmentStartMs + input.durationMs - candidate.boundaryMs
-        : segmentStartMs + candidate.boundaryMs
-      considerTouchdown(transitionTimeMs, candidate, iteration, reverse)
+    const resolvedStartMs = reverse ? input.durationMs - localStartMs : localStartMs
+    const resolvedEndMs = reverse ? input.durationMs - localEndMs : localEndMs
+    if (hasCompositeBallisticAirborneInRange(
+      input.definition,
+      input.durationMs,
+      input.actionWeight,
+      resolvedStartMs,
+      resolvedEndMs,
+    )) return true
+  }
+  return false
+}
+
+function qualifiedTouchdownEventsInRange(
+  input: SafeSampleInput,
+  previousRequestedTimeMs: number,
+): readonly QualifiedTouchdownEvent[] {
+  if (input.definition.mode !== 'travel' || input.definition.verticalMode !== 'ballistic'
+    || input.definition.jumpHeight <= 0 || input.actionWeight <= 0 || input.requestedTimeMs < 0) return []
+  const candidateSet = ballisticTouchdownCandidates(input.definition)
+  if (!Number.isFinite(candidateSet.totalWeight) || candidateSet.totalWeight <= 0) return []
+  const events: QualifiedTouchdownEvent[] = []
+  const considerCandidate = (
+    transitionTimeMs: number,
+    candidate: BallisticTouchdownCandidate,
+    reverse: boolean,
+    candidates: readonly BallisticTouchdownCandidate[],
+  ) => {
+    if (!(transitionTimeMs > previousRequestedTimeMs && transitionTimeMs <= input.requestedTimeMs)
+      || !touchdownCandidateIsQualified(input, candidate, reverse, candidates)) return
+    const impulse = stableSignal(
+      input.definition.jumpHeight * input.actionWeight * candidate.weight / candidateSet.totalWeight,
+    )
+    if (impulse > 0) events.push(Object.freeze({ transitionTimeMs, impulse }))
+  }
+
+  if (input.loopMode === 'once') {
+    for (const candidate of candidateSet.forward) {
+      considerCandidate(candidate.boundaryMs, candidate, false, candidateSet.forward)
     }
   }
-  return latestTouchdown && !targetWasAirborneAfterTouchdown(input, latestTouchdown, currentResolved)
-    ? latestTouchdown.impulse
-    : 0
+  else {
+    const startRequestedTimeMs = Math.max(0, previousRequestedTimeMs)
+    const firstIteration = Math.floor(startRequestedTimeMs / input.durationMs)
+    const lastIteration = Math.floor(input.requestedTimeMs / input.durationMs)
+    const segmentCount = lastIteration - firstIteration + 1
+    if (!Number.isInteger(segmentCount) || segmentCount < 1 || segmentCount > MAX_ROOT_MOTION_CONTINUITY_SEGMENTS) return []
+    let priorIteration: number | undefined
+    for (let offset = 0; offset < segmentCount; offset += 1) {
+      const iteration = offset === segmentCount - 1 ? lastIteration : firstIteration + offset
+      if (priorIteration !== undefined && iteration <= priorIteration) return []
+      priorIteration = iteration
+      const segmentStartMs = iteration * input.durationMs
+      const reverse = input.loopMode === 'ping-pong' && positiveModulo(iteration, 2) !== 0
+      const candidates = reverse ? candidateSet.reverse : candidateSet.forward
+      for (const candidate of candidates) {
+        const transitionTimeMs = reverse
+          ? segmentStartMs + input.durationMs - candidate.boundaryMs
+          : segmentStartMs + candidate.boundaryMs
+        considerCandidate(transitionTimeMs, candidate, reverse, candidates)
+      }
+    }
+  }
+  return Object.freeze(events.sort((left, right) => (
+    left.transitionTimeMs - right.transitionTimeMs || left.impulse - right.impulse
+  )))
+}
+
+function qualifiedTakeoffEventsInRange(
+  input: SafeSampleInput,
+  previousRequestedTimeMs: number,
+): readonly QualifiedTakeoffEvent[] {
+  if (input.definition.mode !== 'travel' || input.definition.verticalMode !== 'ballistic'
+    || input.definition.jumpHeight <= 0 || input.actionWeight <= 0 || input.requestedTimeMs < 0) return []
+  const windows = effectiveBallisticWindows(input.definition)
+  const events: QualifiedTakeoffEvent[] = []
+  const considerWindow = (transitionTimeMs: number) => {
+    if (!(transitionTimeMs > previousRequestedTimeMs && transitionTimeMs <= input.requestedTimeMs)
+      || !requestedRangeHasTargetAirborne(input, transitionTimeMs, input.requestedTimeMs)) return
+    events.push(Object.freeze({ transitionTimeMs }))
+  }
+
+  if (input.loopMode === 'once') {
+    for (const window of windows) considerWindow(window.startMs)
+  }
+  else {
+    const startRequestedTimeMs = Math.max(0, previousRequestedTimeMs)
+    const firstIteration = Math.floor(startRequestedTimeMs / input.durationMs)
+    const lastIteration = Math.floor(input.requestedTimeMs / input.durationMs)
+    const segmentCount = lastIteration - firstIteration + 1
+    if (!Number.isInteger(segmentCount) || segmentCount < 1 || segmentCount > MAX_ROOT_MOTION_CONTINUITY_SEGMENTS) return []
+    let priorIteration: number | undefined
+    for (let offset = 0; offset < segmentCount; offset += 1) {
+      const iteration = offset === segmentCount - 1 ? lastIteration : firstIteration + offset
+      if (priorIteration !== undefined && iteration <= priorIteration) return []
+      priorIteration = iteration
+      const segmentStartMs = iteration * input.durationMs
+      const reverse = input.loopMode === 'ping-pong' && positiveModulo(iteration, 2) !== 0
+      for (const window of windows) {
+        const transitionTimeMs = reverse
+          ? segmentStartMs + input.durationMs - window.endMs
+          : segmentStartMs + window.startMs
+        considerWindow(transitionTimeMs)
+      }
+    }
+  }
+  return Object.freeze(events.sort((left, right) => left.transitionTimeMs - right.transitionTimeMs))
+}
+
+function targetIsGroundedAtRequestedTime(input: SafeSampleInput, requestedTimeMs: number): boolean {
+  const resolved = resolveMotionTime(
+    requestedTimeMs,
+    input.durationMs,
+    input.loopMode,
+  )
+  return ballisticHeight(
+    input.definition,
+    resolved.resolvedTimeMs,
+    input.characterHeight,
+    input.actionWeight,
+  ) <= input.characterHeight * ROOT_MOTION_SIGNAL_EPSILON
+}
+
+function authorizationStartsFromGroundedTarget(
+  input: SafeSampleInput,
+  authorization: BipedPetLandingAuthorization,
+): boolean {
+  return targetIsGroundedAtRequestedTime(input, authorization.touchdownRequestedTimeMs)
+}
+
+function advanceLandingAuthorization(
+  input: SafeSampleInput,
+  previousRequestedTimeMs: number,
+): BipedPetLandingAuthorization | undefined {
+  let authorization = input.previousLandingAuthorization
+  let cursorTimeMs = previousRequestedTimeMs
+  const timeline = [
+    ...qualifiedTakeoffEventsInRange(input, previousRequestedTimeMs).map(event => ({ ...event, kind: 'takeoff' as const })),
+    ...qualifiedTouchdownEventsInRange(input, previousRequestedTimeMs).map(event => ({ ...event, kind: 'touchdown' as const })),
+  ].sort((left, right) => left.transitionTimeMs - right.transitionTimeMs
+    || (left.kind === right.kind ? 0 : left.kind === 'takeoff' ? -1 : 1))
+  for (const event of timeline) {
+    if (event.kind === 'takeoff') {
+      // 新的有效腾空是独立动作事实；即使旧 ULP touchdown 因时间映射舍入仍落在窗内，也必须清除旧授权。
+      authorization = undefined
+    }
+    else {
+      if (authorization
+        && (authorizationStartsFromGroundedTarget(input, authorization)
+          || targetIsGroundedAtRequestedTime(input, cursorTimeMs))
+        && requestedRangeHasTargetAirborne(input, cursorTimeMs, event.transitionTimeMs)) authorization = undefined
+      authorization = Object.freeze({
+        touchdownRequestedTimeMs: event.transitionTimeMs,
+        impulse: event.impulse,
+      })
+    }
+    cursorTimeMs = event.transitionTimeMs
+  }
+  if (authorization
+    && (authorizationStartsFromGroundedTarget(input, authorization)
+      || targetIsGroundedAtRequestedTime(input, cursorTimeMs))
+    && requestedRangeHasTargetAirborne(input, cursorTimeMs, input.requestedTimeMs)) return undefined
+  return authorization
 }
 
 /**
@@ -1194,7 +1380,7 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
     'reset',
     currentResolved,
     currentTarget,
-    appliedState(currentTarget.world, currentTarget.turnRadians, safeInput.facingRadians),
+    currentTarget,
     safeInput.characterHeight,
   )
 
@@ -1203,8 +1389,10 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
     safeInput.previousAppliedTurnRadians!,
     safeInput.facingRadians,
   )
+  if (!previousApplied) return blockedRootMotionSample(currentResolved)
   if (elapsedMs === 0) return stationaryRootMotionSample(
     'solved', currentResolved, currentTarget, previousApplied, safeInput.characterHeight,
+    safeInput.previousLandingAuthorization,
   )
 
   const elapsedSeconds = elapsedMs / 1000
@@ -1287,9 +1475,9 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
   )
   const groundedThreshold = safeInput.characterHeight * ROOT_MOTION_SIGNAL_EPSILON
   const appliedTouchedDown = previousApplied.world[1] > groundedThreshold && appliedWorld[1] <= groundedThreshold
-  const landingImpulse = appliedTouchedDown
-    ? authorizedLandingImpulseAtOrBefore(safeInput, currentResolved)
-    : 0
+  const pendingLandingAuthorization = advanceLandingAuthorization(safeInput, previousTimeMs)
+  const landingImpulse = appliedTouchedDown ? pendingLandingAuthorization?.impulse ?? 0 : 0
+  const landingAuthorization = appliedTouchedDown ? undefined : pendingLandingAuthorization
   return frozenSample({
     status: boundedDelta.clamped || turnClamped ? 'clamped' : 'solved',
     requestedTimeMs: currentResolved.requestedTimeMs,
@@ -1309,6 +1497,7 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
     phase: appliedPhase(appliedWorld, deltaWorld, safeInput.characterHeight),
     motionIntensity,
     landingImpulse,
+    ...(landingAuthorization === undefined ? {} : { landingAuthorization }),
     brakeIntensity,
   })
 }

@@ -260,9 +260,7 @@
     "automatedCoverage": [
       "corepack pnpm --filter @yk-pets/pet-core test",
       "corepack pnpm --filter @yk-pets/pet-core typecheck",
-      "10,000 组固定种子有状态 Root Motion 世界应用态输入探针",
-      "42 个正反向 ULP 级 applied touchdown 探针",
-      "100,000 次 1 窗口与 64 窗口 canonical/raw 对照性能微基准",
+      "corepack pnpm run test:studio-biped-root-motion-probe",
       "node scripts/check-documentation.mjs",
       "node scripts/check-ai-handoff.mjs",
       "git diff --check"

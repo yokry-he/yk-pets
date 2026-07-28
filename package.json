@@ -84,6 +84,7 @@
     "check:studio-complex-biped-model": "node scripts/check-studio-complex-biped-model.mjs",
     "check:studio-complex-biped-motion": "node scripts/check-studio-complex-biped-motion.mjs",
     "test:studio-complex-biped-runtime": "node --import ./packages/local-agent/node_modules/tsx/dist/loader.mjs scripts/test-studio-complex-biped-runtime.ts",
-    "test:studio-complex-biped-motion-runtime": "node --import ./packages/local-agent/node_modules/tsx/dist/loader.mjs scripts/test-studio-complex-biped-motion-runtime.ts"
+    "test:studio-complex-biped-motion-runtime": "node --import ./packages/local-agent/node_modules/tsx/dist/loader.mjs scripts/test-studio-complex-biped-motion-runtime.ts",
+    "test:studio-biped-root-motion-probe": "node --import ./packages/local-agent/node_modules/tsx/dist/loader.mjs scripts/test-studio-biped-root-motion-probe.ts"
   }
 }
