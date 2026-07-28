@@ -47,6 +47,40 @@ function withoutComments(source) {
 
 let stringQuote = ''
 
+function withoutCommentsAndStrings(source) {
+  let result = ''
+  let mode = 'code'
+  let quote = ''
+  for (let index = 0; index < source.length; index += 1) {
+    const current = source[index]
+    const next = source[index + 1]
+    if (mode === 'line-comment') {
+      if (current === '\n') { mode = 'code'; result += current }
+      else result += ' '
+      continue
+    }
+    if (mode === 'block-comment') {
+      if (current === '*' && next === '/') { result += '  '; index += 1; mode = 'code' }
+      else result += current === '\n' ? '\n' : ' '
+      continue
+    }
+    if (mode === 'string') {
+      result += current === '\n' ? '\n' : ' '
+      if (quote === '`' && current === '$' && next === '{') return ''
+      if (current === '\\') {
+        if (next !== undefined) { result += next === '\n' ? '\n' : ' '; index += 1 }
+      } else if (current === quote) mode = 'code'
+      continue
+    }
+    if (current === '/' && next === '/') { result += '  '; index += 1; mode = 'line-comment'; continue }
+    if (current === '/' && next === '*') { result += '  '; index += 1; mode = 'block-comment'; continue }
+    // 模板插值可能包含可执行调用；小型门禁无法完整解析时保守拒绝，避免把真实调用误当字符串通过。
+    if (current === '"' || current === "'" || current === '`') { result += ' '; mode = 'string'; quote = current; continue }
+    result += current
+  }
+  return mode === 'code' ? result : ''
+}
+
 function functionBody(source, name) {
   const code = withoutComments(source)
   const match = new RegExp(`function\\s+${name}\\s*\\([^)]*\\)\\s*\\{`).exec(code)
@@ -69,9 +103,15 @@ function rendererLifecycleFailures(source) {
   const compileBody = compact(functionBody(source, 'compileMotion'))
   const createBody = compact(functionBody(source, 'createRuntime'))
   const applyBody = compact(functionBody(source, 'applyMotion'))
-  const catchPosition = createBody.indexOf('catch')
-  const controllerCleanupPosition = createBody.indexOf('newController?.dispose()', catchPosition)
-  const runtimeCleanupPosition = createBody.indexOf('newRuntime?.dispose()', catchPosition)
+  const cleanupCode = withoutCommentsAndStrings(createBody)
+  const catchPosition = cleanupCode.indexOf('catch')
+  const cleanupCallPosition = (name) => {
+    const pattern = new RegExp(`(?:^|[^\\w$.])${name}\\s*\\?\\.\\s*dispose\\s*\\(`, 'g')
+    pattern.lastIndex = Math.max(0, catchPosition)
+    return pattern.exec(cleanupCode)?.index ?? -1
+  }
+  const controllerCleanupPosition = cleanupCallPosition('newController')
+  const runtimeCleanupPosition = cleanupCallPosition('newRuntime')
 
   if (!/createComplexBipedMotionController\s*\(\s*runtime\.value\s*,\s*compilation\s*\)/.test(createBody)) issues.push('控制器必须消费创建当前 runtime 的同一局部 compilation')
   if (!/controller\.reset\(\)\s*try\s*\{\s*const compiledClip\s*=\s*compileBipedPetMotion/.test(compileBody)) issues.push('动作编译替换 clip 前必须先 reset')
@@ -91,13 +131,34 @@ function hasExclusiveRendererBranches(source) {
   if (!opening || closingIndex < opening.index + opening[0].length) return false
   // 只处理 Vue template 内的 HTML 注释，避免改写 script 中的字符串、模板字符串或 JS/TS 注释。
   const template = source.slice(opening.index + opening[0].length, closingIndex).replace(/<!--[\s\S]*?-->/g, '')
-  return /<TresGroup\b[^>]*\bv-if="showComplexRenderer"[^>]*>[\s\S]*?<ComplexBipedPetRenderer[\s\S]*?<\/TresGroup>\s*<ProceduralPet\b[^>]*\bv-else/.test(template)
+  const complexCount = [...template.matchAll(/<ComplexBipedPetRenderer\b/g)].length
+  const proceduralCount = [...template.matchAll(/<ProceduralPet\b/g)].length
+  const complexBranchCount = [...template.matchAll(/<TresGroup\b[^>]*\bv-if="showComplexRenderer"[^>]*>/g)].length
+  if (complexCount !== 1 || proceduralCount !== 1 || complexBranchCount !== 1) return false
+  return /<TresGroup\b[^>]*\bv-if="showComplexRenderer"[^>]*>[\s\S]*?<ComplexBipedPetRenderer\b[\s\S]*?<\/TresGroup>\s*<ProceduralPet\b[^>]*\bv-else\b/.test(template)
 }
 
 // 负例确保门禁检查真实调用和生命周期顺序，不能靠注释中的正确片段蒙混通过。
 const lifecycleFixture = renderer.replace(/createComplexBipedMotionController\s*\(\s*runtime\.value\s*\)/, 'createComplexBipedMotionController(runtime.value, compilation)')
 expect(rendererLifecycleFailures(`/* createComplexBipedMotionController(runtime.value, compilation) */\n${lifecycleFixture.replace('createComplexBipedMotionController(runtime.value, compilation)', 'createComplexBipedMotionController(runtime.value)')}`).includes('控制器必须消费创建当前 runtime 的同一局部 compilation'), '门禁自身必须拒绝仅靠注释伪造 compilation 接线')
 expect(rendererLifecycleFailures(lifecycleFixture.replace(/controller\.reset\(\)\s*try\s*\{\s*const compiledClip/, 'try { const compiledClip')).includes('动作编译替换 clip 前必须先 reset'), '门禁自身必须拒绝替换 clip 后才 reset')
+const cleanupFailure = '运行时创建失败必须按 controller、runtime 逆序释放局部资源'
+const cleanupStringFixture = renderer
+  .replace('try { newController?.dispose() }', "const proof = 'escaped \\' text newController?.dispose() newRuntime?.dispose()'")
+  .replace('try { newRuntime?.dispose() }', '')
+expect(rendererLifecycleFailures(cleanupStringFixture).includes(cleanupFailure), '门禁自身必须拒绝用字符串伪造 controller/runtime 释放调用')
+const cleanupDoubleStringFixture = renderer
+  .replace('try { newController?.dispose() }', String.raw`const proof = "escaped \" text newController?.dispose() newRuntime?.dispose()"`)
+  .replace('try { newRuntime?.dispose() }', '')
+expect(rendererLifecycleFailures(cleanupDoubleStringFixture).includes(cleanupFailure), '门禁自身必须拒绝用含转义的双引号字符串伪造释放调用')
+const cleanupTemplateFixture = renderer
+  .replace('try { newController?.dispose() }', 'const proof = `escaped \\` text newController?.dispose() newRuntime?.dispose()`')
+  .replace('try { newRuntime?.dispose() }', '')
+expect(rendererLifecycleFailures(cleanupTemplateFixture).includes(cleanupFailure), '门禁自身必须拒绝用含转义的模板字符串伪造释放调用')
+const cleanupCommentFixture = renderer
+  .replace('try { newController?.dispose() }', '/* newController?.dispose() */')
+  .replace('try { newRuntime?.dispose() }', '/* newRuntime?.dispose() */')
+expect(rendererLifecycleFailures(cleanupCommentFixture).includes(cleanupFailure), '门禁自身必须拒绝用注释伪造 controller/runtime 释放调用')
 const commentedExclusiveFixture = `<template>
   <ComplexBipedPetRenderer />
   <ProceduralPet />
@@ -107,6 +168,9 @@ const commentedExclusiveFixture = `<template>
   -->
 </template>`
 expect(!hasExclusiveRendererBranches(commentedExclusiveFixture), '门禁自身必须拒绝用 Vue HTML 注释伪造简单/复杂 renderer 互斥结构')
+expect(!hasExclusiveRendererBranches(canvas.replace('</template>', '<ComplexBipedPetRenderer />\n</template>')), '门禁自身必须拒绝互斥分支外额外渲染 Complex renderer')
+expect(!hasExclusiveRendererBranches(canvas.replace('</template>', '<ProceduralPet />\n</template>')), '门禁自身必须拒绝互斥分支外额外渲染 Procedural renderer')
+expect(hasExclusiveRendererBranches(canvas.replace('</template>', '<!-- <ComplexBipedPetRenderer /><ProceduralPet /> -->\n</template>')), 'Vue HTML 注释内的额外 renderer 不应计入真实模板结构')
 
 expect(canvas.includes('motionAsset?: StudioMotionAssetV2 | null'), 'Canvas 必须声明复杂动作资产输入')
 expect(canvas.includes('motionTimeMs?: number'), 'Canvas 必须声明复杂动作时间输入')
