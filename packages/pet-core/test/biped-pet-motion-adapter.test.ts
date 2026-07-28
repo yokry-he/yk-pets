@@ -181,4 +181,68 @@ test('损坏 Profile 会阻塞 Clip 且采样安全回退为空姿态', () => {
   assert.ok(clip.diagnostics.some(item => item.severity === 'error'))
   assert.deepEqual(sample.bones, [])
   assert.deepEqual(sample.rootPosition, [0, 0, 0])
+  assert.equal(sample.sourceMotionId, 'fixture')
+  assert.equal(sample.clipHash, clip.hash)
+  assert.equal(sample.durationMs, 1000)
+  assert.equal(sample.loopMode, 'once')
+  assert.deepEqual(sample.contactStates, [])
+})
+
+test('接触采样以 80ms 淡入淡出输出确定阶段、权重和置信度', () => {
+  const asset = createStudioMotionAsset({
+    id: 'motion-contact-loop',
+    nameZh: '接触循环测试',
+    nameEn: 'Contact loop fixture',
+    durationMs: 1200,
+    loopMode: 'loop',
+    extensions: {
+      'yk-pets/biped-motion/v1': {
+        contacts: [
+          { contactId: 'foot.left', startMs: 0, endMs: 576, confidence: .9 },
+          { contactId: 'foot.right', startMs: 600, endMs: 1176, confidence: .8 },
+        ],
+      },
+    },
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  const clip = compileBipedPetMotion(asset)
+
+  assert.deepEqual(sampleBipedPetMotion(clip, 40).contactStates, [{ contactId: 'foot.left', phase: 'acquiring', weight: .5, confidence: .9 }])
+  assert.deepEqual(sampleBipedPetMotion(clip, 200).contactStates, [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: .9 }])
+  assert.deepEqual(sampleBipedPetMotion(clip, 540).contactStates, [{ contactId: 'foot.left', phase: 'releasing', weight: .45, confidence: .9 }])
+  assert.deepEqual(sampleBipedPetMotion(clip, 1240).contactStates, sampleBipedPetMotion(clip, 40).contactStates)
+  assert.deepEqual(sampleBipedPetMotion(clip, 0).contactStates, [{ contactId: 'foot.left', phase: 'acquiring', weight: 0, confidence: .9 }])
+  assert.deepEqual(sampleBipedPetMotion(clip, 576).contactStates, [{ contactId: 'foot.left', phase: 'releasing', weight: 0, confidence: .9 }])
+  assert.deepEqual(sampleBipedPetMotion(clip, 0).activeContacts, [])
+  assert.deepEqual(sampleBipedPetMotion(clip, 576).activeContacts, [])
+})
+
+test('接触采样裁剪极短区间淡变并对 once 与 ping-pong 使用解析后的时间', () => {
+  const makeClip = (loopMode: 'once' | 'ping-pong') => compileBipedPetMotion(createStudioMotionAsset({
+    id: `motion-contact-${loopMode}`,
+    nameZh: '短接触测试',
+    nameEn: 'Short contact fixture',
+    durationMs: 100,
+    loopMode,
+    extensions: {
+      'yk-pets/biped-motion/v1': {
+        contacts: [
+          { contactId: 'foot.left', startMs: 20, endMs: 40, confidence: .7 },
+          { contactId: 'foot.left', startMs: 20, endMs: 40, confidence: .5 },
+          { contactId: 'foot.right', startMs: 60, endMs: 60, confidence: .6 },
+        ],
+      },
+    },
+    createdAt: 1,
+    updatedAt: 1,
+  }))
+
+  const once = makeClip('once')
+  assert.deepEqual(sampleBipedPetMotion(once, 30).contactStates, [{ contactId: 'foot.left', phase: 'releasing', weight: 1, confidence: .7 }])
+  assert.deepEqual(sampleBipedPetMotion(once, 30).activeContacts, ['foot.left'])
+  assert.deepEqual(sampleBipedPetMotion(once, 200).contactStates, [])
+  assert.deepEqual(sampleBipedPetMotion(once, 60).contactStates, [])
+  const pingPong = makeClip('ping-pong')
+  assert.deepEqual(sampleBipedPetMotion(pingPong, 170).contactStates, sampleBipedPetMotion(pingPong, 30).contactStates)
 })

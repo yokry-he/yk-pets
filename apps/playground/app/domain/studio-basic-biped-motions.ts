@@ -45,6 +45,10 @@ const emotionScale: Readonly<Record<BasicBipedMotionEmotion, number>> = { gentle
 const templates: Readonly<Record<BasicBipedMotionTemplateId, TemplateDefinition>> = {
   idle: {
     id: 'builtin-biped-idle', nameZh: '待机呼吸', nameEn: 'Idle Breathing', durationMs: 3600, loopMode: 'loop',
+    contacts: [
+      { contactId: 'foot.left', start: 0, end: 1, confidence: .95 },
+      { contactId: 'foot.right', start: 0, end: 1, confidence: .95 },
+    ],
     tracks: [
       ['root.position.y', [[0, 0], [.25, .07], [.5, 0], [.75, -.035], [1, 0]]],
       ['body.rotation.x', [[0, 0], [.25, -.055], [.5, 0], [.75, .035], [1, 0]]],
@@ -59,8 +63,10 @@ const templates: Readonly<Record<BasicBipedMotionTemplateId, TemplateDefinition>
   walk: {
     id: 'builtin-biped-walk', nameZh: '行走循环', nameEn: 'Walk Cycle', durationMs: 1200, loopMode: 'loop',
     contacts: [
-      { contactId: 'foot.left', start: 0, end: .48, confidence: .9 },
-      { contactId: 'foot.right', start: .5, end: .98, confidence: .9 },
+      { contactId: 'foot.left', start: 0, end: .5, confidence: .9 },
+      { contactId: 'foot.right', start: 0, end: .06, confidence: .9 },
+      { contactId: 'foot.right', start: .48, end: 1, confidence: .9 },
+      { contactId: 'foot.left', start: .94, end: 1, confidence: .9 },
     ],
     tracks: [
       ['root.position.y', [[0, 0], [.25, .08], [.5, 0], [.75, .08], [1, 0]]],
@@ -75,6 +81,12 @@ const templates: Readonly<Record<BasicBipedMotionTemplateId, TemplateDefinition>
   },
   jump: {
     id: 'builtin-biped-jump', nameZh: '起跳与落地', nameEn: 'Jump and Landing', durationMs: 2400, loopMode: 'once',
+    contacts: [
+      { contactId: 'foot.left', start: 0, end: .3, confidence: .95 },
+      { contactId: 'foot.right', start: 0, end: .3, confidence: .95 },
+      { contactId: 'foot.left', start: .76, end: 1, confidence: .95 },
+      { contactId: 'foot.right', start: .76, end: 1, confidence: .95 },
+    ],
     events: [
       { id: 'jump-takeoff', kind: 'takeoff', progress: .3 },
       { id: 'jump-landing', kind: 'landing', progress: .76 },
@@ -92,6 +104,10 @@ const templates: Readonly<Record<BasicBipedMotionTemplateId, TemplateDefinition>
   },
   wave: {
     id: 'builtin-biped-wave', nameZh: '招手', nameEn: 'Friendly Wave', durationMs: 3200, loopMode: 'once',
+    contacts: [
+      { contactId: 'foot.left', start: 0, end: 1, confidence: .9 },
+      { contactId: 'foot.right', start: 0, end: 1, confidence: .9 },
+    ],
     events: [
       { id: 'wave-peak-1', kind: 'wave-peak', progress: .43 },
       { id: 'wave-peak-2', kind: 'wave-peak', progress: .59 },
@@ -109,8 +125,8 @@ const templates: Readonly<Record<BasicBipedMotionTemplateId, TemplateDefinition>
   'straight-punch': {
     id: 'builtin-biped-straight-punch', nameZh: '直拳组合', nameEn: 'Straight Punch Combo', durationMs: 4000, loopMode: 'once',
     contacts: [
-      { contactId: 'foot.left', start: .12, end: .9, confidence: .78 },
-      { contactId: 'foot.right', start: .12, end: .9, confidence: .82 },
+      { contactId: 'foot.left', start: 0, end: 1, confidence: .82 },
+      { contactId: 'foot.right', start: 0, end: 1, confidence: .9 },
     ],
     events: [
       { id: 'lead-hit', kind: 'hit', progress: .44 },

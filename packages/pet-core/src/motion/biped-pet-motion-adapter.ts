@@ -81,10 +81,22 @@ export interface AdaptedBipedPetPose {
 }
 
 export interface SampledBipedPetMotion {
+  sourceMotionId: string
+  clipHash: string
+  durationMs: number
+  loopMode: StudioMotionLoopMode
   resolvedTimeMs: number
   bones: readonly { boneId: string, rotation: MotionQuaternion }[]
   rootPosition: RigVector3
   activeContacts: readonly string[]
+  contactStates: readonly SampledBipedPetContactState[]
+}
+
+export interface SampledBipedPetContactState {
+  contactId: string
+  phase: 'acquiring' | 'locked' | 'releasing'
+  weight: number
+  confidence: number
 }
 
 type RotationDistribution = readonly (readonly [boneId: string, weight: number])[]
@@ -386,16 +398,48 @@ function sampleBoneTrack(track: BipedPetBoneQuaternionTrack, timeMs: number): Mo
   return slerpMotionQuaternion(previous.value, next.value, progress)
 }
 
+const CONTACT_FADE_MS = 80
+
+function sampleContactState(contact: BipedPetMotionContactCandidate, timeMs: number): SampledBipedPetContactState | undefined {
+  const durationMs = contact.endMs - contact.startMs
+  if (durationMs <= 0 || timeMs < contact.startMs || timeMs > contact.endMs) return undefined
+  const fadeMs = Math.min(CONTACT_FADE_MS, durationMs / 2)
+  if (timeMs < contact.startMs + fadeMs) {
+    return { contactId: contact.contactId, phase: 'acquiring', weight: clamp((timeMs - contact.startMs) / fadeMs, 0, 1), confidence: contact.confidence }
+  }
+  if (timeMs >= contact.endMs - fadeMs) {
+    return { contactId: contact.contactId, phase: 'releasing', weight: clamp((contact.endMs - timeMs) / fadeMs, 0, 1), confidence: contact.confidence }
+  }
+  return { contactId: contact.contactId, phase: 'locked', weight: 1, confidence: contact.confidence }
+}
+
+function sampleContactStates(contacts: readonly BipedPetMotionContactCandidate[], timeMs: number): readonly SampledBipedPetContactState[] {
+  const states = new Map<string, SampledBipedPetContactState>()
+  for (const contact of contacts) {
+    const state = sampleContactState(contact, timeMs)
+    const previous = state && states.get(state.contactId)
+    if (state && (!previous || state.weight > previous.weight)) states.set(state.contactId, state)
+  }
+  return [...states.values()].sort((left, right) => left.contactId.localeCompare(right.contactId))
+}
+
 /** 在任意时间采样 Clip；blocked 输入始终返回可直接忽略的空姿态。 */
 export function sampleBipedPetMotion(clip: BipedPetQuaternionClip, timeMs: number): SampledBipedPetMotion {
-  if (clip.status !== 'ready') return { resolvedTimeMs: 0, bones: [], rootPosition: [0, 0, 0], activeContacts: [] }
   const resolved = resolveMotionTime(timeMs, clip.durationMs, clip.loopMode)
-  return {
+  const identity = {
+    sourceMotionId: clip.sourceMotionId,
+    clipHash: clip.hash,
+    durationMs: clip.durationMs,
+    loopMode: clip.loopMode,
     resolvedTimeMs: resolved.resolvedTimeMs,
+  }
+  if (clip.status !== 'ready') return { ...identity, bones: [], rootPosition: [0, 0, 0], activeContacts: [], contactStates: [] }
+  const contactStates = sampleContactStates(clip.contacts, resolved.resolvedTimeMs)
+  return {
+    ...identity,
     bones: clip.boneTracks.map(track => ({ boneId: track.boneId, rotation: sampleBoneTrack(track, resolved.resolvedTimeMs) })),
     rootPosition: sampleVectorTrack(clip.rootPositionTrack, resolved.resolvedTimeMs),
-    activeContacts: clip.contacts
-      .filter(contact => resolved.resolvedTimeMs >= contact.startMs && resolved.resolvedTimeMs <= contact.endMs)
-      .map(contact => contact.contactId),
+    activeContacts: contactStates.filter(contact => contact.weight > 0).map(contact => contact.contactId),
+    contactStates,
   }
 }

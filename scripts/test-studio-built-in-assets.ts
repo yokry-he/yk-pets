@@ -4,7 +4,7 @@
  * Verifies that built-in Studio motions and props normalize cleanly, use stable unique ids, and resolve motion prop dependencies.
  */
 import assert from 'node:assert/strict'
-import { compileBipedPetMotion, isCloudFoxRigChannelId, normalizeMotionAsset, normalizePropAsset } from '../packages/pet-core/src/index.ts'
+import { compileBipedPetMotion, isCloudFoxRigChannelId, normalizeMotionAsset, normalizePropAsset, sampleBipedPetMotion } from '../packages/pet-core/src/index.ts'
 import { BASIC_BIPED_STUDIO_MOTIONS, createBasicBipedStudioMotion } from '../apps/playground/app/domain/studio-basic-biped-motions.ts'
 import { BUILT_IN_STUDIO_MOTIONS } from '../apps/playground/app/domain/studio-built-in-motions.ts'
 import { BUILT_IN_STUDIO_PROPS } from '../apps/playground/app/domain/studio-built-in-props.ts'
@@ -71,8 +71,22 @@ assert.equal(fastWalk.durationMs, 600)
 assert.equal(fastWalk.loopMode, 'once')
 const jumpClip = compileBipedPetMotion(BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-jump'))
 const walkClip = compileBipedPetMotion(BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-walk'))
+const idleClip = compileBipedPetMotion(BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-idle'))
+const waveClip = compileBipedPetMotion(BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-wave'))
+const punchClip = compileBipedPetMotion(BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-straight-punch'))
 assert.deepEqual(jumpClip.events.map(item => item.kind), ['takeoff', 'landing'])
-assert.deepEqual(walkClip.contacts.map(item => item.contactId), ['foot.left', 'foot.right'])
+for (const clip of [idleClip, waveClip]) {
+  assert.deepEqual(sampleBipedPetMotion(clip, clip.durationMs / 2).activeContacts, ['foot.left', 'foot.right'])
+}
+assert.deepEqual(sampleBipedPetMotion(jumpClip, 200).activeContacts, ['foot.left', 'foot.right'])
+assert.deepEqual(sampleBipedPetMotion(jumpClip, 1200).activeContacts, [])
+assert.deepEqual(sampleBipedPetMotion(jumpClip, 2100).activeContacts, ['foot.left', 'foot.right'])
+assert.deepEqual(sampleBipedPetMotion(walkClip, 40).activeContacts, ['foot.left', 'foot.right'])
+assert.deepEqual(sampleBipedPetMotion(walkClip, 300).activeContacts, ['foot.left'])
+assert.deepEqual(sampleBipedPetMotion(walkClip, 640).activeContacts, ['foot.right'])
+assert.deepEqual(sampleBipedPetMotion(walkClip, 1180).activeContacts, ['foot.left', 'foot.right'])
+assert.ok(punchClip.contacts.some(item => item.contactId === 'foot.left'))
+assert.ok(punchClip.contacts.some(item => item.contactId === 'foot.right'))
 
 assert.ok(BUILT_IN_STUDIO_MOTIONS.some(item => item.propIds.includes('builtin-nebula-staff')))
 assert.ok(BUILT_IN_STUDIO_MOTIONS.some(item => item.propIds.includes('builtin-glow-sticks')))

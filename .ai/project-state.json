@@ -99,6 +99,8 @@
     "bipedPetConstrainedFabrikBacktrackingFallbackComplete": true,
     "bipedPetConstrainedFabrikCyclicConstructionComplete": true,
     "bipedPetConstrainedFabrikZeroDistanceBoundaryComplete": true,
+    "bipedPetDeterministicContactPhasesComplete": true,
+    "bipedPetBasicMotionContactDataComplete": true,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
     "bipedPetRootMotionComplete": false,
@@ -201,7 +203,9 @@
     "biped-pet-hybrid-ik-design",
     "biped-pet-hybrid-ik-plan",
     "biped-pet-hybrid-ik-compilation-propagation",
-    "biped-pet-analytic-two-bone-ik-lower-bound-tolerance-corrected"
+    "biped-pet-analytic-two-bone-ik-lower-bound-tolerance-corrected",
+    "biped-pet-deterministic-contact-phases",
+    "biped-pet-basic-motion-contact-data"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
