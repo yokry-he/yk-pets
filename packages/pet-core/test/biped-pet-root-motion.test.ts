@@ -12,6 +12,7 @@ import {
   createStudioMotionAsset,
   normalizeMotionAsset,
   normalizeBipedPetRootMotion,
+  normalizeMotionDurationMs,
   sampleBipedPetMotion,
 } from '../src/index.ts'
 
@@ -22,9 +23,12 @@ type RootMotionSampler = (input: unknown) => {
   iteration: number
   cumulativeLocal: readonly [number, number, number]
   cumulativeWorld: readonly [number, number, number]
+  appliedLocal: readonly [number, number, number]
+  appliedWorld: readonly [number, number, number]
   deltaLocal: readonly [number, number, number]
   deltaWorld: readonly [number, number, number]
   cumulativeTurnRadians: number
+  appliedTurnRadians: number
   deltaTurnRadians: number
   linearVelocity: readonly [number, number, number]
   angularVelocity: number
@@ -41,17 +45,24 @@ function sampleRootMotion(input: unknown): ReturnType<RootMotionSampler> {
 }
 
 function assertFiniteSample(sample: ReturnType<RootMotionSampler>) {
+  const vectors = [
+    sample.cumulativeLocal,
+    sample.cumulativeWorld,
+    sample.appliedLocal,
+    sample.appliedWorld,
+    sample.deltaLocal,
+    sample.deltaWorld,
+    sample.linearVelocity,
+  ]
+  for (const vector of vectors) assert.ok(Array.isArray(vector) && vector.length === 3, 'Root Motion 向量输出必须完整')
   for (const value of [
     sample.requestedTimeMs,
     sample.resolvedTimeMs,
     sample.iteration,
-    ...sample.cumulativeLocal,
-    ...sample.cumulativeWorld,
-    ...sample.deltaLocal,
-    ...sample.deltaWorld,
+    ...vectors.flat(),
     sample.cumulativeTurnRadians,
+    sample.appliedTurnRadians,
     sample.deltaTurnRadians,
-    ...sample.linearVelocity,
     sample.angularVelocity,
     sample.motionIntensity,
     sample.landingImpulse,
@@ -650,6 +661,31 @@ test('同一历史 V1 Clip 从 ready 切到 blocked 后不得复用 travel 缓�
   assert.ok(Object.isFrozen(blockedSample.rootMotion))
 })
 
+test('历史 Clip 原地修改非 canonical Root Motion 后不得命中陈旧 identity 缓存', () => {
+  const current = compileBipedPetMotion({ ...fixtureMotion, extensions: undefined })
+  const rootMotion = {
+    mode: 'travel' as const,
+    distance: .4,
+    turnRadians: .1,
+    verticalMode: 'grounded' as const,
+    jumpHeight: 0,
+    windows: [{ id: 'mutable', kind: 'travel' as const, startMs: 0, endMs: 1200, weight: 1 }],
+    vfxTags: ['speed-trail' as const],
+  }
+  const clip = { ...current, rootMotion }
+  const first = sampleBipedPetMotion(clip, 100).rootMotion
+
+  rootMotion.distance = .9
+  rootMotion.windows[0]!.weight = .25
+  const second = sampleBipedPetMotion(clip, 100).rootMotion
+
+  assert.notEqual(second, first)
+  assert.equal(second.distance, .9)
+  assert.equal(second.windows[0]?.weight, .25)
+  assert.equal(first.distance, .4)
+  assert.equal(first.windows[0]?.weight, 1)
+})
+
 test('同一历史 V1 Clip 从 blocked 切回 ready 后不得复用原地缓存', () => {
   const current = compileBipedPetMotion({ ...fixtureMotion, extensions: undefined })
   const travelRootMotion = {
@@ -700,7 +736,7 @@ test('同一历史 V1 Clip 修改动作时长后会重新钳制窗口并冻结�
   assert.ok(Object.isFrozen(shortened.windows[0]))
 })
 
-test('历史 V1 Clip 的非有限或非正时长不会命中旧 ready 缓存', () => {
+test('历史 V1 Clip 的非有限或非正时长按 canonical duration 重建且不命中旧 ready 缓存', () => {
   const current = compileBipedPetMotion({ ...fixtureMotion, extensions: undefined })
   const clip = {
     ...current,
@@ -720,12 +756,14 @@ test('历史 V1 Clip 的非有限或非正时长不会命中旧 ready 缓存', (
   mutableClip.durationMs = Number.NaN
   const nonFinite = sampleBipedPetMotion(clip, 100).rootMotion
   const repeatedNonFinite = sampleBipedPetMotion(clip, 100).rootMotion
-  assert.deepEqual(nonFinite, canonicalInPlaceRootMotion)
+  assert.equal(nonFinite.mode, 'travel')
+  assert.equal(nonFinite.windows[0]?.endMs, 1000)
   assert.equal(repeatedNonFinite, nonFinite)
 
   mutableClip.durationMs = 0
   const nonPositive = sampleBipedPetMotion(clip, 100).rootMotion
-  assert.deepEqual(nonPositive, canonicalInPlaceRootMotion)
+  assert.equal(nonPositive.mode, 'travel')
+  assert.equal(nonPositive.windows[0]?.endMs, 100)
   assert.notEqual(nonPositive, nonFinite)
 })
 
@@ -836,7 +874,14 @@ test('累计位移与帧率无关并在 loop 接缝连续，回拖与大跳只�
   const sixty = sampleRootMotion({ ...travelSampleInput, previousRequestedTimeMs: 300, requestedTimeMs: 600 })
   assert.deepEqual(thirty.cumulativeLocal, sixty.cumulativeLocal)
 
-  const nextCycle = sampleRootMotion({ ...travelSampleInput, previousRequestedTimeMs: 1190, requestedTimeMs: 1210 })
+  const beforeSeam = sampleRootMotion({ ...travelSampleInput, requestedTimeMs: 1190, previousRequestedTimeMs: undefined })
+  const nextCycle = sampleRootMotion({
+    ...travelSampleInput,
+    previousRequestedTimeMs: 1190,
+    previousAppliedLocal: beforeSeam.appliedLocal,
+    previousAppliedTurnRadians: beforeSeam.appliedTurnRadians,
+    requestedTimeMs: 1210,
+  })
   assert.ok(nextCycle.deltaLocal[0] > 0)
   assert.equal(nextCycle.iteration, 1)
 
@@ -849,15 +894,27 @@ test('累计位移与帧率无关并在 loop 接缝连续，回拖与大跳只�
   assert.equal(first.status, 'reset')
   assert.deepEqual(first.deltaLocal, [0, 0, 0])
 
-  const paused = sampleRootMotion({ ...travelSampleInput, previousRequestedTimeMs: 600 })
+  const paused = sampleRootMotion({
+    ...travelSampleInput,
+    previousRequestedTimeMs: 600,
+    previousAppliedLocal: half.appliedLocal,
+    previousAppliedTurnRadians: half.appliedTurnRadians,
+  })
   assert.equal(paused.status, 'solved')
   assert.deepEqual(paused.deltaLocal, [0, 0, 0])
   assert.deepEqual(paused.linearVelocity, [0, 0, 0])
   assert.equal(paused.landingImpulse, 0)
   assert.equal(paused.brakeIntensity, 0)
 
-  // 连续阈值与足锁控制器一致：min(250ms, duration × 0.25)。超过后由调用方重新建立历史身份。
-  const largeJump = sampleRootMotion({ ...travelSampleInput, previousRequestedTimeMs: 0, requestedTimeMs: 251 })
+  // 连续阈值与足锁控制器一致：max(250ms, duration × 0.5)。超过后由调用方重新建立历史身份。
+  const start = sampleRootMotion({ ...travelSampleInput, requestedTimeMs: 0, previousRequestedTimeMs: undefined })
+  const largeJump = sampleRootMotion({
+    ...travelSampleInput,
+    previousRequestedTimeMs: 0,
+    previousAppliedLocal: start.appliedLocal,
+    previousAppliedTurnRadians: start.appliedTurnRadians,
+    requestedTimeMs: 601,
+  })
   assert.equal(largeJump.status, 'reset')
   assert.deepEqual(largeJump.deltaLocal, [0, 0, 0])
 })
@@ -878,21 +935,34 @@ test('once 保持终点，ping-pong 使用明确的往返累计语义', () => {
   assert.equal(onceEnd.cumulativeLocal[0], .42 * 4)
   assert.deepEqual(oncePaused.deltaLocal, [0, 0, 0])
 
+  const turnPoint = sampleRootMotion({ ...travelSampleInput, loopMode: 'ping-pong', requestedTimeMs: 1200, previousRequestedTimeMs: undefined })
   const returning = sampleRootMotion({
     ...travelSampleInput,
     loopMode: 'ping-pong',
     previousRequestedTimeMs: 1200,
+    previousAppliedLocal: turnPoint.appliedLocal,
+    previousAppliedTurnRadians: turnPoint.appliedTurnRadians,
     requestedTimeMs: 1210,
   })
   assert.equal(returning.iteration, 1)
   assert.ok(returning.deltaLocal[0] < 0)
   assert.ok(returning.linearVelocity[0] < 0)
 
+  const noHorizontalDefinition = { ...travelDefinition, distance: 1, turnRadians: 1, windows: [] }
+  const noHorizontalPrevious = sampleRootMotion({
+    ...travelSampleInput,
+    definition: noHorizontalDefinition,
+    durationMs: 1000,
+    requestedTimeMs: 999,
+    previousRequestedTimeMs: undefined,
+  })
   const noHorizontalWindows = sampleRootMotion({
     ...travelSampleInput,
-    definition: { ...travelDefinition, distance: 1, turnRadians: 1, windows: [] },
+    definition: noHorizontalDefinition,
     durationMs: 1000,
     previousRequestedTimeMs: 999,
+    previousAppliedLocal: noHorizontalPrevious.appliedLocal,
+    previousAppliedTurnRadians: noHorizontalPrevious.appliedTurnRadians,
     requestedTimeMs: 1000,
   })
   assert.equal(noHorizontalWindows.status, 'solved')
@@ -922,26 +992,32 @@ test('ballistic 窗口给出连续高度、确定阶段与单次落地冲量', (
   assert.deepEqual([sampleAt(100).cumulativeLocal[1], sampleAt(1100).cumulativeLocal[1]], [0, 0])
   assert.deepEqual([sampleAt(100).phase, sampleAt(1100).phase], ['grounded', 'grounded'])
   assert.deepEqual([sampleAt(200).cumulativeLocal[1], sampleAt(1000).cumulativeLocal[1]], [0, 0])
-  assert.equal(sampleAt(200).phase, 'takeoff')
+  assert.equal(sampleAt(200).phase, 'grounded')
   assert.equal(sampleAt(400).phase, 'airborne')
   assert.equal(sampleAt(600).phase, 'airborne')
   assert.equal(sampleAt(800).phase, 'landing')
-  assert.equal(sampleAt(1000).phase, 'landing')
+  assert.equal(sampleAt(1000).phase, 'grounded')
   const quarterProgress = smoothstepForRootMotionTest(.25)
   assert.ok(Math.abs(sampleAt(400).cumulativeLocal[1] - 4 * 2 * quarterProgress * (1 - quarterProgress)) < 1e-12)
   assert.ok(Math.abs(sampleAt(600).cumulativeLocal[1] - 2) < 1e-12)
   assert.ok(Math.abs(sampleAt(800).cumulativeLocal[1] - 4 * 2 * quarterProgress * (1 - quarterProgress)) < 1e-12)
 
+  const beforeLandingPhase = sampleAt(799)
   const enteringLanding = sampleRootMotion({
     ...travelSampleInput,
     definition,
     previousRequestedTimeMs: 799,
+    previousAppliedLocal: beforeLandingPhase.appliedLocal,
+    previousAppliedTurnRadians: beforeLandingPhase.appliedTurnRadians,
     requestedTimeMs: 801,
   })
+  const beforeLandingPoint = sampleAt(999)
   const landingPoint = sampleRootMotion({
     ...travelSampleInput,
     definition,
     previousRequestedTimeMs: 999,
+    previousAppliedLocal: beforeLandingPoint.appliedLocal,
+    previousAppliedTurnRadians: beforeLandingPoint.appliedTurnRadians,
     requestedTimeMs: 1001,
   })
   assert.equal(enteringLanding.landingImpulse, 0)
@@ -965,10 +1041,20 @@ test('ballistic 窗口给出连续高度、确定阶段与单次落地冲量', (
     durationMs: 1000,
     loopMode: 'ping-pong' as const,
   }
-  const reverseTakeoff = sampleRootMotion({ ...pingPongInput, previousRequestedTimeMs: 1000, requestedTimeMs: 1010 })
-  const reversePeak = sampleRootMotion({ ...pingPongInput, previousRequestedTimeMs: 1499, requestedTimeMs: 1500 })
-  const reverseLanding = sampleRootMotion({ ...pingPongInput, previousRequestedTimeMs: 1980, requestedTimeMs: 1990 })
-  const reverseTouchdown = sampleRootMotion({ ...pingPongInput, previousRequestedTimeMs: 1999, requestedTimeMs: 2000 })
+  const continuousPingPong = (previousRequestedTimeMs: number, requestedTimeMs: number) => {
+    const previous = sampleRootMotion({ ...pingPongInput, requestedTimeMs: previousRequestedTimeMs, previousRequestedTimeMs: undefined })
+    return sampleRootMotion({
+      ...pingPongInput,
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+  const reverseTakeoff = continuousPingPong(1000, 1010)
+  const reversePeak = continuousPingPong(1499, 1500)
+  const reverseLanding = continuousPingPong(1980, 1990)
+  const reverseTouchdown = continuousPingPong(1999, 2000)
   assert.equal(reverseTakeoff.phase, 'takeoff')
   assert.ok(reverseTakeoff.deltaLocal[1] > 0)
   assert.equal(reversePeak.phase, 'airborne')
@@ -994,11 +1080,19 @@ test('角色高度、权重、朝向和转向按绝对目标确定缩放', () =>
   const facing = sampleRootMotion({ ...travelSampleInput, facingRadians: Math.PI / 2, previousRequestedTimeMs: 600 })
   assert.ok(Math.abs(facing.cumulativeWorld[0]) < 1e-12)
   assert.ok(Math.abs(facing.cumulativeWorld[2] + facing.cumulativeLocal[0]) < 1e-12)
+  const facingPrevious = sampleRootMotion({
+    ...travelSampleInput,
+    facingRadians: Math.PI / 2,
+    requestedTimeMs: 599,
+    previousRequestedTimeMs: undefined,
+  })
   const facingDelta = sampleRootMotion({
     ...travelSampleInput,
     facingRadians: Math.PI / 2,
     requestedTimeMs: 600,
     previousRequestedTimeMs: 599,
+    previousAppliedLocal: facingPrevious.appliedLocal,
+    previousAppliedTurnRadians: facingPrevious.appliedTurnRadians,
   })
   assert.ok(facingDelta.deltaLocal[0] > 0)
   assert.ok(Math.abs(facingDelta.deltaWorld[0]) < 1e-12)
@@ -1106,67 +1200,676 @@ test('单帧位移与转向预算只钳制增量，不污染累计目标', () =>
     definition,
     durationMs: 1000,
     previousRequestedTimeMs: 0,
+    previousAppliedLocal: [0, 0, 0],
+    previousAppliedTurnRadians: 0,
     requestedTimeMs: 10,
   })
   assert.equal(sample.status, 'clamped')
   assert.equal(sample.cumulativeLocal[0], 16)
+  assert.equal(sample.appliedLocal[0], 1)
   assert.equal(Math.hypot(...sample.deltaLocal), 1)
   assert.equal(sample.cumulativeTurnRadians, Math.PI * 2)
+  assert.equal(sample.appliedTurnRadians, Math.PI / 4)
   assert.equal(Math.abs(sample.deltaTurnRadians), Math.PI / 4)
 })
 
-test('足底残差仅提供角色高度 2% 内的局部修正且非法残差阻塞', () => {
+test('target 与 applied 分离后按安全预算追赶且速度来自实际应用轨迹', () => {
+  const definition = {
+    mode: 'travel' as const,
+    distance: 4,
+    turnRadians: Math.PI * 2,
+    verticalMode: 'grounded' as const,
+    jumpHeight: 0,
+    windows: [{ id: 'burst', kind: 'warp' as const, startMs: 0, endMs: 10, weight: 1 }],
+    vfxTags: [] as const,
+  }
+  let previousTimeMs = 0
+  let previousAppliedLocal = [0, 0, 0] as const
+  let previousAppliedTurnRadians = 0
+  for (let requestedTimeMs = 10; requestedTimeMs <= 260; requestedTimeMs += 10) {
+    const sample = sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      durationMs: 1000,
+      loopMode: 'once',
+      requestedTimeMs,
+      previousRequestedTimeMs: previousTimeMs,
+      previousAppliedLocal,
+      previousAppliedTurnRadians,
+    })
+    assert.equal(sample.cumulativeLocal[0], 16)
+    assert.ok(Math.hypot(...sample.deltaLocal) <= 1 + 1e-12)
+    assert.ok(Math.abs(sample.deltaTurnRadians) <= Math.PI / 4 + 1e-12)
+    assert.deepEqual(sample.appliedLocal, [
+      previousAppliedLocal[0] + sample.deltaLocal[0],
+      previousAppliedLocal[1] + sample.deltaLocal[1],
+      previousAppliedLocal[2] + sample.deltaLocal[2],
+    ])
+    assert.ok(Math.abs(sample.linearVelocity[0] - sample.deltaWorld[0] / .01) < 1e-9)
+    previousTimeMs = requestedTimeMs
+    previousAppliedLocal = sample.appliedLocal
+    previousAppliedTurnRadians = sample.appliedTurnRadians
+  }
+  assert.deepEqual(previousAppliedLocal, [16, 0, 0])
+  assert.equal(previousAppliedTurnRadians, Math.PI * 2)
+
+  const reset = sampleRootMotion({
+    ...travelSampleInput,
+    definition,
+    durationMs: 1000,
+    loopMode: 'once',
+    requestedTimeMs: 10,
+    previousRequestedTimeMs: 0,
+  })
+  assert.equal(reset.status, 'reset')
+  assert.deepEqual(reset.appliedLocal, reset.cumulativeLocal)
+  assert.equal(reset.appliedTurnRadians, reset.cumulativeTurnRadians)
+  assert.deepEqual(reset.deltaLocal, [0, 0, 0])
+  assert.deepEqual(reset.linearVelocity, [0, 0, 0])
+})
+
+test('100/200ms 短动作在 24/30/60FPS 连续采样且正常轨迹最终一致', () => {
+  const simulate = (durationMs: 100 | 200, fps: 24 | 30 | 60) => {
+    const definition = {
+      mode: 'travel' as const,
+      distance: .1,
+      turnRadians: .05,
+      verticalMode: 'grounded' as const,
+      jumpHeight: 0,
+      windows: [{ id: 'short-loop', kind: 'travel' as const, startMs: 0, endMs: durationMs, weight: 1 }],
+      vfxTags: [] as const,
+    }
+    const first = sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      durationMs,
+      requestedTimeMs: 0,
+      previousRequestedTimeMs: undefined,
+    })
+    assert.equal(first.status, 'reset')
+    let previousTimeMs = 0
+    let previousAppliedLocal = first.appliedLocal
+    let previousAppliedTurnRadians = first.appliedTurnRadians
+    let continuousSamples = 0
+    for (let frame = 1; frame <= fps; frame += 1) {
+      const requestedTimeMs = frame * 1000 / fps
+      const sample = sampleRootMotion({
+        ...travelSampleInput,
+        definition,
+        durationMs,
+        requestedTimeMs,
+        previousRequestedTimeMs: previousTimeMs,
+        previousAppliedLocal,
+        previousAppliedTurnRadians,
+      })
+      assert.ok(sample.status === 'solved' || sample.status === 'clamped', `${durationMs}ms@${fps}FPS 不得永久 reset`)
+      assert.deepEqual(sample.appliedLocal, [
+        previousAppliedLocal[0] + sample.deltaLocal[0],
+        previousAppliedLocal[1] + sample.deltaLocal[1],
+        previousAppliedLocal[2] + sample.deltaLocal[2],
+      ])
+      previousTimeMs = requestedTimeMs
+      previousAppliedLocal = sample.appliedLocal
+      previousAppliedTurnRadians = sample.appliedTurnRadians
+      continuousSamples += 1
+    }
+    return { continuousSamples, appliedLocal: previousAppliedLocal, appliedTurnRadians: previousAppliedTurnRadians }
+  }
+
+  for (const durationMs of [100, 200] as const) {
+    const samples = ([24, 30, 60] as const).map(fps => simulate(durationMs, fps))
+    assert.deepEqual(samples.map(sample => sample.continuousSamples), [24, 30, 60])
+    for (const sample of samples.slice(1)) {
+      assert.ok(Math.abs(sample.appliedLocal[0] - samples[0]!.appliedLocal[0]) < 1e-9)
+      assert.ok(Math.abs(sample.appliedTurnRadians - samples[0]!.appliedTurnRadians) < 1e-9)
+    }
+  }
+})
+
+test('足底残差是仅限有效移动窗的局部水平反馈并随权重与追赶误差连续缩放', () => {
   const inPlace = { ...travelDefinition, mode: 'in-place' as const, distance: 0, turnRadians: 0, windows: [] as const }
-  const corrected = sampleRootMotion({
+  const inPlaceSample = sampleRootMotion({
     ...travelSampleInput,
     definition: inPlace,
     previousRequestedTimeMs: 0,
+    previousAppliedLocal: [0, 0, 0],
+    previousAppliedTurnRadians: 0,
     requestedTimeMs: 16,
     footResidual: [1e9, -1e9, 1e9] as const,
   })
-  assert.ok(Math.hypot(...corrected.deltaLocal) <= .02 * 4 + 1e-12)
-  assert.deepEqual(corrected.cumulativeLocal, [0, 0, 0])
+  assert.deepEqual(inPlaceSample.deltaLocal, [0, 0, 0])
+  assert.deepEqual(inPlaceSample.appliedLocal, [0, 0, 0])
 
-  const extreme = sampleRootMotion({
+  const ballisticOnly = sampleRootMotion({
     ...travelSampleInput,
-    definition: inPlace,
+    definition: {
+      ...travelDefinition,
+      distance: 0,
+      verticalMode: 'ballistic' as const,
+      jumpHeight: .5,
+      windows: [{ id: 'jump', kind: 'ballistic' as const, startMs: 0, endMs: 1200, weight: 1 }],
+    },
     previousRequestedTimeMs: 0,
+    previousAppliedLocal: [0, 0, 0],
+    previousAppliedTurnRadians: 0,
     requestedTimeMs: 16,
     footResidual: [Number.MAX_VALUE, -Number.MAX_VALUE, Number.MAX_VALUE] as const,
   })
-  assert.notEqual(extreme.status, 'blocked')
-  assert.ok(Math.hypot(...extreme.deltaLocal) <= .02 * 4 + 1e-12)
+  assert.equal(ballisticOnly.deltaLocal[0], 0)
+  assert.equal(ballisticOnly.deltaLocal[2], 0)
 
-  const integrateResidual = (fps: number) => {
-    let distance = 0
-    let velocity = 0
-    let intensity = 0
-    for (let frame = 1; frame <= fps; frame += 1) {
-      const currentTimeMs = frame * 1000 / fps
-      const sample = sampleRootMotion({
-        ...travelSampleInput,
-        definition: inPlace,
-        characterHeight: 4,
-        previousRequestedTimeMs: (frame - 1) * 1000 / fps,
-        requestedTimeMs: currentTimeMs,
-        footResidual: [.01, 0, 0] as const,
-      })
-      distance += sample.deltaLocal[0]
-      velocity = sample.linearVelocity[0]
-      intensity = sample.motionIntensity
-    }
-    return { distance, velocity, intensity }
+  const gapDefinition = {
+    ...travelDefinition,
+    distance: 1,
+    windows: [{ id: 'early', kind: 'travel' as const, startMs: 0, endMs: 100, weight: 1 }],
   }
-  const thirtyFps = integrateResidual(30)
-  const sixtyFps = integrateResidual(60)
-  assert.ok(Math.abs(thirtyFps.distance - .01 * .25) < 1e-12)
-  assert.ok(Math.abs(thirtyFps.distance - sixtyFps.distance) < 1e-12)
-  assert.ok(Math.abs(thirtyFps.velocity - sixtyFps.velocity) < 1e-12)
-  assert.ok(Math.abs(thirtyFps.intensity - sixtyFps.intensity) < 1e-12)
+  const gapTarget = sampleRootMotion({ ...travelSampleInput, definition: gapDefinition, requestedTimeMs: 200, previousRequestedTimeMs: undefined })
+  const gap = sampleRootMotion({
+    ...travelSampleInput,
+    definition: gapDefinition,
+    requestedTimeMs: 216,
+    previousRequestedTimeMs: 200,
+    previousAppliedLocal: gapTarget.appliedLocal,
+    previousAppliedTurnRadians: gapTarget.appliedTurnRadians,
+    footResidual: [1e9, 1e9, 1e9] as const,
+  })
+  assert.deepEqual(gap.deltaLocal, [0, 0, 0])
+
+  const activeDefinition = {
+    ...travelDefinition,
+    distance: 1,
+    windows: [{ id: 'active', kind: 'travel' as const, startMs: 0, endMs: 1200, weight: 1 }],
+  }
+  const correctionAtWeight = (actionWeight: number, residual: readonly [number, number, number]) => {
+    const previous = sampleRootMotion({
+      ...travelSampleInput,
+      definition: activeDefinition,
+      actionWeight,
+      requestedTimeMs: 400,
+      previousRequestedTimeMs: undefined,
+    })
+    const baseline = sampleRootMotion({
+      ...travelSampleInput,
+      definition: activeDefinition,
+      actionWeight,
+      requestedTimeMs: 416,
+      previousRequestedTimeMs: 400,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+      footResidual: [0, 0, 0],
+    })
+    const corrected = sampleRootMotion({
+      ...travelSampleInput,
+      definition: activeDefinition,
+      actionWeight,
+      requestedTimeMs: 416,
+      previousRequestedTimeMs: 400,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+      footResidual: residual,
+    })
+    return {
+      correction: corrected.deltaLocal.map((value, index) => value - baseline.deltaLocal[index]!) as unknown as readonly [number, number, number],
+      corrected,
+    }
+  }
+  const full = correctionAtWeight(1, [1, 0, 1])
+  const withVerticalResidual = correctionAtWeight(1, [1, 1e9, 1])
+  const withNonFiniteVerticalResidual = correctionAtWeight(1, [1, Number.NaN, 1])
+  const throwingVerticalResidual = new Proxy([1, 0, 1], {
+    get(target, property, receiver) {
+      if (property === '1') throw new Error('Y 分量不应被读取')
+      return Reflect.get(target, property, receiver)
+    },
+  }) as unknown as readonly [number, number, number]
+  const withThrowingVerticalResidual = correctionAtWeight(1, throwingVerticalResidual)
+  const low = correctionAtWeight(.01, [1, 0, 1])
+  const zero = correctionAtWeight(0, [1, 0, 1])
+  assert.ok(Math.hypot(full.correction[0], full.correction[2]) > 0)
+  assert.deepEqual(withVerticalResidual.correction, full.correction)
+  assert.deepEqual(withNonFiniteVerticalResidual.correction, full.correction)
+  assert.deepEqual(withThrowingVerticalResidual.correction, full.correction)
+  assert.ok(Math.hypot(low.correction[0], low.correction[2]) < Math.hypot(full.correction[0], full.correction[2]) * .02)
+  assert.deepEqual(zero.correction, [0, 0, 0])
+  assert.equal(full.correction[1], 0)
+  assert.deepEqual(full.corrected.cumulativeLocal, sampleRootMotion({
+    ...travelSampleInput,
+    definition: activeDefinition,
+    requestedTimeMs: 416,
+    previousRequestedTimeMs: 416,
+  }).cumulativeLocal)
+
+  const paused = sampleRootMotion({
+    ...travelSampleInput,
+    definition: activeDefinition,
+    requestedTimeMs: 400,
+    previousRequestedTimeMs: 400,
+    previousAppliedLocal: [1, 0, 0],
+    previousAppliedTurnRadians: 0,
+    footResidual: [1e9, 1e9, 1e9],
+  })
+  assert.deepEqual(paused.deltaLocal, [0, 0, 0])
+
+  const boundaryDefinition = {
+    ...activeDefinition,
+    windows: [{ id: 'bounded-active', kind: 'travel' as const, startMs: 100, endMs: 500, weight: 1 }],
+  }
+  const intervalSample = (previousRequestedTimeMs: number, requestedTimeMs: number, footResidual: readonly [number, number, number]) => {
+    const previous = sampleRootMotion({
+      ...travelSampleInput,
+      definition: boundaryDefinition,
+      loopMode: 'once',
+      requestedTimeMs: previousRequestedTimeMs,
+      previousRequestedTimeMs: undefined,
+    })
+    return sampleRootMotion({
+      ...travelSampleInput,
+      definition: boundaryDefinition,
+      loopMode: 'once',
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+      footResidual,
+    })
+  }
+  for (const [previousRequestedTimeMs, requestedTimeMs] of [[99, 101], [499, 501]] as const) {
+    const baseline = intervalSample(previousRequestedTimeMs, requestedTimeMs, [0, 0, 0])
+    const crossingBoundary = intervalSample(previousRequestedTimeMs, requestedTimeMs, [1e9, 0, 1e9])
+    assert.deepEqual(crossingBoundary.deltaLocal, baseline.deltaLocal, '跨入或跨出移动窗的整帧不得消费残差')
+  }
 
   const invalid = sampleRootMotion({ ...travelSampleInput, footResidual: [Number.NaN, 0, 0] })
   assert.equal(invalid.status, 'blocked')
   assertFiniteSample(invalid)
+})
+
+test('合成弹道只在加权支撑区间真实结束时聚合一次启发式落地强度', () => {
+  const definition = {
+    mode: 'travel' as const,
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic' as const,
+    jumpHeight: .8,
+    windows: [
+      { id: 'main', kind: 'ballistic' as const, startMs: 100, endMs: 900, weight: 1 },
+      { id: 'tiny-overlap', kind: 'ballistic' as const, startMs: 200, endMs: 400, weight: .001 },
+    ],
+    vfxTags: [] as const,
+  }
+  const continuous = (previousRequestedTimeMs: number, requestedTimeMs: number) => {
+    const previous = sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      loopMode: 'once',
+      requestedTimeMs: previousRequestedTimeMs,
+      previousRequestedTimeMs: undefined,
+    })
+    return sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      loopMode: 'once',
+      requestedTimeMs,
+      previousRequestedTimeMs,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+
+  const childEnd = continuous(399, 401)
+  assert.ok(childEnd.cumulativeLocal[1] > 0)
+  assert.notEqual(childEnd.phase, 'grounded')
+  assert.equal(childEnd.landingImpulse, 0)
+  const touchdown = continuous(850, 950)
+  assert.equal(touchdown.phase, 'grounded')
+  assert.ok(touchdown.landingImpulse > 0 && touchdown.landingImpulse <= 1)
+  assert.equal(continuous(950, 950).landingImpulse, 0)
+  assert.equal(sampleRootMotion({
+    ...travelSampleInput,
+    definition,
+    loopMode: 'once',
+    requestedTimeMs: 950,
+    previousRequestedTimeMs: undefined,
+  }).landingImpulse, 0)
+  assert.equal(continuous(950, 850).landingImpulse, 0)
+
+  const adjacentAndRepeated = {
+    ...definition,
+    windows: [
+      { id: 'first', kind: 'ballistic' as const, startMs: 100, endMs: 300, weight: 1 },
+      { id: 'first-copy', kind: 'ballistic' as const, startMs: 100, endMs: 300, weight: .5 },
+      { id: 'adjacent', kind: 'ballistic' as const, startMs: 300, endMs: 500, weight: 1 },
+    ],
+  }
+  const around = (previousRequestedTimeMs: number, requestedTimeMs: number) => {
+    const previous = sampleRootMotion({ ...travelSampleInput, definition: adjacentAndRepeated, loopMode: 'once', requestedTimeMs: previousRequestedTimeMs, previousRequestedTimeMs: undefined })
+    return sampleRootMotion({
+      ...travelSampleInput,
+      definition: adjacentAndRepeated,
+      loopMode: 'once',
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+  assert.equal(around(299, 301).landingImpulse, 0, '相邻窗口之间没有支撑区间，不得制造伪落地')
+  assert.ok(around(499, 501).landingImpulse > 0)
+  assert.equal(around(500, 501).landingImpulse, 0)
+
+  const negligibleTail = {
+    ...definition,
+    windows: [
+      { id: 'main', kind: 'ballistic' as const, startMs: 100, endMs: 900, weight: 1 },
+      { id: 'negligible-tail', kind: 'ballistic' as const, startMs: 899, endMs: 1000, weight: 1e-13 },
+    ],
+  }
+  const tailCrossing = (previousRequestedTimeMs: number, requestedTimeMs: number) => {
+    const previous = sampleRootMotion({ ...travelSampleInput, definition: negligibleTail, loopMode: 'once', requestedTimeMs: previousRequestedTimeMs, previousRequestedTimeMs: undefined })
+    return sampleRootMotion({
+      ...travelSampleInput,
+      definition: negligibleTail,
+      loopMode: 'once',
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+  assert.ok(tailCrossing(899, 901).landingImpulse > 0, '有效主弹道结束时应触发真实落地')
+  assert.equal(tailCrossing(950, 1001).phase, 'grounded')
+  assert.equal(tailCrossing(950, 1001).landingImpulse, 0, '已接地后极小尾窗不得放大为伪落地')
+
+  const thresholdTail = {
+    ...definition,
+    windows: [
+      { id: 'main', kind: 'ballistic' as const, startMs: 100, endMs: 900, weight: 1 },
+      { id: 'threshold-tail', kind: 'ballistic' as const, startMs: 899, endMs: 1000, weight: 2e-12 },
+    ],
+  }
+  const thresholdCrossing = (previousRequestedTimeMs: number, requestedTimeMs: number) => {
+    const previous = sampleRootMotion({ ...travelSampleInput, definition: thresholdTail, loopMode: 'once', requestedTimeMs: previousRequestedTimeMs, previousRequestedTimeMs: undefined })
+    return sampleRootMotion({
+      ...travelSampleInput,
+      definition: thresholdTail,
+      loopMode: 'once',
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+  assert.equal(thresholdCrossing(909, 910).phase, 'grounded')
+  assert.equal(thresholdCrossing(949, 950).phase, 'airborne')
+  assert.ok(thresholdCrossing(899, 901).landingImpulse > 0, '主弹道与尾窗之间的真实 grounded 转换应保留')
+  assert.equal(thresholdCrossing(999, 1001).landingImpulse, 0, '尾窗原始端点前已低于 grounded epsilon 时不得触发')
+
+  const unrelatedMicroscopicWindow = {
+    ...definition,
+    windows: [
+      { id: 'micro', kind: 'ballistic' as const, startMs: 0, endMs: 1e-6, weight: 1 },
+      { id: 'main', kind: 'ballistic' as const, startMs: 100, endMs: 900, weight: 1 },
+    ],
+  }
+  const beforeMainEnd = sampleRootMotion({ ...travelSampleInput, definition: unrelatedMicroscopicWindow, loopMode: 'once', requestedTimeMs: 899, previousRequestedTimeMs: undefined })
+  const mainEnd = sampleRootMotion({
+    ...travelSampleInput,
+    definition: unrelatedMicroscopicWindow,
+    loopMode: 'once',
+    previousRequestedTimeMs: 899,
+    requestedTimeMs: 901,
+    previousAppliedLocal: beforeMainEnd.appliedLocal,
+    previousAppliedTurnRadians: beforeMainEnd.appliedTurnRadians,
+  })
+  assert.ok(mainEnd.landingImpulse > 0, '时间上无关的微型窗不得缩小主落地边界探针')
+
+  const sharedEndMicroscopicWindow = {
+    ...definition,
+    windows: [
+      { id: 'main', kind: 'ballistic' as const, startMs: 100, endMs: 900, weight: 1 },
+      { id: 'shared-end-micro', kind: 'ballistic' as const, startMs: 899.999, endMs: 900, weight: 2e-12 },
+    ],
+  }
+  const beforeSharedEnd = sampleRootMotion({ ...travelSampleInput, definition: sharedEndMicroscopicWindow, loopMode: 'once', requestedTimeMs: 899, previousRequestedTimeMs: undefined })
+  const sharedEnd = sampleRootMotion({
+    ...travelSampleInput,
+    definition: sharedEndMicroscopicWindow,
+    loopMode: 'once',
+    previousRequestedTimeMs: 899,
+    requestedTimeMs: 901,
+    previousAppliedLocal: beforeSharedEnd.appliedLocal,
+    previousAppliedTurnRadians: beforeSharedEnd.appliedTurnRadians,
+  })
+  assert.ok(sharedEnd.landingImpulse > 0, '同终点阈值微型窗不得吞掉长主窗的真实落地')
+})
+
+test('短循环可有界跨越多个真实 touchdown 且 loop/ping-pong 每区间只聚合一次', () => {
+  const definition = {
+    mode: 'travel' as const,
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic' as const,
+    jumpHeight: .5,
+    windows: [{ id: 'short-jump', kind: 'ballistic' as const, startMs: 20, endMs: 80, weight: 1 }],
+    vfxTags: [] as const,
+  }
+  for (const loopMode of ['loop', 'ping-pong'] as const) {
+    const previous = sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      durationMs: 100,
+      loopMode,
+      requestedTimeMs: 50,
+      previousRequestedTimeMs: undefined,
+    })
+    const crossed = sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      durationMs: 100,
+      loopMode,
+      requestedTimeMs: 300,
+      previousRequestedTimeMs: 50,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+    assert.ok(crossed.status === 'solved' || crossed.status === 'clamped')
+    assert.ok(crossed.landingImpulse > 0 && crossed.landingImpulse <= 1)
+    const paused = sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      durationMs: 100,
+      loopMode,
+      requestedTimeMs: 300,
+      previousRequestedTimeMs: 300,
+      previousAppliedLocal: crossed.appliedLocal,
+      previousAppliedTurnRadians: crossed.appliedTurnRadians,
+    })
+    assert.equal(paused.landingImpulse, 0)
+  }
+})
+
+test('ballistic touchdown 边界探针区分重叠、精确相邻与极窄正 gap', () => {
+  const definitionAtGap = (gapMs: number) => ({
+    mode: 'travel' as const,
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic' as const,
+    jumpHeight: .8,
+    windows: [
+      { id: 'first', kind: 'ballistic' as const, startMs: 100, endMs: 300, weight: 1 },
+      { id: 'second', kind: 'ballistic' as const, startMs: 300 + gapMs, endMs: 500, weight: 1 },
+    ],
+    vfxTags: [] as const,
+  })
+  const forwardImpulse = (loopMode: 'once' | 'loop' | 'ping-pong', gapMs: number) => {
+    const definition = definitionAtGap(gapMs)
+    const previous = sampleRootMotion({ ...travelSampleInput, definition, durationMs: 600, loopMode, requestedTimeMs: 299, previousRequestedTimeMs: undefined })
+    return sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      durationMs: 600,
+      loopMode,
+      requestedTimeMs: 301,
+      previousRequestedTimeMs: 299,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    }).landingImpulse
+  }
+  const reversePingPongImpulse = (gapMs: number) => {
+    const definition = definitionAtGap(gapMs)
+    const touchdownRequestMs = 1200 - (300 + gapMs)
+    const previousRequestedTimeMs = touchdownRequestMs - 1
+    const requestedTimeMs = touchdownRequestMs + 1
+    const previous = sampleRootMotion({ ...travelSampleInput, definition, durationMs: 600, loopMode: 'ping-pong', requestedTimeMs: previousRequestedTimeMs, previousRequestedTimeMs: undefined })
+    return sampleRootMotion({
+      ...travelSampleInput,
+      definition,
+      durationMs: 600,
+      loopMode: 'ping-pong',
+      requestedTimeMs,
+      previousRequestedTimeMs,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    }).landingImpulse
+  }
+
+  for (const loopMode of ['once', 'loop', 'ping-pong'] as const) {
+    assert.equal(forwardImpulse(loopMode, -.001), 0, `${loopMode} 重叠支撑不得在内部边界触发`)
+    assert.equal(forwardImpulse(loopMode, 0), 0, `${loopMode} 精确相邻支撑按连续语义合并`)
+    assert.ok(forwardImpulse(loopMode, .001) > 0, `${loopMode} 任意正 gap 都必须保留真实 touchdown`)
+  }
+  assert.equal(reversePingPongImpulse(-.001), 0)
+  assert.equal(reversePingPongImpulse(0), 0)
+  assert.ok(reversePingPongImpulse(.001) > 0, 'ping-pong 反向也不得跨过极窄正 gap')
+
+  const ultraShortEndMs = 900
+  const ultraShortStartMs = ultraShortEndMs - 1e-12
+  const ultraShortMidpointMs = ultraShortStartMs + (ultraShortEndMs - ultraShortStartMs) * .5
+  assert.ok(ultraShortMidpointMs > ultraShortStartMs && ultraShortMidpointMs < ultraShortEndMs, '夹具必须存在可表示的窗内样本')
+  const ultraShortDefinition = {
+    mode: 'travel' as const,
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic' as const,
+    jumpHeight: .8,
+    windows: [{ id: 'ulp-window', kind: 'ballistic' as const, startMs: ultraShortStartMs, endMs: ultraShortEndMs, weight: 1 }],
+    vfxTags: [] as const,
+  }
+  for (const [progress, expectedPhase] of [[1 / 9, 'takeoff'], [2 / 9, 'takeoff'], [7 / 9, 'landing'], [8 / 9, 'landing']] as const) {
+    const requestedTimeMs = ultraShortStartMs + (ultraShortEndMs - ultraShortStartMs) * progress
+    assert.ok(requestedTimeMs > ultraShortStartMs && requestedTimeMs < ultraShortEndMs)
+    assert.equal(sampleRootMotion({
+      ...travelSampleInput,
+      definition: ultraShortDefinition,
+      loopMode: 'once',
+      requestedTimeMs,
+      previousRequestedTimeMs: undefined,
+    }).phase, expectedPhase, `ULP 级极短弹道 ${String(progress)} 进度的物理方向必须可分`)
+  }
+  const phaseThresholdMicroDefinition = {
+    mode: 'travel' as const,
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic' as const,
+    jumpHeight: .8,
+    windows: [
+      { id: 'main-phase-window', kind: 'ballistic' as const, startMs: 800, endMs: 1200, weight: 1 },
+      { id: 'takeoff-threshold-micro', kind: 'ballistic' as const, startMs: 825 - 1e-12, endMs: 825 + 1e-12, weight: 2e-12 },
+      { id: 'landing-threshold-micro', kind: 'ballistic' as const, startMs: 1175 - 1e-12, endMs: 1175 + 1e-12, weight: 2e-12 },
+    ],
+    vfxTags: [] as const,
+  }
+  assert.equal(sampleRootMotion({
+    ...travelSampleInput,
+    definition: phaseThresholdMicroDefinition,
+    requestedTimeMs: 825,
+    previousRequestedTimeMs: undefined,
+  }).phase, 'takeoff', 'active 阈值微窗位于峰值时不得把主窗上升方向压到固定 epsilon 以下')
+  assert.equal(sampleRootMotion({
+    ...travelSampleInput,
+    definition: phaseThresholdMicroDefinition,
+    requestedTimeMs: 1175,
+    previousRequestedTimeMs: undefined,
+  }).phase, 'landing', 'active 阈值微窗位于峰值时不得把主窗下降方向压到固定 epsilon 以下')
+  const cancellingSlopeDefinition = {
+    mode: 'travel' as const,
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'ballistic' as const,
+    jumpHeight: .8,
+    windows: [
+      { id: 'ascending-window', kind: 'ballistic' as const, startMs: 460, endMs: 860, weight: 1 },
+      { id: 'descending-window', kind: 'ballistic' as const, startMs: 140, endMs: 540, weight: 1 },
+    ],
+    vfxTags: [] as const,
+  }
+  assert.equal(sampleRootMotion({
+    ...travelSampleInput,
+    definition: cancellingSlopeDefinition,
+    requestedTimeMs: 500,
+    previousRequestedTimeMs: undefined,
+  }).phase, 'airborne', '数学上完全抵消的对称解析斜率不得把浮点求和残差解释为阶段方向')
+  const ultraPrevious = sampleRootMotion({ ...travelSampleInput, definition: ultraShortDefinition, loopMode: 'once', requestedTimeMs: ultraShortStartMs, previousRequestedTimeMs: undefined })
+  const ultraLanding = sampleRootMotion({
+    ...travelSampleInput,
+    definition: ultraShortDefinition,
+    loopMode: 'once',
+    previousRequestedTimeMs: ultraShortStartMs,
+    requestedTimeMs: ultraShortEndMs,
+    previousAppliedLocal: ultraPrevious.appliedLocal,
+    previousAppliedTurnRadians: ultraPrevious.appliedTurnRadians,
+  })
+  assert.ok(ultraLanding.landingImpulse > 0, '存在可表示窗内中点的 ULP 级极短弹道仍应落地')
+
+  const reverseTouchdownRequestMs = 2400 - ultraShortStartMs
+  const reversePreviousTimeMs = reverseTouchdownRequestMs - 1e-9
+  const reverseCurrentTimeMs = reverseTouchdownRequestMs + 1e-9
+  const reversePrevious = sampleRootMotion({ ...travelSampleInput, definition: ultraShortDefinition, durationMs: 1200, loopMode: 'ping-pong', requestedTimeMs: reversePreviousTimeMs, previousRequestedTimeMs: undefined })
+  const reverseLanding = sampleRootMotion({
+    ...travelSampleInput,
+    definition: ultraShortDefinition,
+    durationMs: 1200,
+    loopMode: 'ping-pong',
+    previousRequestedTimeMs: reversePreviousTimeMs,
+    requestedTimeMs: reverseCurrentTimeMs,
+    previousAppliedLocal: reversePrevious.appliedLocal,
+    previousAppliedTurnRadians: reversePrevious.appliedTurnRadians,
+  })
+  assert.ok(reverseLanding.landingImpulse > 0, 'ping-pong 反向 ULP 级落地使用同一可表示内点语义')
+})
+
+test('Root Motion 规范化、采样和时间解析共用 canonical duration', () => {
+  const cases = [
+    { input: 1200.4, expected: 1200 },
+    { input: 50, expected: 100 },
+    { input: 70000, expected: 60000 },
+    { input: Number.NaN, expected: 1200 },
+    { input: Number.POSITIVE_INFINITY, expected: 1200 },
+  ] as const
+  for (const item of cases) {
+    assert.equal(normalizeMotionDurationMs(item.input), item.expected)
+    const normalized = normalizeBipedPetRootMotion({
+      mode: 'travel',
+      distance: 1,
+      turnRadians: 0,
+      verticalMode: 'grounded',
+      jumpHeight: 0,
+      windows: [{ id: 'canonical', kind: 'travel', startMs: 0, endMs: 100000, weight: 1 }],
+      vfxTags: [],
+    }, item.input)
+    assert.equal(normalized.value.windows[0]?.endMs, item.expected)
+    const sample = sampleRootMotion({
+      ...travelSampleInput,
+      definition: normalized.value,
+      durationMs: item.input,
+      loopMode: 'once',
+      requestedTimeMs: item.expected,
+      previousRequestedTimeMs: undefined,
+    })
+    assert.notEqual(sample.status, 'blocked')
+    assert.equal(sample.resolvedTimeMs, item.expected)
+    assert.deepEqual(sample.appliedLocal, sample.cumulativeLocal)
+  }
 })
 
 test('畸形输入安全 blocked，输入不突变且输出不共享可变引用', () => {
@@ -1178,12 +1881,12 @@ test('畸形输入安全 blocked，输入不突变且输出不共享可变引用
   const invalidInputs = [
     { ...travelSampleInput, requestedTimeMs: Number.NaN },
     { ...travelSampleInput, previousRequestedTimeMs: Number.POSITIVE_INFINITY },
-    { ...travelSampleInput, durationMs: 0 },
     { ...travelSampleInput, characterHeight: 0 },
     { ...travelSampleInput, facingRadians: Number.POSITIVE_INFINITY },
     { ...travelSampleInput, actionWeight: Number.NaN },
     { ...travelSampleInput, definition: { ...travelDefinition, windows: null } },
     { ...travelSampleInput, definition: { ...travelDefinition, distance: Number.POSITIVE_INFINITY } },
+    { ...travelSampleInput, previousAppliedLocal: [0, 0, 0] },
     { ...travelSampleInput, definition: throwingDefinition },
   ]
   for (const input of invalidInputs) {
@@ -1220,10 +1923,21 @@ test('运动、落地与制动强度在边界稳定且暂停或 reset 不重复�
       { id: 'brake', kind: 'brake' as const, startMs: 400, endMs: 800, weight: 1 },
     ],
   }
-  const moving = sampleRootMotion({ ...travelSampleInput, definition: brakeDefinition, previousRequestedTimeMs: 599, requestedTimeMs: 600 })
-  const brakeStart = sampleRootMotion({ ...travelSampleInput, definition: brakeDefinition, previousRequestedTimeMs: 399, requestedTimeMs: 400 })
-  const brakeEnd = sampleRootMotion({ ...travelSampleInput, definition: brakeDefinition, previousRequestedTimeMs: 799, requestedTimeMs: 800 })
-  const paused = sampleRootMotion({ ...travelSampleInput, definition: brakeDefinition, previousRequestedTimeMs: 600, requestedTimeMs: 600 })
+  const continuous = (previousRequestedTimeMs: number, requestedTimeMs: number) => {
+    const previous = sampleRootMotion({ ...travelSampleInput, definition: brakeDefinition, requestedTimeMs: previousRequestedTimeMs, previousRequestedTimeMs: undefined })
+    return sampleRootMotion({
+      ...travelSampleInput,
+      definition: brakeDefinition,
+      previousRequestedTimeMs,
+      requestedTimeMs,
+      previousAppliedLocal: previous.appliedLocal,
+      previousAppliedTurnRadians: previous.appliedTurnRadians,
+    })
+  }
+  const moving = continuous(599, 600)
+  const brakeStart = continuous(399, 400)
+  const brakeEnd = continuous(799, 800)
+  const paused = continuous(600, 600)
   const reset = sampleRootMotion({ ...travelSampleInput, definition: brakeDefinition, previousRequestedTimeMs: 0, requestedTimeMs: 600 })
   assert.ok(moving.motionIntensity > 0 && moving.motionIntensity <= 1)
   assert.ok(moving.brakeIntensity > 0 && moving.brakeIntensity <= 1)
@@ -1235,42 +1949,75 @@ test('运动、落地与制动强度在边界稳定且暂停或 reset 不重复�
   assert.equal(reset.brakeIntensity, 0)
 })
 
-test('固定种子边界与极值探针保持有限且确定', () => {
+test('固定种子有状态序列真实命中求解、钳制、重置、阻塞、接缝和运动信号', () => {
   let state = 0x6d2b79f5
   const random = () => {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0
     return state / 0x1_0000_0000
   }
-  for (let index = 0; index < 512; index += 1) {
-    const durationMs = 100 + Math.floor(random() * 59901)
-    const requestedTimeMs = (random() - .5) * 2e7
-    const split = Math.max(1, Math.floor(durationMs * random()))
+  const durationMs = 200
+  const definition = {
+    mode: 'travel' as const,
+    distance: .4,
+    turnRadians: 1,
+    verticalMode: 'ballistic' as const,
+    jumpHeight: .8,
+    windows: [
+      { id: 'burst', kind: 'travel' as const, startMs: 0, endMs: 12, weight: 1 },
+      { id: 'warp', kind: 'warp' as const, startMs: 8, endMs: 150, weight: .6 },
+      { id: 'jump-main', kind: 'ballistic' as const, startMs: 20, endMs: 100, weight: 1 },
+      { id: 'jump-overlap', kind: 'ballistic' as const, startMs: 40, endMs: 70, weight: .01 },
+      { id: 'brake', kind: 'brake' as const, startMs: 110, endMs: 190, weight: 1 },
+    ],
+    vfxTags: [] as const,
+  }
+  const counts = { solved: 0, clamped: 0, reset: 0, blocked: 0, seam: 0, landing: 0, brake: 0 }
+  let requestedTimeMs = 0
+  let previousRequestedTimeMs: number | undefined
+  let previousAppliedLocal: readonly [number, number, number] | undefined
+  let previousAppliedTurnRadians: number | undefined
+  let previousIteration = 0
+  for (let index = 0; index < 1024; index += 1) {
+    if (index > 0) requestedTimeMs += 7 + Math.floor(random() * 34)
+    const forceReset = index % 251 === 0
     const input = {
-      definition: {
-        mode: 'travel' as const,
-        distance: (random() - .5) * 8,
-        turnRadians: (random() - .5) * Math.PI * 4,
-        verticalMode: random() > .5 ? 'ballistic' as const : 'grounded' as const,
-        jumpHeight: random() * 1.5,
-        windows: [
-          { id: 'a', kind: 'travel' as const, startMs: 0, endMs: split, weight: Math.max(Number.EPSILON, random()) },
-          { id: 'b', kind: 'warp' as const, startMs: split, endMs: durationMs, weight: Math.max(Number.EPSILON, random()) },
-          { id: 'c', kind: 'ballistic' as const, startMs: 0, endMs: durationMs, weight: Math.max(Number.EPSILON, random()) },
-        ],
-        vfxTags: [] as const,
-      },
+      definition,
       requestedTimeMs,
-      previousRequestedTimeMs: requestedTimeMs,
+      ...(forceReset || previousRequestedTimeMs === undefined
+        ? {}
+        : { previousRequestedTimeMs, previousAppliedLocal, previousAppliedTurnRadians }),
       durationMs,
-      loopMode: (['once', 'loop', 'ping-pong'] as const)[index % 3]!,
-      characterHeight: Number.MIN_VALUE + random() * 100,
-      facingRadians: (random() - .5) * 1e6,
-      actionWeight: (random() - .5) * 4,
-      footResidual: [(random() - .5) * 1e100, (random() - .5) * 1e100, (random() - .5) * 1e100] as const,
+      loopMode: 'loop' as const,
+      characterHeight: 4,
+      facingRadians: (random() - .5) * Math.PI * 2,
+      actionWeight: 1,
+      footResidual: [(random() - .5) * 10, (random() - .5) * 1e100, (random() - .5) * 10] as const,
     }
     const first = sampleRootMotion(input)
     const second = sampleRootMotion(input)
     assertFiniteSample(first)
     assert.deepEqual(first, second)
+    counts[first.status] += 1
+    if (first.iteration !== previousIteration) counts.seam += 1
+    if (first.landingImpulse > 0) counts.landing += 1
+    if (first.brakeIntensity > 0) counts.brake += 1
+    previousIteration = first.iteration
+    previousRequestedTimeMs = requestedTimeMs
+    previousAppliedLocal = first.appliedLocal
+    previousAppliedTurnRadians = first.appliedTurnRadians
+
+    if (index % 211 === 0) {
+      const blocked = sampleRootMotion({ ...input, footResidual: [Number.NaN, 0, 0] })
+      assert.equal(blocked.status, 'blocked')
+      assertFiniteSample(blocked)
+      counts.blocked += 1
+    }
   }
+  assert.ok(counts.solved > 100, JSON.stringify(counts))
+  assert.ok(counts.clamped > 10, JSON.stringify(counts))
+  assert.ok(counts.reset >= 5, JSON.stringify(counts))
+  assert.ok(counts.blocked >= 5, JSON.stringify(counts))
+  assert.ok(counts.seam > 50, JSON.stringify(counts))
+  assert.ok(counts.landing > 20, JSON.stringify(counts))
+  assert.ok(counts.brake > 100, JSON.stringify(counts))
 })

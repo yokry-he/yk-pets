@@ -7,7 +7,7 @@ import { BIPED_PET_RIG_PROFILE } from '../character/biped-pet-profile'
 import { validateRigProfile, type CharacterRigProfile, type RigVector3 } from '../character/rig-profile'
 import { evaluateNormalizedMotionAsset, type EvaluatedCloudFoxPose } from './motion-evaluator'
 import { normalizeMotionAsset, type StudioMotionAssetV2 } from './motion-asset'
-import { resolveMotionTime, type ResolvedMotionTime, type StudioMotionLoopMode } from './motion-time'
+import { normalizeMotionDurationMs, resolveMotionTime, type ResolvedMotionTime, type StudioMotionLoopMode } from './motion-time'
 import { IDENTITY_MOTION_QUATERNION, motionEulerToQuaternion, slerpMotionQuaternion, type MotionQuaternion } from './quaternion-motion'
 import {
   normalizeBipedPetRootMotion,
@@ -133,7 +133,6 @@ const HIND_RIGHT_DISTRIBUTION: RotationDistribution = [['hip.right', .1], ['thig
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
 const compareCodePoints = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0
 const numericSuffix = (boneId: string) => Number.parseInt(boneId.split('.').at(-1) || '0', 10)
-const canonicalRootMotionDurations = new WeakMap<object, number>()
 type SampledRootMotionCacheEntry =
   | { readonly status: 'blocked'; readonly rootMotion: BipedPetRootMotionDefinition }
   | {
@@ -145,18 +144,29 @@ type SampledRootMotionCacheEntry =
 const sampledRootMotionCache = new WeakMap<object, SampledRootMotionCacheEntry>()
 
 function freezeRootMotionDefinition(value: BipedPetRootMotionDefinition, durationMs: number): BipedPetRootMotionDefinition {
-  const rootMotion: BipedPetRootMotionDefinition = {
-    ...value,
-    windows: Object.freeze(value.windows.map(item => Object.freeze({ ...item }))),
-    vfxTags: Object.freeze([...value.vfxTags]),
-  }
-  Object.freeze(rootMotion)
-  canonicalRootMotionDurations.set(rootMotion, durationMs)
-  return rootMotion
+  return normalizeBipedPetRootMotion(value, durationMs).value
 }
 
 function canonicalInPlaceRootMotion(durationMs: number): BipedPetRootMotionDefinition {
   return freezeRootMotionDefinition(normalizeBipedPetRootMotion(undefined, durationMs).value, durationMs)
+}
+
+function sameRootMotionDefinition(
+  left: BipedPetRootMotionDefinition,
+  right: BipedPetRootMotionDefinition,
+): boolean {
+  if (left === right) return true
+  if (left.mode !== right.mode || left.distance !== right.distance || left.turnRadians !== right.turnRadians
+    || left.verticalMode !== right.verticalMode || left.jumpHeight !== right.jumpHeight
+    || left.windows.length !== right.windows.length || left.vfxTags.length !== right.vfxTags.length) return false
+  for (let index = 0; index < left.windows.length; index += 1) {
+    const leftWindow = left.windows[index]!
+    const rightWindow = right.windows[index]!
+    if (leftWindow.id !== rightWindow.id || leftWindow.kind !== rightWindow.kind
+      || leftWindow.startMs !== rightWindow.startMs || leftWindow.endMs !== rightWindow.endMs
+      || leftWindow.weight !== rightWindow.weight) return false
+  }
+  return left.vfxTags.every((tag, index) => tag === right.vfxTags[index])
 }
 
 /**
@@ -672,24 +682,17 @@ function rootMotionForSample(clip: BipedPetQuaternionClip): BipedPetRootMotionDe
   catch {
     input = undefined
   }
-  const durationMs = clip.durationMs
+  const durationMs = normalizeMotionDurationMs(clip.durationMs)
   const cached = sampledRootMotionCache.get(clip)
-  if (cached?.status === 'ready' && cached.source === input && Object.is(cached.durationMs, durationMs)) {
-    return cached.rootMotion
-  }
-  if (
-    input
-    && typeof input === 'object'
-    && canonicalRootMotionDurations.has(input)
-    && Object.is(canonicalRootMotionDurations.get(input), durationMs)
-  ) {
-    return input as BipedPetRootMotionDefinition
-  }
   const normalized = normalizeBipedPetRootMotion(input, durationMs)
-  const hasUnsafeRepair = normalized.diagnostics.some(item => !/^root-motion-window-\d+-time-clamped$/u.test(item.id))
+  const hasUnsafeRepair = normalized.diagnostics.some(item => (
+    item.id !== 'root-motion-duration-normalized' && !/^root-motion-window-\d+-time-clamped$/u.test(item.id)
+  ))
   const rootMotion = hasUnsafeRepair
     ? canonicalInPlaceRootMotion(durationMs)
-    : freezeRootMotionDefinition(normalized.value, durationMs)
+    : normalized.value
+  if (cached?.status === 'ready' && cached.source === input && Object.is(cached.durationMs, durationMs)
+    && sameRootMotionDefinition(cached.rootMotion, rootMotion)) return cached.rootMotion
   sampledRootMotionCache.set(clip, { status: 'ready', source: input, durationMs, rootMotion })
   return rootMotion
 }

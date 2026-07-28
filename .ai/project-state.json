@@ -253,22 +253,20 @@
   ],
   "nextPhase": "biped-pet-root-motion-vfx-and-acceptance",
   "latestCompletedBatch": {
-    "id": "biped-pet-hybrid-ik-phase-delivery",
-    "domainPackage": "packages/pet-core + apps/playground",
-    "rendererModified": true,
-    "visualCasesModified": true,
+    "id": "biped-pet-root-motion-solver",
+    "domainPackage": "packages/pet-core",
+    "rendererModified": false,
+    "visualCasesModified": false,
     "automatedCoverage": [
-      "corepack pnpm typecheck",
-      "corepack pnpm test",
-      "corepack pnpm build:playground",
+      "corepack pnpm --filter @yk-pets/pet-core test",
+      "corepack pnpm --filter @yk-pets/pet-core typecheck",
+      "10,000 组固定种子有状态 Root Motion 输入探针",
+      "100,000 次 1 窗口与 64 窗口可信定义性能微基准",
       "node scripts/check-documentation.mjs",
       "node scripts/check-ai-handoff.mjs",
       "git diff --check"
     ],
-    "browserCoverage": [
-      "Chromium 1440×900：五个基础动作、播放/暂停/停止、切换动作清锚、时间回拖、简单/复杂切换、无明显足滑或关节突变、无横向溢出、reload 控制台无错误",
-      "Chromium 760×900：单列工具栏与编辑器、播放/暂停/停止、无横向溢出、reload 控制台无错误；不替代跨浏览器 GPU/WebGL 验收"
-    ]
+    "browserCoverage": []
   },
   "mandatoryDevelopmentPolicy": {
     "sameBranchOnly": true,
