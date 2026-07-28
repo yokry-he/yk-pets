@@ -367,3 +367,4 @@
 - 动作资产切换会在编译新 Clip 前先恢复绑定姿态并清空旧足底锚点；无动作、blocked Clip 和动作编译异常都会清除旧 Clip 并再次复位。播放时间与权重变化仍只执行采样和应用，不重建 runtime 或 controller。
 - 模型配方或编译摘要变化时，会先清理旧 controller/runtime，再用同一 compilation 创建新对象。中途失败会解除响应式引用并按 controller、runtime 的逆序释放已取得资源，再上报 blocked 诊断；卸载继续执行幂等释放，不让 Tres primitive 保留半成品 Canvas 对象。
 - 静态门禁新增生命周期语义检查及注释伪装、错误复位顺序负例，避免只依赖单一源码片段。本批已接通正式生产渲染链路，但性能、真实浏览器逐动作与 GPU/WebGL 验收留给第 8 个任务；完整 Root Motion 和动作特效仍未实现，`bipedPetRootMotionComplete` 与 `bipedPetMotionVfxComplete` 必须保持 `false`。
+- 创建失败清理门禁最终改用 Playground 已直接声明的 TypeScript 解析器：只接受 `createRuntime` 创建异常 `catch` 块中的顶层 `newController?.dispose()`、`newRuntime?.dispose()` 直接调用及正确顺序；字符串、注释、正则、模板和嵌套分支均不能伪造通过。Vue 模板互斥门禁继续在剥离 HTML 注释后要求复杂与简单 renderer 各唯一一次。

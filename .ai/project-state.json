@@ -109,6 +109,7 @@
     "bipedPetRuntimeIkWeightFallbackComplete": true,
     "bipedPetComplexMotionRendererLifecycleComplete": true,
     "bipedPetComplexMotionProductionWiringComplete": true,
+    "bipedPetComplexMotionAstCleanupGateComplete": true,
     "bipedPetRootMotionComplete": false,
     "bipedPetMotionVfxComplete": false,
     "crossBrowserGpuManualAcceptanceComplete": false
@@ -212,7 +213,8 @@
     "biped-pet-analytic-two-bone-ik-lower-bound-tolerance-corrected",
     "biped-pet-deterministic-contact-phases",
     "biped-pet-basic-motion-contact-data",
-    "biped-pet-complex-motion-renderer-lifecycle"
+    "biped-pet-complex-motion-renderer-lifecycle",
+    "biped-pet-complex-motion-ast-cleanup-gate"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

@@ -169,10 +169,8 @@ function createRuntime(recipe: CharacterModelRecipeV1) {
     if (motionController.value === newController) motionController.value = undefined
     if (runtime.value === newRuntime) runtime.value = undefined
     motionClip.value = undefined
-    try { newController?.dispose() }
-    catch { /* 继续释放 runtime，最终统一返回阻塞诊断。 */ }
-    try { newRuntime?.dispose() }
-    catch { /* 所有已取得资源均已尽力释放。 */ }
+    newController?.dispose()
+    newRuntime?.dispose()
     // 运行时异常必须转为可恢复诊断，不能让场景组件在更新配方时崩溃。 / Runtime failures become recoverable diagnostics instead of crashing the scene.
     emitCompilationIfChanged({
       ...compilation,

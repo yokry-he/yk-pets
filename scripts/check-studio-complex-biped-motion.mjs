@@ -4,9 +4,12 @@
  */
 
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
+const requireFromPlayground = createRequire(new URL('../apps/playground/package.json', import.meta.url))
+const ts = requireFromPlayground('typescript')
 const read = relativePath => readFileSync(`${root}/${relativePath}`, 'utf8')
 const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const renderer = read('apps/playground/app/components/studio/ComplexBipedPetRenderer.vue')
@@ -47,67 +50,59 @@ function withoutComments(source) {
 
 let stringQuote = ''
 
-function canStartRegexLiteral(code) {
-  const trimmed = code.trimEnd()
-  if (!trimmed) return true
-  if (trimmed.endsWith('++') || trimmed.endsWith('--')) return false
-  if (trimmed.endsWith('=>')) return true
-  const previous = trimmed.at(-1)
-  if (previous && '=(:,!?{[;+-*%&|^~<>'.includes(previous)) return true
-  const previousWord = /[$\w]+$/.exec(trimmed)?.[0]
-  return previousWord !== undefined && new Set(['return', 'case', 'throw', 'typeof', 'instanceof', 'in', 'of', 'yield', 'await', 'delete', 'void', 'new']).has(previousWord)
+function scriptSetupContent(source) {
+  return /<script\b(?=[^>]*\bsetup\b)[^>]*>([\s\S]*?)<\/script>/.exec(source)?.[1] ?? ''
 }
 
-function regexLiteralEnd(source, openingIndex) {
-  let inCharacterClass = false
-  for (let index = openingIndex + 1; index < source.length; index += 1) {
-    const current = source[index]
-    if (current === '\n' || current === '\r') return -1
-    if (current === '\\') { index += 1; continue }
-    if (current === '[' && !inCharacterClass) { inCharacterClass = true; continue }
-    if (current === ']' && inCharacterClass) { inCharacterClass = false; continue }
-    if (current !== '/' || inCharacterClass) continue
-    let end = index + 1
-    while (/[a-z]/i.test(source[end] ?? '')) end += 1
-    return end
+function createRuntimeBody(sourceFile) {
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name?.text === 'createRuntime') return statement.body
+    if (!ts.isVariableStatement(statement)) continue
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== 'createRuntime') continue
+      if (declaration.initializer && (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer)) && ts.isBlock(declaration.initializer.body)) return declaration.initializer.body
+    }
   }
-  return -1
 }
 
-function withoutCommentsAndStrings(source) {
-  let result = ''
-  let mode = 'code'
-  let quote = ''
-  for (let index = 0; index < source.length; index += 1) {
-    const current = source[index]
-    const next = source[index + 1]
-    if (mode === 'line-comment') {
-      if (current === '\n') { mode = 'code'; result += current }
-      else result += ' '
-      continue
-    }
-    if (mode === 'block-comment') {
-      if (current === '*' && next === '/') { result += '  '; index += 1; mode = 'code' }
-      else result += current === '\n' ? '\n' : ' '
-      continue
-    }
-    if (mode === 'string') {
-      result += current === '\n' ? '\n' : ' '
-      if (quote === '`' && current === '$' && next === '{') return ''
-      if (current === '\\') {
-        if (next !== undefined) { result += next === '\n' ? '\n' : ' '; index += 1 }
-      } else if (current === quote) mode = 'code'
-      continue
-    }
-    if (current === '/' && next === '/') { result += '  '; index += 1; mode = 'line-comment'; continue }
-    if (current === '/' && next === '*') { result += '  '; index += 1; mode = 'block-comment'; continue }
-    // 正则字面量内容可能伪造方法调用；识别到合法表达式位置和闭合字面量时保守拒绝本段源码。
-    if (current === '/' && canStartRegexLiteral(result) && regexLiteralEnd(source, index) >= 0) return ''
-    // 模板插值可能包含可执行调用；小型门禁无法完整解析时保守拒绝，避免把真实调用误当字符串通过。
-    if (current === '"' || current === "'" || current === '`') { result += ' '; mode = 'string'; quote = current; continue }
-    result += current
+function containsCall(node, name) {
+  let found = false
+  const visit = (child) => {
+    if (ts.isCallExpression(child) && ts.isIdentifier(child.expression) && child.expression.text === name) found = true
+    if (!found) ts.forEachChild(child, visit)
   }
-  return mode === 'code' ? result : ''
+  visit(node)
+  return found
+}
+
+function isDirectOptionalDispose(statement, variableName) {
+  if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression) || statement.expression.arguments.length !== 0) return false
+  const access = statement.expression.expression
+  return ts.isPropertyAccessExpression(access)
+    && ts.isIdentifier(access.expression)
+    && access.expression.text === variableName
+    && access.name.text === 'dispose'
+    && access.questionDotToken !== undefined
+}
+
+function hasAstCleanupOrder(source) {
+  const script = scriptSetupContent(source)
+  if (!script) return false
+  const sourceFile = ts.createSourceFile('ComplexBipedPetRenderer.ts', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  if (sourceFile.parseDiagnostics.length > 0) return false
+  const body = createRuntimeBody(sourceFile)
+  if (!body) return false
+  const creationTry = body.statements.find(statement => ts.isTryStatement(statement)
+    && statement.catchClause
+    && containsCall(statement.tryBlock, 'createComplexBipedPetObject'))
+  if (!creationTry?.catchClause) return false
+  const statements = creationTry.catchClause.block.statements
+  const controllerIndex = statements.findIndex(statement => isDirectOptionalDispose(statement, 'newController'))
+  const runtimeIndex = statements.findIndex(statement => isDirectOptionalDispose(statement, 'newRuntime'))
+  return controllerIndex >= 0
+    && runtimeIndex >= 0
+    && controllerIndex < runtimeIndex
+    && statements[controllerIndex].getStart(sourceFile) < statements[runtimeIndex].getStart(sourceFile)
 }
 
 function functionBody(source, name) {
@@ -132,22 +127,13 @@ function rendererLifecycleFailures(source) {
   const compileBody = compact(functionBody(source, 'compileMotion'))
   const createBody = compact(functionBody(source, 'createRuntime'))
   const applyBody = compact(functionBody(source, 'applyMotion'))
-  const cleanupCode = withoutCommentsAndStrings(createBody)
-  const catchPosition = cleanupCode.indexOf('catch')
-  const cleanupCallPosition = (name) => {
-    const pattern = new RegExp(`(?:^|[^\\w$.])${name}\\s*\\?\\.\\s*dispose\\s*\\(`, 'g')
-    pattern.lastIndex = Math.max(0, catchPosition)
-    return pattern.exec(cleanupCode)?.index ?? -1
-  }
-  const controllerCleanupPosition = cleanupCallPosition('newController')
-  const runtimeCleanupPosition = cleanupCallPosition('newRuntime')
 
   if (!/createComplexBipedMotionController\s*\(\s*runtime\.value\s*,\s*compilation\s*\)/.test(createBody)) issues.push('控制器必须消费创建当前 runtime 的同一局部 compilation')
   if (!/controller\.reset\(\)\s*try\s*\{\s*const compiledClip\s*=\s*compileBipedPetMotion/.test(compileBody)) issues.push('动作编译替换 clip 前必须先 reset')
   if (!/if\s*\(\s*!props\.motionAsset\s*\)[\s\S]*?motionClip\.value\s*=\s*undefined[\s\S]*?controller\.reset\(\)/.test(compileBody)) issues.push('无动作分支必须清 clip 并恢复绑定姿态')
   if (!/compiledClip\.status\s*!==\s*['"]ready['"][\s\S]*?motionClip\.value\s*=\s*undefined[\s\S]*?controller\.reset\(\)/.test(compileBody)) issues.push('阻塞动作分支必须清 clip 并恢复绑定姿态')
   if (!/catch[\s\S]*?motionClip\.value\s*=\s*undefined[\s\S]*?controller\.reset\(\)/.test(compileBody)) issues.push('动作编译异常必须清 clip 并恢复绑定姿态')
-  if (controllerCleanupPosition < 0 || runtimeCleanupPosition < 0 || controllerCleanupPosition > runtimeCleanupPosition) issues.push('运行时创建失败必须按 controller、runtime 逆序释放局部资源')
+  if (!hasAstCleanupOrder(source)) issues.push('运行时创建失败必须按 controller、runtime 逆序释放局部资源')
   if (!/disposeRuntime\(\)[\s\S]*?createComplexBipedPetObject/.test(createBody)) issues.push('重建模型前必须释放旧 controller 与 runtime')
   if (/createComplexBipedPetObject|createComplexBipedMotionController/.test(applyBody)) issues.push('时间采样路径禁止重建 runtime 或 controller')
   if (!/onBeforeUnmount\s*\(\s*\(\)\s*=>\s*\{[\s\S]*?disposeRuntime\(\)/.test(code)) issues.push('卸载时必须释放复杂运行时')
@@ -172,31 +158,31 @@ const lifecycleFixture = renderer.replace(/createComplexBipedMotionController\s*
 expect(rendererLifecycleFailures(`/* createComplexBipedMotionController(runtime.value, compilation) */\n${lifecycleFixture.replace('createComplexBipedMotionController(runtime.value, compilation)', 'createComplexBipedMotionController(runtime.value)')}`).includes('控制器必须消费创建当前 runtime 的同一局部 compilation'), '门禁自身必须拒绝仅靠注释伪造 compilation 接线')
 expect(rendererLifecycleFailures(lifecycleFixture.replace(/controller\.reset\(\)\s*try\s*\{\s*const compiledClip/, 'try { const compiledClip')).includes('动作编译替换 clip 前必须先 reset'), '门禁自身必须拒绝替换 clip 后才 reset')
 const cleanupFailure = '运行时创建失败必须按 controller、runtime 逆序释放局部资源'
-const cleanupStringFixture = renderer
-  .replace('try { newController?.dispose() }', "const proof = 'escaped \\' text newController?.dispose() newRuntime?.dispose()'")
-  .replace('try { newRuntime?.dispose() }', '')
+const replaceDirectCleanup = replacement => renderer
+  .replace('newController?.dispose()', replacement)
+  .replace('newRuntime?.dispose()', '')
+const cleanupStringFixture = replaceDirectCleanup("const proof = 'escaped \\' text newController?.dispose() newRuntime?.dispose()'")
 expect(rendererLifecycleFailures(cleanupStringFixture).includes(cleanupFailure), '门禁自身必须拒绝用字符串伪造 controller/runtime 释放调用')
-const cleanupDoubleStringFixture = renderer
-  .replace('try { newController?.dispose() }', String.raw`const proof = "escaped \" text newController?.dispose() newRuntime?.dispose()"`)
-  .replace('try { newRuntime?.dispose() }', '')
+const cleanupDoubleStringFixture = replaceDirectCleanup(String.raw`const proof = "escaped \" text newController?.dispose() newRuntime?.dispose()"`)
 expect(rendererLifecycleFailures(cleanupDoubleStringFixture).includes(cleanupFailure), '门禁自身必须拒绝用含转义的双引号字符串伪造释放调用')
-const cleanupTemplateFixture = renderer
-  .replace('try { newController?.dispose() }', 'const proof = `escaped \\` text newController?.dispose() newRuntime?.dispose()`')
-  .replace('try { newRuntime?.dispose() }', '')
+const cleanupTemplateFixture = replaceDirectCleanup('const proof = `escaped \\` text newController?.dispose() newRuntime?.dispose()`')
 expect(rendererLifecycleFailures(cleanupTemplateFixture).includes(cleanupFailure), '门禁自身必须拒绝用含转义的模板字符串伪造释放调用')
-const cleanupRegexFixture = renderer
-  .replace('try { newController?.dispose() }', 'const proof = /newController?.dispose() newRuntime?.dispose()/')
-  .replace('try { newRuntime?.dispose() }', '')
+const cleanupRegexFixture = replaceDirectCleanup('const proof = /newController?.dispose() newRuntime?.dispose()/')
 expect(rendererLifecycleFailures(cleanupRegexFixture).includes(cleanupFailure), '门禁自身必须拒绝用正则字面量伪造释放调用')
-const cleanupEscapedRegexFixture = renderer
-  .replace('try { newController?.dispose() }', String.raw`const proof = /newController?.dispose()[\/]newRuntime?.dispose()\/end/gi`)
-  .replace('try { newRuntime?.dispose() }', '')
+const cleanupEscapedRegexFixture = replaceDirectCleanup(String.raw`const proof = /newController?.dispose()[\/]newRuntime?.dispose()\/end/gi`)
 expect(rendererLifecycleFailures(cleanupEscapedRegexFixture).includes(cleanupFailure), '门禁自身必须拒绝用含转义斜杠、字符类和 flags 的正则伪造释放调用')
-expect(withoutCommentsAndStrings('const ratio = a / b').includes('/'), '词法归一化必须保留除法运算，不能误判为正则字面量')
-const cleanupCommentFixture = renderer
-  .replace('try { newController?.dispose() }', '/* newController?.dispose() */')
-  .replace('try { newRuntime?.dispose() }', '/* newRuntime?.dispose() */')
+const cleanupConditionalRegexFixture = replaceDirectCleanup("if (true) /newController?.dispose() newRuntime?.dispose()/.test('')")
+expect(rendererLifecycleFailures(cleanupConditionalRegexFixture).includes(cleanupFailure), '门禁自身必须拒绝条件语句中的正则字面量伪造释放调用')
+const cleanupCommentFixture = replaceDirectCleanup('/* newController?.dispose() */')
 expect(rendererLifecycleFailures(cleanupCommentFixture).includes(cleanupFailure), '门禁自身必须拒绝用注释伪造 controller/runtime 释放调用')
+const cleanupNestedFixture = replaceDirectCleanup('if (false) { newController?.dispose(); newRuntime?.dispose() }')
+expect(rendererLifecycleFailures(cleanupNestedFixture).includes(cleanupFailure), '门禁自身必须拒绝嵌套分支中的释放调用伪装顶层清理')
+const cleanupReversedFixture = renderer
+  .replace('newController?.dispose()', '__controller_dispose__')
+  .replace('newRuntime?.dispose()', 'newController?.dispose()')
+  .replace('__controller_dispose__', 'newRuntime?.dispose()')
+expect(rendererLifecycleFailures(cleanupReversedFixture).includes(cleanupFailure), '门禁自身必须拒绝 controller/runtime 释放顺序反转')
+expect(!rendererLifecycleFailures(renderer).includes(cleanupFailure), '门禁自身必须接受创建异常 catch 中的顶层直接释放调用')
 const commentedExclusiveFixture = `<template>
   <ComplexBipedPetRenderer />
   <ProceduralPet />
