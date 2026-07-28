@@ -85,13 +85,6 @@ test('解析式两段 IK 阻塞非法伸展比例和会溢出的有限输入', (
   })
   assert.equal(overflow.status, 'blocked')
   assert.ok([...overflow.positions.flat(), overflow.error].every(Number.isFinite))
-
-  const poleOverflow = solveAnalyticTwoBoneIk({
-    root: [0, 0, 0], mid: [0, -1, 0], tip: [0, -2, 0],
-    target: [1, 1, 1], pole: [Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE], maxStretchRatio: 1,
-  })
-  assert.equal(poleOverflow.status, 'blocked')
-  assert.ok([...poleOverflow.positions.flat(), poleOverflow.error].every(Number.isFinite))
 })
 
 test('解析式两段 IK 在有限非零链的约束区间为空时安全阻塞', () => {
@@ -150,4 +143,80 @@ test('解析式两段 IK 不突变输入', () => {
   solveAnalyticTwoBoneIk(input)
 
   assert.deepEqual(input, snapshot)
+})
+
+test('解析式两段 IK 对共线 Pole 的等比例缩放保持相同稳定弯曲面', () => {
+  const base = {
+    root: [0, 0, 0] as const,
+    mid: [1, 0, 0] as const,
+    tip: [2, 0, 0] as const,
+    target: [1, 1, 1] as const,
+    maxStretchRatio: 1,
+  }
+  const unitPole = solveAnalyticTwoBoneIk({ ...base, pole: [1, 1, 1] })
+  const scaledPole = solveAnalyticTwoBoneIk({ ...base, pole: [1e6, 1e6, 1e6] })
+  const maximumPole = solveAnalyticTwoBoneIk({ ...base, pole: [Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE] })
+
+  assert.equal(unitPole.status, 'solved')
+  assert.equal(scaledPole.status, 'solved')
+  assert.equal(maximumPole.status, 'solved')
+  assert.ok(distance(unitPole.mid, scaledPole.mid) < 1e-10)
+  assert.ok(distance(unitPole.mid, maximumPole.mid) < 1e-10)
+  for (const result of [unitPole, scaledPole, maximumPole]) {
+    assert.ok(Math.abs(distance(result.root, result.mid) - 1) < 1e-8)
+    assert.ok(Math.abs(distance(result.mid, result.tip) - 1) < 1e-8)
+  }
+})
+
+test('解析式两段 IK 对非轴对齐共线 Pole 使用正交稳定后备', () => {
+  const result = solveAnalyticTwoBoneIk({
+    root: [2, -3, 5], mid: [3, -3, 5], tip: [4, -3, 5],
+    target: [3, -2, 6], pole: [7, 7, 7], maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'solved')
+  assert.ok(Math.abs(distance(result.root, result.mid) - 1) < 1e-8)
+  assert.ok(Math.abs(distance(result.mid, result.tip) - 1) < 1e-8)
+})
+
+test('解析式两段 IK 在一亿比一的合法链上保持短段长度', () => {
+  const result = solveAnalyticTwoBoneIk({
+    root: [0, 0, 0], mid: [1e8, 0, 0], tip: [1e8 + 1, 0, 0],
+    target: [1e8, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'solved')
+  assert.ok(Math.abs(distance(result.root, result.mid) - 1e8) < 1e-6)
+  assert.ok(Math.abs(distance(result.mid, result.tip) - 1) < 1e-6)
+})
+
+test('解析式两段 IK 对运行时畸形向量安全阻塞且返回有限 residual', () => {
+  const base = {
+    root: [0, 0, 0], mid: [0, -1, 0], tip: [0, -2, 0],
+    target: [1, 0, 0], pole: [0, 0, 1], maxStretchRatio: 1,
+  }
+  for (const malformed of [null, [], [0, 0], [0, 0, 0, 0], [0, 'bad', 0]]) {
+    const result = solveAnalyticTwoBoneIk({ ...base, root: malformed } as never)
+    assert.equal(result.status, 'blocked')
+    assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
+  }
+
+  const unreachableFallback = solveAnalyticTwoBoneIk({ ...base, mid: [0, 0, 0], tip: [0, 0, 0] })
+  const invalidTarget = solveAnalyticTwoBoneIk({ ...base, target: [NaN, 0, 0] })
+  assert.equal(unreachableFallback.status, 'blocked')
+  assert.equal(unreachableFallback.error, 1)
+  assert.equal(invalidTarget.status, 'blocked')
+  assert.equal(invalidTarget.error, Number.MAX_VALUE)
+})
+
+test('解析式两段 IK 在多种尺度上保持状态和归一化段长', () => {
+  for (const scale of [1e-4, 1, 1e4]) {
+    const result = solveAnalyticTwoBoneIk({
+      root: [0, 0, 0], mid: [scale, 0, 0], tip: [2 * scale, 0, 0],
+      target: [1.2 * scale, .4 * scale, .2 * scale], pole: [0, 0, 3 * scale], maxStretchRatio: 1,
+    })
+    assert.equal(result.status, 'solved')
+    assert.ok(Math.abs(distance(result.root, result.mid) - scale) < Math.max(1e-12, scale * 1e-9))
+    assert.ok(Math.abs(distance(result.mid, result.tip) - scale) < Math.max(1e-12, scale * 1e-9))
+  }
 })

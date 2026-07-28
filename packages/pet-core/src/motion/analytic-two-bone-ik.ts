@@ -25,9 +25,15 @@ export interface AnalyticTwoBoneIkResult {
 
 const MIN_REACH_EPSILON = 1e-6
 const LENGTH_EPSILON = 1e-12
+const ORTHOGONAL_EPSILON = 1e-10
 
-const isFiniteVector = (value: RigVector3): boolean => value.every(Number.isFinite)
-const copyFiniteVector = (value: RigVector3): RigVector3 => isFiniteVector(value) ? [value[0], value[1], value[2]] : [0, 0, 0]
+type UnknownRecord = Record<string, unknown>
+
+const isRecord = (value: unknown): value is UnknownRecord => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+const isFiniteVector = (value: unknown): value is RigVector3 => Array.isArray(value)
+  && value.length === 3
+  && value.every(item => typeof item === 'number' && Number.isFinite(item))
+const copyFiniteVector = (value: unknown): RigVector3 => isFiniteVector(value) ? [value[0], value[1], value[2]] : [0, 0, 0]
 const subtract = (left: RigVector3, right: RigVector3): RigVector3 => [left[0] - right[0], left[1] - right[1], left[2] - right[2]]
 const addScaled = (origin: RigVector3, direction: RigVector3, scale: number): RigVector3 => [
   origin[0] + direction[0] * scale,
@@ -38,9 +44,12 @@ const dot = (left: RigVector3, right: RigVector3): number => left[0] * right[0] 
 const length = (value: RigVector3): number => Math.hypot(value[0], value[1], value[2])
 
 const normalize = (value: RigVector3): RigVector3 | null => {
-  const magnitude = length(value)
-  if (!Number.isFinite(magnitude) || magnitude <= LENGTH_EPSILON) return null
-  const normalized: RigVector3 = [value[0] / magnitude, value[1] / magnitude, value[2] / magnitude]
+  const scale = Math.max(Math.abs(value[0]), Math.abs(value[1]), Math.abs(value[2]))
+  if (!Number.isFinite(scale) || scale === 0) return null
+  const scaled: RigVector3 = [value[0] / scale, value[1] / scale, value[2] / scale]
+  const magnitude = length(scaled)
+  if (!Number.isFinite(magnitude) || magnitude === 0) return null
+  const normalized: RigVector3 = [scaled[0] / magnitude, scaled[1] / magnitude, scaled[2] / magnitude]
   return isFiniteVector(normalized) ? normalized : null
 }
 
@@ -58,16 +67,59 @@ const stablePerpendicular = (axis: RigVector3): RigVector3 | null => {
   return normalize(addScaled(basis, axis, -dot(basis, axis)))
 }
 
-const blockedResult = (input: AnalyticTwoBoneIkInput): AnalyticTwoBoneIkResult => {
-  const root = copyFiniteVector(input.root)
-  const mid = copyFiniteVector(input.mid)
-  const tip = copyFiniteVector(input.tip)
-  return { status: 'blocked', root, mid, tip, positions: [root, mid, tip], error: 0 }
+const blockedResult = (input: unknown): AnalyticTwoBoneIkResult => {
+  const record = isRecord(input) ? input : {}
+  const root = copyFiniteVector(record.root)
+  const mid = copyFiniteVector(record.mid)
+  const tip = copyFiniteVector(record.tip)
+  const target = record.target
+  let error = Number.MAX_VALUE
+  if (isFiniteVector(target)) {
+    const residualOffset = subtract(tip, target)
+    const residual = isFiniteVector(residualOffset) ? length(residualOffset) : Number.POSITIVE_INFINITY
+    if (Number.isFinite(residual)) error = residual
+  }
+  return { status: 'blocked', root, mid, tip, positions: [root, mid, tip], error }
+}
+
+/** 使用 Kahan 重排的 Heron 公式，以公共尺度计算三角形对目标轴的高，避免长短段平方差消去。 */
+const stableTriangleHeight = (upperLength: number, lowerLength: number, targetDistance: number): number | null => {
+  const scale = Math.max(upperLength, lowerLength, targetDistance)
+  if (!Number.isFinite(scale) || scale <= 0) return null
+  const sides = [upperLength / scale, lowerLength / scale, targetDistance / scale].sort((left, right) => right - left)
+  const largest = sides[0]!
+  const middle = sides[1]!
+  const smallest = sides[2]!
+  const factors = [
+    largest + (middle + smallest),
+    smallest - (largest - middle),
+    smallest + (largest - middle),
+    largest + (middle - smallest),
+  ]
+  if (factors.some(factor => !Number.isFinite(factor) || factor < 0)) return null
+  const product = factors.reduce((result, factor) => result * factor, 1)
+  const normalizedTarget = targetDistance / scale
+  if (!Number.isFinite(product) || !Number.isFinite(normalizedTarget) || normalizedTarget <= 0) return null
+  const height = scale * Math.sqrt(product) / (2 * normalizedTarget)
+  return Number.isFinite(height) ? height : null
+}
+
+const segmentLengthIsValid = (start: RigVector3, end: RigVector3, expected: number, coordinateScale: number): boolean => {
+  const offset = subtract(end, start)
+  if (!isFiniteVector(offset)) return false
+  const actual = length(offset)
+  // 坐标量级决定可实现精度，但容差最多只能占段长四分之一，防止短段坍缩为零仍被误判通过。
+  const tolerance = Math.min(
+    expected * 0.25,
+    Math.max(Number.MIN_VALUE, expected * 1e-10, coordinateScale * Number.EPSILON * 32),
+  )
+  return Number.isFinite(actual) && Math.abs(actual - expected) <= tolerance
 }
 
 export function solveAnalyticTwoBoneIk(input: AnalyticTwoBoneIkInput): AnalyticTwoBoneIkResult {
   if (
-    !isFiniteVector(input.root)
+    !isRecord(input)
+    || !isFiniteVector(input.root)
     || !isFiniteVector(input.mid)
     || !isFiniteVector(input.tip)
     || !isFiniteVector(input.target)
@@ -101,21 +153,42 @@ export function solveAnalyticTwoBoneIk(input: AnalyticTwoBoneIkInput): AnalyticT
   const solvedDistance = Math.min(maximumDistance, Math.max(minimumDistance, targetDistance))
   if (![minimumDistance, maximumDistance, solvedDistance].every(Number.isFinite) || solvedDistance <= 0) return blockedResult(input)
 
-  const poleAxisProjection = dot(input.pole, axis)
-  if (!Number.isFinite(poleAxisProjection)) return blockedResult(input)
-  const poleProjection = addScaled(input.pole, axis, -poleAxisProjection)
-  if (!isFiniteVector(poleProjection)) return blockedResult(input)
-  const bendDirection = normalize(poleProjection) ?? stablePerpendicular(axis)
-  if (!bendDirection) return blockedResult(input)
+  const normalizedPole = normalize(input.pole)
+  let bendDirection: RigVector3 | null = null
+  if (normalizedPole) {
+    const poleAxisProjection = dot(normalizedPole, axis)
+    if (!Number.isFinite(poleAxisProjection)) return blockedResult(input)
+    const poleProjection = addScaled(normalizedPole, axis, -poleAxisProjection)
+    const projectionLength = isFiniteVector(poleProjection) ? length(poleProjection) : Number.NaN
+    if (Number.isFinite(projectionLength) && projectionLength > ORTHOGONAL_EPSILON) {
+      bendDirection = normalize(poleProjection)
+      if (
+        !bendDirection
+        || Math.abs(dot(bendDirection, axis)) > ORTHOGONAL_EPSILON
+        || Math.abs(length(bendDirection) - 1) > ORTHOGONAL_EPSILON
+      ) bendDirection = null
+    }
+  }
+  bendDirection ??= stablePerpendicular(axis)
+  if (
+    !bendDirection
+    || !isFiniteVector(bendDirection)
+    || Math.abs(dot(bendDirection, axis)) > ORTHOGONAL_EPSILON
+    || Math.abs(length(bendDirection) - 1) > ORTHOGONAL_EPSILON
+  ) return blockedResult(input)
 
-  // 余弦定理给出第一段沿主轴的投影，非负开方抵消浮点边界上的微小负数。
-  const midAxisDistance = (
-    upperLength * upperLength
-    - lowerLength * lowerLength
-    + solvedDistance * solvedDistance
-  ) / (2 * solvedDistance)
-  const bendDistance = Math.sqrt(Math.max(0, upperLength * upperLength - midAxisDistance * midAxisDistance))
-  if (![midAxisDistance, bendDistance].every(Number.isFinite)) return blockedResult(input)
+  // 边长先按公共尺度归一化；轴向投影与 Kahan-Heron 高度分别计算，避免 1e8:1 等链的平方差消去。
+  const triangleScale = Math.max(upperLength, lowerLength, solvedDistance)
+  const normalizedUpper = upperLength / triangleScale
+  const normalizedLower = lowerLength / triangleScale
+  const normalizedDistance = solvedDistance / triangleScale
+  const midAxisDistance = triangleScale * (
+    normalizedUpper * normalizedUpper
+    - normalizedLower * normalizedLower
+    + normalizedDistance * normalizedDistance
+  ) / (2 * normalizedDistance)
+  const bendDistance = stableTriangleHeight(upperLength, lowerLength, solvedDistance)
+  if (!Number.isFinite(midAxisDistance) || bendDistance === null) return blockedResult(input)
 
   const root: RigVector3 = [input.root[0], input.root[1], input.root[2]]
   const axisMid = addScaled(root, axis, midAxisDistance)
@@ -123,6 +196,19 @@ export function solveAnalyticTwoBoneIk(input: AnalyticTwoBoneIkInput): AnalyticT
   const tip = addScaled(root, axis, solvedDistance)
   const error = Math.abs(targetDistance - solvedDistance)
   if (![root, mid, tip].every(isFiniteVector) || !Number.isFinite(error)) return blockedResult(input)
+
+  const coordinateScale = Math.max(
+    upperLength,
+    lowerLength,
+    ...root.map(Math.abs),
+    ...mid.map(Math.abs),
+    ...tip.map(Math.abs),
+  )
+  if (
+    !Number.isFinite(coordinateScale)
+    || !segmentLengthIsValid(root, mid, upperLength, coordinateScale)
+    || !segmentLengthIsValid(mid, tip, lowerLength, coordinateScale)
+  ) return blockedResult(input)
 
   // 可达域是闭区间；只要原始距离严格越界，就必须报告发生过钳制，不使用误差容差掩盖边界变化。
   const status = targetDistance < minimumDistance || targetDistance > maximumDistance ? 'clamped' : 'solved'
