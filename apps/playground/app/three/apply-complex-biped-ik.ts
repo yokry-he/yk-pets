@@ -27,6 +27,7 @@ interface LimbRuntime {
   bones: Bone[]
   contact: CompiledCharacterContact
   contactBone: Bone
+  fallbackBones: Bone[]
   fallbackRotations: Quaternion[]
   solver: 'analytic-two-bone' | 'fabrik'
   anchor: Vector3
@@ -46,6 +47,7 @@ interface LimbRuntime {
 }
 
 type MutableRigVector = [number, number, number]
+const IK_CORRECTION_PASS_COUNT = 3
 const clamp01 = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
 
 /**
@@ -122,13 +124,15 @@ export function createComplexBipedIkController(
     const solver = definition.solver === 'fabrik' || (definition.solver === 'auto' && !analyticMapping)
       ? 'fabrik'
       : 'analytic-two-bone'
+    const fallbackBones = [...new Set([...(bones as Bone[]), contactBone])]
     report(`solver:${definition.id}`, `${definition.id} 使用${solver === 'fabrik' ? '受约束 FABRIK' : '解析式 Two Bone IK'}。`)
     limbs.push({
       definition,
       bones: bones as Bone[],
       contact,
       contactBone,
-      fallbackRotations: (bones as Bone[]).map(bone => bone.quaternion.clone()),
+      fallbackBones,
+      fallbackRotations: fallbackBones.map(bone => bone.quaternion.clone()),
       solver,
       anchor: new Vector3(),
       anchorOffset: new Vector3(),
@@ -143,7 +147,7 @@ export function createComplexBipedIkController(
       contactLocalRotationInverse: new Quaternion(...contact.localRotation).normalize().invert(),
       anchorContactWorldRotation: new Quaternion(),
       targetContactBoneWorldRotation: new Quaternion(),
-      remainingCorrections: new Map([...new Set([...(bones as Bone[]), contactBone])].map(bone => [bone, definition.maxCorrectionRadians])),
+      remainingCorrections: new Map(fallbackBones.map(bone => [bone, definition.maxCorrectionRadians])),
     })
   }
 
@@ -258,7 +262,8 @@ export function createComplexBipedIkController(
     if (!limb.anchored) return
     const mix = clamp01(limb.definition.weight) * actionWeight * clamp01(state.weight) * clamp01(state.confidence)
     if (mix <= 0) return
-    for (const bone of limb.remainingCorrections.keys()) limb.remainingCorrections.set(bone, limb.definition.maxCorrectionRadians)
+    for (const bone of limb.remainingCorrections.keys()) limb.remainingCorrections.set(bone, limb.definition.maxCorrectionRadians * mix)
+    const passMix = 1 - (1 - mix) ** (1 / IK_CORRECTION_PASS_COUNT)
 
     target.copy(limb.anchor).sub(limb.anchorOffset)
     for (const [index, bone] of limb.bones.entries()) {
@@ -331,7 +336,7 @@ export function createComplexBipedIkController(
     // 在同一累计角预算内交替收敛位置与接触朝向；禁止改动任何腿或脚骨骼局部 position。
     const tipBone = limb.bones.at(-1)!
     limb.targetContactBoneWorldRotation.copy(limb.anchorContactWorldRotation).multiply(limb.contactLocalRotationInverse).normalize()
-    for (let iteration = 0; iteration < 3; iteration += 1) {
+    for (let iteration = 0; iteration < IK_CORRECTION_PASS_COUNT; iteration += 1) {
       tipBone.getWorldPosition(worldPosition)
       readContactWorld(limb, currentContact)
       limb.terminalStart[0] = worldPosition.x
@@ -346,14 +351,14 @@ export function createComplexBipedIkController(
         currentContact,
         limb.terminalStart,
         limb.terminalEnd,
-        mix,
+        passMix,
         limb.definition.maxCorrectionRadians,
       )
       applyWorldOrientationCorrection(
         limb,
         limb.contactBone,
         limb.targetContactBoneWorldRotation,
-        mix,
+        passMix,
         limb.definition.maxCorrectionRadians,
       )
     }
@@ -418,10 +423,10 @@ export function createComplexBipedIkController(
       for (const limb of limbs) {
         const state = findState(limb.definition.contactId)
         if (!state || state.weight <= 0 || limb.capturedThisFrame) continue
-        for (const [index, bone] of limb.bones.entries()) limb.fallbackRotations[index]!.copy(bone.quaternion)
+        for (const [index, bone] of limb.fallbackBones.entries()) limb.fallbackRotations[index]!.copy(bone.quaternion)
         try { solveLimb(limb, state, actionWeight) }
         catch {
-          for (const [index, bone] of limb.bones.entries()) bone.quaternion.copy(limb.fallbackRotations[index]!)
+          for (const [index, bone] of limb.fallbackBones.entries()) bone.quaternion.copy(limb.fallbackRotations[index]!)
           runtime.object.updateMatrixWorld(true)
           report(`runtime:${limb.definition.id}`, `${limb.definition.id} 的运行时 IK 异常，本帧已独立回退为 FK。`)
         }

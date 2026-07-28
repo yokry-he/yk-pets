@@ -106,6 +106,7 @@
     "bipedPetRuntimeIkConstraintFixComplete": true,
     "bipedPetRuntimeIkClampedDiagnosticsComplete": true,
     "bipedPetRuntimeIkLoopOrientationComplete": true,
+    "bipedPetRuntimeIkWeightFallbackComplete": true,
     "bipedPetRootMotionComplete": false,
     "bipedPetMotionVfxComplete": false,
     "crossBrowserGpuManualAcceptanceComplete": false

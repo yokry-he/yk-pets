@@ -495,6 +495,88 @@ for (const kind of ['time-rewind', 'clip-switch', 'large-jump'] as const) {
   runtime.dispose()
 }
 
+// 三轮交替不得重复吃完整 mix；单帧累计 Quaternion 修正受 maxCorrection×weight 硬预算。
+for (const [weight, maximum] of [[.01, .0085], [.2, .17]] as const) {
+  const { compilation, runtime } = createRuntime()
+  const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
+  const fkDriver = createComplexBipedMotionController(runtime)
+  const ikController = createComplexBipedIkController(runtime, compilation)
+  const locked = sampleWith(sampleBipedPetMotion(clip, 100), {
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.left'],
+  })
+  fkDriver.apply(locked, 1)
+  ikController.apply(locked, 1)
+  const foot = runtime.bonesById.get('foot.left')!
+  foot.rotateY(2.8)
+  const before = foot.quaternion.clone()
+  ikController.apply(locked, weight)
+  const applied = foot.quaternion.angleTo(before)
+  assert.ok(applied <= maximum + 1e-6, `weight=${weight} 的累计修正越界：${applied}`)
+  if (weight === .01) assert.ok(applied < .02)
+  ikController.dispose()
+  fkDriver.dispose()
+  runtime.dispose()
+}
+
+// weight 1 可跨帧在每帧预算内收敛大扭转。
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
+  const fkDriver = createComplexBipedMotionController(runtime)
+  const ikController = createComplexBipedIkController(runtime, compilation)
+  const locked = sampleWith(sampleBipedPetMotion(clip, 100), {
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.left'],
+  })
+  fkDriver.apply(locked, 1)
+  const target = readContactWorldRotation(runtime, compilation, 'foot.left')
+  ikController.apply(locked, 1)
+  runtime.bonesById.get('foot.left')!.rotateY(2.8)
+  for (let frame = 0; frame < 4; frame++) ikController.apply(locked, 1)
+  assert.ok(readContactWorldRotation(runtime, compilation, 'foot.left').angleTo(target) < .1)
+  ikController.dispose()
+  fkDriver.dispose()
+  runtime.dispose()
+}
+
+// contactBone 朝向写入后的异常必须恢复链骨与链外 foot Quaternion 到该帧纯 FK。
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
+  const fkDriver = createComplexBipedMotionController(runtime)
+  const ikController = createComplexBipedIkController(runtime, compilation)
+  const locked = (timeMs: number) => sampleWith(sampleBipedPetMotion(clip, timeMs), {
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.left'],
+  })
+  fkDriver.apply(locked(100), 1)
+  ikController.apply(locked(100), 1)
+  fkDriver.apply(locked(320), 1)
+  const expected = snapshotBones(runtime)
+  const foot = runtime.bonesById.get('foot.left')!
+  const expectedFoot = foot.quaternion.clone()
+  const updateMatrixWorld = runtime.object.updateMatrixWorld.bind(runtime.object)
+  let injected = true
+  runtime.object.updateMatrixWorld = (force?: boolean) => {
+    if (injected && foot.quaternion.angleTo(expectedFoot) > 1e-5) {
+      injected = false
+      throw new Error('测试注入：脚部朝向写入后矩阵更新失败')
+    }
+    updateMatrixWorld(force)
+  }
+  ikController.apply(locked(320), 1)
+  assert.equal(injected, false)
+  for (const boneId of ['thigh.left', 'knee.left', 'calf.left', 'ankle.left', 'foot.left']) {
+    assert.ok(runtime.bonesById.get(boneId)!.quaternion.angleTo(runtime.bonesById.get(boneId)!.quaternion.clone().set(...expected[boneId]!.quaternion)) < 1e-9)
+  }
+  assert.ok(ikController.diagnostics().some(item => item.includes('leg.left') && item.includes('异常') && item.includes('FK')))
+  runtime.object.updateMatrixWorld = updateMatrixWorld
+  ikController.dispose()
+  fkDriver.dispose()
+  runtime.dispose()
+}
+
 // 显式 FABRIK、auto 标准链和 auto 非标准链路径均可诊断；损坏单肢不得阻断另一肢。
 {
   const { compilation, runtime } = createRuntime()
