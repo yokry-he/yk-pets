@@ -33,8 +33,8 @@ export interface BipedPetMotionContactCandidate {
   startMs: number
   endMs: number
   confidence: number
-  fadeIn: boolean
-  fadeOut: boolean
+  fadeIn?: boolean
+  fadeOut?: boolean
 }
 
 export interface BipedPetMotionSemanticEvent {
@@ -115,6 +115,7 @@ const HIND_LEFT_DISTRIBUTION: RotationDistribution = [['hip.left', .1], ['thigh.
 const HIND_RIGHT_DISTRIBUTION: RotationDistribution = [['hip.right', .1], ['thigh.right', .5], ['calf.right', .25], ['ankle.right', .15]]
 
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
+const compareCodePoints = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0
 const numericSuffix = (boneId: string) => Number.parseInt(boneId.split('.').at(-1) || '0', 10)
 
 /**
@@ -285,7 +286,7 @@ function readBipedMotionMetadata(asset: StudioMotionAssetV2, profile: CharacterR
     group.push(contact)
     contactsById.set(contact.contactId, group)
   }
-  for (const contactId of [...contactsById.keys()].sort()) {
+  for (const contactId of [...contactsById.keys()].sort(compareCodePoints)) {
     const group = contactsById.get(contactId)!
       .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs || right.confidence - left.confidence)
     const components: BipedPetMotionContactCandidate[] = []
@@ -443,10 +444,11 @@ function sampleContactState(contact: BipedPetMotionContactCandidate, timeMs: num
   const durationMs = contact.endMs - contact.startMs
   if (durationMs <= 0 || timeMs < contact.startMs || timeMs > contact.endMs) return undefined
   const fadeMs = Math.min(CONTACT_FADE_MS, durationMs / 2)
-  if (contact.fadeIn && timeMs < contact.startMs + fadeMs) {
+  // V1 历史 Clip 没有连续性标志；缺省必须保持原有的双侧淡变语义。
+  if (contact.fadeIn !== false && timeMs < contact.startMs + fadeMs) {
     return { contactId: contact.contactId, phase: 'acquiring', weight: clamp((timeMs - contact.startMs) / fadeMs, 0, 1), confidence: contact.confidence }
   }
-  if (contact.fadeOut && timeMs >= contact.endMs - fadeMs) {
+  if (contact.fadeOut !== false && timeMs >= contact.endMs - fadeMs) {
     return { contactId: contact.contactId, phase: 'releasing', weight: clamp((contact.endMs - timeMs) / fadeMs, 0, 1), confidence: contact.confidence }
   }
   return { contactId: contact.contactId, phase: 'locked', weight: 1, confidence: contact.confidence }
@@ -459,7 +461,7 @@ function sampleContactStates(contacts: readonly BipedPetMotionContactCandidate[]
     const previous = state && states.get(state.contactId)
     if (state && (!previous || state.weight > previous.weight)) states.set(state.contactId, state)
   }
-  return [...states.values()].sort((left, right) => left.contactId.localeCompare(right.contactId))
+  return [...states.values()].sort((left, right) => compareCodePoints(left.contactId, right.contactId))
 }
 
 /** 在任意时间采样 Clip；blocked 输入始终返回可直接忽略的空姿态。 */

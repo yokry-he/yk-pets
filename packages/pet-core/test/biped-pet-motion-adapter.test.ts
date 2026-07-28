@@ -323,3 +323,45 @@ test('ping-pong 转折点遵循线性边界且完整覆盖接触始终锁定', (
     assert.deepEqual(sampleBipedPetMotion(full, timeMs).contactStates, [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: .9 }])
   }
 })
+
+test('历史 V1 Clip 缺少淡变标志时继续使用 80ms 旧语义并保持身份', () => {
+  const compiled = compileBipedPetMotion(createStudioMotionAsset({
+    id: 'motion-contact-v1', nameZh: '历史接触', nameEn: 'Legacy contact', durationMs: 200, loopMode: 'once', createdAt: 1, updatedAt: 1,
+  }))
+  const legacyClip = {
+    ...compiled,
+    contacts: [{ contactId: 'foot.left', startMs: 20, endMs: 180, confidence: .9 }],
+  }
+
+  const acquiring = sampleBipedPetMotion(legacyClip, 21)
+  const releasing = sampleBipedPetMotion(legacyClip, 179)
+  assert.deepEqual(acquiring.contactStates, [{ contactId: 'foot.left', phase: 'acquiring', weight: .0125, confidence: .9 }])
+  assert.deepEqual(releasing.contactStates, [{ contactId: 'foot.left', phase: 'releasing', weight: .0125, confidence: .9 }])
+  assert.equal(acquiring.sourceMotionId, compiled.sourceMotionId)
+  assert.equal(acquiring.clipHash, compiled.hash)
+  assert.equal(acquiring.durationMs, compiled.durationMs)
+  assert.equal(acquiring.loopMode, compiled.loopMode)
+})
+
+test('接触编译与采样统一使用不依赖 locale 的 code-point 顺序', () => {
+  const contactTemplate = BIPED_PET_RIG_PROFILE.contacts[0]!
+  const profile = {
+    ...BIPED_PET_RIG_PROFILE,
+    contacts: [
+      ...BIPED_PET_RIG_PROFILE.contacts,
+      { ...contactTemplate, id: 'z' },
+      { ...contactTemplate, id: 'ä' },
+    ],
+  }
+  const clip = compileBipedPetMotion(createStudioMotionAsset({
+    id: 'motion-contact-order', nameZh: '接触排序', nameEn: 'Contact ordering', durationMs: 400, loopMode: 'once',
+    extensions: { 'yk-pets/biped-motion/v1': { contacts: [
+      { contactId: 'ä', startMs: 0, endMs: 300, confidence: .8 },
+      { contactId: 'z', startMs: 0, endMs: 300, confidence: .9 },
+    ] } }, createdAt: 1, updatedAt: 1,
+  }), { profile })
+
+  assert.deepEqual(clip.contacts.map(item => item.contactId), ['z', 'ä'])
+  assert.deepEqual(sampleBipedPetMotion(clip, 100).contactStates.map(item => item.contactId), ['z', 'ä'])
+  assert.deepEqual(sampleBipedPetMotion(clip, 100).activeContacts, ['z', 'ä'])
+})
