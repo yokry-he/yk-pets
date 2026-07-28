@@ -136,7 +136,12 @@ const numericSuffix = (boneId: string) => Number.parseInt(boneId.split('.').at(-
 const canonicalRootMotions = new WeakSet<object>()
 type SampledRootMotionCacheEntry =
   | { readonly status: 'blocked'; readonly rootMotion: BipedPetRootMotionDefinition }
-  | { readonly status: 'ready'; readonly source: unknown; readonly rootMotion: BipedPetRootMotionDefinition }
+  | {
+    readonly status: 'ready'
+    readonly source: unknown
+    readonly durationMs: number
+    readonly rootMotion: BipedPetRootMotionDefinition
+  }
 const sampledRootMotionCache = new WeakMap<object, SampledRootMotionCacheEntry>()
 
 function freezeRootMotionDefinition(value: BipedPetRootMotionDefinition): BipedPetRootMotionDefinition {
@@ -665,16 +670,20 @@ function rootMotionForSample(clip: BipedPetQuaternionClip): BipedPetRootMotionDe
   catch {
     input = undefined
   }
+  const durationMs = clip.durationMs
   const cached = sampledRootMotionCache.get(clip)
-  if (cached?.status === 'ready' && cached.source === input) return cached.rootMotion
+  if (cached?.status === 'ready' && cached.source === input && Object.is(cached.durationMs, durationMs)) {
+    return cached.rootMotion
+  }
   if (input && typeof input === 'object' && canonicalRootMotions.has(input)) {
     return input as BipedPetRootMotionDefinition
   }
-  const normalized = normalizeBipedPetRootMotion(input, clip.durationMs)
-  const rootMotion = normalized.diagnostics.length
-    ? canonicalInPlaceRootMotion(clip.durationMs)
+  const normalized = normalizeBipedPetRootMotion(input, durationMs)
+  const hasUnsafeRepair = normalized.diagnostics.some(item => !/^root-motion-window-\d+-time-clamped$/u.test(item.id))
+  const rootMotion = hasUnsafeRepair
+    ? canonicalInPlaceRootMotion(durationMs)
     : freezeRootMotionDefinition(normalized.value)
-  sampledRootMotionCache.set(clip, { status: 'ready', source: input, rootMotion })
+  sampledRootMotionCache.set(clip, { status: 'ready', source: input, durationMs, rootMotion })
   return rootMotion
 }
 

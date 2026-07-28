@@ -559,6 +559,61 @@ test('同一历史 V1 Clip 从 blocked 切回 ready 后不得复用原地缓存'
   assert.ok(Object.isFrozen(readySample.rootMotion))
 })
 
+test('同一历史 V1 Clip 修改动作时长后会重新钳制窗口并冻结新定义', () => {
+  const current = compileBipedPetMotion({ ...fixtureMotion, extensions: undefined })
+  const rootMotion = {
+    mode: 'travel' as const,
+    distance: .6,
+    turnRadians: .1,
+    verticalMode: 'grounded' as const,
+    jumpHeight: 0,
+    windows: [{ id: 'duration-window', kind: 'travel' as const, startMs: 0, endMs: 1200, weight: 1 }],
+    vfxTags: ['speed-trail' as const],
+  }
+  const clip = { ...current, rootMotion }
+  const mutableClip = clip as unknown as { durationMs: number }
+  const first = sampleBipedPetMotion(clip, 100).rootMotion
+
+  assert.equal(first.windows[0]?.endMs, 1200)
+  mutableClip.durationMs = 600
+  const shortened = sampleBipedPetMotion(clip, 100).rootMotion
+
+  assert.notEqual(shortened, first)
+  assert.equal(shortened.mode, 'travel')
+  assert.equal(shortened.windows[0]?.endMs, 600)
+  assert.ok(Object.isFrozen(shortened))
+  assert.ok(Object.isFrozen(shortened.windows[0]))
+})
+
+test('历史 V1 Clip 的非有限或非正时长不会命中旧 ready 缓存', () => {
+  const current = compileBipedPetMotion({ ...fixtureMotion, extensions: undefined })
+  const clip = {
+    ...current,
+    rootMotion: {
+      mode: 'travel' as const,
+      distance: .5,
+      turnRadians: 0,
+      verticalMode: 'grounded' as const,
+      jumpHeight: 0,
+      windows: [{ id: 'invalid-duration', kind: 'travel' as const, startMs: 0, endMs: 1000, weight: 1 }],
+      vfxTags: [] as const,
+    },
+  }
+  const mutableClip = clip as unknown as { durationMs: number }
+
+  assert.equal(sampleBipedPetMotion(clip, 100).rootMotion.mode, 'travel')
+  mutableClip.durationMs = Number.NaN
+  const nonFinite = sampleBipedPetMotion(clip, 100).rootMotion
+  const repeatedNonFinite = sampleBipedPetMotion(clip, 100).rootMotion
+  assert.deepEqual(nonFinite, canonicalInPlaceRootMotion)
+  assert.equal(repeatedNonFinite, nonFinite)
+
+  mutableClip.durationMs = 0
+  const nonPositive = sampleBipedPetMotion(clip, 100).rootMotion
+  assert.deepEqual(nonPositive, canonicalInPlaceRootMotion)
+  assert.notEqual(nonPositive, nonFinite)
+})
+
 test('Root Motion 哈希保持 ASCII 路径并覆盖全部契约字段', () => {
   const base = {
     mode: 'travel',
