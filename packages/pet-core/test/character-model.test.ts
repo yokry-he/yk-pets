@@ -565,6 +565,32 @@ test('编译器会阻止并诊断损坏的 Profile 接触点与关节限制，�
   }
 })
 
+test('编译数据内部校验失败时 blocked 结果不保留 IK 定义', () => {
+  const profile = BIPED_PET_RIG_PROFILE as unknown as {
+    bones: Array<{ restPosition: [number, number, number] }>
+  }
+  const bone = profile.bones[0]!
+  const descriptor = Object.getOwnPropertyDescriptor(bone, 'restPosition')!
+  let reads = 0
+  try {
+    Object.defineProperty(bone, 'restPosition', {
+      configurable: true,
+      enumerable: true,
+      get: () => ++reads === 1 ? descriptor.value : [Number.NaN, 0, 0],
+    })
+    const first = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+
+    reads = 0
+    const second = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+    assert.equal(first.status, 'blocked')
+    assert.ok(first.diagnostics.some(item => item.id === 'bone-position'))
+    assert.deepEqual(first.limbIk, [])
+    assert.notEqual(first.limbIk, second.limbIk)
+  } finally {
+    Object.defineProperty(bone, 'restPosition', descriptor)
+  }
+})
+
 test('尾巴首节保留配方分段长度，单节尾巴的长度变化会改变末端与网格哈希', () => {
   const defaults = createBipedPetModelRecipe(200)
   const compileTail = (length: number) => compileBipedPetCharacter({

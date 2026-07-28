@@ -459,7 +459,8 @@ export function compileBipedPetCharacter(input: unknown): CompiledCharacterModel
     const errors = ensureCompiledData(model)
     model.diagnostics.push(...errors)
     const hashInput = { recipe: { ...recipe, updatedAt: undefined }, ...model }
-    return { ...model, status: errors.length === 0 ? 'ready' : 'blocked', hash: hash(hashInput) }
+    if (errors.length > 0) return { ...model, status: 'blocked', hash: hash(hashInput), limbIk: [] }
+    return { ...model, status: 'ready', hash: hash(hashInput) }
   } catch {
     const diagnostics: CharacterCompilationDiagnostic[] = [{ id: 'compiler-failure', severity: 'error', message: '角色生成器无法安全编译当前数据。' }]
     return {
