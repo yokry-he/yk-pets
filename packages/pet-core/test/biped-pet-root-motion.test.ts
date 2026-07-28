@@ -614,6 +614,57 @@ test('历史 V1 Clip 的非有限或非正时长不会命中旧 ready 缓存', (
   assert.notEqual(nonPositive, nonFinite)
 })
 
+test('当前编译 Clip 修改时长后不得复用旧时长 canonical Root Motion', () => {
+  const clip = compileBipedPetMotion({
+    ...fixtureMotion,
+    extensions: {
+      'yk-pets/biped-motion/v1': {
+        rootMotion: {
+          mode: 'travel',
+          distance: .8,
+          windows: [{ id: 'compiled-duration', kind: 'travel', startMs: 0, endMs: 1200, weight: 1 }],
+        },
+      },
+    },
+  })
+  const original = clip.rootMotion
+  const mutableClip = clip as unknown as { durationMs: number }
+
+  assert.equal(sampleBipedPetMotion(clip, 100).rootMotion, original)
+  mutableClip.durationMs = 600
+  const shortened = sampleBipedPetMotion(clip, 100).rootMotion
+
+  assert.notEqual(shortened, original)
+  assert.equal(shortened.windows[0]?.endMs, 600)
+  assert.equal(original.windows[0]?.endMs, 1200)
+  assert.ok(Object.isFrozen(shortened))
+  assert.ok(Object.isFrozen(shortened.windows[0]))
+})
+
+test('跨 Clip 复用不同规范化时长的 canonical Root Motion 时会重新钳制', () => {
+  const sourceClip = compileBipedPetMotion({
+    ...fixtureMotion,
+    extensions: {
+      'yk-pets/biped-motion/v1': {
+        rootMotion: {
+          mode: 'travel',
+          distance: .5,
+          windows: [{ id: 'shared-duration', kind: 'travel', startMs: 0, endMs: 1200, weight: 1 }],
+          vfxTags: ['speed-trail'],
+        },
+      },
+    },
+  })
+  const reusedClip = { ...sourceClip, durationMs: 600, rootMotion: sourceClip.rootMotion }
+  const sample = sampleBipedPetMotion(reusedClip, 100)
+
+  assert.notEqual(sample.rootMotion, sourceClip.rootMotion)
+  assert.equal(sample.rootMotion.windows[0]?.endMs, 600)
+  assert.equal(sourceClip.rootMotion.windows[0]?.endMs, 1200)
+  assert.ok(Object.isFrozen(sample.rootMotion))
+  assert.ok(Object.isFrozen(sample.rootMotion.windows[0]))
+})
+
 test('Root Motion 哈希保持 ASCII 路径并覆盖全部契约字段', () => {
   const base = {
     mode: 'travel',

@@ -133,7 +133,7 @@ const HIND_RIGHT_DISTRIBUTION: RotationDistribution = [['hip.right', .1], ['thig
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
 const compareCodePoints = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0
 const numericSuffix = (boneId: string) => Number.parseInt(boneId.split('.').at(-1) || '0', 10)
-const canonicalRootMotions = new WeakSet<object>()
+const canonicalRootMotionDurations = new WeakMap<object, number>()
 type SampledRootMotionCacheEntry =
   | { readonly status: 'blocked'; readonly rootMotion: BipedPetRootMotionDefinition }
   | {
@@ -144,19 +144,19 @@ type SampledRootMotionCacheEntry =
   }
 const sampledRootMotionCache = new WeakMap<object, SampledRootMotionCacheEntry>()
 
-function freezeRootMotionDefinition(value: BipedPetRootMotionDefinition): BipedPetRootMotionDefinition {
+function freezeRootMotionDefinition(value: BipedPetRootMotionDefinition, durationMs: number): BipedPetRootMotionDefinition {
   const rootMotion: BipedPetRootMotionDefinition = {
     ...value,
     windows: Object.freeze(value.windows.map(item => Object.freeze({ ...item }))),
     vfxTags: Object.freeze([...value.vfxTags]),
   }
   Object.freeze(rootMotion)
-  canonicalRootMotions.add(rootMotion)
+  canonicalRootMotionDurations.set(rootMotion, durationMs)
   return rootMotion
 }
 
 function canonicalInPlaceRootMotion(durationMs: number): BipedPetRootMotionDefinition {
-  return freezeRootMotionDefinition(normalizeBipedPetRootMotion(undefined, durationMs).value)
+  return freezeRootMotionDefinition(normalizeBipedPetRootMotion(undefined, durationMs).value, durationMs)
 }
 
 /**
@@ -542,7 +542,7 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
   diagnostics.push(...extension.diagnostics)
   const rootMotion = readRootMotionDefinition(asset, extension.source)
   diagnostics.push(...rootMotion.diagnostics)
-  const compiledRootMotion = freezeRootMotionDefinition(rootMotion.value)
+  const compiledRootMotion = freezeRootMotionDefinition(rootMotion.value, asset.durationMs)
   const profileDiagnostics = validateRigProfile(profile)
   if (profile.id !== 'biped-pet/v1' || profileDiagnostics.length) {
     diagnostics.push(...profileDiagnostics.map((message, index): BipedPetMotionDiagnostic => ({
@@ -675,14 +675,19 @@ function rootMotionForSample(clip: BipedPetQuaternionClip): BipedPetRootMotionDe
   if (cached?.status === 'ready' && cached.source === input && Object.is(cached.durationMs, durationMs)) {
     return cached.rootMotion
   }
-  if (input && typeof input === 'object' && canonicalRootMotions.has(input)) {
+  if (
+    input
+    && typeof input === 'object'
+    && canonicalRootMotionDurations.has(input)
+    && Object.is(canonicalRootMotionDurations.get(input), durationMs)
+  ) {
     return input as BipedPetRootMotionDefinition
   }
   const normalized = normalizeBipedPetRootMotion(input, durationMs)
   const hasUnsafeRepair = normalized.diagnostics.some(item => !/^root-motion-window-\d+-time-clamped$/u.test(item.id))
   const rootMotion = hasUnsafeRepair
     ? canonicalInPlaceRootMotion(durationMs)
-    : freezeRootMotionDefinition(normalized.value)
+    : freezeRootMotionDefinition(normalized.value, durationMs)
   sampledRootMotionCache.set(clip, { status: 'ready', source: input, durationMs, rootMotion })
   return rootMotion
 }
