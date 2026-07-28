@@ -20,6 +20,7 @@ import { createComplexBipedRootMotionController } from '../apps/playground/app/t
 import { createComplexBipedBalanceController } from '../apps/playground/app/three/apply-complex-biped-balance.ts'
 import { createComplexBipedIkController } from '../apps/playground/app/three/apply-complex-biped-ik.ts'
 import { createComplexBipedMotionController } from '../apps/playground/app/three/apply-complex-biped-motion.ts'
+import { createComplexBipedMotionVfxController } from '../apps/playground/app/three/complex-biped-motion-vfx.ts'
 
 const walkAsset = BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-walk')
 const jumpAsset = BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-jump')
@@ -1079,6 +1080,593 @@ for (const loopMode of ['loop', 'ping-pong'] as const) {
   }
   controller.dispose()
   runtime.dispose()
+}
+
+// VFX 运行时必须使用普通 Group、真实 Three 资源和固定对象池；重复 burst ID 不得重复分配。 / VFX uses a plain Group with real pooled Three resources, and duplicate burst IDs never allocate twice.
+{
+  const vfx = createComplexBipedMotionVfxController()
+  const frame = { requestedTimeMs: 1800, position: [0, 0, 0] as const, facingRadians: 0 }
+  assert.equal(vfx.object.type, 'Group')
+  assert.equal(vfx.object.getObjectByName('复杂双足运动特效-落地尘点')?.type, 'Mesh')
+  assert.equal(vfx.object.getObjectByName('复杂双足运动特效-落地尘点')?.isInstancedMesh, true)
+  assert.equal(vfx.object.getObjectByName('复杂双足运动特效-急停火花')?.isInstancedMesh, true)
+  vfx.apply([{ id: 'a', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: 1800, lifetimeMs: 480 }], frame)
+  assert.equal(vfx.snapshot().activeByKind['landing-ring'], 1)
+  vfx.apply([{ id: 'a', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: 1800, lifetimeMs: 480 }], frame)
+  assert.equal(vfx.snapshot().activeByKind['landing-ring'], 1)
+  vfx.apply([{ id: 'dust-single', kind: 'landing-dust', mode: 'burst', strength: 1, timeMs: 1801, lifetimeMs: 480 }], {
+    ...frame,
+    requestedTimeMs: 1801,
+  })
+  assert.ok(vfx.snapshot().activeByKind['landing-dust'] <= 16, '单个 burst 最多创建 16 个实例')
+  for (let index = 0; index < 200; index++) {
+    vfx.apply([{
+      id: `dust-${index}`,
+      kind: 'landing-dust',
+      mode: 'burst',
+      strength: .8,
+      timeMs: 1800 + index,
+      lifetimeMs: 480,
+    }], { ...frame, requestedTimeMs: 1800 + index })
+  }
+  const snapshot = vfx.snapshot()
+  assert.ok(snapshot.activeTotal <= 64)
+  assert.ok(snapshot.activeByKind['landing-dust'] <= 24)
+  assert.equal(snapshot.poolCapacityTotal, 64)
+  vfx.dispose()
+  vfx.dispose()
+  assert.equal(vfx.snapshot().disposed, true)
+}
+
+// sustain 复用 ID 并跟随最新父级位置，burst 则捕获触发位置；动作时间负责过期和回拖清理。 / Sustain updates in place while bursts capture their parent-space origin; action time owns expiry and rewind cleanup.
+{
+  const vfx = createComplexBipedMotionVfxController()
+  const trail = { id: 'trail-active', kind: 'speed-trail', mode: 'sustain', strength: .9, timeMs: 100, lifetimeMs: 160 } as const
+  vfx.apply([trail], { requestedTimeMs: 100, position: [1, 2, 3], facingRadians: .25 })
+  assert.equal(vfx.snapshot().activeByKind['speed-trail'], 1)
+  const trailObject = vfx.object.getObjectByName('复杂双足运动特效-速度拖尾-0')!
+  const firstTrailPosition = trailObject.position.toArray()
+  vfx.apply([{ ...trail, timeMs: 140 }], { requestedTimeMs: 140, position: [4, 5, 6], facingRadians: .5 })
+  assert.equal(vfx.snapshot().activeByKind['speed-trail'], 1)
+  assert.notDeepEqual(trailObject.position.toArray(), firstTrailPosition)
+  vfx.apply(Array.from({ length: 20 }, (_, index) => ({
+    ...trail,
+    id: `trail-${index}`,
+    timeMs: 140,
+  })), { requestedTimeMs: 140, position: [4, 5, 6], facingRadians: .5 })
+  assert.equal(vfx.snapshot().activeByKind['speed-trail'], 8, '速度拖尾活动实例不得超过固定池 8')
+
+  const ring = { id: 'ring-capture', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: 140, lifetimeMs: 480 } as const
+  vfx.apply([ring], { requestedTimeMs: 140, position: [2, 0, 3], facingRadians: 0 })
+  const ringObject = vfx.object.getObjectByName('复杂双足运动特效-落地环-0')!
+  const capturedRingPosition = ringObject.position.toArray()
+  vfx.apply([], { requestedTimeMs: 200, position: [20, 10, 30], facingRadians: 1 })
+  assert.deepEqual(ringObject.position.toArray(), capturedRingPosition)
+  vfx.apply([], { requestedTimeMs: 700, position: [20, 10, 30], facingRadians: 1 })
+  assert.equal(vfx.snapshot().activeByKind['landing-ring'], 0)
+  assert.equal(vfx.snapshot().activeByKind['speed-trail'], 0)
+
+  vfx.apply([{ ...ring, timeMs: 800 }], { requestedTimeMs: 800, position: [2, 0, 3], facingRadians: 0 })
+  assert.equal(vfx.snapshot().activeByKind['landing-ring'], 0, '已经见过的 burst ID 即使过期也不能重放')
+  vfx.apply([{ ...ring, id: 'ring-new', timeMs: 800 }], { requestedTimeMs: 800, position: [2, 0, 3], facingRadians: 0 })
+  assert.equal(vfx.snapshot().activeByKind['landing-ring'], 1)
+  vfx.apply([], { requestedTimeMs: 120, position: [0, 0, 0], facingRadians: 0 })
+  assert.equal(vfx.snapshot().activeTotal, 0, '动作时间回拖必须清理活动实例')
+  vfx.dispose()
+}
+
+// 近期账本容量不能淘汰仍在池内的 burst ID；其他类别施压后重复活动环仍只能保留一个。 / Recent-ledger pressure must never evict an ID whose burst is still active.
+{
+  const vfx = createComplexBipedMotionVfxController()
+  vfx.apply([{ id: 'active-ring', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: 0, lifetimeMs: 1200 }], {
+    requestedTimeMs: 0,
+    position: [0, 0, 0],
+    facingRadians: 0,
+  })
+  for (let batch = 0; batch < 2; batch++) {
+    const requestedTimeMs = batch + 1
+    vfx.apply(Array.from({ length: 128 }, (_, index) => ({
+      id: `ledger-pressure-${batch}-${index}`,
+      kind: 'landing-dust' as const,
+      mode: 'burst' as const,
+      strength: .8,
+      timeMs: requestedTimeMs,
+      lifetimeMs: 1200,
+    })), { requestedTimeMs, position: [0, 0, 0], facingRadians: 0 })
+  }
+  vfx.apply([{ id: 'active-ring', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: 3, lifetimeMs: 1200 }], {
+    requestedTimeMs: 3,
+    position: [0, 0, 0],
+    facingRadians: 0,
+  })
+  assert.equal(vfx.snapshot().activeByKind['landing-ring'], 1)
+  vfx.dispose()
+}
+
+// 帧位置必须在校验时一次性复制，不能让 Proxy 在二次读取时把已通过校验的值换成 NaN。 / Frame position must be copied once so a Proxy cannot swap validated coordinates for NaN on a second read.
+{
+  const vfx = createComplexBipedMotionVfxController()
+  const reads = [0, 0, 0]
+  const source = [1, 2, 3]
+  const position = new Proxy(source, {
+    get(target, property, receiver) {
+      const index = typeof property === 'string' && /^[0-2]$/.test(property) ? Number(property) : -1
+      if (index < 0) return Reflect.get(target, property, receiver)
+      const read = reads[index]!
+      reads[index] = read + 1
+      return read === 0 ? target[index] : Number.NaN
+    },
+  }) as [number, number, number]
+  vfx.apply([{ id: 'proxy-ring', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: 0, lifetimeMs: 480 }], {
+    requestedTimeMs: 0,
+    position,
+    facingRadians: 0,
+  })
+  assert.equal(vfx.snapshot().activeByKind['landing-ring'], 1)
+  const ring = vfx.object.getObjectByName('复杂双足运动特效-落地环-0')!
+  assert.ok(ring.position.toArray().every(Number.isFinite))
+  vectorNear(ring.position.toArray(), [1, 2.018, 3])
+  vfx.dispose()
+}
+
+// VFX 朝向沿 Root Motion 的局部 +Z：yaw=0 指向世界 +Z，yaw=π/2 指向世界 +X。 / VFX facing follows Root Motion local +Z: yaw 0 is world +Z and yaw π/2 is world +X.
+for (const [facingRadians, expectedBackwardAxis] of [[0, 'z'], [Math.PI / 2, 'x']] as const) {
+  const vfx = createComplexBipedMotionVfxController()
+  vfx.apply([{ id: `trail-facing-${facingRadians}`, kind: 'speed-trail', mode: 'sustain', strength: .9, timeMs: 0, lifetimeMs: 160 }], {
+    requestedTimeMs: 0,
+    position: [0, 0, 0],
+    facingRadians,
+  })
+  const trail = vfx.object.getObjectByName('复杂双足运动特效-速度拖尾-0')!
+  trail.updateMatrix()
+  if (expectedBackwardAxis === 'z') {
+    near(trail.position.x, 0)
+    assert.ok(trail.position.z < 0)
+    near(trail.matrix.elements[4], 0)
+    assert.ok(Math.abs(trail.matrix.elements[6]) > .1)
+  }
+  else {
+    assert.ok(trail.position.x < 0)
+    near(trail.position.z, 0)
+    assert.ok(Math.abs(trail.matrix.elements[4]) > .1)
+    near(trail.matrix.elements[6], 0)
+  }
+
+  vfx.apply([{ id: `sparks-facing-${facingRadians}`, kind: 'brake-sparks', mode: 'burst', strength: 1, timeMs: 0, lifetimeMs: 320 }], {
+    requestedTimeMs: 0,
+    position: [0, 0, 0],
+    facingRadians,
+  })
+  vfx.apply([], { requestedTimeMs: 160, position: [99, 99, 99], facingRadians: 0 })
+  const sparks = vfx.object.getObjectByName('复杂双足运动特效-急停火花') as { instanceMatrix: { array: ArrayLike<number> } }
+  let averageX = 0
+  let averageZ = 0
+  for (let index = 0; index < 16; index++) {
+    averageX += sparks.instanceMatrix.array[index * 16 + 12]!
+    averageZ += sparks.instanceMatrix.array[index * 16 + 14]!
+  }
+  averageX /= 16
+  averageZ /= 16
+  if (expectedBackwardAxis === 'z') assert.ok(averageZ < -.1 && Math.abs(averageX) < .1)
+  else assert.ok(averageX < -.1 && Math.abs(averageZ) < .1)
+  vfx.dispose()
+}
+
+// 同到期时间的满池必须按激活先后公平轮转，不能让新 burst/拖尾反复覆盖同一个 slot 0。 / Equal-expiry full pools must evict by activation order instead of repeatedly overwriting slot zero.
+{
+  const vfx = createComplexBipedMotionVfxController()
+  vfx.apply([
+    { id: 'dust-fill-a', kind: 'landing-dust', mode: 'burst', strength: 1, timeMs: 0, lifetimeMs: 1200 },
+    { id: 'dust-fill-b', kind: 'landing-dust', mode: 'burst', strength: 1, timeMs: 0, lifetimeMs: 1200 },
+  ], { requestedTimeMs: 0, position: [0, 0, 0], facingRadians: 0 })
+  vfx.apply([{ id: 'dust-newest', kind: 'landing-dust', mode: 'burst', strength: 1, timeMs: 0, lifetimeMs: 1200 }], {
+    requestedTimeMs: 0,
+    position: [100, 0, 0],
+    facingRadians: 0,
+  })
+  const dust = vfx.object.getObjectByName('复杂双足运动特效-落地尘点') as { instanceMatrix: { array: ArrayLike<number> } }
+  let newestDustSlots = 0
+  for (let index = 0; index < 24; index++) if (dust.instanceMatrix.array[index * 16 + 12]! > 50) newestDustSlots += 1
+  assert.equal(newestDustSlots, 16)
+
+  vfx.apply(Array.from({ length: 8 }, (_, index) => ({
+    id: `trail-fill-${index}`,
+    kind: 'speed-trail' as const,
+    mode: 'sustain' as const,
+    strength: .9,
+    timeMs: 0,
+    lifetimeMs: 1200,
+  })), { requestedTimeMs: 0, position: [0, 0, 0], facingRadians: 0 })
+  vfx.apply(Array.from({ length: 4 }, (_, index) => ({
+    id: `trail-newest-${index}`,
+    kind: 'speed-trail' as const,
+    mode: 'sustain' as const,
+    strength: .9,
+    timeMs: 0,
+    lifetimeMs: 1200,
+  })), { requestedTimeMs: 0, position: [100, 0, 0], facingRadians: 0 })
+  const newestTrailSlots = vfx.object.children.filter(child => child.name.startsWith('复杂双足运动特效-速度拖尾-')
+    && child.visible && child.position.x > 50).length
+  assert.equal(newestTrailSlots, 4)
+  vfx.dispose()
+}
+
+// 四类资源的创建彼此隔离；一个效果类失败不能阻塞其余真实效果。 / Effect-class creation is isolated so one failed class cannot block the remaining real effects.
+{
+  const vfx = createComplexBipedMotionVfxController({
+    createGeometry(kind, createDefault) {
+      if (kind === 'landing-dust') throw new Error('测试注入：尘点 Geometry 创建失败')
+      return createDefault()
+    },
+  })
+  assert.deepEqual(vfx.snapshot().unavailableKinds, ['landing-dust'])
+  assert.equal(vfx.snapshot().poolCapacityTotal, 40)
+  assert.equal(vfx.snapshot().poolCapacityByKind['landing-dust'], 0)
+  vfx.apply([
+    { id: 'unavailable-dust', kind: 'landing-dust', mode: 'burst', strength: .8, timeMs: 0, lifetimeMs: 480 },
+    { id: 'available-ring', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: 0, lifetimeMs: 480 },
+    { id: 'available-sparks', kind: 'brake-sparks', mode: 'burst', strength: .8, timeMs: 0, lifetimeMs: 320 },
+  ], { requestedTimeMs: 0, position: [0, 0, 0], facingRadians: 0 })
+  assert.equal(vfx.snapshot().activeByKind['landing-dust'], 0)
+  assert.equal(vfx.snapshot().activeByKind['landing-ring'], 1)
+  assert.ok(vfx.snapshot().activeByKind['brake-sparks'] > 0)
+  vfx.dispose()
+}
+
+// Mesh 池在加入部分子节点后初始化失败时，必须移除该类全部残留节点并释放部分资源。 / A partially attached Mesh-pool failure must remove all class children and release partial resources.
+{
+  let ringChildren = 0
+  let ringGeometryDisposals = 0
+  let ringMaterialDisposals = 0
+  const vfx = createComplexBipedMotionVfxController({
+    createGeometry(kind, createDefault) {
+      const geometry = createDefault()
+      if (kind === 'landing-ring') {
+        const dispose = geometry.dispose.bind(geometry)
+        geometry.dispose = () => { ringGeometryDisposals += 1; dispose() }
+      }
+      return geometry
+    },
+    createMaterial(kind, createDefault) {
+      const material = createDefault()
+      if (kind === 'landing-ring') {
+        const dispose = material.dispose.bind(material)
+        material.dispose = () => { ringMaterialDisposals += 1; dispose() }
+      }
+      return material
+    },
+    attachObject(kind, group, child) {
+      group.add(child)
+      if (kind === 'landing-ring' && ++ringChildren === 2) throw new Error('测试注入：落地环第二个子节点加入后失败')
+    },
+  })
+  assert.ok(vfx.snapshot().unavailableKinds.includes('landing-ring'))
+  assert.equal(vfx.object.children.some(child => child.name.startsWith('复杂双足运动特效-落地环-')), false)
+  assert.equal(ringGeometryDisposals, 1)
+  assert.equal(ringMaterialDisposals, 1)
+  assert.ok(vfx.object.getObjectByName('复杂双足运动特效-落地尘点'))
+  vfx.dispose()
+  assert.equal(ringGeometryDisposals, 1)
+  assert.equal(ringMaterialDisposals, 1)
+}
+
+// default 工厂回调必须惰性缓存；调用多次后抛错只产生并回收一个 provisional 资源。 / Default factory callbacks are lazy-cached so repeated calls followed by a throw create and release one provisional resource.
+{
+  let firstDefault: unknown
+  let secondDefault: unknown
+  let provisionalDisposals = 0
+  const vfx = createComplexBipedMotionVfxController({
+    createGeometry(kind, createDefault) {
+      if (kind !== 'landing-ring') return createDefault()
+      firstDefault = createDefault()
+      secondDefault = createDefault()
+      const geometry = firstDefault as { dispose(): void }
+      const dispose = geometry.dispose.bind(geometry)
+      geometry.dispose = () => { provisionalDisposals += 1; dispose() }
+      throw new Error('测试注入：default 创建后失败')
+    },
+  })
+  assert.equal(firstDefault, secondDefault)
+  assert.equal(provisionalDisposals, 1)
+  assert.ok(vfx.snapshot().unavailableKinds.includes('landing-ring'))
+  vfx.dispose()
+  assert.equal(provisionalDisposals, 1)
+}
+
+// 后续 kind 初始化失败时，共享的已提交资源仍属于前一可用池，不能被 catch 提前释放。 / A later class failure must not dispose shared resources already owned by an earlier usable pool.
+{
+  let sharedGeometry: { dispose(): void } | undefined
+  let sharedMaterial: { dispose(): void } | undefined
+  let geometryDisposals = 0
+  let materialDisposals = 0
+  const vfx = createComplexBipedMotionVfxController({
+    createGeometry(_kind, createDefault) {
+      if (!sharedGeometry) {
+        sharedGeometry = createDefault()
+        const dispose = sharedGeometry.dispose.bind(sharedGeometry)
+        sharedGeometry.dispose = () => { geometryDisposals += 1; dispose() }
+      }
+      return sharedGeometry as ReturnType<typeof createDefault>
+    },
+    createMaterial(_kind, createDefault) {
+      if (!sharedMaterial) {
+        sharedMaterial = createDefault()
+        const dispose = sharedMaterial.dispose.bind(sharedMaterial)
+        sharedMaterial.dispose = () => { materialDisposals += 1; dispose() }
+      }
+      return sharedMaterial as ReturnType<typeof createDefault>
+    },
+    attachObject(kind, group, child) {
+      group.add(child)
+      if (kind === 'landing-dust') throw new Error('测试注入：共享尘点挂载失败')
+    },
+  })
+  assert.ok(vfx.snapshot().unavailableKinds.includes('landing-dust'))
+  assert.equal(geometryDisposals, 0)
+  assert.equal(materialDisposals, 0)
+  assert.ok(vfx.object.getObjectByName('复杂双足运动特效-落地环-0'))
+  vfx.dispose()
+  assert.equal(geometryDisposals, 1)
+  assert.equal(materialDisposals, 1)
+}
+
+// 非有限输入、错误模式和超长寿命必须安全处理；apply 绝不能读取墙钟或注册额外 RAF。 / Invalid inputs are safely ignored or bounded, and apply never reads wall time or schedules an RAF.
+{
+  const vfx = createComplexBipedMotionVfxController()
+  const originalNow = Date.now
+  const originalRaf = Reflect.get(globalThis, 'requestAnimationFrame')
+  Date.now = () => { throw new Error('VFX 禁止读取 Date.now') }
+  Reflect.set(globalThis, 'requestAnimationFrame', () => { throw new Error('VFX 禁止注册 RAF') })
+  try {
+    vfx.apply([
+      { id: 'nan-strength', kind: 'landing-ring', mode: 'burst', strength: Number.NaN, timeMs: 0, lifetimeMs: 480 },
+      { id: 'infinite-strength', kind: 'landing-dust', mode: 'burst', strength: Number.POSITIVE_INFINITY, timeMs: 0, lifetimeMs: 480 },
+      { id: 'wrong-mode', kind: 'speed-trail', mode: 'burst', strength: .9, timeMs: 0, lifetimeMs: 160 },
+      { id: 'long-life', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: 0, lifetimeMs: 99_000 },
+    ], { requestedTimeMs: 0, position: [0, 0, 0], facingRadians: 0 })
+    assert.equal(vfx.snapshot().activeTotal, 1)
+    vfx.apply([], { requestedTimeMs: 1199, position: [0, 0, 0], facingRadians: 0 })
+    assert.equal(vfx.snapshot().activeTotal, 1)
+    vfx.apply([], { requestedTimeMs: 1200, position: [0, 0, 0], facingRadians: 0 })
+    assert.equal(vfx.snapshot().activeTotal, 0)
+    vfx.apply([{ id: 'invalid-frame', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: 1300, lifetimeMs: 480 }], {
+      requestedTimeMs: Number.NaN,
+      position: [0, 0, 0],
+      facingRadians: 0,
+    })
+    assert.equal(vfx.snapshot().activeTotal, 0)
+    vfx.apply([{ id: 'unrepresentable-deadline', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: Number.MAX_VALUE, lifetimeMs: 1200 }], {
+      requestedTimeMs: Number.MAX_VALUE,
+      position: [0, 0, 0],
+      facingRadians: 0,
+    })
+    assert.equal(vfx.snapshot().activeTotal, 0)
+  }
+  finally {
+    Date.now = originalNow
+    if (originalRaf === undefined) Reflect.deleteProperty(globalThis, 'requestAnimationFrame')
+    else Reflect.set(globalThis, 'requestAnimationFrame', originalRaf)
+  }
+  vfx.dispose()
+}
+
+// reset 只清活动实例并保留池；dispose 即使单个 GPU 资源抛错也尝试其余资源、移出父级，并保证每个资源只调用一次。 / Reset retains pools; dispose is best-effort, removes the Group, and attempts every GPU resource exactly once.
+{
+  const vfx = createComplexBipedMotionVfxController()
+  const parent = vfx.object.clone(false)
+  parent.add(vfx.object)
+  vfx.apply([
+    { id: 'ring', kind: 'landing-ring', mode: 'burst', strength: .8, timeMs: 0, lifetimeMs: 480 },
+    { id: 'trail', kind: 'speed-trail', mode: 'sustain', strength: .8, timeMs: 0, lifetimeMs: 160 },
+    { id: 'dust', kind: 'landing-dust', mode: 'burst', strength: .8, timeMs: 0, lifetimeMs: 480 },
+    { id: 'sparks', kind: 'brake-sparks', mode: 'burst', strength: .8, timeMs: 0, lifetimeMs: 320 },
+  ], { requestedTimeMs: 0, position: [0, 0, 0], facingRadians: 0 })
+  const capacity = vfx.snapshot().poolCapacityTotal
+  vfx.reset()
+  assert.equal(vfx.snapshot().activeTotal, 0)
+  assert.equal(vfx.snapshot().poolCapacityTotal, capacity)
+  const resources = new Set<{ dispose(): void }>()
+  vfx.object.traverse(child => {
+    if (!('geometry' in child) || !('material' in child)) return
+    const mesh = child as { geometry?: { dispose(): void }, material?: { dispose(): void } | { dispose(): void }[] }
+    if (mesh.geometry) resources.add(mesh.geometry)
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const material of materials) if (material) resources.add(material)
+  })
+  assert.equal(resources.size, 8, '四类效果必须各自固定复用一份 Geometry 和 Material')
+  const disposeCalls = new Map([...resources].map(resource => [resource, 0]))
+  const firstResource = [...resources][0]!
+  for (const resource of resources) {
+    const originalDispose = resource.dispose.bind(resource)
+    resource.dispose = () => {
+      disposeCalls.set(resource, disposeCalls.get(resource)! + 1)
+      originalDispose()
+      if (resource === firstResource) throw new Error('测试注入：单资源释放失败')
+    }
+  }
+  assert.throws(
+    () => vfx.dispose(),
+    error => error instanceof Error
+      && error.message.includes('复杂双足运动特效资源释放失败')
+      && error.message.includes('单资源释放失败'),
+  )
+  assert.equal(vfx.object.parent, null)
+  assert.equal(vfx.snapshot().disposed, true)
+  for (const calls of disposeCalls.values()) assert.equal(calls, 1)
+  vfx.dispose()
+  for (const calls of disposeCalls.values()) assert.equal(calls, 1)
+}
+
+// 工厂允许跨效果复用资源；控制器必须按对象身份只释放一次，并移除被挂到外部父级的全部自有子节点。 / Shared factory resources are disposed once by identity, and every owned child is detached even when a hook mounts it elsewhere.
+{
+  let sharedGeometry: { dispose(): void } | undefined
+  let sharedMaterial: { dispose(): void } | undefined
+  let geometryDisposals = 0
+  let materialDisposals = 0
+  const externalOwner = createComplexBipedMotionVfxController()
+  const externalParent = externalOwner.object
+  externalParent.clear()
+  const vfx = createComplexBipedMotionVfxController({
+    createGeometry(_kind, createDefault) {
+      if (!sharedGeometry) {
+        const geometry = createDefault()
+        const dispose = geometry.dispose.bind(geometry)
+        geometry.dispose = () => { geometryDisposals += 1; dispose() }
+        sharedGeometry = geometry
+      }
+      return sharedGeometry as ReturnType<typeof createDefault>
+    },
+    createMaterial(_kind, createDefault) {
+      if (!sharedMaterial) {
+        const material = createDefault()
+        const dispose = material.dispose.bind(material)
+        material.dispose = () => { materialDisposals += 1; dispose() }
+        sharedMaterial = material
+      }
+      return sharedMaterial as ReturnType<typeof createDefault>
+    },
+    attachObject(_kind, _group, child) {
+      externalParent.add(child)
+    },
+  })
+  assert.equal(externalParent.children.length, 18)
+  vfx.dispose()
+  assert.equal(geometryDisposals, 1)
+  assert.equal(materialDisposals, 1)
+  assert.equal(externalParent.children.length, 0)
+  externalOwner.dispose()
+}
+
+// 活动槽清理自身失败也必须进入聚合，不能跳过八个 GPU 资源和父级解绑。 / Active-slot cleanup failure must aggregate without skipping all eight GPU resources or parent detachment.
+{
+  const vfx = createComplexBipedMotionVfxController()
+  const parent = vfx.object.clone(false)
+  parent.add(vfx.object)
+  vfx.apply([{ id: 'dust', kind: 'landing-dust', mode: 'burst', strength: .8, timeMs: 0, lifetimeMs: 480 }], {
+    requestedTimeMs: 0,
+    position: [0, 0, 0],
+    facingRadians: 0,
+  })
+  const resources = new Set<{ dispose(): void }>()
+  vfx.object.traverse(child => {
+    if (!('geometry' in child) || !('material' in child)) return
+    const mesh = child as { geometry?: { dispose(): void }, material?: { dispose(): void } | { dispose(): void }[] }
+    if (mesh.geometry) resources.add(mesh.geometry)
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const material of materials) if (material) resources.add(material)
+  })
+  const disposeCalls = new Map([...resources].map(resource => [resource, 0]))
+  for (const resource of resources) {
+    const dispose = resource.dispose.bind(resource)
+    resource.dispose = () => { disposeCalls.set(resource, disposeCalls.get(resource)! + 1); dispose() }
+  }
+  const dust = vfx.object.getObjectByName('复杂双足运动特效-落地尘点') as { setMatrixAt(index: number, matrix: unknown): void }
+  const setMatrixAt = dust.setMatrixAt.bind(dust)
+  dust.setMatrixAt = () => { throw new Error('测试注入：活动槽隐藏失败') }
+  assert.throws(
+    () => vfx.dispose(),
+    error => error instanceof Error
+      && error.message.includes('复杂双足运动特效资源释放失败')
+      && error.message.includes('活动实例清理')
+      && error.message.includes('活动槽隐藏失败'),
+  )
+  dust.setMatrixAt = setMatrixAt
+  assert.equal(vfx.object.parent, null)
+  assert.equal(vfx.snapshot().disposed, true)
+  for (const calls of disposeCalls.values()) assert.equal(calls, 1)
+  vfx.dispose()
+  for (const calls of disposeCalls.values()) assert.equal(calls, 1)
+}
+
+// Three 资源的 dispose 事件会同步派发；即使监听器重入控制器释放，也只能释放每个资源一次。 / Three dispatches dispose events synchronously; listener re-entry must still release every resource exactly once.
+{
+  const vfx = createComplexBipedMotionVfxController()
+  const parent = vfx.object.clone(false)
+  parent.add(vfx.object)
+  const resources = new Set<{
+    dispose(): void
+    addEventListener(type: 'dispose', listener: () => void): void
+    removeEventListener(type: 'dispose', listener: () => void): void
+  }>()
+  vfx.object.traverse(child => {
+    if (!('geometry' in child) || !('material' in child)) return
+    const mesh = child as {
+      geometry?: typeof resources extends Set<infer Resource> ? Resource : never
+      material?: (typeof resources extends Set<infer Resource> ? Resource : never)
+        | (typeof resources extends Set<infer Resource> ? Resource : never)[]
+    }
+    if (mesh.geometry) resources.add(mesh.geometry)
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const material of materials) if (material) resources.add(material)
+  })
+  assert.equal(resources.size, 8)
+  const calls = new Map([...resources].map(resource => [resource, 0]))
+  for (const resource of resources) {
+    const dispose = resource.dispose.bind(resource)
+    resource.dispose = () => { calls.set(resource, calls.get(resource)! + 1); dispose() }
+  }
+  const reentrantResource = [...resources][0]!
+  const reenter = () => {
+    reentrantResource.removeEventListener('dispose', reenter)
+    assert.throws(
+      () => vfx.apply([], { requestedTimeMs: 0, position: [0, 0, 0], facingRadians: 0 }),
+      /复杂双足运动特效控制器已释放/,
+    )
+    assert.throws(() => vfx.reset(), /复杂双足运动特效控制器已释放/)
+    vfx.dispose()
+  }
+  reentrantResource.addEventListener('dispose', reenter)
+
+  vfx.dispose()
+
+  for (const count of calls.values()) assert.equal(count, 1)
+  assert.equal(vfx.object.parent, null)
+  assert.equal(parent.children.length, 0)
+  assert.equal(vfx.snapshot().disposed, true)
+  vfx.dispose()
+  for (const count of calls.values()) assert.equal(count, 1)
+}
+
+// 任意 JavaScript 抛出值都必须安全进入中文聚合，不能阻止其余 GPU 资源和父级释放。 / Arbitrary thrown values must be safely aggregated without blocking later GPU resources or parent detachment.
+for (const malformed of ['direct-symbol', 'symbol-message', 'throwing-message-getter', 'undefined'] as const) {
+  const vfx = createComplexBipedMotionVfxController()
+  const parent = vfx.object.clone(false)
+  parent.add(vfx.object)
+  const resources = new Set<{ dispose(): void }>()
+  vfx.object.traverse(child => {
+    if (!('geometry' in child) || !('material' in child)) return
+    const mesh = child as { geometry?: { dispose(): void }, material?: { dispose(): void } | { dispose(): void }[] }
+    if (mesh.geometry) resources.add(mesh.geometry)
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const material of materials) if (material) resources.add(material)
+  })
+  const calls = new Map([...resources].map(resource => [resource, 0]))
+  const failing = [...resources][0]!
+  for (const resource of resources) {
+    const dispose = resource.dispose.bind(resource)
+    resource.dispose = () => {
+      calls.set(resource, calls.get(resource)! + 1)
+      dispose()
+      if (resource !== failing) return
+      if (malformed === 'undefined') throw undefined
+      if (malformed === 'direct-symbol') throw Symbol('GPU 直接抛出')
+      const error = new Error('占位错误')
+      if (malformed === 'symbol-message') error.message = Symbol('GPU 释放失败') as unknown as string
+      else Object.defineProperty(error, 'message', { get: () => { throw new Error('message getter 失败') } })
+      throw error
+    }
+  }
+  assert.throws(
+    () => vfx.dispose(),
+    error => error instanceof Error
+      && error.message.includes('复杂双足运动特效资源释放失败')
+      && error.message.includes(malformed === 'direct-symbol' ? 'Symbol(GPU 直接抛出)' : malformed === 'symbol-message'
+        ? 'Symbol(GPU 释放失败)'
+        : malformed === 'throwing-message-getter' ? '未知错误' : 'undefined'),
+  )
+  assert.equal(vfx.object.parent, null)
+  for (const count of calls.values()) assert.equal(count, 1)
+  vfx.dispose()
 }
 
 console.log('studio complex biped Root Motion runtime tests passed')

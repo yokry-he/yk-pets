@@ -543,7 +543,7 @@ git push origin agent/cloud-fox-studio-v0610
 - 修改：`.ai/project-state.json`
 - 修改：`docs/zh-CN/AI开发交接.md`
 
-- [ ] **步骤 1：写对象池、触发与释放失败测试**
+- [x] **步骤 1：写对象池、触发与释放失败测试**
 
 ```ts
 const frame = { requestedTimeMs: 1800, position: [0, 0, 0] as const, facingRadians: 0 }
@@ -565,13 +565,13 @@ assert.equal(vfx.snapshot().disposed, true)
 
 补充 sustain 拖尾更新、急停粒子、过期回收、Geometry/Material 各释放一次、单类创建失败不阻塞其他效果、非有限强度忽略和无额外 RAF。
 
-- [ ] **步骤 2：运行定向脚本确认红灯**
+- [x] **步骤 2：运行定向脚本确认红灯**
 
 运行：`corepack pnpm run test:studio-complex-biped-root-motion-runtime`
 
 预期：FAIL，VFX controller 未实现。
 
-- [ ] **步骤 3：实现有界对象池**
+- [x] **步骤 3：实现有界对象池**
 
 控制器返回一个普通 Three `Group`，由现有 renderer 作为角色 primitive 的同级对象挂入同一父场景。四类效果分别复用固定 Geometry/Material；尘点和火花使用 `InstancedMesh`。硬预算：总活动实例 64、单次 burst 16、拖尾 8、最大寿命 1200ms。`apply(signals, frame)` 使用动作时间更新，不调用 `Date.now()` 或 `requestAnimationFrame()`。
 
@@ -585,9 +585,11 @@ export interface ComplexBipedMotionVfxFrame {
 }
 ```
 
-实例位置使用角色容器在父级坐标系中的最终位置；burst 捕获后保持在父级世界位置，不继续跟随角色。reset 清除活动实例但保留池，dispose 释放全部 GPU 资源并从父级移除 `Group`。
+实例位置使用角色容器在父级坐标系中的最终位置；burst 捕获后保持在父级世界位置，不继续跟随角色。reset 清除活动实例但保留池，dispose 在入口封存同步事件重入，再尽力释放全部 GPU 资源并从父级移除 `Group`。
 
-- [ ] **步骤 4：验证资源和性能边界后提交**
+实现结果采用固定 `8/24/8/24` 容量分配，总物理池恰为 `64`；落地尘点和急停火花分别使用一个真实 `InstancedMesh`，落地环与速度拖尾复用各自唯一 Geometry/Material。单个 burst 最多创建 `16` 个实例，速度拖尾最多 `8` 个活动实例，寿命统一钳制到 `1200ms`。64 个 slot 状态在构造时一次性创建并持续复用；同到期时间按单调激活序公平淘汰，近期 burst ID 使用固定 256 项环形队列且活动 ID 不会被账本挤出，sustain ID 只更新既有槽位和本帧父级位置。朝向严格沿 Root Motion 局部 `+Z`，即世界前向为 `(sin(yaw), 0, cos(yaw))`。帧时间、朝向和位置只安全读取一次并复制为普通有限值；动作时间回拖等价于清空瞬态状态。创建失败按效果类隔离，默认资源回调惰性缓存单个 provisional；跨效果共享的 GPU 对象按身份只释放一次，所有已创建子节点无论挂到控制器或外部父级都被跟踪解绑。`disposing` 在资源清理前封存入口，使同步 dispose 事件监听器重入 `dispose/apply/reset` 时早退或被拒绝；活动清理与八个默认 GPU 资源释放全部纳入尽力聚合，任意抛出值以中文报告且二次释放不重复调用。正式 renderer 挂载仍留给任务 7，因此完整 `bipedPetMotionVfxComplete` 继续为 `false`。
+
+- [x] **步骤 4：验证资源和性能边界后提交**
 
 ```bash
 corepack pnpm run test:studio-complex-biped-root-motion-runtime

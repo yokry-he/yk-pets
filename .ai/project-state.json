@@ -122,6 +122,7 @@
     "bipedPetMotionVfxSignalsComplete": true,
     "bipedPetBuiltInRootMotionSemanticsComplete": true,
     "bipedPetRootMotionThreeRuntimeComplete": true,
+    "bipedPetMotionVfxPoolComplete": true,
     "bipedPetRootMotionComplete": false,
     "bipedPetMotionVfxComplete": false,
     "crossBrowserGpuManualAcceptanceComplete": false
@@ -243,7 +244,8 @@
     "biped-pet-root-motion-canonical-ballistic-transitions",
     "biped-pet-motion-vfx-signals",
     "biped-pet-built-in-root-motion-semantics",
-    "biped-pet-root-motion-three-runtime"
+    "biped-pet-root-motion-three-runtime",
+    "biped-pet-motion-vfx-pool"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -262,7 +264,7 @@
   ],
   "nextPhase": "biped-pet-root-motion-vfx-and-acceptance",
   "latestCompletedBatch": {
-    "id": "biped-pet-root-motion-three-runtime",
+    "id": "biped-pet-motion-vfx-pool",
     "domainPackage": "apps/playground",
     "rendererModified": false,
     "visualCasesModified": false,
@@ -355,14 +357,50 @@
       "jumpLandingDustBursts": 1,
       "jumpLandingImpulse": 0.5291502622129182
     },
+    "vfxRuntimeObjectType": "Group",
+    "vfxRuntimeParentSpace": "character-container-final-parent-position",
+    "vfxRuntimeClock": "requestedTimeMs-only",
+    "vfxRuntimePoolCapacityTotal": 64,
+    "vfxRuntimePoolCapacityByKind": {
+      "landing-ring": 8,
+      "landing-dust": 24,
+      "speed-trail": 8,
+      "brake-sparks": 24
+    },
+    "vfxRuntimeInstancedKinds": ["landing-dust", "brake-sparks"],
+    "vfxRuntimeBurstLimit": 16,
+    "vfxRuntimeTrailLimit": 8,
+    "vfxRuntimeLifetimeLimitMs": 1200,
+    "vfxRuntimeRecentBurstIdLimit": 256,
+    "vfxRuntimeForwardConvention": "local-plus-z-sin-yaw-x-cos-yaw-z",
+    "vfxRuntimeEqualExpiryEviction": "oldest-activation-serial-first",
+    "vfxRuntimeActiveBurstDeduplication": "active-ids-never-evicted-by-recent-ledger",
+    "vfxRuntimeFrameSanitization": "single-read-finite-value-copy",
+    "vfxRuntimeBurstPositionPolicy": "capture-parent-position-on-trigger",
+    "vfxRuntimeSustainPolicy": "update-existing-id-at-current-parent-position",
+    "vfxRuntimeResetPolicy": "clear-active-and-dedupe-retain-pools",
+    "vfxRuntimeDisposePolicy": "reentrancy-sealed-idempotent-best-effort-all-gpu-resources-once-and-remove-parent",
+    "vfxRuntimeInitializationPolicy": "isolate-effect-class-failures",
+    "vfxRuntimeResourceOwnershipPolicy": "identity-deduplicated-shared-resource-disposal",
+    "vfxRuntimeOwnedObjectPolicy": "track-and-detach-all-created-children-from-any-parent",
+    "vfxRuntimeDefaultFactoryPolicy": "lazy-single-provisional-per-kind-and-resource-class",
+    "vfxRuntimeSlotAllocationPolicy": "preallocated-64-slot-state-objects-reused",
+    "vfxRuntimeDedupeQueuePolicy": "fixed-256-ring-buffer-no-shift",
+    "vfxRuntimeRendererWired": false,
+    "vfxRuntimeTestRedReason": "ERR_MODULE_NOT_FOUND: complex-biped-motion-vfx.ts",
+    "vfxRuntimeReviewRedEvidence": {
+      "yawZeroTrailPosition": [-0.42, 0.2, 0],
+      "equalExpiryEvictionIndices": [0, 0, 0, 0],
+      "activeRingCountAfterLedgerEvictionReplay": 2,
+      "proxyInjectedRingPositionX": "NaN",
+      "sharedGeometryDisposeCalls": 4,
+      "sharedMaterialDisposeCalls": 4,
+      "externalParentChildrenAfterDispose": 18,
+      "reentrantResourceDisposeCalls": 2
+    },
     "automatedCoverage": [
       "corepack pnpm run test:studio-complex-biped-root-motion-runtime",
-      "corepack pnpm run test:studio-complex-biped-motion-runtime",
       "corepack pnpm --filter @nova/playground typecheck",
-      "corepack pnpm --filter @yk-pets/pet-core typecheck",
-      "corepack pnpm --filter @yk-pets/pet-core test",
-      "corepack pnpm run test:studio-biped-root-motion-probe",
-      "corepack pnpm typecheck",
       "node scripts/check-documentation.mjs",
       "node scripts/check-ai-handoff.mjs",
       "git diff --check"

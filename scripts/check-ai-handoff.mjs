@@ -205,6 +205,8 @@ if (state) {
   expect((state.completed || []).includes('biped-pet-built-in-root-motion-semantics'), '必须记录内置动作 Root Motion 语义批次 / Built-in Root Motion semantics batch must be recorded')
   expect(state.architecture?.bipedPetRootMotionThreeRuntimeComplete === true, '必须标记 Three Root Motion 协同运行时完成 / Three Root Motion coordination runtime must be complete')
   expect((state.completed || []).includes('biped-pet-root-motion-three-runtime'), '必须记录 Three Root Motion 协同批次 / Three Root Motion coordination batch must be recorded')
+  expect(state.architecture?.bipedPetMotionVfxPoolComplete === true, '必须标记有界 Three 运动特效对象池完成 / Bounded Three motion-VFX pool must be complete')
+  expect((state.completed || []).includes('biped-pet-motion-vfx-pool'), '必须记录 Three 运动特效对象池批次 / Three motion-VFX pool batch must be recorded')
   for (const key of ['biped-pet-hybrid-ik-profile-contract', 'biped-pet-analytic-two-bone-ik', 'biped-pet-constrained-fabrik', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-hybrid-ik-phase-delivery']) expect((state.completed || []).includes(key), `必须标记混合 IK 交付项完成 / Hybrid-IK delivery item must be complete: ${key}`)
   expect((state.completed || []).includes('hybrid-ik-legacy-history-migration'), '必须标记混合 IK 历史门禁迁移完成 / Hybrid-IK history-gate migration must be complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
@@ -215,18 +217,13 @@ if (state) {
   expect(state.nextPhase === 'biped-pet-root-motion-vfx-and-acceptance', '下一阶段必须是 Root Motion、动作特效与验收 / Next phase must be Root Motion, motion VFX, and acceptance')
   const rootMotionRuntimeCoverage = [
     'corepack pnpm run test:studio-complex-biped-root-motion-runtime',
-    'corepack pnpm run test:studio-complex-biped-motion-runtime',
     'corepack pnpm --filter @nova/playground typecheck',
-    'corepack pnpm --filter @yk-pets/pet-core typecheck',
-    'corepack pnpm --filter @yk-pets/pet-core test',
-    'corepack pnpm run test:studio-biped-root-motion-probe',
-    'corepack pnpm typecheck',
     'node scripts/check-documentation.mjs',
     'node scripts/check-ai-handoff.mjs',
     'git diff --check',
   ]
-  expect(state.latestCompletedBatch?.id === 'biped-pet-root-motion-three-runtime', '最新批次必须是 Three Root Motion 协同运行时 / Latest batch must be the Three Root Motion coordination runtime')
-  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(rootMotionRuntimeCoverage), 'Three Root Motion 批次 automatedCoverage 必须且只能列出真实验证项 / Three Root Motion batch automatedCoverage must contain only actual validation')
+  expect(state.latestCompletedBatch?.id === 'biped-pet-motion-vfx-pool', '最新批次必须是 Three 运动特效对象池 / Latest batch must be the Three motion-VFX pool')
+  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(rootMotionRuntimeCoverage), 'Three 运动特效对象池批次 automatedCoverage 必须且只能列出真实验证项 / Three motion-VFX pool automatedCoverage must contain only actual validation')
   expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, 'Three Root Motion 批次不得声明正式渲染器或视觉案例修改 / Three Root Motion batch must not claim production-renderer or visual-case changes')
   expect(state.latestCompletedBatch?.rootMotionContainerConsumerComplete === true && state.latestCompletedBatch?.balanceControllerComplete === true && state.latestCompletedBatch?.ikFrameReportComplete === true, 'Three Root Motion、重心与 IK 报告必须完成 / Three Root Motion, balance, and IK reports must be complete')
   expect(JSON.stringify(state.latestCompletedBatch?.rootMotionOrder) === JSON.stringify(['restore-bind-pose', 'fk', 'root-motion', 'balance', 'update-matrix-world', 'ik']), 'Three 动作运行顺序必须固定 / Three motion runtime order must remain fixed')
@@ -311,6 +308,53 @@ if (state) {
     jumpLandingDustBursts: 1,
     jumpLandingImpulse: Math.sqrt(.28),
   }), '自然播放 VFX 探针计数必须稳定 / Natural-playback VFX probe counts must remain stable')
+  expect(state.latestCompletedBatch?.vfxRuntimeObjectType === 'Group'
+    && state.latestCompletedBatch?.vfxRuntimeParentSpace === 'character-container-final-parent-position'
+    && state.latestCompletedBatch?.vfxRuntimeClock === 'requestedTimeMs-only',
+  'VFX 运行时必须使用同父级普通 Group，并且只由动作请求时间推进 / VFX runtime must use a sibling Group driven only by requested action time')
+  expect(state.latestCompletedBatch?.vfxRuntimePoolCapacityTotal === 64
+    && JSON.stringify(state.latestCompletedBatch?.vfxRuntimePoolCapacityByKind) === JSON.stringify({
+      'landing-ring': 8,
+      'landing-dust': 24,
+      'speed-trail': 8,
+      'brake-sparks': 24,
+    })
+    && JSON.stringify(state.latestCompletedBatch?.vfxRuntimeInstancedKinds) === JSON.stringify(['landing-dust', 'brake-sparks']),
+  'VFX 固定池容量与 InstancedMesh 种类必须保持 / VFX fixed-pool capacities and instanced kinds must remain stable')
+  expect(state.latestCompletedBatch?.vfxRuntimeBurstLimit === 16
+    && state.latestCompletedBatch?.vfxRuntimeTrailLimit === 8
+    && state.latestCompletedBatch?.vfxRuntimeLifetimeLimitMs === 1200
+    && state.latestCompletedBatch?.vfxRuntimeRecentBurstIdLimit === 256,
+  'VFX burst、拖尾、寿命与去重账本必须保持有界 / VFX burst, trail, lifetime, and dedupe-ledger limits must remain bounded')
+  expect(state.latestCompletedBatch?.vfxRuntimeForwardConvention === 'local-plus-z-sin-yaw-x-cos-yaw-z'
+    && state.latestCompletedBatch?.vfxRuntimeEqualExpiryEviction === 'oldest-activation-serial-first'
+    && state.latestCompletedBatch?.vfxRuntimeActiveBurstDeduplication === 'active-ids-never-evicted-by-recent-ledger'
+    && state.latestCompletedBatch?.vfxRuntimeFrameSanitization === 'single-read-finite-value-copy',
+  'VFX 朝向、同到期淘汰、活动 ID 去重与帧复制语义必须保持 / VFX facing, equal-expiry eviction, active-ID dedupe, and frame-copy semantics must remain stable')
+  expect(state.latestCompletedBatch?.vfxRuntimeBurstPositionPolicy === 'capture-parent-position-on-trigger'
+    && state.latestCompletedBatch?.vfxRuntimeSustainPolicy === 'update-existing-id-at-current-parent-position'
+    && state.latestCompletedBatch?.vfxRuntimeResetPolicy === 'clear-active-and-dedupe-retain-pools',
+  'burst 捕获、sustain 更新与 reset 保池语义必须保持 / Burst capture, sustain update, and reset-retains-pool semantics must remain stable')
+  expect(state.latestCompletedBatch?.vfxRuntimeDisposePolicy === 'reentrancy-sealed-idempotent-best-effort-all-gpu-resources-once-and-remove-parent'
+    && state.latestCompletedBatch?.vfxRuntimeInitializationPolicy === 'isolate-effect-class-failures'
+    && state.latestCompletedBatch?.vfxRuntimeResourceOwnershipPolicy === 'identity-deduplicated-shared-resource-disposal'
+    && state.latestCompletedBatch?.vfxRuntimeOwnedObjectPolicy === 'track-and-detach-all-created-children-from-any-parent'
+    && state.latestCompletedBatch?.vfxRuntimeDefaultFactoryPolicy === 'lazy-single-provisional-per-kind-and-resource-class'
+    && state.latestCompletedBatch?.vfxRuntimeSlotAllocationPolicy === 'preallocated-64-slot-state-objects-reused'
+    && state.latestCompletedBatch?.vfxRuntimeDedupeQueuePolicy === 'fixed-256-ring-buffer-no-shift'
+    && state.latestCompletedBatch?.vfxRuntimeRendererWired === false
+    && state.latestCompletedBatch?.vfxRuntimeTestRedReason === 'ERR_MODULE_NOT_FOUND: complex-biped-motion-vfx.ts',
+  'VFX 创建/释放隔离、未接线边界与 TDD RED 证据必须可追踪 / VFX creation/disposal isolation, unwired boundary, and TDD RED evidence must remain traceable')
+  expect(JSON.stringify(state.latestCompletedBatch?.vfxRuntimeReviewRedEvidence) === JSON.stringify({
+    yawZeroTrailPosition: [-.42, .2, 0],
+    equalExpiryEvictionIndices: [0, 0, 0, 0],
+    activeRingCountAfterLedgerEvictionReplay: 2,
+    proxyInjectedRingPositionX: 'NaN',
+    sharedGeometryDisposeCalls: 4,
+    sharedMaterialDisposeCalls: 4,
+    externalParentChildrenAfterDispose: 18,
+    reentrantResourceDisposeCalls: 2,
+  }), 'Task 6 质量审查 RED 证据必须保持可追踪 / Task 6 quality-review RED evidence must remain traceable')
   expect((state.completed || []).includes('biped-pet-root-motion-action-aware-boundaries'), 'Root Motion action-aware 边界修复必须进入完成状态 / Action-aware Root Motion boundary repair must be recorded as complete')
   expect((state.completed || []).includes('biped-pet-root-motion-canonical-ballistic-transitions'), 'Root Motion canonical 弹道转换必须进入完成状态 / Canonical Root Motion ballistic transitions must be recorded as complete')
 }
@@ -320,6 +364,7 @@ expect(existsSync(path.join(root, 'apps/playground/app/components/studio/Extensi
 expect(existsSync(path.join(root, 'packages/pet-core/src/motion/motion-evaluator.ts')), '缺少动作领域求值器 / Missing motion-domain evaluator')
 expect(existsSync(path.join(root, 'apps/playground/app/three/apply-complex-biped-root-motion.ts')), '缺少 Three Root Motion 控制器 / Missing Three Root Motion controller')
 expect(existsSync(path.join(root, 'apps/playground/app/three/apply-complex-biped-balance.ts')), '缺少 Three 重心控制器 / Missing Three balance controller')
+expect(existsSync(path.join(root, 'apps/playground/app/three/complex-biped-motion-vfx.ts')), '缺少 Three 运动特效对象池 / Missing Three motion-VFX pool')
 
 if (visualCases) {
   expect(visualCases.schemaVersion === 1, 'visual-cases schemaVersion 必须为 1 / visual-cases schemaVersion must be 1')
@@ -362,6 +407,7 @@ const roadmapZh = safeRead('docs/zh-CN/AI开发路线图.md')
 const roadmapEn = safeRead('docs/en/AI-DEVELOPMENT-ROADMAP.md')
 const packageJson = safeRead('package.json')
 const rootMotionRuntimeTest = safeRead('scripts/test-studio-complex-biped-root-motion-runtime.ts')
+const motionVfxRuntime = safeRead('apps/playground/app/three/complex-biped-motion-vfx.ts')
 
 expect(sessionStart.includes('同一个提交') && sessionStart.includes('scripts/check-ai-handoff.mjs'), '启动协议必须声明同提交更新和强制门禁 / Session protocol must require same-commit updates and name the gate')
 expect(sessionStart.includes('实际代码和运行结果') && sessionStart.includes('旧聊天记录'), '启动协议必须包含可信度顺序 / Session protocol must include the trust order')
@@ -379,6 +425,18 @@ expect(handoffZh.includes('混合 IK 与足底锁定阶段交付') && handoffEn.
 expect(handoffZh.includes('双足萌宠混合 Root Motion 与运动特效设计') && handoffEn.includes('Hybrid biped Root Motion and motion-VFX design'), '中英文交接必须同步混合 Root Motion 与运动特效设计 / Handoffs must synchronize the hybrid Root Motion and motion-VFX design')
 expect(handoffZh.includes('双足萌宠混合RootMotion与运动特效实施计划.md') && handoffEn.includes('双足萌宠混合RootMotion与运动特效实施计划.md'), '中英文交接必须同步混合 Root Motion 与运动特效计划 / Handoffs must synchronize the hybrid Root Motion and motion-VFX plan')
 expect(handoffZh.includes('Three Root Motion、重心与 IK 协同批次') && handoffEn.includes('Three Root Motion, balance, and IK coordination'), '中英文交接必须同步 Three Root Motion 协同批次 / Handoffs must synchronize the Three Root Motion coordination batch')
+expect(handoffZh.includes('同一场景的有界运动 VFX 对象池批次') && handoffEn.includes('Bounded same-scene motion-VFX pool'), '中英文交接必须同步有界 Three 运动特效对象池 / Handoffs must synchronize the bounded Three motion-VFX pool')
+expect(motionVfxRuntime.includes('new InstancedMesh')
+  && motionVfxRuntime.includes('MAX_BURST_INSTANCES = 16')
+  && motionVfxRuntime.includes('MAX_LIFETIME_MS = 1200')
+  && motionVfxRuntime.includes('createEffectSlots(capacity)')
+  && motionVfxRuntime.includes('Math.sin(active.facingRadians)')
+  && motionVfxRuntime.includes('recentBurstStart')
+  && motionVfxRuntime.includes('if (disposing || disposed) return')
+  && !motionVfxRuntime.includes('.shift()')
+  && !motionVfxRuntime.includes('Date.now(')
+  && !motionVfxRuntime.includes('requestAnimationFrame('),
+'VFX 对象池必须使用实例化粒子和固定预算，且不得读取墙钟或注册 RAF / VFX pool must use instancing and fixed budgets without wall clock or RAF')
 expect(knownZh.includes('HANDOFF-001') && knownEn.includes('HANDOFF-001'), '中英文已知问题必须记录强制 AI 更新 / Known issues must record mandatory AI updates')
 expect(knownZh.includes('MOTION-004') && knownEn.includes('MOTION-004'), '中英文已知问题必须记录旧数据浏览器验收 / Known issues must record legacy-data browser acceptance')
 expect(knownZh.includes('MOTION-006') && knownEn.includes('MOTION-006'), '中英文已知问题必须记录动作预览与窄侧栏复验 / Known issues must record Motion Studio preview and narrow-sidebar recheck')
