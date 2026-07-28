@@ -78,6 +78,7 @@
     "bipedPetSemanticMotionCompilationDesignComplete": true,
     "bipedPetSemanticMotionCompilationPlanComplete": true,
     "bipedPetQuaternionMotionContractComplete": true,
+    "bipedPetSemanticPoseAdapterComplete": true,
     "bipedPetSemanticMotionCompilerComplete": false,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
