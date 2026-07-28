@@ -78,6 +78,8 @@
 
 Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和角色 runtime。不得创建第二个 Canvas、隐藏 `requestAnimationFrame` 或长期并行 Three 场景。
 
+角色容器的绑定 position/Quaternion 在控制器创建时快照；`appliedWorld` 只作为相对绑定 position 的绝对偏移写入，`appliedTurnRadians` 以固定世界 Y 轴左乘绑定 Quaternion。这样包含 pitch/roll 的绑定姿态不会把整体转向误解为局部轴旋转。控制器在热路径复用临时 Vector3/Quaternion，不按帧创建第二份容器状态。
+
 ## 5. Root Motion 求解规则
 
 ### 5.1 水平位移与步幅适配
@@ -115,11 +117,13 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 
 ## 6. 重心与足底约束协同
 
-Root Motion 是角色整体水平位移和转向的唯一所有者；现有 IK 控制器继续只拥有骨骼 Quaternion 与双支撑骨盆 Y 补偿。脚、踝和腿骨局部 position 不得被 Root Motion 或 IK 重写。
+Root Motion 是角色整体水平位移和转向的唯一所有者；IK 控制器继续只拥有骨骼 Quaternion 与骨盆 Y。直接创建 IK 控制器时保持历史契约，只在双支撑阶段补偿骨盆 Y；完整 Root Motion 动作控制器会显式开启单支撑可达补偿，其范围按角色高度限制为 `min(0.08, characterHeight×0.025)`，并且只在有效接地支撑时工作。脚、踝和腿骨局部 position 不得被 Root Motion 或 IK 重写。
 
 重心补偿由接触状态决定：双支撑时骨盆位于两脚支撑中心附近；单支撑时平滑偏向支撑脚；腾空时不应用接地补偿；落地时双脚接触权重与骨盆压缩共同吸收冲量。所有水平偏移和单帧变化都按角色尺寸钳制。
 
 执行完 Root Motion 后再捕获或维持足底锚，解决当前“身体没有前进但腿已经达到旋转极限”的残差；IK 仍负责最终小误差，不承担整段位移。
+
+该集成策略是对真实可达域的必要细化：行走 `100→320ms` 在写入容器位移后，若同时禁止单支撑骨盆 Y、限制骨盆 X/Z 为 `0.025×height` 且禁止拉伸腿段，则遍历整个允许的 X/Z 圆盘仍无法把世界残差降到 `1e-3`。因此只在完整链路内允许尺寸化单支撑 Y 补偿；达到预算时报告 `clamped` 并保留真实残差，不伪装完整锁定。腾空、无支撑、权重为零、reset 和 dispose 都恢复绑定 Y；standalone IK 的既有约 `0.014` clamped 回归保持不变。
 
 ## 7. 确定性运动特效
 

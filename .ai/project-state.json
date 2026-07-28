@@ -121,6 +121,7 @@
     "bipedPetRootMotionContractComplete": true,
     "bipedPetMotionVfxSignalsComplete": true,
     "bipedPetBuiltInRootMotionSemanticsComplete": true,
+    "bipedPetRootMotionThreeRuntimeComplete": true,
     "bipedPetRootMotionComplete": false,
     "bipedPetMotionVfxComplete": false,
     "crossBrowserGpuManualAcceptanceComplete": false
@@ -241,7 +242,8 @@
     "biped-pet-root-motion-action-aware-boundaries",
     "biped-pet-root-motion-canonical-ballistic-transitions",
     "biped-pet-motion-vfx-signals",
-    "biped-pet-built-in-root-motion-semantics"
+    "biped-pet-built-in-root-motion-semantics",
+    "biped-pet-root-motion-three-runtime"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -260,10 +262,21 @@
   ],
   "nextPhase": "biped-pet-root-motion-vfx-and-acceptance",
   "latestCompletedBatch": {
-    "id": "biped-pet-built-in-root-motion-semantics",
-    "domainPackage": "apps/playground+packages/pet-core",
+    "id": "biped-pet-root-motion-three-runtime",
+    "domainPackage": "apps/playground",
     "rendererModified": false,
     "visualCasesModified": false,
+    "rootMotionContainerConsumerComplete": true,
+    "balanceControllerComplete": true,
+    "ikFrameReportComplete": true,
+    "rootMotionOrder": ["restore-bind-pose", "fk", "root-motion", "balance", "update-matrix-world", "ik"],
+    "rootMotionPositionOwnership": "bind-position-plus-applied-world",
+    "rootMotionTurnOwnership": "world-yaw-times-bind-quaternion",
+    "balancePelvisHorizontalLimitBodyHeightRatio": 0.025,
+    "balanceChestTiltLimitRadians": 0.12,
+    "integratedSingleSupportPelvisYDefault": false,
+    "integratedSingleSupportPelvisYLimit": "min(0.08, characterHeight*0.025)",
+    "rootMotionRuntimeTestRedReason": "ERR_MODULE_NOT_FOUND: apply-complex-biped-root-motion.ts",
     "motionIntensityReferenceBodyHeightsPerSecond": 0.4,
     "landingImpulseFormula": "sqrt(normalizedCompositePeakHeight)",
     "landingRingThreshold": 0.25,
@@ -286,10 +299,11 @@
       "jumpLandingImpulse": 0.5291502622129182
     },
     "automatedCoverage": [
-      "corepack pnpm run test:studio-built-in-assets",
-      "corepack pnpm --filter @yk-pets/pet-core test",
-      "corepack pnpm --filter @yk-pets/pet-core typecheck",
+      "corepack pnpm run test:studio-complex-biped-root-motion-runtime",
+      "corepack pnpm run test:studio-complex-biped-motion-runtime",
       "corepack pnpm --filter @nova/playground typecheck",
+      "corepack pnpm --filter @yk-pets/pet-core typecheck",
+      "corepack pnpm --filter @yk-pets/pet-core test",
       "corepack pnpm run test:studio-biped-root-motion-probe",
       "corepack pnpm typecheck",
       "node scripts/check-documentation.mjs",

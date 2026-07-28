@@ -6,15 +6,28 @@
 import { Quaternion, Vector3 } from 'three'
 import type { CompiledCharacterModel, SampledBipedPetMotion } from '@yk-pets/pet-core'
 import type { ComplexBipedPetObject } from './create-complex-biped-pet-object'
-import { createComplexBipedIkController } from './apply-complex-biped-ik'
+import { createComplexBipedIkController, type ComplexBipedIkFrameReport } from './apply-complex-biped-ik'
+import { createComplexBipedRootMotionController, type ComplexBipedRootMotionFrame } from './apply-complex-biped-root-motion'
+import { createComplexBipedBalanceController } from './apply-complex-biped-balance'
+
+export interface ComplexBipedMotionFrame extends ComplexBipedRootMotionFrame {
+  ikReport: ComplexBipedIkFrameReport
+  consumedFootResidual: readonly [number, number, number]
+  nextFootResidual: readonly [number, number, number]
+}
 
 export interface ComplexBipedMotionController {
-  apply(sample: SampledBipedPetMotion, weight?: number): void
+  apply(sample: SampledBipedPetMotion, weight?: number): ComplexBipedMotionFrame
   reset(): void
   dispose(): void
 }
 
 const clampWeight = (value: number | undefined) => Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 1))
+const emptyIkReport = (): ComplexBipedIkFrameReport => Object.freeze({
+  supportingContacts: 0,
+  residualByLimb: Object.freeze({}),
+  clampedLimbs: Object.freeze([]),
+})
 
 export function createComplexBipedMotionController(runtime: ComplexBipedPetObject, compilation?: CompiledCharacterModel): ComplexBipedMotionController {
   const bindRotations = new Map([...runtime.bonesById].map(([boneId, bone]) => [boneId, bone.quaternion.clone()]))
@@ -26,7 +39,19 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
   const blendedOffset = new Quaternion()
   const weightedRootOffset = new Vector3()
   let disposed = false
-  const ikController = compilation ? createComplexBipedIkController(runtime, compilation) : undefined
+  const rootMotionController = createComplexBipedRootMotionController(runtime)
+  const boundingBox = runtime.object.geometry.boundingBox
+  const characterHeight = boundingBox && Number.isFinite(boundingBox.max.y - boundingBox.min.y)
+    ? boundingBox.max.y - boundingBox.min.y
+    : 0
+  const balanceController = compilation
+    ? createComplexBipedBalanceController(runtime, compilation, characterHeight)
+    : undefined
+  const ikController = compilation ? createComplexBipedIkController(runtime, compilation, {
+    integratedSingleSupportPelvisY: true,
+    characterHeight,
+  }) : undefined
+  let previousFootResidual: readonly [number, number, number] = Object.freeze([0, 0, 0])
 
   const assertUsable = () => {
     if (disposed || runtime.isDisposed()) throw new Error('复杂双足萌宠动作控制器已释放，不能继续写入骨骼。')
@@ -51,18 +76,33 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
       }
       weightedRootOffset.set(...sample.rootPosition).multiplyScalar(weight)
       root.position.copy(bindRootPosition).add(weightedRootOffset)
+      const consumedFootResidual = previousFootResidual
+      const rootMotionFrame = rootMotionController.apply(sample, weight, consumedFootResidual)
+      balanceController?.apply(sample, weight, rootMotionFrame.rootMotion)
       runtime.object.updateMatrixWorld(true)
-      ikController?.apply(sample, weight)
+      const ikReport = ikController?.apply(sample, weight) ?? emptyIkReport()
+      previousFootResidual = nextFootResidual(rootMotionFrame, ikReport, characterHeight, sample)
+      return Object.freeze({
+        ...rootMotionFrame,
+        ikReport,
+        consumedFootResidual,
+        nextFootResidual: previousFootResidual,
+      })
     },
     reset() {
       assertUsable()
       restoreBindPose()
+      previousFootResidual = Object.freeze([0, 0, 0])
+      rootMotionController.reset()
+      balanceController?.reset()
       ikController?.reset()
       runtime.object.updateMatrixWorld(true)
     },
     dispose() {
       if (disposed) return
       ikController?.dispose()
+      balanceController?.dispose()
+      rootMotionController.dispose()
       if (!runtime.isDisposed()) {
         restoreBindPose()
         runtime.object.updateMatrixWorld(true)
@@ -71,4 +111,26 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
       disposed = true
     },
   }
+}
+
+function nextFootResidual(
+  frame: ComplexBipedRootMotionFrame,
+  report: ComplexBipedIkFrameReport | undefined,
+  characterHeight: number,
+  sample: SampledBipedPetMotion,
+): readonly [number, number, number] {
+  if (!report || report.supportingContacts <= 0
+    || (frame.rootMotion.status !== 'solved' && frame.rootMotion.status !== 'clamped')
+    || frame.rootMotion.phase === 'takeoff' || frame.rootMotion.phase === 'airborne'
+    || sample.rootMotion.mode !== 'travel'
+    || !sample.rootMotion.windows.some(window => (window.kind === 'travel' || window.kind === 'warp')
+      && sample.resolvedTimeMs >= window.startMs && sample.resolvedTimeMs <= window.endMs)) return Object.freeze([0, 0, 0])
+  const maximumResidual = Math.max(0, ...Object.values(report.residualByLimb).filter(Number.isFinite))
+  const deltaX = frame.rootMotion.deltaLocal[0]
+  const deltaZ = frame.rootMotion.deltaLocal[2]
+  const length = Math.hypot(deltaX, deltaZ)
+  if (!(maximumResidual > 0) || !(length > 1e-12) || !(characterHeight > 0)) return Object.freeze([0, 0, 0])
+  // 把上一帧有限物理残差提升到求解器自带的速度预算，再由领域层统一钳制；避免把残差增益散落到 Three 位移写入。 / Raise the finite previous-frame residual toward the solver-owned speed budget, then let the domain clamp it centrally.
+  const bounded = Math.min(maximumResidual * 8, characterHeight * .025)
+  return Object.freeze([-deltaX / length * bounded, 0, -deltaZ / length * bounded])
 }

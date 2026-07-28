@@ -203,6 +203,8 @@ if (state) {
   expect((state.completed || []).includes('biped-pet-motion-vfx-signals'), '必须记录确定性运动 VFX 信号批次 / Deterministic motion-VFX signal batch must be recorded')
   expect(state.architecture?.bipedPetBuiltInRootMotionSemanticsComplete === true, '必须标记内置动作 Root Motion 语义完成 / Built-in Root Motion semantics must be complete')
   expect((state.completed || []).includes('biped-pet-built-in-root-motion-semantics'), '必须记录内置动作 Root Motion 语义批次 / Built-in Root Motion semantics batch must be recorded')
+  expect(state.architecture?.bipedPetRootMotionThreeRuntimeComplete === true, '必须标记 Three Root Motion 协同运行时完成 / Three Root Motion coordination runtime must be complete')
+  expect((state.completed || []).includes('biped-pet-root-motion-three-runtime'), '必须记录 Three Root Motion 协同批次 / Three Root Motion coordination batch must be recorded')
   for (const key of ['biped-pet-hybrid-ik-profile-contract', 'biped-pet-analytic-two-bone-ik', 'biped-pet-constrained-fabrik', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-hybrid-ik-phase-delivery']) expect((state.completed || []).includes(key), `必须标记混合 IK 交付项完成 / Hybrid-IK delivery item must be complete: ${key}`)
   expect((state.completed || []).includes('hybrid-ik-legacy-history-migration'), '必须标记混合 IK 历史门禁迁移完成 / Hybrid-IK history-gate migration must be complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
@@ -211,20 +213,26 @@ if (state) {
   for (const key of ['biped-pet-runtime-ik', 'biped-pet-foot-lock']) expect(!(state.notCompleted || []).includes(key), `已完成的混合 IK 交付项不得继续列为未完成 / Completed hybrid-IK item must not remain incomplete: ${key}`)
   expect(!(state.notCompleted || []).includes('biped-pet-quaternion-motion-compiler'), 'Quaternion 动作编译器已完成，不得继续列为未完成 / Completed Quaternion motion compiler must not remain incomplete')
   expect(state.nextPhase === 'biped-pet-root-motion-vfx-and-acceptance', '下一阶段必须是 Root Motion、动作特效与验收 / Next phase must be Root Motion, motion VFX, and acceptance')
-  const builtInRootMotionCoverage = [
-    'corepack pnpm run test:studio-built-in-assets',
-    'corepack pnpm --filter @yk-pets/pet-core test',
-    'corepack pnpm --filter @yk-pets/pet-core typecheck',
+  const rootMotionRuntimeCoverage = [
+    'corepack pnpm run test:studio-complex-biped-root-motion-runtime',
+    'corepack pnpm run test:studio-complex-biped-motion-runtime',
     'corepack pnpm --filter @nova/playground typecheck',
+    'corepack pnpm --filter @yk-pets/pet-core typecheck',
+    'corepack pnpm --filter @yk-pets/pet-core test',
     'corepack pnpm run test:studio-biped-root-motion-probe',
     'corepack pnpm typecheck',
     'node scripts/check-documentation.mjs',
     'node scripts/check-ai-handoff.mjs',
     'git diff --check',
   ]
-  expect(state.latestCompletedBatch?.id === 'biped-pet-built-in-root-motion-semantics', '最新批次必须是内置动作 Root Motion 语义 / Latest batch must be built-in Root Motion semantics')
-  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(builtInRootMotionCoverage), '内置动作语义批次 automatedCoverage 必须且只能列出真实验证项 / Built-in motion semantics automatedCoverage must contain only actual validation')
-  expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, '内置动作语义批次不得声明渲染器或视觉案例修改 / Built-in motion semantics must not claim renderer or visual-case changes')
+  expect(state.latestCompletedBatch?.id === 'biped-pet-root-motion-three-runtime', '最新批次必须是 Three Root Motion 协同运行时 / Latest batch must be the Three Root Motion coordination runtime')
+  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(rootMotionRuntimeCoverage), 'Three Root Motion 批次 automatedCoverage 必须且只能列出真实验证项 / Three Root Motion batch automatedCoverage must contain only actual validation')
+  expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, 'Three Root Motion 批次不得声明正式渲染器或视觉案例修改 / Three Root Motion batch must not claim production-renderer or visual-case changes')
+  expect(state.latestCompletedBatch?.rootMotionContainerConsumerComplete === true && state.latestCompletedBatch?.balanceControllerComplete === true && state.latestCompletedBatch?.ikFrameReportComplete === true, 'Three Root Motion、重心与 IK 报告必须完成 / Three Root Motion, balance, and IK reports must be complete')
+  expect(JSON.stringify(state.latestCompletedBatch?.rootMotionOrder) === JSON.stringify(['restore-bind-pose', 'fk', 'root-motion', 'balance', 'update-matrix-world', 'ik']), 'Three 动作运行顺序必须固定 / Three motion runtime order must remain fixed')
+  expect(state.latestCompletedBatch?.rootMotionPositionOwnership === 'bind-position-plus-applied-world' && state.latestCompletedBatch?.rootMotionTurnOwnership === 'world-yaw-times-bind-quaternion', 'Root Motion 容器所有权必须保持绝对写入 / Root Motion container ownership must remain absolute')
+  expect(state.latestCompletedBatch?.balancePelvisHorizontalLimitBodyHeightRatio === .025 && state.latestCompletedBatch?.balanceChestTiltLimitRadians === .12, '重心控制预算错误 / Balance-controller bounds are incorrect')
+  expect(state.latestCompletedBatch?.integratedSingleSupportPelvisYDefault === false && state.latestCompletedBatch?.integratedSingleSupportPelvisYLimit === 'min(0.08, characterHeight*0.025)', '单支撑 pelvis Y 集成策略必须默认关闭且尺寸化 / Integrated single-support pelvis Y must be default-off and scale-bounded')
   expect(state.latestCompletedBatch?.motionIntensityReferenceBodyHeightsPerSecond === .4, '移动强度参考速度必须是每秒 0.4 个角色身高 / Motion-intensity reference speed must be 0.4 body-heights per second')
   expect(state.latestCompletedBatch?.landingImpulseFormula === 'sqrt(normalizedCompositePeakHeight)', '落地冲量必须由归一化复合峰高的平方根派生 / Landing impulse must derive from the square root of normalized composite peak height')
   expect(state.latestCompletedBatch?.landingRingThreshold === .25 && state.latestCompletedBatch?.landingDustThreshold === .4, '落地环与尘效必须保持既定严格阈值 / Landing ring and dust must retain their strict thresholds')
@@ -250,6 +258,8 @@ if (state) {
 for (const routeFile of ['appearance.vue', 'motion.vue', 'props.vue', 'library.vue']) expect(existsSync(path.join(root, 'apps/playground/app/pages/studio', routeFile)), `缺少 Studio 路由文件 / Missing Studio route file: ${routeFile}`)
 expect(existsSync(path.join(root, 'apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue')), '缺少唯一正式云狐渲染器 / Missing canonical Cloud Fox renderer')
 expect(existsSync(path.join(root, 'packages/pet-core/src/motion/motion-evaluator.ts')), '缺少动作领域求值器 / Missing motion-domain evaluator')
+expect(existsSync(path.join(root, 'apps/playground/app/three/apply-complex-biped-root-motion.ts')), '缺少 Three Root Motion 控制器 / Missing Three Root Motion controller')
+expect(existsSync(path.join(root, 'apps/playground/app/three/apply-complex-biped-balance.ts')), '缺少 Three 重心控制器 / Missing Three balance controller')
 
 if (visualCases) {
   expect(visualCases.schemaVersion === 1, 'visual-cases schemaVersion 必须为 1 / visual-cases schemaVersion must be 1')
@@ -303,6 +313,7 @@ expect(handoffZh.includes('已回退简单模型') && handoffEn.includes('simple
 expect(handoffZh.includes('混合 IK 与足底锁定阶段交付') && handoffEn.includes('Hybrid IK and foot-lock phase delivery'), '中英文交接必须同步混合 IK 与足底锁定阶段 / Handoffs must synchronize the hybrid IK and foot-lock phase')
 expect(handoffZh.includes('双足萌宠混合 Root Motion 与运动特效设计') && handoffEn.includes('Hybrid biped Root Motion and motion-VFX design'), '中英文交接必须同步混合 Root Motion 与运动特效设计 / Handoffs must synchronize the hybrid Root Motion and motion-VFX design')
 expect(handoffZh.includes('双足萌宠混合RootMotion与运动特效实施计划.md') && handoffEn.includes('双足萌宠混合RootMotion与运动特效实施计划.md'), '中英文交接必须同步混合 Root Motion 与运动特效计划 / Handoffs must synchronize the hybrid Root Motion and motion-VFX plan')
+expect(handoffZh.includes('Three Root Motion、重心与 IK 协同批次') && handoffEn.includes('Three Root Motion, balance, and IK coordination'), '中英文交接必须同步 Three Root Motion 协同批次 / Handoffs must synchronize the Three Root Motion coordination batch')
 expect(knownZh.includes('HANDOFF-001') && knownEn.includes('HANDOFF-001'), '中英文已知问题必须记录强制 AI 更新 / Known issues must record mandatory AI updates')
 expect(knownZh.includes('MOTION-004') && knownEn.includes('MOTION-004'), '中英文已知问题必须记录旧数据浏览器验收 / Known issues must record legacy-data browser acceptance')
 expect(knownZh.includes('MOTION-006') && knownEn.includes('MOTION-006'), '中英文已知问题必须记录动作预览与窄侧栏复验 / Known issues must record Motion Studio preview and narrow-sidebar recheck')
@@ -318,6 +329,7 @@ expect(packageJson.includes('"check:prop-entity-editor"') && packageJson.include
 expect(packageJson.includes('"check:advanced-motion-tools"') && packageJson.includes('node scripts/check-advanced-motion-tools.mjs'), 'package.json 必须运行高级动画门禁 / package.json must run the advanced-motion gate')
 expect(packageJson.includes('"check:motion-direct-controls"') && packageJson.includes('node scripts/check-motion-direct-controls.mjs'), 'package.json 必须运行动作直接操控门禁 / package.json must run the motion direct-controls gate')
 expect(packageJson.includes('"check:motion-studio-usability"') && packageJson.includes('node scripts/check-motion-studio-usability.mjs'), 'package.json 必须运行动作工坊可用性门禁 / package.json must run the Motion Studio usability gate')
+expect(packageJson.includes('"test:studio-complex-biped-root-motion-runtime"') && packageJson.includes('scripts/test-studio-complex-biped-root-motion-runtime.ts'), 'package.json 必须运行复杂双足 Root Motion 运行时测试 / package.json must run the complex biped Root Motion runtime tests')
 
 for (const adrPath of requiredFiles.filter(item => item.includes('/adr/'))) {
   const content = safeRead(adrPath)

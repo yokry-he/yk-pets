@@ -16,10 +16,22 @@ import {
 import type { ComplexBipedPetObject } from './create-complex-biped-pet-object'
 
 export interface ComplexBipedIkController {
-  apply(sample: SampledBipedPetMotion, weight: number): void
+  apply(sample: SampledBipedPetMotion, weight: number): ComplexBipedIkFrameReport
   reset(): void
   diagnostics(): readonly string[]
   dispose(): void
+}
+
+export interface ComplexBipedIkControllerOptions {
+  /** 仅由完整 Root Motion 动作链开启；直接 IK 调用保持历史单支撑不平移骨盆 Y 的契约。 */
+  integratedSingleSupportPelvisY?: boolean
+  characterHeight?: number
+}
+
+export interface ComplexBipedIkFrameReport {
+  supportingContacts: number
+  residualByLimb: Readonly<Record<string, number>>
+  clampedLimbs: readonly string[]
 }
 
 interface LimbRuntime {
@@ -49,6 +61,11 @@ interface LimbRuntime {
 type MutableRigVector = [number, number, number]
 const IK_CORRECTION_PASS_COUNT = 3
 const clamp01 = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
+const emptyFrameReport = (): ComplexBipedIkFrameReport => Object.freeze({
+  supportingContacts: 0,
+  residualByLimb: Object.freeze({}),
+  clampedLimbs: Object.freeze([]),
+})
 
 /**
  * 标准双足链允许把首段与其余后代聚合为两段解析链；更长的非标准链自动转入 FABRIK。
@@ -83,6 +100,7 @@ const canUseAnalyticMapping = (bones: readonly Bone[], contactBone: Bone) => {
 export function createComplexBipedIkController(
   runtime: ComplexBipedPetObject,
   compilation: CompiledCharacterModel,
+  options: ComplexBipedIkControllerOptions = {},
 ): ComplexBipedIkController {
   const MAX_DIAGNOSTICS = 64
   const messages: string[] = []
@@ -102,6 +120,15 @@ export function createComplexBipedIkController(
 
   const pelvis = runtime.bonesById.get('pelvis')
   const pelvisBindPosition = pelvis?.position.clone()
+  const geometryBox = runtime.object.geometry.boundingBox
+  const geometryHeight = geometryBox ? geometryBox.max.y - geometryBox.min.y : Number.NaN
+  const configuredHeight = typeof options.characterHeight === 'number' && Number.isFinite(options.characterHeight)
+    ? options.characterHeight
+    : geometryHeight
+  const singleSupportPelvisYBudget = Number.isFinite(configuredHeight) && configuredHeight > 0
+    ? Math.min(.08, configuredHeight * .025)
+    : 0
+  const integratedSingleSupportPelvisY = options.integratedSingleSupportPelvisY === true
   const limbs: LimbRuntime[] = []
   const contactById = new Map(compilation.contacts.map(contact => [contact.id, contact]))
 
@@ -165,6 +192,7 @@ export function createComplexBipedIkController(
   const currentBoneWorldRotation = new Quaternion()
   const currentBoneWorldRotationInverse = new Quaternion()
   const currentContact = new Vector3()
+  const frameClampedLimbs = new Set<string>()
   let lastClipHash: string | undefined
   let lastResolvedTimeMs: number | undefined
   let disposed = false
@@ -180,7 +208,8 @@ export function createComplexBipedIkController(
   }
 
   const restorePelvisTranslation = () => {
-    if (pelvis && pelvisBindPosition) pelvis.position.copy(pelvisBindPosition)
+    // IK 只拥有骨盆 Y；Root Motion 后的重心控制器独占 X/Z，不能在这里覆盖。 / IK owns pelvis Y only; the post-root balance controller exclusively owns X/Z.
+    if (pelvis && pelvisBindPosition) pelvis.position.y = pelvisBindPosition.y
   }
 
   const classifyTemporalTransition = (sample: SampledBipedPetMotion): 'continuous' | 'loop-seam' | 'reset' => {
@@ -297,6 +326,7 @@ export function createComplexBipedIkController(
         `clamped:${limb.definition.id}:analytic-two-bone`,
         `${limb.definition.id} 的解析式 IK 结果为 clamped，已应用有限可达解并保留物理残差。`,
       )
+      if (result.status === 'clamped') frameClampedLimbs.add(limb.definition.id)
       limb.bones[1]!.getWorldPosition(childWorldPosition)
       applyWorldDirectionCorrection(limb, limb.bones[0]!, childWorldPosition, result.positions[0]!, result.positions[1]!, mix, limb.definition.maxCorrectionRadians)
       limb.bones.at(-1)!.getWorldPosition(childWorldPosition)
@@ -319,6 +349,7 @@ export function createComplexBipedIkController(
         `clamped:${limb.definition.id}:fabrik`,
         `${limb.definition.id} 的 FABRIK 结果为 clamped，已应用有限可达解并保留物理残差。`,
       )
+      if (result.status === 'clamped') frameClampedLimbs.add(limb.definition.id)
       for (let index = 0; index < limb.bones.length - 1; index += 1) {
         limb.bones[index + 1]!.getWorldPosition(childWorldPosition)
         applyWorldDirectionCorrection(
@@ -366,20 +397,21 @@ export function createComplexBipedIkController(
 
   return {
     apply(sample, weightInput) {
+      frameClampedLimbs.clear()
       if (disposed) {
         report('disposed-apply', '混合 IK 控制器已释放，后续 apply 已忽略。')
-        return
+        return emptyFrameReport()
       }
       if (runtime.isDisposed()) {
         report('runtime-disposed', 'Three 运行时已释放，混合 IK 写入已忽略。')
-        return
+        return emptyFrameReport()
       }
       const actionWeight = clamp01(weightInput)
       restorePelvisTranslation()
       runtime.object.updateMatrixWorld(true)
       if (actionWeight <= 0 || compilation.status !== 'ready') {
         clearTemporalState()
-        return
+        return emptyFrameReport()
       }
       const temporalTransition = classifyTemporalTransition(sample)
       if (temporalTransition === 'reset') for (const limb of limbs) limb.anchored = false
@@ -414,9 +446,20 @@ export function createComplexBipedIkController(
         correction += (limb.anchor.y - contactWorld.y) * limbInfluence
         influence += limbInfluence
       }
-      if (pelvis && pelvisBindPosition && supportingCount >= 2) {
+      const permitsPelvisY = supportingCount >= 2 || (integratedSingleSupportPelvisY && supportingCount === 1)
+      if (pelvis && pelvisBindPosition && permitsPelvisY) {
         const blended = influence > 0 ? correction / influence * actionWeight : 0
-        pelvis.position.y = pelvisBindPosition.y + Math.max(-.08, Math.min(.08, blended))
+        const pelvisYBudget = supportingCount >= 2 ? .08 : singleSupportPelvisYBudget
+        const appliedPelvisY = Math.max(-pelvisYBudget, Math.min(pelvisYBudget, blended))
+        pelvis.position.y = pelvisBindPosition.y + appliedPelvisY
+        if (supportingCount === 1 && appliedPelvisY !== blended) {
+          const supportingLimb = limbs.find(limb => limb.anchored && findState(limb.definition.contactId)?.weight)
+          if (supportingLimb) frameClampedLimbs.add(supportingLimb.definition.id)
+          report(
+            'integrated-single-support-pelvis-y-clamped',
+            'Root Motion 集成链的单支撑骨盆 Y 可达补偿已达到尺寸化 clamped 预算，保留真实足底残差。',
+          )
+        }
         runtime.object.updateMatrixWorld(true)
       }
 
@@ -432,6 +475,19 @@ export function createComplexBipedIkController(
         }
       }
       runtime.object.updateMatrixWorld(true)
+      const residualByLimb: Record<string, number> = {}
+      let finalSupportingContacts = 0
+      for (const limb of limbs) {
+        const state = findState(limb.definition.contactId)
+        if (!limb.anchored || !state || state.weight <= 0) continue
+        finalSupportingContacts += 1
+        residualByLimb[limb.definition.id] = readContactWorld(limb, currentContact).distanceTo(limb.anchor)
+      }
+      return Object.freeze({
+        supportingContacts: finalSupportingContacts,
+        residualByLimb: Object.freeze(residualByLimb),
+        clampedLimbs: Object.freeze([...frameClampedLimbs].sort()),
+      })
     },
     reset() {
       if (disposed) return
@@ -441,7 +497,7 @@ export function createComplexBipedIkController(
         runtime.object.updateMatrixWorld(true)
       }
     },
-    diagnostics: () => [...messages],
+    diagnostics: () => Object.freeze([...messages]),
     dispose() {
       if (disposed) return
       if (!runtime.isDisposed()) {

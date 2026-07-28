@@ -443,7 +443,7 @@ git push origin agent/cloud-fox-studio-v0610
 - 修改：`.ai/project-state.json`
 - 修改：`docs/zh-CN/AI开发交接.md`
 
-- [ ] **步骤 1：写所有权、顺序和生命周期失败测试**
+- [x] **步骤 1：写所有权、顺序和生命周期失败测试**
 
 测试分别快照 `runtime.object.position/quaternion`、root/pelvis/foot 局部 position 和骨骼 Quaternion：
 
@@ -463,7 +463,7 @@ assert.deepEqual(runtime.object.quaternion.toArray(), objectBindQuaternion)
 
 再覆盖不同帧率的正常连续序列到同一时间得到相同容器 applied 变换、同一 canonical touchdown 在跨边界帧与边界处细分帧下得到相同授权/冲量、巨大 target 跳变不绕过单帧预算且后续帧追赶欠量、暂停重复 apply 不继续移动且保留待消费授权、停止/回拖/Clip 切换清除 `previousApplied`、`previousLandingAuthorization` 与旧欠量、角色尺寸改变步幅、双/单支撑重心、跳跃腾空不锁脚、Root Motion blocked 时保留 FK/IK、重复 dispose 和释放后拒绝写入。
 
-- [ ] **步骤 2：运行新脚本确认红灯**
+- [x] **步骤 2：运行新脚本确认红灯**
 
 先在 `package.json` 增加：
 
@@ -475,7 +475,7 @@ assert.deepEqual(runtime.object.quaternion.toArray(), objectBindQuaternion)
 
 预期：FAIL，两个 Three 控制器尚不存在。
 
-- [ ] **步骤 3：实现 Root Motion 控制器**
+- [x] **步骤 3：实现 Root Motion 控制器**
 
 接口固定为：
 
@@ -497,7 +497,7 @@ export interface ComplexBipedRootMotionController {
 
 角色高度从已计算的 `runtime.object.geometry.boundingBox` 读取；无有效包围盒时阻塞 Root Motion 但不阻塞 FK。首帧、停止、回拖、Clip 切换、runtime 重建、dispose 或求解 reset 时同时清除旧 applied 与落地授权所有权，让求解器把 applied 初始化为当前 target，且该帧不生成速度/VFX。暂停只保留授权而不消费；实际 applied 落地消费后使用求解器返回的空授权覆盖控制器状态。控制器可显式拥有 foot residual 的低通状态，但纯数值求解器内部不得保存隐式滤波历史。
 
-- [ ] **步骤 4：实现独立重心控制器和 IK 帧报告**
+- [x] **步骤 4：实现独立重心控制器和 IK 帧报告**
 
 `ComplexBipedBalanceController` 只写 pelvis X/Z 和 chest 有界 Quaternion，范围分别不超过角色高度的 `.025` 和 `0.12rad`；reset/dispose 恢复绑定值。IK 控制器的 `apply()` 返回只读报告：
 
@@ -511,7 +511,9 @@ export interface ComplexBipedIkFrameReport {
 
 报告不暴露 Bone 引用，也不改变现有有界诊断。动作控制器调用顺序必须是 `restoreBindPose → FK → rootMotion.apply → balance.apply → updateMatrixWorld → ik.apply`，并把上一帧有限的局部水平残差作为下一帧 Root Motion 的有界修正输入；Y 残差不得传入 Root Motion，原地、窗口空隙与腾空阶段不得因旧残差漂移。
 
-- [ ] **步骤 5：验证当前 0.014 残差和所有权**
+实现阶段的真实可达域扫描证明，仅靠 `0.025×height` 骨盆 X/Z、骨骼 Quaternion 且不改段长时，写入行走 Root Motion 后的单支撑世界残差无法降到 `1e-3`。因此 `createComplexBipedIkController` 增加默认关闭的集成选项；只有完整动作控制器开启尺寸化单支撑 pelvis Y 补偿，预算为 `min(0.08, characterHeight×0.025)`。直接 IK 保持历史单支撑 clamped 语义；集成补偿达到预算时必须在报告和诊断中明确 `clamped`，腾空、无支撑、weight 0、reset 与 dispose 恢复绑定 Y。
+
+- [x] **步骤 5：验证当前 0.014 残差和所有权**
 
 运行：
 
