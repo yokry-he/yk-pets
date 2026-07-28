@@ -69,6 +69,13 @@ type MutableRigVector = [number, number, number]
 const STANDALONE_IK_CORRECTION_PASS_COUNT = 3
 const INTEGRATED_IK_CORRECTION_PASS_COUNT = 5
 const clamp01 = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
+const isEffectiveSupport = (
+  state: SampledBipedPetContactState | undefined,
+): state is SampledBipedPetContactState => Boolean(
+  state
+  && Number.isFinite(state.weight) && state.weight > 0
+  && Number.isFinite(state.confidence) && state.confidence > 0,
+)
 const emptyFrameReport = (): ComplexBipedIkFrameReport => Object.freeze({
   supportingContacts: 0,
   residualByLimb: Object.freeze({}),
@@ -421,8 +428,10 @@ export function createComplexBipedIkController(
       const actionWeight = clamp01(weightInput)
       restorePelvisTranslation()
       runtime.object.updateMatrixWorld(true)
-      if (context?.rootMotionPhase === 'takeoff' || context?.rootMotionPhase === 'airborne') {
-        // Root Motion 的实际离地相位高于动作资产里可能滞后的 contact weight，避免腾空仍锁脚或下压骨盆。
+      if (context?.rootMotionPhase === 'takeoff'
+        || context?.rootMotionPhase === 'airborne'
+        || context?.rootMotionPhase === 'landing') {
+        // Root Motion 的实际非支撑相位高于动作资产里可能滞后的 contact weight，避免离地或落地授权期间仍锁脚、下压骨盆。
         clearTemporalState()
         return emptyFrameReport()
       }
@@ -439,7 +448,7 @@ export function createComplexBipedIkController(
       for (const limb of limbs) {
         limb.capturedThisFrame = false
         const state = findState(limb.definition.contactId)
-        if (!state || state.weight <= 0) limb.anchored = false
+        if (!isEffectiveSupport(state)) limb.anchored = false
         else if (!limb.anchored) {
           readContactWorld(limb, limb.anchor)
           limb.bones.at(-1)!.getWorldPosition(worldPosition)
@@ -456,7 +465,7 @@ export function createComplexBipedIkController(
       let influence = 0
       for (const limb of limbs) {
         const state = findState(limb.definition.contactId)
-        if (!limb.anchored || !state || state.weight <= 0) continue
+        if (!limb.anchored || !isEffectiveSupport(state)) continue
         supportingCount += 1
         const contactWorld = readContactWorld(limb, currentContact)
         const limbInfluence = clamp01(state.weight) * clamp01(state.confidence)
@@ -470,7 +479,7 @@ export function createComplexBipedIkController(
         const appliedPelvisY = Math.max(-pelvisYBudget, Math.min(pelvisYBudget, blended))
         pelvis.position.y = pelvisBindPosition.y + appliedPelvisY
         if (supportingCount === 1 && appliedPelvisY !== blended) {
-          const supportingLimb = limbs.find(limb => limb.anchored && findState(limb.definition.contactId)?.weight)
+          const supportingLimb = limbs.find(limb => limb.anchored && isEffectiveSupport(findState(limb.definition.contactId)))
           if (supportingLimb) frameClampedLimbs.add(supportingLimb.definition.id)
           report(
             'integrated-single-support-pelvis-y-clamped',
@@ -482,7 +491,7 @@ export function createComplexBipedIkController(
 
       for (const limb of limbs) {
         const state = findState(limb.definition.contactId)
-        if (!state || state.weight <= 0 || limb.capturedThisFrame) continue
+        if (!isEffectiveSupport(state) || limb.capturedThisFrame) continue
         for (const [index, bone] of limb.fallbackBones.entries()) limb.fallbackRotations[index]!.copy(bone.quaternion)
         try { solveLimb(limb, state, actionWeight) }
         catch {
@@ -496,7 +505,7 @@ export function createComplexBipedIkController(
       let finalSupportingContacts = 0
       for (const limb of limbs) {
         const state = findState(limb.definition.contactId)
-        if (!limb.anchored || !state || state.weight <= 0) continue
+        if (!limb.anchored || !isEffectiveSupport(state)) continue
         finalSupportingContacts += 1
         readContactWorld(limb, currentContact)
         residualByLimb[limb.definition.id] = Math.hypot(

@@ -31,6 +31,8 @@ export function createComplexBipedBalanceController(
   const pelvisBindPosition = pelvis?.position.clone()
   const chestBindQuaternion = chest?.quaternion.clone()
   const tilt = new Quaternion()
+  const tiltEuler = new Euler(0, 0, 0, 'XYZ')
+  const fkChest = new Quaternion()
   const inversePreviousTilt = new Quaternion()
   const previousTilt = new Quaternion()
   const lastWrittenChest = new Quaternion()
@@ -64,22 +66,29 @@ export function createComplexBipedBalanceController(
         chest.quaternion.multiply(inversePreviousTilt).normalize()
       }
       ownsPreviousTilt = false
-      const fkChest = chest?.quaternion.clone()
+      if (chest) fkChest.copy(chest.quaternion)
       const weight = clamp01(weightInput)
-      const supports = sample.contactStates.filter(state => state.weight > 0 && state.confidence > 0)
-      if (!pelvis || !pelvisBindPosition || !chest || !fkChest || weight <= 0
-        || rootMotion.phase === 'takeoff' || rootMotion.phase === 'airborne' || supports.length === 0) {
+      const nonSupportPhase = rootMotion.phase === 'takeoff'
+        || rootMotion.phase === 'airborne'
+        || rootMotion.phase === 'landing'
+      if (!pelvis || !pelvisBindPosition || !chest || weight <= 0
+        || nonSupportPhase) {
         return
       }
 
       let side = 0
       let influence = 0
-      for (const state of supports) {
+      let supportingCount = 0
+      for (const state of sample.contactStates) {
+        if (!Number.isFinite(state.weight) || state.weight <= 0
+          || !Number.isFinite(state.confidence) || state.confidence <= 0) continue
         const contactSide = state.contactId.includes('left') ? -1 : state.contactId.includes('right') ? 1 : 0
         const stateInfluence = clamp01(state.weight) * clamp01(state.confidence)
         side += contactSide * stateInfluence
         influence += stateInfluence
+        supportingCount += 1
       }
+      if (supportingCount === 0) return
       const supportBias = influence > 0 ? side / influence : 0
       const rawLateralOffset = Math.max(-maxOffset, Math.min(
         maxOffset,
@@ -99,7 +108,8 @@ export function createComplexBipedBalanceController(
       const tiltScale = Math.min(MAX_CHEST_TILT_RADIANS, rootMotion.motionIntensity * MAX_CHEST_TILT_RADIANS * weight)
       const tiltX = directionLength > 1e-12 ? -deltaZ / directionLength * tiltScale : 0
       const tiltZ = directionLength > 1e-12 ? deltaX / directionLength * tiltScale : supportBias * tiltScale * .35
-      tilt.setFromEuler(new Euler(tiltX, 0, tiltZ, 'XYZ'))
+      tiltEuler.set(tiltX, 0, tiltZ, 'XYZ')
+      tilt.setFromEuler(tiltEuler)
       chest.quaternion.copy(fkChest).multiply(tilt).normalize()
       previousTilt.copy(tilt)
       lastWrittenChest.copy(chest.quaternion)

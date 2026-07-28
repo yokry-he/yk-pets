@@ -59,6 +59,17 @@ function readCharacterHeight(runtime: ReturnType<typeof createRuntime>['runtime'
   return box.max.y - box.min.y
 }
 
+function snapshotDisplayPose(runtime: ReturnType<typeof createRuntime>['runtime']) {
+  return {
+    objectPosition: runtime.object.position.toArray(),
+    objectQuaternion: runtime.object.quaternion.toArray(),
+    bones: Object.fromEntries([...runtime.bonesById].map(([id, bone]) => [id, {
+      position: bone.position.toArray(),
+      quaternion: bone.quaternion.toArray(),
+    }])),
+  }
+}
+
 function readContactWorld(
   runtime: ReturnType<typeof createRuntime>['runtime'],
   compilation: CompiledCharacterModel,
@@ -242,6 +253,42 @@ function applyTimes(
   assert.equal(new Set(split.landingSignals.map(signal => signal.id)).size, split.landingSignals.length)
 }
 
+// 同 Clip 的 travel+ballistic 首个 takeoff 必须先由零反馈确定相位；上一帧 residual 不得污染离地帧。 / A same-Clip travel+ballistic takeoff must be phase-classified with zero feedback before any previous residual can be consumed.
+{
+  const baseline = createRuntime()
+  const withFeedback = createRuntime()
+  const clip = compile(walkAsset, baseline.compilation)
+  const definition = rootMotionDefinition({
+    distance: .42,
+    verticalMode: 'ballistic',
+    jumpHeight: .28,
+    windows: [
+      { id: 'joint-travel', kind: 'travel', startMs: 0, endMs: 1200, weight: 1 },
+      { id: 'joint-ballistic', kind: 'ballistic', startMs: 300, endMs: 900, weight: 1 },
+    ],
+  })
+  const sampleAt = (timeMs: number) => patchSample(sampleBipedPetMotion(clip, timeMs), {
+    clipHash: `${clip.hash}:joint-travel-ballistic`,
+    rootMotion: definition,
+  })
+  const baselineController = createComplexBipedRootMotionController(baseline.runtime)
+  const feedbackController = createComplexBipedRootMotionController(withFeedback.runtime)
+  for (const timeMs of [0, 280]) {
+    baselineController.apply(sampleAt(timeMs), 1)
+    feedbackController.apply(sampleAt(timeMs), 1)
+  }
+  const withoutResidual = baselineController.apply(sampleAt(320), 1)
+  const withResidual = feedbackController.apply(sampleAt(320), 1, [-.02, 0, 0])
+  assert.equal(withoutResidual.rootMotion.phase, 'takeoff')
+  assert.equal(withResidual.rootMotion.phase, 'takeoff')
+  vectorNear(withResidual.rootMotion.appliedWorld, withoutResidual.rootMotion.appliedWorld, 1e-12)
+  vectorNear(withResidual.rootMotion.deltaWorld, withoutResidual.rootMotion.deltaWorld, 1e-12)
+  baselineController.dispose()
+  feedbackController.dispose()
+  baseline.runtime.dispose()
+  withFeedback.runtime.dispose()
+}
+
 // 停止、回拖与 Clip 切换都清除旧 applied/授权/欠量，并在当前目标无速度 reset。 / Stop, rewind, and Clip switch clear applied state, authorization, and debt with a stationary reset.
 for (const transition of ['stop', 'rewind', 'clip-switch'] as const) {
   const { compilation, runtime } = createRuntime()
@@ -332,6 +379,18 @@ for (const transition of ['stop', 'rewind', 'clip-switch'] as const) {
     deltaLocal: [0, 0, 0], phase: 'airborne', motionIntensity: 0,
   })
   near(chest.quaternion.angleTo(nextFk), 0)
+
+  controller.reset()
+  controller.apply(single, 1, {
+    deltaLocal: [height * .1, 0, 0], phase: 'grounded', motionIntensity: 1,
+  })
+  assert.ok(Math.hypot(pelvis.position.x - bindPelvis.x, pelvis.position.z - bindPelvis.z) > 0)
+  controller.apply(single, 1, {
+    deltaLocal: [height * .1, -height * .1, 0], phase: 'landing', motionIntensity: 1,
+  })
+  near(pelvis.position.x, bindPelvis.x)
+  near(pelvis.position.z, bindPelvis.z)
+  near(chest.quaternion.angleTo(bindChest), 0)
   controller.reset()
   assert.deepEqual(pelvis.position.toArray(), bindPelvis.toArray())
   assert.deepEqual(chest.quaternion.toArray(), bindChest.toArray())
@@ -402,7 +461,7 @@ for (const transition of ['stop', 'rewind', 'clip-switch'] as const) {
   }
 }
 
-// Root Motion 的 takeoff/airborne 相位优先于动作资产里滞后的接触权重：不得继续锁脚或下压 pelvis Y。 / Root Motion takeoff/airborne phases override stale authored contact weights: IK must release feet and restore pelvis Y.
+// Root Motion 的 takeoff/airborne/landing 相位优先于动作资产里滞后的接触权重；真实 grounded touchdown 才能重新捕获。 / Root Motion takeoff/airborne/landing phases override stale authored contact weights; only a real grounded touchdown may recapture.
 for (const expectedPhase of ['takeoff', 'airborne'] as const) {
   const { compilation, runtime } = createRuntime()
   const clip = compile(jumpAsset, compilation)
@@ -418,6 +477,111 @@ for (const expectedPhase of ['takeoff', 'airborne'] as const) {
   assert.deepEqual(frame.ikReport.residualByLimb, {})
   assert.deepEqual(frame.nextFootResidual, [0, 0, 0])
   near(pelvis.position.y, bindY, 1e-12, `${expectedPhase} 必须恢复 pelvis 绑定 Y`)
+  controller.dispose()
+  runtime.dispose()
+}
+
+{
+  const { compilation, runtime } = createRuntime()
+  const fkOnly = createRuntime()
+  const clip = compile(jumpAsset, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation)
+  const fkController = createComplexBipedMotionController(fkOnly.runtime)
+  const pelvis = runtime.bonesById.get('pelvis')!
+  const chest = runtime.bonesById.get('chest')!
+  const fkChest = fkOnly.runtime.bonesById.get('chest')!
+  const bindPelvis = pelvis.position.clone()
+  const withStaleContact = (timeMs: number) => lockedLeft(sampleBipedPetMotion(clip, timeMs))
+  for (const timeMs of [400, 800, 1200, 1280]) {
+    const sample = withStaleContact(timeMs)
+    controller.apply(sample, 1)
+    fkController.apply(sample, 1)
+  }
+  for (let timeMs = 1300; timeMs <= 1680; timeMs += 20) {
+    const sample = withStaleContact(timeMs)
+    const frame = controller.apply(sample, 1)
+    fkController.apply(sample, 1)
+    assert.equal(frame.rootMotion.phase, 'landing')
+    assert.equal(frame.ikReport.supportingContacts, 0, `${timeMs}ms 下降段不得消费滞后接触权重`)
+    assert.deepEqual(frame.nextFootResidual, [0, 0, 0])
+    near(pelvis.position.x, bindPelvis.x)
+    near(pelvis.position.y, bindPelvis.y)
+    near(pelvis.position.z, bindPelvis.z)
+    near(chest.quaternion.angleTo(fkChest.quaternion), 0)
+  }
+  const touchdownSample = withStaleContact(1840)
+  const touchdown = controller.apply(touchdownSample, 1)
+  fkController.apply(touchdownSample, 1)
+  assert.equal(touchdown.rootMotion.phase, 'grounded')
+  assert.equal(touchdown.ikReport.supportingContacts, 1)
+  controller.dispose()
+  fkController.dispose()
+  runtime.dispose()
+  fkOnly.runtime.dispose()
+}
+
+// 同时间同权重重复 apply 是完整显示姿态暂停：Root 仍处理 token，但 FK/Balance/IK 与 residual 状态均冻结。 / A duplicate same-time/same-weight apply freezes the full display pose while Root still maintains token semantics.
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compile(walkAsset, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation)
+  controller.apply(lockedLeft(sampleBipedPetMotion(clip, 100)), 1)
+  const sample = lockedLeft(sampleBipedPetMotion(clip, 320))
+  const first = controller.apply(sample, 2)
+  const pose = snapshotDisplayPose(runtime)
+  // 2 与 1 都归一化为 1，应识别为同一暂停权重。 / Both 2 and 1 normalize to 1 and must be treated as the same paused weight.
+  const paused = controller.apply(sample, 1)
+  assert.deepEqual(snapshotDisplayPose(runtime), pose)
+  assert.deepEqual(paused.vfxSignals, [])
+  assert.deepEqual(paused.consumedFootResidual, [0, 0, 0])
+  assert.deepEqual(paused.nextFootResidual, first.nextFootResidual)
+  assert.ok(Object.isFrozen(paused))
+  const resumed = controller.apply(lockedLeft(sampleBipedPetMotion(clip, 340)), 1)
+  assert.deepEqual(resumed.consumedFootResidual, first.nextFootResidual)
+  controller.dispose()
+  runtime.dispose()
+}
+
+// 权重或 Clip 身份变化即使 requestedTime 相同也必须重新求姿态，不能误判为暂停。 / Weight or Clip identity changes at the same requested time must recompute the pose rather than being mistaken for pause.
+{
+  const { compilation, runtime } = createRuntime()
+  const walkClip = compile(walkAsset, compilation)
+  const waveClip = compile(waveAsset, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation)
+  const walk = lockedLeft(sampleBipedPetMotion(walkClip, 320))
+  controller.apply(walk, 1)
+  const fullWeight = snapshotDisplayPose(runtime)
+  controller.apply(walk, .5)
+  assert.notDeepEqual(snapshotDisplayPose(runtime), fullWeight)
+  const halfWeight = snapshotDisplayPose(runtime)
+  controller.apply(lockedLeft(sampleBipedPetMotion(waveClip, 320)), .5)
+  assert.notDeepEqual(snapshotDisplayPose(runtime), halfWeight)
+  controller.dispose()
+  runtime.dispose()
+}
+
+// 带待消费 landing authorization 的重复帧同样冻结完整姿态，且不重复生成 VFX。 / A duplicate frame with pending landing authorization also freezes the full pose without duplicating VFX.
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compile(jumpAsset, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation)
+  const definition = rootMotionDefinition({
+    verticalMode: 'ballistic',
+    jumpHeight: 1.5,
+    windows: [{ id: 'pause-jump', kind: 'ballistic', startMs: 240, endMs: 480, weight: 1 }],
+    vfxTags: ['landing-ring'],
+  }, clip.durationMs)
+  const sampleAt = (timeMs: number) => patchSample(sampleBipedPetMotion(clip, timeMs), { rootMotion: definition })
+  for (const timeMs of [200, 360, 400]) controller.apply(sampleAt(timeMs), 1)
+  const sample = sampleAt(480)
+  const beforePause = controller.apply(sample, 1)
+  assert.ok(beforePause.rootMotion.landingAuthorization)
+  const pose = snapshotDisplayPose(runtime)
+  const paused = controller.apply(sample, 1)
+  assert.deepEqual(snapshotDisplayPose(runtime), pose)
+  assert.deepEqual(paused.rootMotion.landingAuthorization, beforePause.rootMotion.landingAuthorization)
+  assert.deepEqual(paused.vfxSignals, [])
+  assert.deepEqual(paused.consumedFootResidual, [0, 0, 0])
   controller.dispose()
   runtime.dispose()
 }
@@ -466,6 +630,35 @@ for (const expectedPhase of ['takeoff', 'airborne'] as const) {
   assert.equal(report.supportingContacts, 1)
   const horizontalResidual = report.residualByLimb['leg.left']!
   near(horizontalResidual, 0, 1e-12, `纯 Y 误差的水平残差幅值必须为零，实际 ${horizontalResidual}`)
+  controller.dispose()
+  runtime.dispose()
+}
+
+// weight/confidence 必须同时为正有限数才是有效支撑；无效状态不得捕获锚、写 pelvis Y 或生成 feedback。 / Weight and confidence must both be finite and positive; invalid states cannot capture anchors, write pelvis Y, or generate feedback.
+for (const invalidState of [
+  { weight: 1, confidence: 0 },
+  { weight: 1, confidence: Number.NaN },
+  { weight: Number.NaN, confidence: 1 },
+] as const) {
+  const { compilation, runtime } = createRuntime()
+  const clip = compile(walkAsset, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation)
+  const pelvis = runtime.bonesById.get('pelvis')!
+  const bindY = pelvis.position.y
+  const invalid = (timeMs: number) => patchSample(sampleBipedPetMotion(clip, timeMs), {
+    activeContacts: ['foot.left'],
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', ...invalidState }],
+  })
+  for (const timeMs of [100, 320]) {
+    const frame = controller.apply(invalid(timeMs), 1)
+    assert.equal(frame.ikReport.supportingContacts, 0)
+    assert.deepEqual(frame.ikReport.residualByLimb, {})
+    assert.deepEqual(frame.nextFootResidual, [0, 0, 0])
+    near(pelvis.position.y, bindY)
+  }
+  const valid = controller.apply(lockedLeft(sampleBipedPetMotion(clip, 340)), 1)
+  assert.equal(valid.ikReport.supportingContacts, 1)
+  near(valid.ikReport.residualByLimb['leg.left']!, 0, 1e-12)
   controller.dispose()
   runtime.dispose()
 }
@@ -618,6 +811,72 @@ for (const expectedPhase of ['takeoff', 'airborne'] as const) {
   assert.deepEqual(second.runtime.object.position.toArray(), [0, 0, 0])
   assert.throws(() => firstController.apply(sampleBipedPetMotion(firstClip, 340), 1), /已释放/)
   second.runtime.dispose()
+}
+
+// 同一 runtime 只能有一个 Root Motion 写入者；释放后可重建，已释放 runtime 拒绝创建。 / A runtime has exactly one Root Motion writer; disposal releases ownership, while a disposed runtime rejects creation.
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compile(walkAsset, compilation)
+  const first = createComplexBipedRootMotionController(runtime)
+  first.apply(sampleBipedPetMotion(clip, 100), 1)
+  const position = runtime.object.position.toArray()
+  assert.throws(() => createComplexBipedRootMotionController(runtime), /同一运行时.*Root Motion.*控制器/)
+  assert.deepEqual(runtime.object.position.toArray(), position)
+  first.dispose()
+  const second = createComplexBipedRootMotionController(runtime)
+  second.dispose()
+  runtime.dispose()
+  assert.throws(() => createComplexBipedRootMotionController(runtime), /运行时已释放/)
+}
+
+// 外层构造在 IK 初始化中途失败时必须释放已经取得的 Root Motion 令牌。 / An outer-construction failure during IK initialization must release the acquired Root Motion token.
+{
+  const { compilation, runtime } = createRuntime()
+  const bone = runtime.bonesById.get('thigh.left')!
+  const getWorldPosition = bone.getWorldPosition
+  bone.getWorldPosition = () => { throw new Error('测试注入：IK 构造失败') }
+  assert.throws(() => createComplexBipedMotionController(runtime, compilation), /IK 构造失败/)
+  bone.getWorldPosition = getWorldPosition
+  const controller = createComplexBipedRootMotionController(runtime)
+  controller.dispose()
+  runtime.dispose()
+}
+
+// Root 控制器自身初始化失败也必须释放刚登记的运行时所有权。 / Root-controller initialization failure must also release its newly registered runtime ownership.
+{
+  const { runtime } = createRuntime()
+  const clone = runtime.object.position.clone
+  runtime.object.position.clone = () => { throw new Error('测试注入：Root 初始化失败') }
+  assert.throws(() => createComplexBipedRootMotionController(runtime), /Root 初始化失败/)
+  runtime.object.position.clone = clone
+  const controller = createComplexBipedRootMotionController(runtime)
+  controller.dispose()
+  runtime.dispose()
+}
+
+// 自然 walk 与 ping-pong 长序列不得因标量 strain feedback 产生振荡、过冲或伪造侧向向量。 / Long natural walk and ping-pong sequences must not oscillate, overshoot, or invent lateral vectors from scalar strain feedback.
+for (const loopMode of ['loop', 'ping-pong'] as const) {
+  const { compilation, runtime } = createRuntime()
+  const clip = compile(walkAsset, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation)
+  let previousApplied = 0
+  let previousTarget = 0
+  for (let timeMs = 0; timeMs <= 3600; timeMs += 20) {
+    const sample = patchSample(sampleBipedPetMotion(clip, timeMs), { loopMode })
+    const frame = controller.apply(sample, 1)
+    const applied = frame.rootMotion.appliedLocal[0]
+    const target = frame.rootMotion.cumulativeLocal[0]
+    assert.ok(Number.isFinite(applied) && Number.isFinite(target))
+    const targetDirection = Math.sign(target - previousTarget)
+    if (targetDirection !== 0) assert.ok((applied - previousApplied) * targetDirection >= -1e-9, `${loopMode}@${timeMs}ms 出现反向振荡`)
+    if (loopMode === 'loop') assert.ok(applied <= target + 1e-9, `${loopMode}@${timeMs}ms 超过绝对目标`)
+    else assert.ok(applied >= -1e-9 && applied <= .42 * readCharacterHeight(runtime) + 1e-9, `${loopMode}@${timeMs}ms 越过往返范围`)
+    assert.ok(Math.abs(frame.nextFootResidual[2]) <= 1e-12, `${loopMode}@${timeMs}ms 标量 strain 不得伪称侧向误差向量`)
+    previousApplied = applied
+    previousTarget = target
+  }
+  controller.dispose()
+  runtime.dispose()
 }
 
 console.log('studio complex biped Root Motion runtime tests passed')

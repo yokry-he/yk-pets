@@ -234,7 +234,19 @@ if (state) {
   expect(state.latestCompletedBatch?.balancePelvisHorizontalLimitBodyHeightRatio === .025 && state.latestCompletedBatch?.balanceChestTiltLimitRadians === .12, '重心控制预算错误 / Balance-controller bounds are incorrect')
   expect(state.latestCompletedBatch?.integratedSingleSupportPelvisYDefault === false && state.latestCompletedBatch?.integratedSingleSupportPelvisYLimit === 'min(0.08, characterHeight*0.025)', '单支撑 pelvis Y 集成策略必须默认关闭且尺寸化 / Integrated single-support pelvis Y must be default-off and scale-bounded')
   expect(state.latestCompletedBatch?.ikResidualByLimbMetric === 'world-horizontal-anchor-current-xz-hypot', 'IK residualByLimb 必须只表示真实世界水平残差幅值 / IK residualByLimb must represent true world-horizontal residual magnitude only')
-  expect(JSON.stringify(state.latestCompletedBatch?.ikRootMotionPhaseRelease) === JSON.stringify(['takeoff', 'airborne']), 'IK 必须在实际 takeoff/airborne 相位释放滞后接触 / IK must release stale contacts in actual takeoff/airborne phases')
+  expect(JSON.stringify(state.latestCompletedBatch?.ikRootMotionPhaseRelease) === JSON.stringify(['takeoff', 'airborne', 'landing']), 'IK 必须在实际 takeoff/airborne/landing 相位释放滞后接触 / IK must release stale contacts in actual takeoff/airborne/landing phases')
+  expect(state.latestCompletedBatch?.effectiveSupportPredicate === 'finite-weight>0-and-finite-confidence>0', 'IK 有效支撑必须同时要求正有限 weight/confidence / Effective IK support requires finite positive weight and confidence')
+  expect(state.latestCompletedBatch?.rootResidualPhasePreview === 'zero-residual-preview-then-grounded-resample'
+    && state.latestCompletedBatch?.rootResidualStrainGain === 8
+    && state.latestCompletedBatch?.rootResidualStrainLimitBodyHeightRatio === .025,
+  'Root residual 必须先零反馈预采样，并保持明确 strain 增益与尺寸上限 / Root residual must use zero-feedback preview with explicit strain gain and scale bound')
+  expect(state.latestCompletedBatch?.duplicateFramePosePolicy === 'same-clip-requested-time-normalized-weight-freezes-full-display-pose'
+    && state.latestCompletedBatch?.duplicateFrameConsumedResidual === 'zero',
+  '重复帧必须冻结完整显示姿态且不得声明消费 residual / Duplicate frames must freeze the full display pose without claiming residual consumption')
+  expect(state.latestCompletedBatch?.rootMotionRuntimeExclusiveOwnership === true
+    && state.latestCompletedBatch?.rootMotionRuntimeOwnerRegistry === 'weakmap-token',
+  '每个 runtime 必须只有一个 Root Motion 写入者 / Each runtime must have exactly one Root Motion writer')
+  expect(state.latestCompletedBatch?.rootMotionHotPathAllocationPolicy === 'direct-bounds-preallocated-balance-single-contact-scan', 'Three 热路径分配策略必须保持 / Three hot-path allocation policy must remain explicit')
   expect(state.latestCompletedBatch?.standaloneIkCorrectionPasses === 3 && state.latestCompletedBatch?.integratedIkCorrectionPasses === 5 && state.latestCompletedBatch?.ikPerBoneAngularBudgetExpanded === false, 'IK 集成收敛只能增加 pass，不得扩大每骨骼累计角预算 / Integrated IK may add passes but must not expand per-bone cumulative angular budgets')
   expect(state.latestCompletedBatch?.integratedWorldResidualGate === .00075
     && state.latestCompletedBatch?.integratedWorldResidualProbe <= state.latestCompletedBatch.integratedWorldResidualGate
@@ -246,6 +258,15 @@ if (state) {
     reportedThreeDimensionalResidual: .020000000000000018,
     previousIntegratedWorldResidual: .000999317248683272,
   }), 'Task 5 规格审查 RED 证据必须保持可追踪 / Task 5 review RED evidence must remain traceable')
+  expect(JSON.stringify(state.latestCompletedBatch?.rootMotionRuntimeReviewRedEvidenceV2) === JSON.stringify({
+    combinedTravelBallisticTakeoffAppliedXWithResidual: 0.25337596237182625,
+    combinedTravelBallisticTakeoffAppliedXWithoutResidual: 0.2535759623718262,
+    landingBalancePelvisX: -0.060846538023769596,
+    staleLandingSupportingContacts: 1,
+    zeroConfidenceSupportingContacts: 1,
+    duplicateDisplayPoseChanged: true,
+    secondRootControllerRejected: false,
+  }), 'Task 5 第二轮质量审查 RED 证据必须保持可追踪 / Task 5 second quality-review RED evidence must remain traceable')
   expect(state.latestCompletedBatch?.motionIntensityReferenceBodyHeightsPerSecond === .4, '移动强度参考速度必须是每秒 0.4 个角色身高 / Motion-intensity reference speed must be 0.4 body-heights per second')
   expect(state.latestCompletedBatch?.landingImpulseFormula === 'sqrt(normalizedCompositePeakHeight)', '落地冲量必须由归一化复合峰高的平方根派生 / Landing impulse must derive from the square root of normalized composite peak height')
   expect(state.latestCompletedBatch?.landingRingThreshold === .25 && state.latestCompletedBatch?.landingDustThreshold === .4, '落地环与尘效必须保持既定严格阈值 / Landing ring and dust must retain their strict thresholds')

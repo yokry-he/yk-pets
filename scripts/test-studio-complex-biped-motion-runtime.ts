@@ -337,7 +337,8 @@ function readChainLengths(runtime: ReturnType<typeof createRuntime>['runtime'], 
   const autoAnchor = readContactWorld(auto.runtime, autoCompilation, 'foot.left')
   const autoFkAnchor = readContactWorld(autoFk.runtime, autoFk.compilation, 'foot.left')
   const bindPositions = Object.fromEntries([...auto.runtime.bonesById].map(([id, bone]) => [id, bone.position.toArray()]))
-  const shifted = sampleWith(locked(100), { rootPosition: [.05, 0, 0] })
+  // 内容变化必须推进时间（或生成新 clipHash）；复用相同 Clip/时间/权重属于完整姿态暂停契约。
+  const shifted = sampleWith(locked(101), { rootPosition: [.05, 0, 0] })
   autoController.apply(shifted, 1)
   autoFkController.apply(shifted, 1)
   const autoError = readContactWorld(auto.runtime, autoCompilation, 'foot.left').distanceTo(autoAnchor)
@@ -623,17 +624,17 @@ for (const [weight, maximum] of [[.01, .0085], [.2, .17]] as const) {
   diagnosticController.dispose()
   const controller = createComplexBipedMotionController(runtime, broken)
   const baselineController = createComplexBipedMotionController(baseline.runtime)
-  const rightLocked = (rootX: number) => sampleWith(sampleBipedPetMotion(clip, 100), {
+  const rightLocked = (rootX: number, timeMs: number) => sampleWith(sampleBipedPetMotion(clip, timeMs), {
     rootPosition: [rootX, 0, 0],
     contactStates: [{ contactId: 'foot.right', phase: 'locked', weight: 1, confidence: 1 }],
     activeContacts: ['foot.right'],
   })
-  controller.apply(rightLocked(0), 1)
-  baselineController.apply(rightLocked(0), 1)
+  controller.apply(rightLocked(0, 100), 1)
+  baselineController.apply(rightLocked(0, 100), 1)
   const rightAnchor = readContactWorld(runtime, compilation, 'foot.right')
   const baselineAnchor = readContactWorld(baseline.runtime, baseline.compilation, 'foot.right')
-  controller.apply(rightLocked(.05), 1)
-  baselineController.apply(rightLocked(.05), 1)
+  controller.apply(rightLocked(.05, 101), 1)
+  baselineController.apply(rightLocked(.05, 101), 1)
   for (const boneId of ['thigh.left', 'knee.left', 'calf.left', 'ankle.left']) {
     assert.ok(runtime.bonesById.get(boneId)!.quaternion.angleTo(baseline.runtime.bonesById.get(boneId)!.quaternion) < 1e-9)
   }

@@ -27,6 +27,7 @@ export interface ComplexBipedMotionController {
 }
 
 const clampWeight = (value: number | undefined) => Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 1))
+const ZERO_FOOT_RESIDUAL = Object.freeze([0, 0, 0]) as readonly [number, number, number]
 const emptyIkReport = (): ComplexBipedIkFrameReport => Object.freeze({
   supportingContacts: 0,
   residualByLimb: Object.freeze({}),
@@ -49,19 +50,33 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
   const blendedOffset = new Quaternion()
   const weightedRootOffset = new Vector3()
   let disposed = false
-  const rootMotionController = createComplexBipedRootMotionController(runtime)
   const boundingBox = runtime.object.geometry.boundingBox
   const characterHeight = boundingBox && Number.isFinite(boundingBox.max.y - boundingBox.min.y)
     ? boundingBox.max.y - boundingBox.min.y
     : 0
-  const balanceController = compilation
-    ? createComplexBipedBalanceController(runtime, compilation, characterHeight)
-    : undefined
-  const ikController = compilation ? createComplexBipedIkController(runtime, compilation, {
-    integratedSingleSupportPelvisY: true,
-    characterHeight,
-  }) : undefined
-  let previousFootResidual: readonly [number, number, number] = Object.freeze([0, 0, 0])
+  const rootMotionController = createComplexBipedRootMotionController(runtime)
+  let balanceController: ReturnType<typeof createComplexBipedBalanceController> | undefined
+  let ikController: ReturnType<typeof createComplexBipedIkController> | undefined
+  try {
+    balanceController = compilation
+      ? createComplexBipedBalanceController(runtime, compilation, characterHeight)
+      : undefined
+    ikController = compilation ? createComplexBipedIkController(runtime, compilation, {
+      integratedSingleSupportPelvisY: true,
+      characterHeight,
+    }) : undefined
+  }
+  catch (error) {
+    ikController?.dispose()
+    balanceController?.dispose()
+    rootMotionController.dispose()
+    throw error
+  }
+  let previousFootResidual: readonly [number, number, number] = ZERO_FOOT_RESIDUAL
+  let lastAppliedClipHash: string | undefined
+  let lastAppliedRequestedTimeMs: number | undefined
+  let lastAppliedWeight: number | undefined
+  let lastIkReport = emptyIkReport()
 
   const assertUsable = () => {
     if (disposed || runtime.isDisposed()) throw new Error('复杂双足萌宠动作控制器已释放，不能继续写入骨骼。')
@@ -74,8 +89,21 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
   return {
     apply(sample, weightInput = 1) {
       assertUsable()
-      restoreBindPose()
       const weight = clampWeight(weightInput)
+      const freezesDisplayPose = sample.clipHash === lastAppliedClipHash
+        && sample.requestedTimeMs === lastAppliedRequestedTimeMs
+        && weight === lastAppliedWeight
+      if (freezesDisplayPose) {
+        // 重复帧是完整显示姿态暂停：只让 Root 层维持时间令牌/落地授权/VFX 去重，不能重跑 FK、Balance、IK 或推进残差反馈。
+        const rootMotionFrame = rootMotionController.apply(sample, weight, previousFootResidual)
+        return Object.freeze({
+          ...rootMotionFrame,
+          ikReport: lastIkReport,
+          consumedFootResidual: ZERO_FOOT_RESIDUAL,
+          nextFootResidual: previousFootResidual,
+        })
+      }
+      restoreBindPose()
       for (const pose of sample.bones) {
         const bone = runtime.bonesById.get(pose.boneId)
         const bindRotation = bindRotations.get(pose.boneId)
@@ -96,6 +124,10 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
         IK_CONTEXT_BY_ROOT_MOTION_PHASE[rootMotionFrame.rootMotion.phase],
       ) ?? emptyIkReport()
       previousFootResidual = nextFootResidual(rootMotionFrame, ikReport, characterHeight, sample)
+      lastAppliedClipHash = sample.clipHash
+      lastAppliedRequestedTimeMs = sample.requestedTimeMs
+      lastAppliedWeight = weight
+      lastIkReport = ikReport
       return Object.freeze({
         ...rootMotionFrame,
         ikReport,
@@ -106,7 +138,11 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
     reset() {
       assertUsable()
       restoreBindPose()
-      previousFootResidual = Object.freeze([0, 0, 0])
+      previousFootResidual = ZERO_FOOT_RESIDUAL
+      lastAppliedClipHash = undefined
+      lastAppliedRequestedTimeMs = undefined
+      lastAppliedWeight = undefined
+      lastIkReport = emptyIkReport()
       rootMotionController.reset()
       balanceController?.reset()
       ikController?.reset()
@@ -122,6 +158,10 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
         runtime.object.updateMatrixWorld(true)
       }
       bindRotations.clear()
+      lastAppliedClipHash = undefined
+      lastAppliedRequestedTimeMs = undefined
+      lastAppliedWeight = undefined
+      lastIkReport = emptyIkReport()
       disposed = true
     },
   }
@@ -135,7 +175,7 @@ function nextFootResidual(
 ): readonly [number, number, number] {
   if (!report || report.supportingContacts <= 0
     || (frame.rootMotion.status !== 'solved' && frame.rootMotion.status !== 'clamped')
-    || frame.rootMotion.phase === 'takeoff' || frame.rootMotion.phase === 'airborne'
+    || frame.rootMotion.phase === 'takeoff' || frame.rootMotion.phase === 'airborne' || frame.rootMotion.phase === 'landing'
     || sample.rootMotion.mode !== 'travel'
     || !sample.rootMotion.windows.some(window => (window.kind === 'travel' || window.kind === 'warp')
       && sample.resolvedTimeMs >= window.startMs && sample.resolvedTimeMs <= window.endMs)) return Object.freeze([0, 0, 0])

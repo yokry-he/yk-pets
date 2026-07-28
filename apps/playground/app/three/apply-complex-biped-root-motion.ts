@@ -30,18 +30,21 @@ type RootVector = readonly [number, number, number]
 const MAX_DIAGNOSTICS = 64
 const ZERO_RESIDUAL = Object.freeze([0, 0, 0]) as RootVector
 const WORLD_Y_AXIS = new Vector3(0, 1, 0)
+const rootMotionOwnerByRuntime = new WeakMap<ComplexBipedPetObject, symbol>()
 const clamp01 = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
 
 function characterHeight(runtime: ComplexBipedPetObject): number | undefined {
   const box = runtime.object.geometry.boundingBox
   if (!box) return undefined
-  const values = [...box.min.toArray(), ...box.max.toArray()]
+  if (!Number.isFinite(box.min.x) || !Number.isFinite(box.min.y) || !Number.isFinite(box.min.z)
+    || !Number.isFinite(box.max.x) || !Number.isFinite(box.max.y) || !Number.isFinite(box.max.z)) return undefined
   const height = box.max.y - box.min.y
-  return values.every(Number.isFinite) && Number.isFinite(height) && height > 0 ? height : undefined
+  return Number.isFinite(height) && height > 0 ? height : undefined
 }
 
 function horizontalResidual(input: readonly [number, number, number] | undefined): RootVector {
   if (!input || !Number.isFinite(input[0]) || !Number.isFinite(input[2])) return ZERO_RESIDUAL
+  if (input[0] === 0 && input[2] === 0) return ZERO_RESIDUAL
   return Object.freeze([input[0], 0, input[2]])
 }
 
@@ -71,6 +74,23 @@ function blockedRootMotion(sample: SampledBipedPetMotion): SampledBipedPetRootMo
 }
 
 export function createComplexBipedRootMotionController(runtime: ComplexBipedPetObject): ComplexBipedRootMotionController {
+  if (runtime.isDisposed()) throw new Error('复杂双足萌宠运行时已释放，不能创建 Root Motion 控制器。')
+  if (rootMotionOwnerByRuntime.has(runtime)) throw new Error('同一运行时已存在 Root Motion 控制器，不能创建第二个写入者。')
+  const ownershipToken = Symbol('complex-biped-root-motion-owner')
+  rootMotionOwnerByRuntime.set(runtime, ownershipToken)
+  try {
+    return createOwnedComplexBipedRootMotionController(runtime, ownershipToken)
+  }
+  catch (error) {
+    if (rootMotionOwnerByRuntime.get(runtime) === ownershipToken) rootMotionOwnerByRuntime.delete(runtime)
+    throw error
+  }
+}
+
+function createOwnedComplexBipedRootMotionController(
+  runtime: ComplexBipedPetObject,
+  ownershipToken: symbol,
+): ComplexBipedRootMotionController {
   const bindPosition = runtime.object.position.clone()
   const bindQuaternion = runtime.object.quaternion.clone()
   const yawOffset = new Quaternion()
@@ -95,6 +115,7 @@ export function createComplexBipedRootMotionController(runtime: ComplexBipedPetO
   }
   const assertUsable = () => {
     if (disposed || runtime.isDisposed()) throw new Error('复杂双足萌宠 Root Motion 控制器已释放，不能继续写入角色容器。')
+    if (rootMotionOwnerByRuntime.get(runtime) !== ownershipToken) throw new Error('复杂双足萌宠 Root Motion 控制器已失去运行时写入所有权。')
   }
   const clearOwnership = () => {
     clipHash = undefined
@@ -134,7 +155,8 @@ export function createComplexBipedRootMotionController(runtime: ComplexBipedPetO
       }
 
       const inputPreviousRequestedTimeMs = previousRequestedTimeMs
-      const rootMotion = sampleBipedPetRootMotion({
+      const residual = horizontalResidual(footResidualInput)
+      const input = {
         definition: sample.rootMotion,
         requestedTimeMs: sample.requestedTimeMs,
         ...(inputPreviousRequestedTimeMs === undefined ? {} : { previousRequestedTimeMs: inputPreviousRequestedTimeMs }),
@@ -148,8 +170,16 @@ export function createComplexBipedRootMotionController(runtime: ComplexBipedPetO
           previousAppliedTurnRadians: previousAppliedTurnRadians!,
         }),
         ...(previousLandingAuthorization === undefined ? {} : { previousLandingAuthorization }),
-        footResidual: horizontalResidual(footResidualInput),
-      })
+        footResidual: ZERO_RESIDUAL,
+      }
+      // 相位必须先由零反馈 applied 轨迹确定；只有真实 grounded 连续帧才允许消费上一帧水平 strain。
+      const phasePreview = sampleBipedPetRootMotion(input)
+      const mayConsumeResidual = residual !== ZERO_RESIDUAL
+        && (phasePreview.status === 'solved' || phasePreview.status === 'clamped')
+        && phasePreview.phase === 'grounded'
+      const rootMotion = mayConsumeResidual
+        ? sampleBipedPetRootMotion({ ...input, footResidual: residual })
+        : phasePreview
 
       const vfxSignals = inputPreviousRequestedTimeMs === undefined
         ? Object.freeze([]) as readonly BipedPetMotionVfxSignal[]
@@ -191,7 +221,9 @@ export function createComplexBipedRootMotionController(runtime: ComplexBipedPetO
     dispose() {
       if (disposed) return
       clearOwnership()
-      if (!runtime.isDisposed()) restoreBindTransform()
+      const ownsRuntime = rootMotionOwnerByRuntime.get(runtime) === ownershipToken
+      if (ownsRuntime && !runtime.isDisposed()) restoreBindTransform()
+      if (ownsRuntime) rootMotionOwnerByRuntime.delete(runtime)
       disposed = true
     },
   }

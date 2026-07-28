@@ -88,7 +88,7 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 
 行走循环的单周期位移必须可累加：跨越连续循环接缝时使用上一周期终点到下一周期起点的连续差值，不归零世界位置。普通时间倒退、异常大跳、Clip 切换或停止则清除累计身份和速度，不把预览拖动解释为反向移动。
 
-支撑脚残差的契约固定为“调用方提供的局部水平接触残差反馈”。IK 报告中的 `residualByLimb` 是每肢世界水平面 `hypot(anchor.x-current.x, anchor.z-current.z)` 的真实幅值，不包含 Y，也不编码方向；外层只消费这个水平幅值，并沿本帧局部水平移动的反方向构造有限 X/Z feedback，Y 永远为零。它只在上一请求到当前请求的整段时间映射都被连续 `travel/warp` 支撑组件覆盖时修正 applied 增量，跨入、跨出或穿越 gap 的帧不消费旧残差；预算同时随真实时间差、`actionWeight` 和当前水平 target 追赶误差缩放；原地、窗口空隙、仅弹道、暂停、reset 或 `actionWeight→0` 时不得漂移。纯函数内部不保存也不伪造低通历史，任务 5 控制器显式拥有跨帧 feedback 状态。
+支撑脚残差的契约固定为“调用方提供的局部水平接触残差反馈”。IK 报告中的 `residualByLimb` 是每肢世界水平面 `hypot(anchor.x-current.x, anchor.z-current.z)` 的真实标量幅值，不包含 Y，也不编码方向；它在当前集成链中是沿移动反方向抵消步滑的 **strain 启发式**，不是测得的误差向量。外层将最大幅值放大 `8` 倍并限制在 `characterHeight×0.025` 内，再沿本帧局部水平移动的反方向构造有限 X/Z feedback，Y 永远为零。Root 控制器必须先以零 feedback 预采样相位，只有预采样为有限 `solved/clamped + grounded` 时，才从完全相同的 previous state 带入 residual 做最终采样；因此 travel 与 ballistic 同时存在的首个 takeoff 不会被旧 strain 污染。反馈只在上一请求到当前请求的整段时间映射都被连续 `travel/warp` 支撑组件覆盖时修正 applied 增量，跨入、跨出或穿越 gap 的帧不消费旧残差；预算同时随真实时间差、`actionWeight` 和当前水平 target 追赶误差缩放；原地、窗口空隙、仅弹道、暂停、reset 或 `actionWeight→0` 时不得漂移。纯函数内部不保存也不伪造低通历史，任务 5 控制器显式拥有跨帧 feedback 状态。
 
 ### 5.2 转向与姿态扭曲
 
@@ -102,14 +102,14 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 
 - 蓄力阶段保持双脚接触，降低骨盆并积累起跳强度；
 - 离地时释放接触锚，按模板高度与角色尺寸生成连续抛物线；
-- 空中阶段不启用足底锁定；完整动作链把实际 applied `rootMotionPhase` 作为只读帧上下文传给 IK，`takeoff/airborne` 必须优先于动作资产中可能滞后的 contact weight，先恢复 pelvis 绑定 Y、释放锚点并返回空支撑报告；standalone 未传上下文时保持原接触权重语义；
+- 离地与落地授权阶段不启用足底锁定；完整动作链把实际 applied `rootMotionPhase` 作为只读帧上下文传给 IK，`takeoff/airborne/landing` 必须优先于动作资产中可能滞后的 contact weight，先恢复 pelvis 绑定 Y、释放锚点并返回空支撑报告；只有真实 `grounded` touchdown 才重新捕获。standalone 未传上下文时保持原接触权重语义；
 - 移动阶段由实际 applied 轨迹决定：高度在角色身高的 `1e-12` 阈值内为 `grounded`，正的实际纵向增量为 `takeoff`，负增量为 `landing`，正高度且纵向静止为 `airborne`。target 复合弹道使用 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))` 归一化阈值；内部 action-aware 时间线是唯一事件权威，先在与请求帧无关的 canonical 轴上证明 airborne 组件及其正反向 takeoff/touchdown 转换，再由请求区间只做绝对时间筛选和映射。混合增减贡献区间使用复合高度与导数上下界生成有序证明叶，不能用单个 airborne midpoint 代替整段证明。窗口首尾只可作为结构切分提示，不能直接成为候选事件；低于阈值的窗口边界不得改变已证明组件与转换，touchdown 时间取复合曲线真正进入 grounded 的可表示阈值交点，因此允许早于原始窗口 end。两侧均有 proven airborne 且窗口精确首尾相接时，中间零宽接地点合并为连续组件；任何正宽 proven grounded gap（含 `.001ms` 与一个可表示 ULP）都拆分组件。`unknown`、预算耗尽或不可表示的超大 iteration 不输出转换，不签发新授权，也不清除旧授权。每次连续采样仅有一个 `512` work-unit 预算，复杂度上界为 `O(W log W + 512W)`，没有按窗口重置或跨调用续算。loop、ping-pong、周期缝与转折点先在 canonical 局部区间判定包含关系，再映射 canonical 双向转换及 resolved 锚点到绝对请求时间，最大四段且不会从请求端点反向制造结构；同 timestamp 事件保留 canonical 顺序，转换查询和区间 evidence 共用不可表示 iteration 检查并统一回退 incomplete/unknown。时间线组件强度取阈值组件内 action-aware 复合归一化高度的真实峰值，再乘纵向动作意图并钳制到 `[0,1]`；Root Motion 签发授权时再以 `landingImpulse = sqrt(normalizedCompositePeakHeight)` 派生无量纲冲击速度启发式。该公式来自自由落体 `v²=2gh` 的归一化关系，对角色尺寸、窗口时长和请求帧细分无关。单窗、共同峰心和同向区间使用解析快路，其余 active-set 结构区间用 de Casteljau 限制六次 Bernstein 控制多边形并按全局动作权重合成。组件内所有区间共享真实 sample 最大值与稳定上界优先队列，只有控制凸包仍可能高于 `max(1, |best|)×1e-13` 有证误差的节点才细分；每次细分和 sample 都纳入同一固定预算，耗尽时保持 unknown，控制上界与 proof witness 均不能作为强度。调用方逐帧原样回传授权；只有 applied 世界高度随后真实越地才消费一次并输出 `landingImpulse`，后续 canonical takeoff 清除旧授权。暂停保留授权但不触发，reset、倒退、异常大跳、Clip/runtime 切换会清除授权；`landingImpulse` 是与物理关系一致的无量纲速度启发式，不声称是场景碰撞求解器给出的真实速度。
 
 第一阶段地面固定为角色预览平面，不做射线地形、坡度、台阶或碰撞体响应。
 
 ### 5.4 暂停、停止与切换
 
-- 暂停：保持累计位姿、尚未消费的落地授权和 VFX 当前状态，不继续积分；
+- 暂停：相同 Clip、`requestedTimeMs` 与归一化权重的重复帧保持完整显示姿态、上一帧 IK 报告和残差状态，不重跑 FK/Balance/IK；Root 层仍维护同时间令牌和落地授权，并返回空 VFX；
 - 停止：恢复动作起点，清空速度、累计周期、落地授权、足底锚和瞬时 VFX；
 - 普通倒退拖动：重建目标时间的确定性姿态，但不生成反向速度或重复冲击；
 - Clip 切换：先释放旧 VFX 和运动身份，再编译并应用新 Clip；
@@ -119,7 +119,9 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 
 Root Motion 是角色整体水平位移和转向的唯一所有者；IK 控制器继续只拥有骨骼 Quaternion 与骨盆 Y。直接创建 IK 控制器时保持历史契约，只在双支撑阶段补偿骨盆 Y；完整 Root Motion 动作控制器会显式开启单支撑可达补偿，其范围按角色高度限制为 `min(0.08, characterHeight×0.025)`，并且只在有效接地支撑时工作。脚、踝和腿骨局部 position 不得被 Root Motion 或 IK 重写。
 
-重心补偿由接触状态决定：双支撑时骨盆位于两脚支撑中心附近；单支撑时平滑偏向支撑脚；腾空时不应用接地补偿；落地时双脚接触权重与骨盆压缩共同吸收冲量。所有水平偏移和单帧变化都按角色尺寸钳制。
+重心补偿由接触状态决定：只有 `weight` 与 `confidence` 均为正有限数的接触才是有效支撑；双支撑时骨盆位于两脚支撑中心附近，单支撑时平滑偏向支撑脚。`takeoff/airborne/landing` 全部按非支撑处理，完整链清除 pelvis X/Y/Z、Balance 自有 chest tilt 与 IK 锚点，同时保留本帧动作 FK 的胸腔姿态；真实 `grounded` touchdown 才重新捕获。所有水平偏移和单帧变化都按角色尺寸钳制。
+
+同一个 Three runtime 同时只能存在一个 Root Motion 写入者。控制器用 runtime 弱引用所有权令牌阻止第二个写入者；owner 释放或外层构造失败会交还令牌，已释放 runtime 拒绝重新取得所有权，非 owner 的 reset/dispose 不得覆盖容器。
 
 执行完 Root Motion 后再捕获或维持足底锚，解决当前“身体没有前进但腿已经达到旋转极限”的残差；IK 仍负责最终小误差，不承担整段位移。
 
