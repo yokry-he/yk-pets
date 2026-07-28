@@ -80,6 +80,14 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 
 角色容器的绑定 position/Quaternion 在控制器创建时快照；`appliedWorld` 只作为相对绑定 position 的绝对偏移写入，`appliedTurnRadians` 以固定世界 Y 轴左乘绑定 Quaternion。这样包含 pitch/roll 的绑定姿态不会把整体转向误解为局部轴旋转。控制器在热路径复用临时 Vector3/Quaternion，不按帧创建第二份容器状态。
 
+### 4.4 Renderer 生命周期与新手设置
+
+复杂 renderer 对每个角色 runtime 只创建一个动作控制器和一个 VFX 控制器。VFX `Group` 与角色 `runtime.object` 作为现有 `TresCanvas` 中的同父级 primitive；每次动作应用后，renderer 读取角色容器在该共同父级中的最终 `position`，并把局部 `+Z` 通过最终 Quaternion 旋转后以 `atan2(x,z)` 求朝向。这里不得使用 `getWorldPosition`，否则外层预览旋转与缩放会被重复换算。帧位置数组、朝向临时向量和 VFX frame 对象均复用，时间变化只采样当前控制器，不重建资源。
+
+Store 把编辑器显示用 `playheadTimeMs` 与复杂运行时消费的 `playbackRequestedTimeMs` 分离：loop/ping-pong 播放期间 requested 始终单调，暂停冻结并从同一 requested 恢复；只有打开/替换动作、用户回拖和停止才重新对齐，因而循环接缝与 ping-pong 反向半程不会被误判为 rewind。Clip 切换、无动作、编译 blocked、`weight<=0`、真实回拖和 runtime 替换都会显式清除动作连续状态与 VFX 活动实例。动作/时间 watcher 统一经过防重入同步边界，operation 必须显式返回是否真正完成；无 clip、无 runtime 或 blocked 只返回未完成，不能清除旧诊断。恢复同时匹配 failure domain 与动作身份，成功重编译才可跨域恢复。旧 clip 在任何可失败 reset/compile 前解除，异常会尽力 reset；reset 失败则先清浅引用、清 runtime key、逆序 dispose，并允许相同配方在下一次同步重建，只输出有界中文 blocked 诊断。卸载和创建失败同样按 VFX、动作控制器、角色 runtime 的逆序全部尽力释放。简单模式仍由 `ProceduralPet` 的互斥 `v-else` 分支承担，整个 Studio 只保留原有一个 `TresCanvas`，不创建复杂控制器、第二动画循环或第二 Skeleton。
+
+动作工坊的新手设置只公开“原地播放 / 实际移动”“自动特效”、预计距离/转向/跳高摘要和恢复推荐值。Store 每次操作只替换当前草稿 `yk-pets/biped-motion/v1.rootMotion`，保留 contacts、events、`sourceMotionId`、命名空间未知字段和其他扩展，并形成一个撤销项。切换模式不会擅自改变自动特效开关；关闭自动特效只清 `vfxTags`。推荐值优先使用打开时 baseline 已保存的 Root Motion，并按 `当前时长/baseline 时长` 等比缩放窗口；只有 baseline 没有该定义时才信任版本命名空间内显式 `sourceMotionId`，同样按当前动作时长映射模板窗口，绝不通过中英文名称猜测来源；没有可用移动推荐时才生成整段 `.42` 身高的安全 travel 描述。面板以自身 inline-size 容器宽度而非 viewport 触发 `360px` 单列，正文/控制为 `11–12px`、辅助信息不低于 `10px`。简单模型也允许保存这些元数据，切换复杂模型后由同一动作资产直接生效。
+
 ## 5. Root Motion 求解规则
 
 ### 5.1 水平位移与步幅适配

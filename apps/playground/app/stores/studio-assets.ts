@@ -107,7 +107,14 @@ export const useStudioAssetStore = defineStore('studio-assets', {
       const source = getBuiltInStudioMotion(id)
       if (!source) return
       const now = Date.now()
-      const copy = normalizeMotionAsset({ ...structuredClone(source), id: createStudioAssetId('motion'), nameZh: `${source.nameZh} 副本`, nameEn: `${source.nameEn} Copy`, createdAt: now, updatedAt: now }).asset
+      const sourceCopy = structuredClone(source)
+      const extensions = sourceCopy.extensions ?? {}
+      const rawNamespace = extensions['yk-pets/biped-motion/v1']
+      const namespace = rawNamespace && typeof rawNamespace === 'object' && !Array.isArray(rawNamespace)
+        ? rawNamespace as Record<string, unknown>
+        : {}
+      extensions['yk-pets/biped-motion/v1'] = { ...namespace, sourceMotionId: source.id }
+      const copy = normalizeMotionAsset({ ...sourceCopy, extensions, id: createStudioAssetId('motion'), nameZh: `${source.nameZh} 副本`, nameEn: `${source.nameEn} Copy`, createdAt: now, updatedAt: now }).asset
       this.motions.unshift(copy)
       this.persist()
       return copy

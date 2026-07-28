@@ -207,6 +207,9 @@ if (state) {
   expect((state.completed || []).includes('biped-pet-root-motion-three-runtime'), '必须记录 Three Root Motion 协同批次 / Three Root Motion coordination batch must be recorded')
   expect(state.architecture?.bipedPetMotionVfxPoolComplete === true, '必须标记有界 Three 运动特效对象池完成 / Bounded Three motion-VFX pool must be complete')
   expect((state.completed || []).includes('biped-pet-motion-vfx-pool'), '必须记录 Three 运动特效对象池批次 / Three motion-VFX pool batch must be recorded')
+  expect(state.architecture?.bipedPetRootMotionRendererLifecycleComplete === true, '必须标记 Root Motion renderer 生命周期完成 / Root Motion renderer lifecycle must be complete')
+  expect(state.architecture?.bipedPetRootMotionBeginnerSettingsComplete === true, '必须标记 Root Motion 新手设置完成 / Root Motion beginner settings must be complete')
+  expect((state.completed || []).includes('biped-pet-root-motion-vfx-renderer-settings'), '必须记录 Root Motion/VFX renderer 与设置批次 / Root Motion/VFX renderer and settings batch must be recorded')
   for (const key of ['biped-pet-hybrid-ik-profile-contract', 'biped-pet-analytic-two-bone-ik', 'biped-pet-constrained-fabrik', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-hybrid-ik-phase-delivery']) expect((state.completed || []).includes(key), `必须标记混合 IK 交付项完成 / Hybrid-IK delivery item must be complete: ${key}`)
   expect((state.completed || []).includes('hybrid-ik-legacy-history-migration'), '必须标记混合 IK 历史门禁迁移完成 / Hybrid-IK history-gate migration must be complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
@@ -216,15 +219,18 @@ if (state) {
   expect(!(state.notCompleted || []).includes('biped-pet-quaternion-motion-compiler'), 'Quaternion 动作编译器已完成，不得继续列为未完成 / Completed Quaternion motion compiler must not remain incomplete')
   expect(state.nextPhase === 'biped-pet-root-motion-vfx-and-acceptance', '下一阶段必须是 Root Motion、动作特效与验收 / Next phase must be Root Motion, motion VFX, and acceptance')
   const rootMotionRuntimeCoverage = [
+    'corepack pnpm run check:studio-complex-biped-root-motion',
+    'corepack pnpm run test:studio-model-variants',
     'corepack pnpm run test:studio-complex-biped-root-motion-runtime',
     'corepack pnpm --filter @nova/playground typecheck',
+    'corepack pnpm build:playground',
     'node scripts/check-documentation.mjs',
     'node scripts/check-ai-handoff.mjs',
     'git diff --check',
   ]
-  expect(state.latestCompletedBatch?.id === 'biped-pet-motion-vfx-pool', '最新批次必须是 Three 运动特效对象池 / Latest batch must be the Three motion-VFX pool')
-  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(rootMotionRuntimeCoverage), 'Three 运动特效对象池批次 automatedCoverage 必须且只能列出真实验证项 / Three motion-VFX pool automatedCoverage must contain only actual validation')
-  expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, 'Three Root Motion 批次不得声明正式渲染器或视觉案例修改 / Three Root Motion batch must not claim production-renderer or visual-case changes')
+  expect(state.latestCompletedBatch?.id === 'biped-pet-root-motion-vfx-renderer-settings', '最新批次必须是 Root Motion/VFX renderer 与设置 / Latest batch must be Root Motion/VFX renderer and settings')
+  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(rootMotionRuntimeCoverage), 'Root Motion/VFX renderer 批次 automatedCoverage 必须且只能列出真实验证项 / Root Motion/VFX renderer automatedCoverage must contain only actual validation')
+  expect(state.latestCompletedBatch?.rendererModified === true && state.latestCompletedBatch?.visualCasesModified === false, '本批必须如实声明 renderer 已修改且视觉案例未修改 / This batch must report renderer modification without visual-case changes')
   expect(state.latestCompletedBatch?.rootMotionContainerConsumerComplete === true && state.latestCompletedBatch?.balanceControllerComplete === true && state.latestCompletedBatch?.ikFrameReportComplete === true, 'Three Root Motion、重心与 IK 报告必须完成 / Three Root Motion, balance, and IK reports must be complete')
   expect(JSON.stringify(state.latestCompletedBatch?.rootMotionOrder) === JSON.stringify(['restore-bind-pose', 'fk', 'root-motion', 'balance', 'update-matrix-world', 'ik']), 'Three 动作运行顺序必须固定 / Three motion runtime order must remain fixed')
   expect(state.latestCompletedBatch?.rootMotionPositionOwnership === 'bind-position-plus-applied-world' && state.latestCompletedBatch?.rootMotionTurnOwnership === 'world-yaw-times-bind-quaternion', 'Root Motion 容器所有权必须保持绝对写入 / Root Motion container ownership must remain absolute')
@@ -342,9 +348,9 @@ if (state) {
     && state.latestCompletedBatch?.vfxRuntimeDefaultFactoryPolicy === 'lazy-single-provisional-per-kind-and-resource-class'
     && state.latestCompletedBatch?.vfxRuntimeSlotAllocationPolicy === 'preallocated-64-slot-state-objects-reused'
     && state.latestCompletedBatch?.vfxRuntimeDedupeQueuePolicy === 'fixed-256-ring-buffer-no-shift'
-    && state.latestCompletedBatch?.vfxRuntimeRendererWired === false
+    && state.latestCompletedBatch?.vfxRuntimeRendererWired === true
     && state.latestCompletedBatch?.vfxRuntimeTestRedReason === 'ERR_MODULE_NOT_FOUND: complex-biped-motion-vfx.ts',
-  'VFX 创建/释放隔离、未接线边界与 TDD RED 证据必须可追踪 / VFX creation/disposal isolation, unwired boundary, and TDD RED evidence must remain traceable')
+  'VFX 创建/释放隔离、正式接线与 TDD RED 证据必须可追踪 / VFX creation/disposal isolation, production wiring, and TDD RED evidence must remain traceable')
   expect(JSON.stringify(state.latestCompletedBatch?.vfxRuntimeReviewRedEvidence) === JSON.stringify({
     yawZeroTrailPosition: [-.42, .2, 0],
     equalExpiryEvictionIndices: [0, 0, 0, 0],
@@ -355,6 +361,49 @@ if (state) {
     externalParentChildrenAfterDispose: 18,
     reentrantResourceDisposeCalls: 2,
   }), 'Task 6 质量审查 RED 证据必须保持可追踪 / Task 6 quality-review RED evidence must remain traceable')
+  expect(state.latestCompletedBatch?.rendererMotionControllerCount === 1
+    && state.latestCompletedBatch?.rendererVfxControllerCount === 1
+    && state.latestCompletedBatch?.rendererVfxMountPolicy === 'sibling-primitive-in-existing-tres-canvas'
+    && state.latestCompletedBatch?.rendererVfxFramePositionPolicy === 'runtime-object-parent-local-final-position'
+    && state.latestCompletedBatch?.rendererVfxFacingPolicy === 'final-quaternion-local-plus-z-atan2-x-z'
+    && state.latestCompletedBatch?.rendererVfxFrameAllocationPolicy === 'shared-vector-tuple-and-frame-object',
+  'renderer 必须保持单控制器、同级挂载与无逐帧坐标分配语义 / Renderer must preserve single-controller, sibling-mount, and allocation-free frame-coordinate semantics')
+  expect(state.latestCompletedBatch?.rendererPlaybackClockPolicy === 'resolved-playhead-for-editor-monotonic-requested-time-for-complex-runtime'
+    && JSON.stringify(state.latestCompletedBatch?.rendererPlaybackRealignmentBoundaries) === JSON.stringify(['open', 'replace-saved', 'scrub', 'stop'])
+    && state.latestCompletedBatch?.rendererSafeSynchronizationPolicy === 'boolean-outcome-domain-and-asset-scoped-recovery-clear-stale-clip-reset-then-dispose-and-rebuild-on-reset-failure-bounded-blocked-diagnostic'
+    && state.latestCompletedBatch?.rendererStaticGateParser === 'vue-sfc-parser-typescript-call-expression-and-template-element-ast',
+  'renderer 必须保持单调运行时钟、安全同步边界与注释免疫门禁 / Renderer must preserve monotonic runtime time, safe synchronization, and comment-immune gating')
+  expect(JSON.stringify(state.latestCompletedBatch?.rendererResetBoundaries) === JSON.stringify(['clip-switch', 'no-motion', 'blocked', 'stopped-weight', 'rewind'])
+    && JSON.stringify(state.latestCompletedBatch?.rendererDisposeOrder) === JSON.stringify(['vfx', 'motion', 'runtime'])
+    && state.latestCompletedBatch?.rendererCreationFailurePolicy === 'detach-shallow-refs-then-bounded-chinese-best-effort-reverse-cleanup'
+    && state.latestCompletedBatch?.rendererSimpleComplexExclusion === 'complex-v-if-procedural-v-else-single-tres-canvas',
+  'renderer reset、逆序清理与简单模式互斥语义必须锁定 / Renderer reset, reverse cleanup, and simple-mode exclusion semantics must remain locked')
+  expect(JSON.stringify(state.latestCompletedBatch?.rootMotionSettingsSurface) === JSON.stringify(['mode', 'auto-vfx', 'distance-summary', 'turn-summary', 'jump-summary', 'restore-recommendation'])
+    && state.latestCompletedBatch?.rootMotionSettingsMutationScope === 'current-draft-biped-root-motion-only-preserve-namespaces'
+    && state.latestCompletedBatch?.rootMotionRecommendationPolicy === 'baseline-authored-root-motion-scaled-to-current-duration-then-explicit-source-motion-id-scaled-to-current-duration-then-safe-generic-travel'
+    && state.latestCompletedBatch?.rootMotionBuiltInProvenanceField === 'yk-pets/biped-motion/v1.sourceMotionId'
+    && state.latestCompletedBatch?.rootMotionLegacyRecommendationPolicy === 'baseline-only-never-name-inference'
+    && state.latestCompletedBatch?.rootMotionModeAutoVfxIsolation === true
+    && state.latestCompletedBatch?.rootMotionSettingsSingleUndoEntry === true
+    && state.latestCompletedBatch?.rootMotionSettingsResponsivePolicy === 'inline-size-container-query-360px-single-column'
+    && state.latestCompletedBatch?.rootMotionSettingsReadableFontFloorPx === 10,
+  '新手设置必须保持语义化表面、推荐恢复、模式/特效隔离与单次撤销 / Beginner settings must preserve semantic UI, recommendation restoration, mode/VFX isolation, and single undo')
+  expect(JSON.stringify(state.latestCompletedBatch?.rootMotionSettingsTddRedEvidence) === JSON.stringify({
+    rendererGateMissingLifecycle: true,
+    rendererGateMissingExplicitRewindReset: true,
+    rendererGateMissingSafeSynchronization: true,
+    emptyFrameSyncIncorrectlyClearedFailure: true,
+    rendererGateAcceptedCommentOnlyImplementation: true,
+    rendererGateAcceptedStringOnlyImplementation: true,
+    missingPlaybackRequestedTimeMsAtRequested2500: true,
+    resolvedPlayheadAtRequested2500: 100,
+    customBilingualNameCollisionRestoredMode: 'travel',
+    realCopiedJumpUnscaledWindow: [720, 1824],
+    previousSettingsMinimumFontPx: 7,
+    storeApiError: 'updateRootMotionSettings is not a function',
+    modeChangeRestoredDisabledVfx: ['speed-trail'],
+    unscaledJumpWindow: [720, 1200],
+  }), 'Task 7 TDD RED 证据必须保持可追踪 / Task 7 TDD RED evidence must remain traceable')
   expect((state.completed || []).includes('biped-pet-root-motion-action-aware-boundaries'), 'Root Motion action-aware 边界修复必须进入完成状态 / Action-aware Root Motion boundary repair must be recorded as complete')
   expect((state.completed || []).includes('biped-pet-root-motion-canonical-ballistic-transitions'), 'Root Motion canonical 弹道转换必须进入完成状态 / Canonical Root Motion ballistic transitions must be recorded as complete')
 }

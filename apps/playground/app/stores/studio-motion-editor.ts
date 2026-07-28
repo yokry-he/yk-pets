@@ -15,6 +15,7 @@ import {
   nudgeMotionControls,
   nudgeMotionControlValue,
   normalizeMotionAsset,
+  normalizeBipedPetRootMotion,
   readMotionControlValue,
   resetMotionControlValue,
   setMotionControlValue,
@@ -45,8 +46,12 @@ import {
   type MotionPropEvent,
   type MotionPropMountId,
   type StudioMotionAssetV2,
+  type BipedPetMotionVfxTag,
+  type BipedPetRootMotionDefinition,
+  type BipedPetRootMotionMode,
 } from '@yk-pets/pet-core'
 import { defineStore } from 'pinia'
+import { BUILT_IN_STUDIO_MOTIONS } from '../domain/studio-built-in-motions'
 
 interface MotionEditorState {
   motionId: string
@@ -58,6 +63,7 @@ interface MotionEditorState {
   selectedKeyframeIds: string[]
   clipboard: MotionClipboardEntry[]
   playheadTimeMs: number
+  playbackRequestedTimeMs: number
   playing: boolean
   playbackOriginTimeMs: number
   playbackStartedAt: number
@@ -84,8 +90,109 @@ interface MotionEditorState {
 }
 
 const DEFAULT_CHANNEL: CloudFoxRigChannelId = 'root.position.y'
+const BIPED_MOTION_EXTENSION_KEY = 'yk-pets/biped-motion/v1'
+const DEFAULT_TRAVEL_DISTANCE = .42
 const serialize = (asset: StudioMotionAssetV2 | null) => asset ? JSON.stringify(asset) : ''
 const parse = (value: string) => value ? normalizeMotionAsset(JSON.parse(value)).asset : null
+
+type RootMotionSettingsPatch = {
+  mode?: BipedPetRootMotionMode
+  autoVfx?: boolean
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  try { return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined }
+  catch { return undefined }
+}
+
+function rootMotionSource(asset: StudioMotionAssetV2 | null | undefined): unknown {
+  try {
+    const extensions = record(asset?.extensions)
+    return record(extensions?.[BIPED_MOTION_EXTENSION_KEY])?.rootMotion
+  }
+  catch { return undefined }
+}
+
+function bipedMotionNamespace(asset: StudioMotionAssetV2 | null | undefined): Record<string, unknown> | undefined {
+  try { return record(record(asset?.extensions)?.[BIPED_MOTION_EXTENSION_KEY]) }
+  catch { return undefined }
+}
+
+function hasAuthoredRootMotion(asset: StudioMotionAssetV2 | null | undefined): boolean {
+  const namespace = bipedMotionNamespace(asset)
+  return Boolean(namespace && Object.hasOwn(namespace, 'rootMotion'))
+}
+
+function normalizedRootMotion(asset: StudioMotionAssetV2): BipedPetRootMotionDefinition {
+  return normalizeBipedPetRootMotion(rootMotionSource(asset), asset.durationMs).value
+}
+
+function scaleRootMotionRecommendation(rootMotion: BipedPetRootMotionDefinition, sourceDurationMs: number, targetDurationMs: number): BipedPetRootMotionDefinition {
+  const durationScale = targetDurationMs / sourceDurationMs
+  return normalizeBipedPetRootMotion({
+    ...rootMotion,
+    windows: rootMotion.windows.map(window => ({
+      ...window,
+      startMs: Math.round(window.startMs * durationScale),
+      endMs: Math.round(window.endMs * durationScale),
+    })),
+  }, targetDurationMs).value
+}
+
+function builtInRecommendation(asset: StudioMotionAssetV2, baselineAsset?: StudioMotionAssetV2 | null): BipedPetRootMotionDefinition | undefined {
+  const declaredSourceId = bipedMotionNamespace(asset)?.sourceMotionId ?? bipedMotionNamespace(baselineAsset)?.sourceMotionId
+  const source = BUILT_IN_STUDIO_MOTIONS.find(item => item.id === asset.id || item.id === declaredSourceId)
+  if (!source) return undefined
+  const sourceRootMotion = normalizeBipedPetRootMotion(rootMotionSource(source), source.durationMs).value
+  return scaleRootMotionRecommendation(sourceRootMotion, source.durationMs, asset.durationMs)
+}
+
+function genericTravelRecommendation(asset: StudioMotionAssetV2): BipedPetRootMotionDefinition {
+  return normalizeBipedPetRootMotion({
+    mode: 'travel',
+    distance: DEFAULT_TRAVEL_DISTANCE,
+    turnRadians: 0,
+    verticalMode: 'grounded',
+    jumpHeight: 0,
+    windows: [{ id: 'recommended-travel', kind: 'travel', startMs: 0, endMs: asset.durationMs, weight: 1 }],
+    vfxTags: ['speed-trail'],
+  }, asset.durationMs).value
+}
+
+function semanticVfxTags(rootMotion: BipedPetRootMotionDefinition): BipedPetMotionVfxTag[] {
+  if (rootMotion.mode !== 'travel') return []
+  const tags = new Set<BipedPetMotionVfxTag>()
+  const hasHorizontalTravel = Math.abs(rootMotion.distance) > 1e-12
+    && rootMotion.windows.some(window => window.kind === 'travel' || window.kind === 'warp')
+  if (hasHorizontalTravel) tags.add('speed-trail')
+  if (rootMotion.verticalMode === 'ballistic' && rootMotion.jumpHeight > 0
+    && rootMotion.windows.some(window => window.kind === 'ballistic')) {
+    tags.add('landing-ring')
+    tags.add('landing-dust')
+  }
+  if (hasHorizontalTravel && rootMotion.windows.some(window => window.kind === 'brake')) tags.add('brake-sparks')
+  return [...tags].sort()
+}
+
+function recommendationFor(asset: StudioMotionAssetV2, baseline: string): BipedPetRootMotionDefinition {
+  const baselineAsset = parse(baseline)
+  // 已保存的 Root Motion 是用户自己的推荐来源，必须优先于模板来源。 / Saved Root Motion is the user's recommendation and must precede template provenance.
+  if (baselineAsset && hasAuthoredRootMotion(baselineAsset)) {
+    return scaleRootMotionRecommendation(normalizedRootMotion(baselineAsset), baselineAsset.durationMs, asset.durationMs)
+  }
+  const builtIn = builtInRecommendation(asset, baselineAsset)
+  if (builtIn) return builtIn
+  if (baselineAsset) return normalizedRootMotion(baselineAsset)
+  return normalizedRootMotion(asset)
+}
+
+function writeRootMotion(asset: StudioMotionAssetV2, rootMotion: BipedPetRootMotionDefinition): StudioMotionAssetV2 {
+  const extensions = { ...(record(asset.extensions) ?? {}) }
+  const namespace = { ...(record(extensions[BIPED_MOTION_EXTENSION_KEY]) ?? {}) }
+  namespace.rootMotion = rootMotion
+  extensions[BIPED_MOTION_EXTENSION_KEY] = namespace
+  return normalizeMotionAsset({ ...asset, extensions, updatedAt: Date.now() }).asset
+}
 
 export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
   state: (): MotionEditorState => ({
@@ -98,6 +205,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     selectedKeyframeIds: [],
     clipboard: [],
     playheadTimeMs: 0,
+    playbackRequestedTimeMs: 0,
     playing: false,
     playbackOriginTimeMs: 0,
     playbackStartedAt: 0,
@@ -138,6 +246,9 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.redoStack = []
       this.selectedKeyframeIds = []
       this.playheadTimeMs = 0
+      this.playbackRequestedTimeMs = 0
+      this.playbackOriginTimeMs = 0
+      this.playbackStartedAt = 0
       this.playing = false
       this.lastDiagnostics = []
       this.selectedPropEventIds = []
@@ -155,6 +266,10 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.redoStack = []
       this.selectedKeyframeIds = []
       this.playheadTimeMs = Math.min(this.playheadTimeMs, asset.durationMs)
+      this.playbackRequestedTimeMs = this.playheadTimeMs
+      this.playbackOriginTimeMs = this.playheadTimeMs
+      this.playbackStartedAt = 0
+      this.playing = false
       this.activeLayerId = this.draft.layers[0]?.id || 'base'
       this.playbackWeight = 1
       this.interruptionPending = false
@@ -168,6 +283,10 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.undoStack = []
       this.redoStack = []
       this.selectedKeyframeIds = []
+      this.playheadTimeMs = 0
+      this.playbackRequestedTimeMs = 0
+      this.playbackOriginTimeMs = 0
+      this.playbackStartedAt = 0
       this.playing = false
       this.selectedPropEventIds = []
       this.playbackWeight = 1
@@ -227,7 +346,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     clearSelection() {
       this.selectedKeyframeIds = []
     },
-    setPlayhead(timeMs: number, snap?: boolean) {
+    setPlayhead(timeMs: number, snap?: boolean, now = performance.now()) {
       if (!this.draft) return
       const raw = Math.max(0, Math.min(this.draft.durationMs, Math.round(Number.isFinite(timeMs) ? timeMs : 0)))
       const shouldSnap = snap ?? this.snapToFrames
@@ -236,13 +355,19 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
         const frameMs = 1000 / this.draft.displayFps
         this.playheadTimeMs = Math.max(0, Math.min(this.draft.durationMs, Math.round(Math.round(raw / frameMs) * frameMs)))
       }
+      // 用户拖动时间轴属于显式定位：显示时间与运行时请求时间在此对齐；若正在播放，则从新位置重建墙钟原点。 / Scrubbing explicitly realigns display/runtime time and rebases the playback clock.
+      this.playbackRequestedTimeMs = this.playheadTimeMs
+      this.playbackOriginTimeMs = this.playbackRequestedTimeMs
+      this.playbackStartedAt = now
+      this.playbackDirection = resolveMotionTime(this.playbackRequestedTimeMs, this.draft.durationMs, this.draft.loopMode).direction
     },
     startPlayback(now = performance.now()) {
       if (!this.draft) return
       this.playing = true
       this.playbackWeight = 1
       this.interruptionPending = false
-      this.playbackOriginTimeMs = this.playheadTimeMs
+      // 暂停后恢复必须沿用未解析的单调时间，不能从 loop/ping-pong 的显示 playhead 重新起算。 / Resume from monotonic requested time, not the resolved loop/ping-pong playhead.
+      this.playbackOriginTimeMs = this.playbackRequestedTimeMs
       this.playbackStartedAt = now
     },
     pausePlayback(now = performance.now()) {
@@ -253,8 +378,12 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     stopPlayback() {
       this.playing = false
       this.playheadTimeMs = 0
+      this.playbackRequestedTimeMs = 0
+      this.playbackOriginTimeMs = 0
+      this.playbackStartedAt = 0
       this.playbackWeight = 1
       this.interruptionPending = false
+      this.playbackDirection = 1
     },
     togglePlayback(now = performance.now()) {
       if (this.playing) this.pausePlayback(now)
@@ -264,6 +393,8 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       if (!this.playing || !this.draft) return
       const requested = this.playbackOriginTimeMs + Math.max(0, now - this.playbackStartedAt)
       const resolved = resolveMotionTime(requested, this.draft.durationMs, this.draft.loopMode)
+      // Renderer 消费单调 requested；编辑器和时间轴只消费 resolved playhead。 / Renderer consumes monotonic requested time while editor UI consumes the resolved playhead.
+      this.playbackRequestedTimeMs = requested
       this.playheadTimeMs = resolved.resolvedTimeMs
       this.playbackDirection = resolved.direction
       if (this.interruptionPending && this.interruptionMode === 'finish-loop' && requested >= this.interruptionDeadline) {
@@ -500,6 +631,46 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     updateMetadata(patch: Partial<Pick<StudioMotionAssetV2, 'nameZh' | 'nameEn' | 'durationMs' | 'displayFps' | 'loopMode' | 'propIds'>>) {
       if (!this.draft) return
       this.mutate(asset => normalizeMotionAsset({ ...asset, ...patch, updatedAt: Date.now() }).asset)
+    },
+    updateRootMotionSettings(patch: RootMotionSettingsPatch) {
+      if (!this.draft || (patch.mode === undefined && patch.autoVfx === undefined)) return
+      const current = normalizedRootMotion(this.draft)
+      const recommended = recommendationFor(this.draft, this.baseline)
+      let next = current
+      if (patch.mode === 'in-place') {
+        next = normalizeBipedPetRootMotion({
+          ...current,
+          mode: 'in-place',
+          distance: 0,
+          turnRadians: 0,
+          verticalMode: 'grounded',
+          jumpHeight: 0,
+        }, this.draft.durationMs).value
+      }
+      else if (patch.mode === 'travel') {
+        const travelSource = current.mode === 'travel'
+          ? current
+          : recommended.mode === 'travel'
+            ? recommended
+            : genericTravelRecommendation(this.draft)
+        next = normalizeBipedPetRootMotion({ ...travelSource, mode: 'travel', vfxTags: current.vfxTags }, this.draft.durationMs).value
+      }
+      if (patch.autoVfx !== undefined) {
+        const vfxSource = next.mode === 'travel' ? next : recommended
+        next = normalizeBipedPetRootMotion({
+          ...next,
+          vfxTags: patch.autoVfx ? semanticVfxTags(vfxSource) : [],
+        }, this.draft.durationMs).value
+      }
+      if (JSON.stringify(current) === JSON.stringify(next)) return
+      this.mutate(asset => writeRootMotion(asset, next))
+    },
+    restoreRootMotionRecommendations() {
+      if (!this.draft) return
+      const current = normalizedRootMotion(this.draft)
+      const recommended = recommendationFor(this.draft, this.baseline)
+      if (JSON.stringify(current) === JSON.stringify(recommended)) return
+      this.mutate(asset => writeRootMotion(asset, recommended))
     },
     markSaved(asset: StudioMotionAssetV2) {
       this.draft = duplicateMotionAssetForDraft(asset)

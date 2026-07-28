@@ -14,7 +14,9 @@ import {
   normalizeStudioPetModelVariants,
 } from '../apps/playground/app/domain/studio-model-variants'
 import { useStudioModelVariantsStore } from '../apps/playground/app/stores/studio-model-variants'
-import { compileBipedPetCharacter, createBipedPetModelRecipe } from '../packages/pet-core/src/index.ts'
+import { useStudioMotionEditorStore } from '../apps/playground/app/stores/studio-motion-editor'
+import { createBasicBipedStudioMotion } from '../apps/playground/app/domain/studio-basic-biped-motions'
+import { compileBipedPetCharacter, createBipedPetModelRecipe, normalizeMotionAsset, type BipedPetRootMotionDefinition } from '../packages/pet-core/src/index.ts'
 
 const initial = createStudioPetModelVariants('zeph', 100)
 assert.equal(initial.simple.status, 'ready')
@@ -139,6 +141,183 @@ store.byPetId.zeph!.complex.completion = 52
 assert.equal(store.ensureComplexDraft('zeph', 800).complex.completion, 52)
 assert.equal(store.ensurePet('luna', 900).petId, 'luna')
 assert.deepEqual(Object.keys(store.byPetId), ['zeph', 'luna'])
+
+setActivePinia(createPinia())
+const playbackEditor = useStudioMotionEditorStore()
+const playbackLoop = createBasicBipedStudioMotion('walk')
+playbackEditor.open(playbackLoop)
+playbackEditor.startPlayback(1_000)
+playbackEditor.advancePlayback(3_500)
+assert.equal(playbackEditor.playbackRequestedTimeMs, 2_500)
+assert.equal(playbackEditor.playheadTimeMs, 100)
+assert.equal(playbackEditor.playbackDirection, 1)
+playbackEditor.pausePlayback(3_500)
+assert.equal(playbackEditor.playbackRequestedTimeMs, 2_500)
+playbackEditor.startPlayback(4_000)
+playbackEditor.advancePlayback(4_500)
+assert.equal(playbackEditor.playbackRequestedTimeMs, 3_000)
+assert.equal(playbackEditor.playheadTimeMs, 600)
+
+const playbackPingPong = normalizeMotionAsset({ ...playbackLoop, id: 'ping-pong-clock', loopMode: 'ping-pong' }).asset
+playbackEditor.open(playbackPingPong)
+playbackEditor.startPlayback(0)
+playbackEditor.advancePlayback(1_500)
+assert.equal(playbackEditor.playbackRequestedTimeMs, 1_500)
+assert.equal(playbackEditor.playheadTimeMs, 900)
+assert.equal(playbackEditor.playbackDirection, -1)
+playbackEditor.advancePlayback(1_900)
+assert.equal(playbackEditor.playbackRequestedTimeMs, 1_900)
+assert.equal(playbackEditor.playheadTimeMs, 500)
+playbackEditor.pausePlayback(1_900)
+playbackEditor.startPlayback(3_000)
+playbackEditor.advancePlayback(3_200)
+assert.equal(playbackEditor.playbackRequestedTimeMs, 2_100)
+assert.equal(playbackEditor.playheadTimeMs, 300)
+playbackEditor.setPlayhead(800, false, 3_300)
+assert.equal(playbackEditor.playbackRequestedTimeMs, 800)
+playbackEditor.advancePlayback(3_400)
+assert.equal(playbackEditor.playbackRequestedTimeMs, 900)
+assert.equal(playbackEditor.playheadTimeMs, 900)
+playbackEditor.stopPlayback()
+assert.equal(playbackEditor.playbackRequestedTimeMs, 0)
+assert.equal(playbackEditor.playheadTimeMs, 0)
+
+setActivePinia(createPinia())
+const motionEditor = useStudioMotionEditorStore()
+const walkTemplate = createBasicBipedStudioMotion('walk')
+const rootMotionNamespace = {
+  sourceMotionId: walkTemplate.id,
+  contacts: [{ contactId: 'foot.left', startMs: 0, endMs: 600, confidence: .9 }],
+  events: [{ id: 'step', kind: 'hit', timeMs: 300 }],
+  customAuthoringHint: { source: '用户保留字段' },
+  rootMotion: {
+    mode: 'in-place',
+    distance: 0,
+    turnRadians: 0,
+    verticalMode: 'grounded',
+    jumpHeight: 0,
+    windows: [],
+    vfxTags: [],
+  },
+}
+const rootMotionDraft = normalizeMotionAsset({
+  ...walkTemplate,
+  id: 'motion-walk-copy',
+  nameZh: `${walkTemplate.nameZh} 副本`,
+  nameEn: `${walkTemplate.nameEn} Copy`,
+  extensions: {
+    'yk-pets/biped-motion/v1': rootMotionNamespace,
+    'third-party/retained': { enabled: true },
+  },
+}).asset
+motionEditor.open(rootMotionDraft)
+motionEditor.updateRootMotionSettings({ mode: 'travel', autoVfx: true })
+const travelNamespace = motionEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as Record<string, unknown>
+const travelRootMotion = travelNamespace.rootMotion as { mode: string, distance: number, windows: unknown[], vfxTags: string[] }
+assert.equal(travelRootMotion.mode, 'travel')
+assert.equal(travelRootMotion.distance, .42)
+assert.equal(travelRootMotion.windows.length, 1)
+assert.deepEqual(travelRootMotion.vfxTags, ['speed-trail'])
+assert.deepEqual(travelNamespace.contacts, rootMotionNamespace.contacts)
+assert.deepEqual(travelNamespace.events, rootMotionNamespace.events)
+assert.deepEqual(travelNamespace.customAuthoringHint, rootMotionNamespace.customAuthoringHint)
+assert.equal(travelNamespace.sourceMotionId, walkTemplate.id)
+assert.deepEqual(motionEditor.draft?.extensions?.['third-party/retained'], { enabled: true })
+assert.equal(motionEditor.undoStack.length, 1)
+
+motionEditor.undo()
+assert.deepEqual((motionEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as Record<string, unknown>).rootMotion, rootMotionNamespace.rootMotion)
+assert.deepEqual(motionEditor.draft?.extensions?.['third-party/retained'], { enabled: true })
+
+motionEditor.updateRootMotionSettings({ mode: 'travel', autoVfx: true })
+motionEditor.updateRootMotionSettings({ mode: 'in-place' })
+const inPlaceRootMotion = (motionEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as { rootMotion: BipedPetRootMotionDefinition }).rootMotion
+assert.equal(inPlaceRootMotion.mode, 'in-place')
+assert.equal(inPlaceRootMotion.distance, 0)
+assert.equal(inPlaceRootMotion.turnRadians, 0)
+assert.equal(inPlaceRootMotion.jumpHeight, 0)
+
+motionEditor.updateRootMotionSettings({ autoVfx: false })
+const noVfxRootMotion = (motionEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as { rootMotion: BipedPetRootMotionDefinition }).rootMotion
+assert.deepEqual(noVfxRootMotion.vfxTags, [])
+assert.deepEqual(noVfxRootMotion.windows, inPlaceRootMotion.windows)
+assert.equal(noVfxRootMotion.mode, inPlaceRootMotion.mode)
+
+motionEditor.updateRootMotionSettings({ autoVfx: true })
+const inPlaceWithVfx = (motionEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as { rootMotion: BipedPetRootMotionDefinition }).rootMotion
+assert.equal(inPlaceWithVfx.mode, 'in-place')
+assert.equal(inPlaceWithVfx.distance, 0)
+assert.deepEqual(inPlaceWithVfx.windows, noVfxRootMotion.windows)
+assert.deepEqual(inPlaceWithVfx.vfxTags, [])
+motionEditor.updateRootMotionSettings({ autoVfx: false })
+
+motionEditor.updateRootMotionSettings({ mode: 'travel' })
+const travelWithoutVfx = (motionEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as { rootMotion: BipedPetRootMotionDefinition }).rootMotion
+assert.equal(travelWithoutVfx.mode, 'travel')
+assert.equal(travelWithoutVfx.distance, .42)
+assert.deepEqual(travelWithoutVfx.vfxTags, [])
+
+motionEditor.restoreRootMotionRecommendations()
+const restoredRootMotion = (motionEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as { rootMotion: BipedPetRootMotionDefinition }).rootMotion
+assert.equal(restoredRootMotion.mode, 'in-place')
+assert.equal(restoredRootMotion.distance, 0)
+assert.equal(restoredRootMotion.windows.length, 0)
+assert.deepEqual(restoredRootMotion.vfxTags, [])
+assert.deepEqual((motionEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as Record<string, unknown>).customAuthoringHint, rootMotionNamespace.customAuthoringHint)
+assert.equal((motionEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as Record<string, unknown>).sourceMotionId, walkTemplate.id)
+
+setActivePinia(createPinia())
+const scaledRecommendationEditor = useStudioMotionEditorStore()
+const jumpTemplate = createBasicBipedStudioMotion('jump')
+scaledRecommendationEditor.open(normalizeMotionAsset({
+  ...structuredClone(jumpTemplate),
+  id: 'motion-jump-short-copy',
+  nameZh: `${jumpTemplate.nameZh} 副本`,
+  nameEn: `${jumpTemplate.nameEn} Copy`,
+  extensions: {
+    'yk-pets/biped-motion/v1': {
+      ...(jumpTemplate.extensions?.['yk-pets/biped-motion/v1'] as Record<string, unknown>),
+      sourceMotionId: jumpTemplate.id,
+    },
+  },
+}).asset)
+scaledRecommendationEditor.updateMetadata({ durationMs: 1200 })
+scaledRecommendationEditor.updateRootMotionSettings({ mode: 'in-place' })
+scaledRecommendationEditor.restoreRootMotionRecommendations()
+const scaledJumpRootMotion = (scaledRecommendationEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as { rootMotion: BipedPetRootMotionDefinition }).rootMotion
+assert.equal(scaledJumpRootMotion.jumpHeight, .28)
+assert.deepEqual(scaledJumpRootMotion.windows.map((window: { startMs: number, endMs: number }) => [window.startMs, window.endMs]), [[360, 912]])
+
+const customRecommendation: BipedPetRootMotionDefinition = {
+  mode: 'travel',
+  distance: 1.7,
+  turnRadians: .25,
+  verticalMode: 'grounded',
+  jumpHeight: 0,
+  windows: [{ id: 'user-travel', kind: 'travel', startMs: 100, endMs: 900, weight: .8 }],
+  vfxTags: ['speed-trail'],
+}
+for (const [id, nameZh, nameEn] of [
+  ['custom-zh-collision', walkTemplate.nameZh, 'Custom English Name'],
+  ['custom-en-collision', '自定义中文名称', walkTemplate.nameEn],
+  ['custom-bilingual-collision', walkTemplate.nameZh, walkTemplate.nameEn],
+] as const) {
+  setActivePinia(createPinia())
+  const customEditor = useStudioMotionEditorStore()
+  customEditor.open(normalizeMotionAsset({
+    ...walkTemplate,
+    id,
+    nameZh,
+    nameEn,
+    extensions: { 'yk-pets/biped-motion/v1': { rootMotion: customRecommendation } },
+  }).asset)
+  customEditor.updateRootMotionSettings({ mode: 'in-place' })
+  customEditor.restoreRootMotionRecommendations()
+  const restoredCustom = (customEditor.draft?.extensions?.['yk-pets/biped-motion/v1'] as { rootMotion: BipedPetRootMotionDefinition }).rootMotion
+  assert.equal(restoredCustom.distance, 1.7)
+  assert.equal(restoredCustom.turnRadians, .25)
+  assert.deepEqual(restoredCustom.windows.map(window => window.id), ['user-travel'])
+}
 
 setActivePinia(createPinia())
 const complexStore = useStudioModelVariantsStore()

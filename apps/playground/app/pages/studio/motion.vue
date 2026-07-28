@@ -4,7 +4,7 @@
   Provides motion drafts, playhead, keyframe editing, semantic pose authoring, and custom-motion preview through the sole production Cloud Fox renderer.
 -->
 <script setup lang="ts">
-import { evaluateMotionPropEvents, evaluateNormalizedMotionAsset, type MotionInterpolation } from '@yk-pets/pet-core'
+import { evaluateMotionPropEvents, evaluateNormalizedMotionAsset, normalizeBipedPetRootMotion, type MotionInterpolation } from '@yk-pets/pet-core'
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
 import StudioMotionAdvancedTools from '~/components/studio/StudioMotionAdvancedTools.vue'
 import StudioMotionDirectPad from '~/components/studio/StudioMotionDirectPad.vue'
@@ -13,6 +13,7 @@ import StudioMotionTransformEditor from '~/components/studio/StudioMotionTransfo
 import StudioMotionTimeline from '~/components/studio/StudioMotionTimeline.vue'
 import StudioMotionPropEvents from '~/components/studio/StudioMotionPropEvents.vue'
 import StudioPreviewToolbar from '~/components/studio/StudioPreviewToolbar.vue'
+import StudioRootMotionSettings from '~/components/studio/StudioRootMotionSettings.vue'
 import { useStudioPreviewOrientation } from '~/composables/useStudioPreviewOrientation'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 import { useStudioAssetStore } from '~/stores/studio-assets'
@@ -36,6 +37,11 @@ const currentPetId = computed(() => appearance.recipe.identity.petId.trim() || s
 const complexRecipe = computed(() => modelVariants.byPetId[currentPetId.value]?.complex.recipe)
 const saved = computed(() => assets.motions.find(item => item.id === session.selectedMotionId))
 const draft = computed(() => editor.draft)
+const rootMotion = computed(() => {
+  if (!draft.value) return null
+  const namespace = draft.value.extensions?.['yk-pets/biped-motion/v1'] as { rootMotion?: unknown } | undefined
+  return normalizeBipedPetRootMotion(namespace?.rootMotion, draft.value.durationMs).value
+})
 const allPropAssets = computed(() => [...BUILT_IN_STUDIO_PROPS, ...assets.props])
 const availableProps = computed(() => allPropAssets.value.filter(item => draft.value?.propIds.includes(item.id)))
 const evaluatedPose = computed(() => {
@@ -249,7 +255,7 @@ onBeforeUnmount(() => {
         />
         <div class="preview-stage">
           <ClientOnly>
-            <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :motion-asset="draft" :motion-time-ms="editor.playheadTimeMs" :motion-weight="editor.playbackWeight" :prop-instances="evaluatedProps.instances" :prop-assets="allPropAssets" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" :model-mode="session.modelMode" :complex-pet-id="currentPetId" :complex-recipe="complexRecipe" />
+            <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :motion-asset="draft" :motion-time-ms="editor.playbackRequestedTimeMs" :motion-weight="editor.playbackWeight" :prop-instances="evaluatedProps.instances" :prop-assets="allPropAssets" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" :model-mode="session.modelMode" :complex-pet-id="currentPetId" :complex-recipe="complexRecipe" />
           </ClientOnly>
           <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
           <div
@@ -298,6 +304,13 @@ onBeforeUnmount(() => {
           <label>英文名称<input :value="draft.nameEn" @change="patchName('nameEn',$event)"></label>
           <div class="metadata-grid"><label>总时长（毫秒）<input :value="draft.durationMs" type="number" min="100" max="60000" step="50" @change="patchDuration"></label><label>显示网格（帧/秒）<input :value="draft.displayFps" type="number" min="1" max="240" step="1" @change="patchDisplayFps"></label></div>
           <label>循环模式<select :value="draft.loopMode" @change="patchLoop"><option value="once">播放一次</option><option value="loop">循环</option><option value="ping-pong">往返循环</option></select></label>
+          <StudioRootMotionSettings
+            v-if="rootMotion"
+            :root-motion="rootMotion"
+            :model-mode="session.modelMode"
+            @update="editor.updateRootMotionSettings"
+            @restore="editor.restoreRootMotionRecommendations"
+          />
           <details class="technical-info"><summary>技术信息</summary><code>{{ draft.rigId }}</code><code>{{ draft.id }}</code></details>
         </section>
 

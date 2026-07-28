@@ -606,19 +606,25 @@ git push origin agent/cloud-fox-studio-v0610
 - 修改：`apps/playground/app/components/studio/ComplexBipedPetRenderer.vue`
 - 创建：`apps/playground/app/components/studio/StudioRootMotionSettings.vue`
 - 修改：`apps/playground/app/pages/studio/motion.vue`
+- 修改：`apps/playground/app/stores/studio-assets.ts`
 - 修改：`apps/playground/app/stores/studio-motion-editor.ts`
 - 创建：`scripts/check-studio-complex-biped-root-motion.mjs`
+- 修改：`scripts/test-studio-model-variants.ts`
 - 修改：`package.json`
 - 修改：`.ai/project-state.json`
+- 修改：`scripts/check-ai-handoff.mjs`
 - 修改：`docs/zh-CN/AI开发交接.md`
+- 修改：`docs/en/AI-DEVELOPMENT-HANDOFF.md`
+- 修改：`docs/zh-CN/双足萌宠混合RootMotion与运动特效设计.md`
+- 修改：`docs/zh-CN/双足萌宠混合RootMotion与运动特效实施计划.md`
 
-- [ ] **步骤 1：写静态门禁和 Store 失败测试**
+- [x] **步骤 1：写静态门禁和 Store 失败测试**
 
 门禁必须验证：复杂 renderer 创建一个 Root Motion/VFX 链路并把 VFX `Group` 作为同级 primitive；创建失败按 VFX、动作控制器、角色 runtime 逆序尽力清理；Clip 切换、无动作、blocked、停止和卸载均 reset/dispose；Simple renderer、`ProceduralPet` 和 `CloudFoxStudioCanvas` 的简单分支不得创建复杂控制器、第二 Canvas 或 RAF。
 
 Store 测试要求 `updateRootMotionSettings({ mode: 'travel', autoVfx: true })` 只更新当前草稿的 `yk-pets/biped-motion/v1.rootMotion`，保留 contacts、events 和未知扩展字段，且进入撤销栈。
 
-- [ ] **步骤 2：运行门禁确认红灯**
+- [x] **步骤 2：运行门禁确认红灯**
 
 在 `package.json` 增加：
 
@@ -635,7 +641,7 @@ corepack pnpm run test:studio-model-variants
 
 预期：FAIL，renderer 生命周期和 Store API 尚未接线。
 
-- [ ] **步骤 3：接入 renderer 生命周期**
+- [x] **步骤 3：接入 renderer 生命周期**
 
 创建角色 runtime 后创建动作控制器与 VFX controller；模板增加：
 
@@ -646,7 +652,7 @@ corepack pnpm run test:studio-model-variants
 
 动作控制器每帧返回 VFX 信号，renderer 立即交给 VFX controller。任何创建阶段异常都解除 shallowRef，再独立尝试释放已取得资源并产生有限中文诊断。时间变化只采样/apply，不重建任何控制器。
 
-- [ ] **步骤 4：实现中文新手设置**
+- [x] **步骤 4：实现中文新手设置**
 
 `StudioRootMotionSettings` 只显示：
 
@@ -657,7 +663,7 @@ corepack pnpm run test:studio-model-variants
 
 组件不得暴露窗口数组、速度阈值、粒子数量或骨骼术语。复杂模式显示“系统将根据体型、脚步接触和动作速度自动修正”；简单模式显示兼容提示但仍可保存动作元数据。
 
-- [ ] **步骤 5：运行门禁、Store 和构建验证**
+- [x] **步骤 5：运行门禁、Store 和构建验证**
 
 ```bash
 corepack pnpm run check:studio-complex-biped-root-motion
@@ -669,10 +675,16 @@ corepack pnpm build:playground
 
 预期：全部通过；构建只允许记录已经存在的 sourcemap/PURE/大 chunk 警告。
 
+实现结果保持单一现有 `TresCanvas`：复杂 renderer 对每个角色 runtime 只创建一个动作控制器和一个 VFX 控制器，VFX `Group` 作为角色同父级 sibling primitive。每帧复用位置 tuple、局部 `+Z` 临时向量和 frame 对象，直接读取角色容器的共同父级局部 position，并由最终 Quaternion 的 `atan2(x,z)` 朝向推进特效；不使用世界坐标二次换算。Store 分离编辑器显示 `playheadTimeMs` 与复杂 runtime 单调 `playbackRequestedTimeMs`，loop/ping-pong 接缝和反向半程不会误触 rewind，暂停/恢复连续，只有打开/替换、用户回拖和停止重新对齐。Clip 切换、无动作、blocked、停止和真实回拖显式 reset；动作/时间 watcher 使用防重入安全同步边界并显式返回完成状态，无 clip/runtime 的空路径不能恢复 ready。诊断按 failure domain 与动作身份恢复；旧 clip 先清除，异常尽力 reset，reset 失败则清浅引用与 runtime key、逆序释放，使同配方可在下一次同步重建，只向父层发有界中文 blocked 诊断。
+
+新手设置已接入动作属性“基础”页，只公开移动模式、自动特效、预计结果和恢复推荐值；简单/复杂模型说明、键盘焦点与 ARIA 由独立组件承担。组件使用 inline-size container query，在真实属性栏宽度低于 `360px` 时单列，正文/控制为 `11–12px`、辅助信息不低于 `10px`。Store 更新只替换当前草稿版本化命名空间中的 `rootMotion`，保留 contacts、events、`sourceMotionId`、命名空间未知字段和其他扩展并形成单个撤销项；模式切换不覆盖特效开关，关闭只清标签。推荐恢复优先使用打开时 baseline 已有 Root Motion，并按当前/baseline 时长缩放；baseline 缺少定义时只信 `copyBuiltInMotion` 写入的显式 `sourceMotionId` 并按当前时长缩放模板窗口，绝不通过中英文名称猜测，无可用推荐时才使用 `.42` 身高整段 travel 回退。
+
+TDD 首轮分别得到静态门禁缺少生命周期/组件的失败列表与 `updateRootMotionSettings is not a function`；追加回归先复现模式切换错误恢复 `speed-trail`、半时长跳跃窗口保持 `[720,1200]`、时间轴回退缺少显式 reset。双审继续复现：请求 `2500ms` 时 runtime 只能看到 loop resolved `100ms`、watcher 无安全异常边界、双语同名自定义动作被错误恢复为内置 travel、注释/字符串伪实现仍能通过字符串门禁、真实 310px 属性栏仍显示最小 `7px` 文案、空 frame sync 错误清除 blocked，以及真实 jump 副本 `2400→1200ms` 后恢复为 `[720,1824]`。对应回归现覆盖两周期 loop、ping-pong 反向/暂停恢复/用户回拖、失败域与动作身份恢复、真实复制缩放、provenance 冲突、TypeScript 调用与 Vue 模板 AST 负探针及容器响应式。最终步骤 5 的五条命令均通过；Playground 构建只出现既有 sourcemap、`#__PURE__` 和大 chunk 警告。
+
 - [ ] **步骤 6：提交推送**
 
 ```bash
-git add apps/playground/app/components/studio/ComplexBipedPetRenderer.vue apps/playground/app/components/studio/StudioRootMotionSettings.vue apps/playground/app/pages/studio/motion.vue apps/playground/app/stores/studio-motion-editor.ts scripts/check-studio-complex-biped-root-motion.mjs package.json .ai/project-state.json docs/zh-CN/AI开发交接.md
+git add apps/playground/app/components/studio/ComplexBipedPetRenderer.vue apps/playground/app/components/studio/StudioRootMotionSettings.vue apps/playground/app/pages/studio/motion.vue apps/playground/app/stores/studio-assets.ts apps/playground/app/stores/studio-motion-editor.ts scripts/check-studio-complex-biped-root-motion.mjs scripts/check-ai-handoff.mjs scripts/test-studio-model-variants.ts package.json .ai/project-state.json docs/zh-CN/AI开发交接.md docs/en/AI-DEVELOPMENT-HANDOFF.md docs/zh-CN/双足萌宠混合RootMotion与运动特效设计.md docs/zh-CN/双足萌宠混合RootMotion与运动特效实施计划.md
 git commit -m "接入RootMotion特效与新手设置"
 git push origin agent/cloud-fox-studio-v0610
 ```
