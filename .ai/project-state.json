@@ -87,6 +87,7 @@
     "bipedPetComplexMotionPreviewWiringComplete": true,
     "bipedPetBeginnerMotionTemplateEntryComplete": true,
     "bipedPetSemanticMotionPhase1DeliveryComplete": true,
+    "bipedPetHybridIkDesignComplete": true,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
     "bipedPetRootMotionComplete": false,
@@ -185,7 +186,8 @@
     "biped-pet-phase1-delivery",
     "biped-pet-complex-prop-socket-preview",
     "studio-model-variant-lazy-hydration-review",
-    "biped-pet-semantic-motion-phase1-delivery"
+    "biped-pet-semantic-motion-phase1-delivery",
+    "biped-pet-hybrid-ik-design"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

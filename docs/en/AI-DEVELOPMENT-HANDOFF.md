@@ -253,3 +253,11 @@ Trust order: actual code and runtime results > latest full CI > machine state > 
 - Chrome functional acceptance at 1440×900 created all five templates and confirmed a ready complex preview with durations of 3600, 1200, 2400, 3200, and 4000 ms. Walk playback advanced, pause held its time, stop returned to zero, Simple/Complex switching selected the correct Canvas mode, and there was no horizontal overflow.
 - At 760×900, all five template buttons remained visible, `clientWidth === scrollWidth === 760`, the complex preview stayed ready, and the console contained no errors. This does not replace Safari/Firefox, multi-GPU WebGL, or final-pixel acceptance.
 - The complex character still uses the Phase 1 low-detail procedural topology and automatic weights. Runtime IK, foot locking, full Root Motion, the complex motion library, motion-driven VFX, production joint-volume quality, and other body Profiles remain incomplete.
+
+## 27. Hybrid biped and multi-chain IK design
+
+- The approved architecture uses analytic Two Bone IK for `biped-pet/v1` and future standard humanoid legs, with constrained FABRIK behind the same contract for quadrupeds, mechs, and other non-standard chains. Users never choose the solver.
+- Runtime order is bind-pose restore, Quaternion FK, world-matrix update, contact state, IK/foot lock, foot-orientation compensation, and final world-matrix update. It creates no second Canvas, Skeleton, or hidden animation loop.
+- Each foot owns free/acquiring/locked/releasing/disabled state. Backward or large time jumps, motion replacement, stop, runtime rebuild, and disposal clear locks. A failed limb falls back to FK without blocking the character.
+- The implementation batch will cover the shared constraint contract, analytic solver, FABRIK foundation, foot locking, basic-motion contact and balance refinement, and browser acceptance. Full Root Motion, terrain queries, production quadruped/mech Profiles, high-detail topology, and motion VFX remain separate work.
+- The authoritative specification is `docs/zh-CN/双足与多骨骼链混合IK设计.md`.
