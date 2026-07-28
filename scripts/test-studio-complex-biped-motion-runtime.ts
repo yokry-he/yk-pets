@@ -55,6 +55,35 @@ function sampleWith(
   return { ...sample, ...patch }
 }
 
+function snapshotBones(runtime: ReturnType<typeof createRuntime>['runtime']) {
+  return Object.fromEntries([...runtime.bonesById].map(([id, bone]) => [id, {
+    position: bone.position.toArray(),
+    quaternion: bone.quaternion.toArray(),
+  }]))
+}
+
+function assertBoneSnapshotsNear(
+  actual: ReturnType<typeof snapshotBones>,
+  expected: ReturnType<typeof snapshotBones>,
+  tolerance = 1e-9,
+) {
+  assert.deepEqual(Object.keys(actual), Object.keys(expected))
+  for (const boneId of Object.keys(actual)) {
+    for (const field of ['position', 'quaternion'] as const) for (const [index, value] of actual[boneId]![field].entries()) {
+      assert.ok(Math.abs(value - expected[boneId]![field][index]!) <= tolerance, `${boneId}.${field}[${index}] 不一致`)
+    }
+  }
+}
+
+function readChainLengths(runtime: ReturnType<typeof createRuntime>['runtime'], boneIds: readonly string[]) {
+  runtime.object.updateMatrixWorld(true)
+  return boneIds.slice(1).map((boneId, index) => {
+    const previous = runtime.bonesById.get(boneIds[index]!)!
+    const current = runtime.bonesById.get(boneId)!
+    return previous.getWorldPosition(previous.position.clone()).distanceTo(current.getWorldPosition(current.position.clone()))
+  })
+}
+
 {
   const { compilation, runtime } = createRuntime()
   const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
@@ -88,13 +117,27 @@ function sampleWith(
 // 真实 Bone 回归：连续接触期间脚底必须锁在首次捕获的世界锚点。
 {
   const { compilation, runtime } = createRuntime()
-  const clip = compileBipedPetMotion(walk, { boneIds: compilation.bones.map(item => item.id) })
+  const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
   const controller = createComplexBipedMotionController(runtime, compilation)
-  controller.apply(sampleBipedPetMotion(clip, 100))
+  const bindPositions = Object.fromEntries([...runtime.bonesById].map(([id, bone]) => [id, bone.position.toArray()]))
+  const leftChainIds = compilation.limbIk.find(item => item.id === 'leg.left')!.boneIds
+  const bindChainLengths = readChainLengths(runtime, leftChainIds)
+  const lockedLeft = (timeMs: number) => sampleWith(sampleBipedPetMotion(clip, timeMs), {
+    contactStates: [
+      { contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 },
+      { contactId: 'foot.right', phase: 'locked', weight: 1, confidence: 1 },
+    ],
+    activeContacts: ['foot.left', 'foot.right'],
+  })
+  controller.apply(lockedLeft(100))
   const leftAnchor = readContactWorld(runtime, compilation, 'foot.left')
-  controller.apply(sampleBipedPetMotion(clip, 320))
+  controller.apply(lockedLeft(320))
   const leftLocked = readContactWorld(runtime, compilation, 'foot.left')
   assert.ok(leftLocked.distanceTo(leftAnchor) < 1e-3, `左脚锁定误差过大：${leftLocked.distanceTo(leftAnchor)}`)
+  for (const [boneId, bone] of runtime.bonesById) if (boneId !== 'root' && boneId !== 'pelvis') {
+    assert.deepEqual(bone.position.toArray(), bindPositions[boneId], `${boneId} 的局部 position 不得被 IK 修改`)
+  }
+  for (const [index, length] of readChainLengths(runtime, leftChainIds).entries()) assert.ok(Math.abs(length - bindChainLengths[index]!) < 1e-9)
   assert.ok([...runtime.bonesById.values()].every(bone => finiteUnitQuaternion(bone.quaternion)))
 
   controller.reset()
@@ -104,10 +147,77 @@ function sampleWith(
   runtime.dispose()
 }
 
+
+// 极低动作权重只能产生极低 Quaternion 修正，不能通过末端平移实现完整锁定。
+{
+  const full = createRuntime()
+  const fullFk = createRuntime()
+  const low = createRuntime()
+  const lowFk = createRuntime()
+  const clip = compileBipedPetMotion(walk, { boneIds: full.compilation.bones.map(item => item.id) })
+  const fullController = createComplexBipedMotionController(full.runtime, full.compilation)
+  const fullFkController = createComplexBipedMotionController(fullFk.runtime)
+  const lowController = createComplexBipedMotionController(low.runtime, low.compilation)
+  const lowFkController = createComplexBipedMotionController(lowFk.runtime)
+  const locked = (timeMs: number) => sampleWith(sampleBipedPetMotion(clip, timeMs), {
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.left'],
+  })
+  fullController.apply(locked(100), 1)
+  fullFkController.apply(locked(100), 1)
+  lowController.apply(locked(100), .01)
+  lowFkController.apply(locked(100), .01)
+  const fullAnchor = readContactWorld(full.runtime, full.compilation, 'foot.left')
+  const fullFkAnchor = readContactWorld(fullFk.runtime, fullFk.compilation, 'foot.left')
+  const lowAnchor = readContactWorld(low.runtime, low.compilation, 'foot.left')
+  const lowFkAnchor = readContactWorld(lowFk.runtime, lowFk.compilation, 'foot.left')
+  fullController.apply(locked(320), 1)
+  fullFkController.apply(locked(320), 1)
+  lowController.apply(locked(320), .01)
+  lowFkController.apply(locked(320), .01)
+  const fullError = readContactWorld(full.runtime, full.compilation, 'foot.left').distanceTo(fullAnchor)
+  const fullFkError = readContactWorld(fullFk.runtime, fullFk.compilation, 'foot.left').distanceTo(fullFkAnchor)
+  const lowError = readContactWorld(low.runtime, low.compilation, 'foot.left').distanceTo(lowAnchor)
+  const lowFkError = readContactWorld(lowFk.runtime, lowFk.compilation, 'foot.left').distanceTo(lowFkAnchor)
+  const fullImprovement = fullFkError - fullError
+  const lowImprovement = lowFkError - lowError
+  assert.ok(fullImprovement > 0)
+  assert.ok(lowImprovement >= 0 && lowImprovement <= fullImprovement * .1, `低权重改善必须近似受权重缩小：full=${fullImprovement}, low=${lowImprovement}`)
+  assert.ok(lowError > 1e-8, `低权重不得被强制完整锁定：${lowError}`)
+  assert.deepEqual(low.runtime.bonesById.get('foot.left')!.position.toArray(), full.runtime.bonesById.get('foot.left')!.position.toArray())
+  fullController.dispose()
+  fullFkController.dispose()
+  lowController.dispose()
+  lowFkController.dispose()
+  full.runtime.dispose()
+  fullFk.runtime.dispose()
+  low.runtime.dispose()
+  lowFk.runtime.dispose()
+}
+
+// active IK 后直接写 weight 0，完整骨骼姿态必须与纯 FK 基线一致，无需先 reset。
+{
+  const withIk = createRuntime()
+  const fkOnly = createRuntime()
+  const clip = compileBipedPetMotion(walk, { boneIds: withIk.compilation.bones.map(item => item.id) })
+  const ikController = createComplexBipedMotionController(withIk.runtime, withIk.compilation)
+  const fkController = createComplexBipedMotionController(fkOnly.runtime)
+  ikController.apply(sampleBipedPetMotion(clip, 100), 1)
+  ikController.apply(sampleBipedPetMotion(clip, 320), 1)
+  const zeroSample = sampleBipedPetMotion(clip, 420)
+  ikController.apply(zeroSample, 0)
+  fkController.apply(zeroSample, 0)
+  assertBoneSnapshotsNear(snapshotBones(withIk.runtime), snapshotBones(fkOnly.runtime))
+  ikController.dispose()
+  fkController.dispose()
+  withIk.runtime.dispose()
+  fkOnly.runtime.dispose()
+}
+
 // 左右脚分别捕获锚点，释放一侧不能覆盖或清除另一侧。
 {
   const { compilation, runtime } = createRuntime()
-  const clip = compileBipedPetMotion(walk, { boneIds: compilation.bones.map(item => item.id) })
+  const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
   const controller = createComplexBipedMotionController(runtime, compilation)
   const bothLocked = (timeMs: number) => sampleWith(sampleBipedPetMotion(clip, timeMs), {
     contactStates: [
@@ -116,37 +226,112 @@ function sampleWith(
     ],
     activeContacts: ['foot.left', 'foot.right'],
   })
-  controller.apply(bothLocked(20))
+  controller.apply(bothLocked(100))
   const leftAnchor = readContactWorld(runtime, compilation, 'foot.left')
   const rightAnchor = readContactWorld(runtime, compilation, 'foot.right')
-  controller.apply(bothLocked(40))
+  controller.apply(bothLocked(320))
   assert.ok(readContactWorld(runtime, compilation, 'foot.left').distanceTo(leftAnchor) < 1e-3)
   assert.ok(readContactWorld(runtime, compilation, 'foot.right').distanceTo(rightAnchor) < 1e-3)
-  controller.apply(sampleBipedPetMotion(clip, 200))
-  assert.ok(readContactWorld(runtime, compilation, 'foot.left').distanceTo(leftAnchor) < 1e-3)
+  controller.apply(sampleWith(sampleBipedPetMotion(clip, 321), {
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.left'],
+  }))
+  assert.ok(readContactWorld(runtime, compilation, 'foot.left').distanceTo(leftAnchor) < 1e-2)
   controller.dispose()
   runtime.dispose()
 }
 
-// clip 切换、时间倒退与跨循环大跳必须清锁，并在当前帧重新捕获而不是拉回旧锚。
+
+// auto 的五骨连续链必须走完整 FABRIK；显式 analytic 对非法聚合链必须诊断并回退 FK。
 {
-  const { compilation, runtime } = createRuntime()
-  const clip = compileBipedPetMotion(walk, { boneIds: compilation.bones.map(item => item.id) })
-  const controller = createComplexBipedMotionController(runtime, compilation)
-  const first = sampleBipedPetMotion(clip, 100)
-  controller.apply(first)
-  const oldAnchor = readContactWorld(runtime, compilation, 'foot.left')
-  controller.apply(sampleBipedPetMotion(clip, 320))
-  controller.apply(sampleBipedPetMotion(clip, 80))
-  const rewindAnchor = readContactWorld(runtime, compilation, 'foot.left')
-  assert.ok(rewindAnchor.distanceTo(oldAnchor) > 1e-4)
-  controller.apply(sampleWith(sampleBipedPetMotion(clip, 200), { clipHash: `${clip.hash}-next` }))
-  const switchedAnchor = readContactWorld(runtime, compilation, 'foot.left')
-  assert.ok(switchedAnchor.distanceTo(oldAnchor) > 1e-4)
-  controller.apply(sampleBipedPetMotion(clip, clip.durationMs * 4 + 250))
-  assert.ok(readContactWorld(runtime, compilation, 'foot.left').distanceTo(oldAnchor) > 1e-4)
+  const auto = createRuntime()
+  const autoFk = createRuntime()
+  const autoCompilation = cloneCompilation(auto.compilation)
+  autoCompilation.limbIk[0]!.boneIds = ['thigh.left', 'knee.left', 'calf.left', 'ankle.left', 'foot.left']
+  const autoDiagnostics = createComplexBipedIkController(auto.runtime, autoCompilation)
+  assert.ok(autoDiagnostics.diagnostics().some(item => item.includes('leg.left') && item.includes('FABRIK')))
+  autoDiagnostics.dispose()
+  const autoController = createComplexBipedMotionController(auto.runtime, autoCompilation)
+  const autoFkController = createComplexBipedMotionController(autoFk.runtime)
+  const clip = compileBipedPetMotion(wave, { boneIds: autoCompilation.bones.map(item => item.id) })
+  const locked = (timeMs: number) => sampleWith(sampleBipedPetMotion(clip, timeMs), {
+    contactStates: [
+      { contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 },
+      { contactId: 'foot.right', phase: 'locked', weight: 1, confidence: 1 },
+    ],
+    activeContacts: ['foot.left', 'foot.right'],
+  })
+  autoController.apply(locked(100), 1)
+  autoFkController.apply(locked(100), 1)
+  const autoAnchor = readContactWorld(auto.runtime, autoCompilation, 'foot.left')
+  const autoFkAnchor = readContactWorld(autoFk.runtime, autoFk.compilation, 'foot.left')
+  const bindPositions = Object.fromEntries([...auto.runtime.bonesById].map(([id, bone]) => [id, bone.position.toArray()]))
+  const shifted = sampleWith(locked(100), { rootPosition: [.05, 0, 0] })
+  autoController.apply(shifted, 1)
+  autoFkController.apply(shifted, 1)
+  const autoError = readContactWorld(auto.runtime, autoCompilation, 'foot.left').distanceTo(autoAnchor)
+  const autoFkError = readContactWorld(autoFk.runtime, autoFk.compilation, 'foot.left').distanceTo(autoFkAnchor)
+  assert.ok(autoError < autoFkError, `FABRIK 应改善真实末端误差：ik=${autoError}, fk=${autoFkError}`)
+  for (const boneId of autoCompilation.limbIk[0]!.boneIds) assert.deepEqual(auto.runtime.bonesById.get(boneId)!.position.toArray(), bindPositions[boneId])
+  autoController.dispose()
+  autoFkController.dispose()
+  auto.runtime.dispose()
+  autoFk.runtime.dispose()
+
+  const explicit = createRuntime()
+  const explicitFk = createRuntime()
+  const explicitCompilation = cloneCompilation(explicit.compilation)
+  explicitCompilation.limbIk[0]!.solver = 'analytic-two-bone'
+  explicitCompilation.limbIk[0]!.boneIds = ['thigh.left', 'knee.left', 'calf.left', 'ankle.left', 'foot.left']
+  const explicitDiagnostics = createComplexBipedIkController(explicit.runtime, explicitCompilation)
+  assert.ok(explicitDiagnostics.diagnostics().some(item => item.includes('leg.left') && item.includes('回退')))
+  assert.ok(!explicitDiagnostics.diagnostics().some(item => item.includes('leg.left') && item.includes('使用解析式')))
+  explicitDiagnostics.dispose()
+  const explicitController = createComplexBipedMotionController(explicit.runtime, explicitCompilation)
+  const explicitFkController = createComplexBipedMotionController(explicitFk.runtime)
+  explicitController.apply(locked(100), 1)
+  explicitFkController.apply(locked(100), 1)
+  explicitController.apply(shifted, 1)
+  explicitFkController.apply(shifted, 1)
+  for (const boneId of explicitCompilation.limbIk[0]!.boneIds) {
+    assert.ok(explicit.runtime.bonesById.get(boneId)!.quaternion.angleTo(explicitFk.runtime.bonesById.get(boneId)!.quaternion) < 1e-9)
+  }
+  explicitController.dispose()
+  explicitFkController.dispose()
+  explicit.runtime.dispose()
+  explicitFk.runtime.dispose()
+}
+
+// clip 切换、时间倒退与跨循环大跳必须清锁，并在当前帧重新捕获而不是拉回旧锚。
+for (const kind of ['time-rewind', 'loop-wrap', 'clip-switch', 'large-jump'] as const) {
+  const withIk = createRuntime()
+  const baseline = createRuntime()
+  const clip = compileBipedPetMotion(walk, { boneIds: withIk.compilation.bones.map(item => item.id) })
+  const controller = createComplexBipedMotionController(withIk.runtime, withIk.compilation)
+  const baselineController = createComplexBipedMotionController(baseline.runtime)
+  const locked = (sample: SampledBipedPetMotion) => sampleWith(sample, {
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.left'],
+  })
+  const start = locked(sampleBipedPetMotion(clip, kind === 'loop-wrap' ? 1100 : 100))
+  const continuous = locked(sampleBipedPetMotion(clip, kind === 'loop-wrap' ? 1150 : 200))
+  const discontinuity = kind === 'time-rewind'
+    ? locked(sampleBipedPetMotion(clip, 80))
+    : kind === 'loop-wrap'
+      ? locked(sampleBipedPetMotion(clip, 1210))
+      : kind === 'clip-switch'
+        ? sampleWith(locked(sampleBipedPetMotion(clip, 220)), { clipHash: `${clip.hash}-next` })
+        : locked(sampleBipedPetMotion(clip, 900))
+  controller.apply(start, 1)
+  controller.apply(continuous, 1)
+  controller.apply(discontinuity, 1)
+  baselineController.apply(discontinuity, 1)
+  assert.ok(readContactWorld(withIk.runtime, withIk.compilation, 'foot.left')
+    .distanceTo(readContactWorld(baseline.runtime, baseline.compilation, 'foot.left')) < 1e-9, `${kind} 后必须在当前 FK 帧重新捕获`)
   controller.dispose()
-  runtime.dispose()
+  baselineController.dispose()
+  withIk.runtime.dispose()
+  baseline.runtime.dispose()
 }
 
 // 显式 FABRIK、auto 标准链和 auto 非标准链路径均可诊断；损坏单肢不得阻断另一肢。
@@ -157,12 +342,14 @@ function sampleWith(
   mixed.limbIk[0]!.solver = 'fabrik'
   mixed.limbIk[1]!.solver = 'auto'
   mixed.limbIk[1]!.boneIds = ['thigh.right', 'knee.right', 'calf.right', 'ankle.right', 'foot.right']
-  const controller = createComplexBipedIkController(runtime, mixed)
+  const diagnostics = createComplexBipedIkController(runtime, mixed)
+  assert.ok(diagnostics.diagnostics().some(item => item.includes('FABRIK')))
+  diagnostics.dispose()
+  const controller = createComplexBipedMotionController(runtime, mixed)
   const sample = sampleBipedPetMotion(clip, 20)
   const frozenSample = structuredClone(sample)
   const frozenCompilation = structuredClone(mixed)
   controller.apply(sample, 1)
-  assert.ok(controller.diagnostics().some(item => item.includes('FABRIK')))
   assert.deepEqual(sample, frozenSample)
   assert.deepEqual(mixed, frozenCompilation)
   controller.dispose()
@@ -182,30 +369,58 @@ function sampleWith(
 
 {
   const { compilation, runtime } = createRuntime()
-  const clip = compileBipedPetMotion(walk, { boneIds: compilation.bones.map(item => item.id) })
+  const baseline = createRuntime()
+  const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
   const broken = cloneCompilation(compilation)
   broken.limbIk[0]!.boneIds = ['missing.left', 'knee.left', 'calf.left']
-  const controller = createComplexBipedIkController(runtime, broken)
-  controller.apply(sampleBipedPetMotion(clip, 20), 1)
-  controller.apply(sampleBipedPetMotion(clip, 40), 1)
-  const missingDiagnostics = controller.diagnostics().filter(item => item.includes('leg.left'))
+  const diagnosticController = createComplexBipedIkController(runtime, broken)
+  const missingDiagnostics = diagnosticController.diagnostics().filter(item => item.includes('leg.left'))
   assert.equal(missingDiagnostics.length, 1)
-  assert.ok(controller.diagnostics().some(item => item.includes('leg.right') && item.includes('解析式')))
+  assert.ok(diagnosticController.diagnostics().some(item => item.includes('leg.right') && item.includes('解析式')))
+  diagnosticController.dispose()
+  const controller = createComplexBipedMotionController(runtime, broken)
+  const baselineController = createComplexBipedMotionController(baseline.runtime)
+  const rightLocked = (rootX: number) => sampleWith(sampleBipedPetMotion(clip, 100), {
+    rootPosition: [rootX, 0, 0],
+    contactStates: [{ contactId: 'foot.right', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.right'],
+  })
+  controller.apply(rightLocked(0), 1)
+  baselineController.apply(rightLocked(0), 1)
+  const rightAnchor = readContactWorld(runtime, compilation, 'foot.right')
+  const baselineAnchor = readContactWorld(baseline.runtime, baseline.compilation, 'foot.right')
+  controller.apply(rightLocked(.05), 1)
+  baselineController.apply(rightLocked(.05), 1)
+  for (const boneId of ['thigh.left', 'knee.left', 'calf.left', 'ankle.left']) {
+    assert.ok(runtime.bonesById.get(boneId)!.quaternion.angleTo(baseline.runtime.bonesById.get(boneId)!.quaternion) < 1e-9)
+  }
+  assert.ok(readContactWorld(runtime, compilation, 'foot.right').distanceTo(rightAnchor)
+    < readContactWorld(baseline.runtime, baseline.compilation, 'foot.right').distanceTo(baselineAnchor))
   assert.ok(finiteUnitQuaternion(runtime.bonesById.get('thigh.right')!.quaternion))
   controller.dispose()
+  baselineController.dispose()
   runtime.dispose()
+  baseline.runtime.dispose()
 }
 
 
 // blocked 编译结果和缺失 contact 都只诊断一次并保持 FK 安全。
 {
   const { compilation, runtime } = createRuntime()
+  const baseline = createRuntime()
   const blocked = cloneCompilation(compilation)
   blocked.status = 'blocked'
-  const blockedController = createComplexBipedIkController(runtime, blocked)
-  assert.equal(blockedController.diagnostics().filter(item => item.includes('阻塞')).length, 1)
-  blockedController.apply(sampleBipedPetMotion(compileBipedPetMotion(walk, { boneIds: compilation.bones.map(item => item.id) }), 20), 1)
+  const blockedDiagnostics = createComplexBipedIkController(runtime, blocked)
+  assert.equal(blockedDiagnostics.diagnostics().filter(item => item.includes('阻塞')).length, 1)
+  blockedDiagnostics.dispose()
+  const blockedController = createComplexBipedMotionController(runtime, blocked)
+  const baselineController = createComplexBipedMotionController(baseline.runtime)
+  const sample = sampleBipedPetMotion(compileBipedPetMotion(walk, { boneIds: compilation.bones.map(item => item.id) }), 320)
+  blockedController.apply(sample, 1)
+  baselineController.apply(sample, 1)
+  assertBoneSnapshotsNear(snapshotBones(runtime), snapshotBones(baseline.runtime))
   blockedController.dispose()
+  baselineController.dispose()
 
   const missingContact = cloneCompilation(compilation)
   missingContact.contacts = missingContact.contacts.filter(item => item.id !== 'foot.left')
@@ -213,21 +428,21 @@ function sampleWith(
   assert.equal(missingController.diagnostics().filter(item => item.includes('leg.left')).length, 1)
   missingController.dispose()
   runtime.dispose()
+  baseline.runtime.dispose()
 }
 
 // 双支撑骨盆修正有界；单支撑和零权重不能写入骨盆 IK。
 {
   const { compilation, runtime } = createRuntime()
   const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
-  const controller = createComplexBipedIkController(runtime, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation)
   const pelvis = runtime.bonesById.get('pelvis')!
   const bindY = pelvis.position.y
   controller.apply(sampleBipedPetMotion(clip, 10), 1)
   controller.apply(sampleBipedPetMotion(clip, 1600), 1)
   assert.ok(pelvis.position.y - bindY >= -.08 && pelvis.position.y - bindY <= .08)
-  const beforeWeightZero = pelvis.position.clone()
   controller.apply(sampleBipedPetMotion(clip, 1800), 0)
-  assert.deepEqual(pelvis.position.toArray(), beforeWeightZero.toArray())
+  assert.equal(pelvis.position.y, bindY)
   controller.reset()
   assert.equal(pelvis.position.y, bindY)
   const singleSupport = sampleWith(sampleBipedPetMotion(clip, 1800), {
@@ -237,9 +452,11 @@ function sampleWith(
   controller.apply(singleSupport, 1)
   assert.equal(pelvis.position.y, bindY)
   controller.dispose()
+  const disposedPose = snapshotBones(runtime)
   controller.dispose()
-  assert.doesNotThrow(() => controller.apply(sampleBipedPetMotion(clip, 2000), 1))
-  assert.doesNotThrow(() => controller.reset())
+  assert.throws(() => controller.apply(sampleBipedPetMotion(clip, 2000), 1), /已释放/)
+  assert.throws(() => controller.reset(), /已释放/)
+  assertBoneSnapshotsNear(snapshotBones(runtime), disposedPose)
   runtime.dispose()
 }
 

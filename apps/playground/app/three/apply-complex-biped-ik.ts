@@ -3,7 +3,7 @@
  * 在既有 FK 姿态之后执行复杂双足萌宠的足底锁定与混合 IK；不创建渲染循环、Canvas 或 Skeleton。
  */
 
-import { Matrix4, Quaternion, Vector3, type Bone } from 'three'
+import { Quaternion, Vector3, type Bone } from 'three'
 import {
   solveAnalyticTwoBoneIk,
   solveConstrainedFabrik,
@@ -32,10 +32,14 @@ interface LimbRuntime {
   fallbackContactPosition: Vector3
   solver: 'analytic-two-bone' | 'fabrik'
   anchor: Vector3
+  anchorOffset: Vector3
   anchored: boolean
+  capturedThisFrame: boolean
   positions: MutableRigVector[]
   targetInput: MutableRigVector
   poleInput: MutableRigVector
+  terminalStart: MutableRigVector
+  terminalEnd: MutableRigVector
 }
 
 type MutableRigVector = [number, number, number]
@@ -45,10 +49,30 @@ const clamp01 = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min
  * 标准双足链允许把首段与其余后代聚合为两段解析链；更长的非标准链自动转入 FABRIK。
  * 当前 Profile 的 thigh→knee→calf→ankle 因此稳定命中解析路径。
  */
-const chooseSolver = (limb: CompiledCharacterLimbIk): LimbRuntime['solver'] => {
-  if (limb.solver === 'fabrik') return 'fabrik'
-  if (limb.solver === 'analytic-two-bone') return 'analytic-two-bone'
-  return limb.boneIds.length >= 3 && limb.boneIds.length <= 4 ? 'analytic-two-bone' : 'fabrik'
+const isDescendantOf = (bone: Bone, ancestor: Bone) => {
+  let current: Bone | null = bone
+  while (current) {
+    if (current === ancestor) return true
+    current = current.parent?.type === 'Bone' ? current.parent as Bone : null
+  }
+  return false
+}
+
+/** 解析式聚合只接受确定的三点链或当前 Profile 的四骨两段映射，不能只凭数组长度猜测。 */
+const canUseAnalyticMapping = (bones: readonly Bone[], contactBone: Bone) => {
+  if (bones.length !== 3 && bones.length !== 4) return false
+  if (!bones.every((bone, index) => index === 0 || bone.parent === bones[index - 1])) return false
+  if (!isDescendantOf(contactBone, bones.at(-1)!)) return false
+  const start = new Vector3()
+  const end = new Vector3()
+  const segmentPairs = bones.length === 3
+    ? [[0, 1], [1, 2]] as const
+    : [[0, 1], [1, 3]] as const
+  return segmentPairs.every(([from, to]) => {
+    bones[from]!.getWorldPosition(start)
+    bones[to]!.getWorldPosition(end)
+    return start.toArray().every(Number.isFinite) && end.toArray().every(Number.isFinite) && start.distanceToSquared(end) > 1e-12
+  })
 }
 
 export function createComplexBipedIkController(
@@ -74,11 +98,19 @@ export function createComplexBipedIkController(
     const contact = contactById.get(definition.contactId)
     const contactBone = contact && runtime.bonesById.get(contact.boneId)
     const continuous = bones.every(Boolean) && bones.every((bone, index) => index === 0 || bone!.parent === bones[index - 1])
-    if (!contact || !contactBone || bones.length < 3 || !continuous) {
+    const contactFollowsTip = Boolean(contactBone && bones.at(-1) && isDescendantOf(contactBone, bones.at(-1)!))
+    if (!contact || !contactBone || bones.length < 3 || !continuous || !contactFollowsTip) {
       report(`invalid-limb:${definition.id}`, `${definition.id} 的骨骼链或接触点无效，该肢体已回退为 FK。`)
       continue
     }
-    const solver = chooseSolver(definition)
+    const analyticMapping = canUseAnalyticMapping(bones as Bone[], contactBone)
+    if (definition.solver === 'analytic-two-bone' && !analyticMapping) {
+      report(`invalid-analytic:${definition.id}`, `${definition.id} 不满足解析式两段链映射，该肢体已回退为 FK。`)
+      continue
+    }
+    const solver = definition.solver === 'fabrik' || (definition.solver === 'auto' && !analyticMapping)
+      ? 'fabrik'
+      : 'analytic-two-bone'
     report(`solver:${definition.id}`, `${definition.id} 使用${solver === 'fabrik' ? '受约束 FABRIK' : '解析式 Two Bone IK'}。`)
     limbs.push({
       definition,
@@ -90,10 +122,14 @@ export function createComplexBipedIkController(
       fallbackContactPosition: contactBone.position.clone(),
       solver,
       anchor: new Vector3(),
+      anchorOffset: new Vector3(),
       anchored: false,
+      capturedThisFrame: false,
       positions: (bones as Bone[]).map(() => [0, 0, 0]),
       targetInput: [0, 0, 0],
       poleInput: [0, 0, 0],
+      terminalStart: [0, 0, 0],
+      terminalEnd: [0, 0, 0],
     })
   }
 
@@ -101,7 +137,6 @@ export function createComplexBipedIkController(
   const childWorldPosition = new Vector3()
   const desiredDirection = new Vector3()
   const currentDirection = new Vector3()
-  const contactOffset = new Vector3()
   const target = new Vector3()
   const deltaWorld = new Quaternion()
   const limitedWorldDelta = new Quaternion()
@@ -109,11 +144,7 @@ export function createComplexBipedIkController(
   const parentWorldInverse = new Quaternion()
   const localDelta = new Quaternion()
   const identity = new Quaternion()
-  const savedContactWorldRotation = new Quaternion()
-  const parentInverseMatrix = new Matrix4()
   const currentContact = new Vector3()
-  const anchorInParent = new Vector3()
-  const contactInParent = new Vector3()
   let lastClipHash: string | undefined
   let lastResolvedTimeMs: number | undefined
   let disposed = false
@@ -143,15 +174,14 @@ export function createComplexBipedIkController(
 
   const applyWorldDirectionCorrection = (
     bone: Bone,
-    child: Bone,
+    currentEndWorld: Vector3,
     solvedStart: readonly number[],
     solvedEnd: readonly number[],
     mix: number,
     maxCorrectionRadians: number,
   ) => {
     bone.getWorldPosition(worldPosition)
-    child.getWorldPosition(childWorldPosition)
-    currentDirection.subVectors(childWorldPosition, worldPosition)
+    currentDirection.subVectors(currentEndWorld, worldPosition)
     desiredDirection.set(
       solvedEnd[0]! - solvedStart[0]!,
       solvedEnd[1]! - solvedStart[1]!,
@@ -179,9 +209,7 @@ export function createComplexBipedIkController(
     const mix = clamp01(limb.definition.weight) * actionWeight * clamp01(state.weight) * clamp01(state.confidence)
     if (mix <= 0) return
 
-    limb.contactBone.getWorldQuaternion(savedContactWorldRotation)
-    contactOffset.set(...limb.contact.localPosition).applyQuaternion(savedContactWorldRotation)
-    target.copy(limb.anchor).sub(contactOffset)
+    target.copy(limb.anchor).sub(limb.anchorOffset)
     for (const [index, bone] of limb.bones.entries()) {
       bone.getWorldPosition(worldPosition)
       const position = limb.positions[index]!
@@ -209,8 +237,10 @@ export function createComplexBipedIkController(
         report(`solve:${limb.definition.id}`, `${limb.definition.id} 的解析式 IK 无法求解，本帧保留 FK。`)
         return
       }
-      applyWorldDirectionCorrection(limb.bones[0]!, limb.bones[1]!, result.positions[0]!, result.positions[1]!, mix, limb.definition.maxCorrectionRadians)
-      applyWorldDirectionCorrection(limb.bones[1]!, limb.bones.at(-1)!, result.positions[1]!, result.positions[2]!, mix, limb.definition.maxCorrectionRadians)
+      limb.bones[1]!.getWorldPosition(childWorldPosition)
+      applyWorldDirectionCorrection(limb.bones[0]!, childWorldPosition, result.positions[0]!, result.positions[1]!, mix, limb.definition.maxCorrectionRadians)
+      limb.bones.at(-1)!.getWorldPosition(childWorldPosition)
+      applyWorldDirectionCorrection(limb.bones[1]!, childWorldPosition, result.positions[1]!, result.positions[2]!, mix, limb.definition.maxCorrectionRadians)
     }
     else {
       const result = solveConstrainedFabrik({
@@ -226,9 +256,10 @@ export function createComplexBipedIkController(
         return
       }
       for (let index = 0; index < limb.bones.length - 1; index += 1) {
+        limb.bones[index + 1]!.getWorldPosition(childWorldPosition)
         applyWorldDirectionCorrection(
           limb.bones[index]!,
-          limb.bones[index + 1]!,
+          childWorldPosition,
           result.positions[index]!,
           result.positions[index + 1]!,
           mix,
@@ -237,25 +268,24 @@ export function createComplexBipedIkController(
       }
     }
 
-    // IK 只修正腿链；脚部维持 FK 给出的世界朝向，避免锁定时鞋底持续滚转。
-    const parent = limb.contactBone.parent
-    if (parent) {
-      parent.getWorldQuaternion(parentWorldInverse).invert()
-      limb.contactBone.quaternion.copy(parentWorldInverse).multiply(savedContactWorldRotation).normalize()
-      runtime.object.updateMatrixWorld(true)
-    }
-
-    // 有限权重与单帧角钳制会留下微小位置残差；只平移脚部刚性末端，不改变求解链段长。
+    // 末端只能通过 tip/ankle Quaternion 对齐 contact 方向，禁止改动任何腿或脚骨骼局部 position。
+    const tipBone = limb.bones.at(-1)!
+    tipBone.getWorldPosition(worldPosition)
     readContactWorld(limb, currentContact)
-    if (parent && currentContact.distanceToSquared(limb.anchor) > 1e-12) {
-      parentInverseMatrix.copy(parent.matrixWorld).invert()
-      anchorInParent.copy(limb.anchor).applyMatrix4(parentInverseMatrix)
-      contactInParent.copy(currentContact).applyMatrix4(parentInverseMatrix)
-      // locked 阶段的契约是世界坐标稳定；acquiring/releasing 才按连续权重渐入渐出。
-      const positionCorrectionWeight = state.phase === 'locked' ? 1 : mix
-      limb.contactBone.position.add(anchorInParent.sub(contactInParent).multiplyScalar(positionCorrectionWeight))
-      runtime.object.updateMatrixWorld(true)
-    }
+    limb.terminalStart[0] = worldPosition.x
+    limb.terminalStart[1] = worldPosition.y
+    limb.terminalStart[2] = worldPosition.z
+    limb.terminalEnd[0] = limb.anchor.x
+    limb.terminalEnd[1] = limb.anchor.y
+    limb.terminalEnd[2] = limb.anchor.z
+    applyWorldDirectionCorrection(
+      tipBone,
+      currentContact,
+      limb.terminalStart,
+      limb.terminalEnd,
+      mix,
+      limb.definition.maxCorrectionRadians,
+    )
   }
 
   return {
@@ -269,21 +299,27 @@ export function createComplexBipedIkController(
         return
       }
       const actionWeight = clamp01(weightInput)
-      if (actionWeight <= 0 || compilation.status !== 'ready') return
-
       restoreIkTranslations()
       runtime.object.updateMatrixWorld(true)
+      if (actionWeight <= 0 || compilation.status !== 'ready') {
+        clearTemporalState()
+        return
+      }
       if (hasDiscontinuity(sample)) for (const limb of limbs) limb.anchored = false
       lastClipHash = sample.clipHash
       lastResolvedTimeMs = sample.resolvedTimeMs
 
       const findState = (contactId: string) => sample.contactStates.find(state => state.contactId === contactId)
       for (const limb of limbs) {
+        limb.capturedThisFrame = false
         const state = findState(limb.definition.contactId)
         if (!state || state.weight <= 0) limb.anchored = false
         else if (!limb.anchored) {
           readContactWorld(limb, limb.anchor)
+          limb.bones.at(-1)!.getWorldPosition(worldPosition)
+          limb.anchorOffset.subVectors(limb.anchor, worldPosition)
           limb.anchored = true
+          limb.capturedThisFrame = true
         }
       }
 
@@ -307,7 +343,7 @@ export function createComplexBipedIkController(
 
       for (const limb of limbs) {
         const state = findState(limb.definition.contactId)
-        if (!state || state.weight <= 0) continue
+        if (!state || state.weight <= 0 || limb.capturedThisFrame) continue
         for (const [index, bone] of limb.bones.entries()) limb.fallbackRotations[index]!.copy(bone.quaternion)
         limb.fallbackContactPosition.copy(limb.contactBone.position)
         try { solveLimb(limb, state, actionWeight) }
