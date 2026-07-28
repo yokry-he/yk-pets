@@ -286,3 +286,10 @@
 - 本批计划覆盖统一约束契约、解析式求解、FABRIK 基础、足底锁定、五个基础动作接触与重心优化及浏览器验收；不把完整 Root Motion、地形检测、正式四足/机甲 Profile、高细节拓扑或动作特效标记完成。
 - 权威设计文档为 `docs/zh-CN/双足与多骨骼链混合IK设计.md`。
 - 可执行计划为 `docs/zh-CN/双足与多骨骼链混合IK实施计划.md`，分为 Profile 契约、编译传播、解析式 IK、受约束 FABRIK、接触采样、Three 足锁控制器、renderer 生命周期和阶段验收八个任务；必须逐任务测试驱动、提交并推送。
+
+## 29. 混合 IK Profile 契约批次
+
+- `CharacterRigProfile` 新增可选的 `limbIk` 契约，统一声明肢体链、自动/解析式/FABRIK 求解偏好、接触点、极向量、伸展上限、单帧最大修正角和混合权重；旧 Profile 不声明该字段时保持兼容。
+- Profile 校验现已覆盖肢体 ID 唯一性、至少三骨骼、骨骼存在且父级路径连续、接触点存在、非零有限极向量，以及伸展、修正角和权重的安全范围，并继续按声明顺序返回稳定诊断。
+- `biped-pet/v1` 已为左右腿声明 `auto` 混合 IK 链，后续运行时可优先选择解析式 Two Bone IK，并在不满足标准链条件时回退受约束 FABRIK。
+- 本批只完成框架无关的 Profile 契约。角色编译传播、解析式求解器、受约束 FABRIK、动作接触采样、Three 足底锁定和浏览器验收仍未完成；`bipedPetRuntimeIkComplete` 与 `bipedPetFootLockComplete` 必须继续保持 `false`。

@@ -89,6 +89,7 @@
     "bipedPetSemanticMotionPhase1DeliveryComplete": true,
     "bipedPetHybridIkDesignComplete": true,
     "bipedPetHybridIkPlanComplete": true,
+    "bipedPetHybridIkProfileContractComplete": true,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
     "bipedPetRootMotionComplete": false,

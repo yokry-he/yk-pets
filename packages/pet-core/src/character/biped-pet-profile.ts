@@ -95,6 +95,10 @@ export const BIPED_PET_RIG_PROFILE: CharacterRigProfile = {
     { id: 'foot.left', boneId: 'foot.left', kind: 'foot', localPosition: [0, -.08, .08], localRotation: IDENTITY },
     { id: 'foot.right', boneId: 'foot.right', kind: 'foot', localPosition: [0, -.08, .08], localRotation: IDENTITY },
   ],
+  limbIk: [
+    { id: 'leg.left', solver: 'auto', boneIds: ['thigh.left', 'knee.left', 'calf.left', 'ankle.left'], contactId: 'foot.left', poleAxis: [0, 0, 1], maxStretchRatio: 1, maxCorrectionRadians: .85, weight: 1 },
+    { id: 'leg.right', solver: 'auto', boneIds: ['thigh.right', 'knee.right', 'calf.right', 'ankle.right'], contactId: 'foot.right', poleAxis: [0, 0, 1], maxStretchRatio: 1, maxCorrectionRadians: .85, weight: 1 },
+  ],
   sockets: [
     { id: 'hand.left', boneId: 'hand.left', localPosition: ZERO, localRotation: IDENTITY },
     { id: 'hand.right', boneId: 'hand.right', localPosition: ZERO, localRotation: IDENTITY },

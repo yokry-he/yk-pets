@@ -163,6 +163,28 @@ test('biped-pet/v1 提供完整双足核心和可选附属链', () => {
   assert.equal(profile.contacts.filter(item => item.kind === 'foot').length, 2)
 })
 
+test('biped-pet/v1 为左右腿声明可验证的自动混合 IK', () => {
+  const limbs = BIPED_PET_RIG_PROFILE.limbIk ?? []
+  assert.deepEqual(limbs.map(item => item.id), ['leg.left', 'leg.right'])
+  assert.ok(limbs.every(item => item.solver === 'auto'))
+  assert.ok(limbs.every(item => item.boneIds.length >= 3))
+  assert.deepEqual(validateRigProfile(BIPED_PET_RIG_PROFILE), [])
+})
+
+test('Rig Profile 会拒绝断裂链、未知接触点和非法 IK 限制', () => {
+  const profile = { ...structuredClone(BIPED_PET_RIG_PROFILE), limbIk: [{
+    id: 'broken', solver: 'auto' as const, boneIds: ['thigh.left', 'ankle.right'],
+    contactId: 'missing', poleAxis: [0, 0, 0] as const, maxStretchRatio: 2,
+    maxCorrectionRadians: Number.NaN, weight: -1,
+  }] }
+  const diagnostics = validateRigProfile(profile)
+  assert.ok(diagnostics.some(item => item.includes('broken parent path')))
+  assert.ok(diagnostics.some(item => item.includes('unknown contact')))
+  assert.ok(diagnostics.some(item => item.includes('poleAxis')))
+  assert.ok(diagnostics.some(item => item.includes('maxStretchRatio')))
+  assert.ok(diagnostics.some(item => item.includes('weight')))
+})
+
 test('Rig Profile 校验对畸形输入不抛异常且返回稳定诊断', () => {
   const cases: readonly { name: string; profile: unknown; diagnostics: readonly string[] }[] = [
     {

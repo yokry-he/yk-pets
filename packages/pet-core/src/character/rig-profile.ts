@@ -45,6 +45,19 @@ export interface OptionalRigChainDefinition {
   defaultSegments: number
 }
 
+export type CharacterIkSolver = 'analytic-two-bone' | 'fabrik' | 'auto'
+
+export interface CharacterLimbIkDefinition {
+  id: string
+  solver: CharacterIkSolver
+  boneIds: readonly string[]
+  contactId: string
+  poleAxis: RigVector3
+  maxStretchRatio: number
+  maxCorrectionRadians: number
+  weight: number
+}
+
 export interface CharacterRigProfile {
   id: CharacterRigProfileId
   bones: readonly RigBoneDefinition[]
@@ -53,6 +66,7 @@ export interface CharacterRigProfile {
   jointLimits: readonly JointLimitDefinition[]
   contacts: readonly RigContactDefinition[]
   sockets: readonly RigSocketDefinition[]
+  limbIk?: readonly CharacterLimbIkDefinition[]
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -65,6 +79,7 @@ const PROFILE_IDS = new Set<CharacterRigProfileId>(['biped-pet/v1', 'humanoid/v1
 const SIDES = new Set<CharacterSide>(['center', 'left', 'right'])
 const OPTIONAL_CHAIN_IDS = new Set<OptionalRigChainDefinition['id']>(['ears', 'tail', 'antennae', 'wings'])
 const CONTACT_KINDS = new Set<RigContactDefinition['kind']>(['foot', 'hand', 'body'])
+const IK_SOLVERS = new Set<CharacterIkSolver>(['analytic-two-bone', 'fabrik', 'auto'])
 
 /**
  * 返回按 Profile 声明顺序生成的稳定诊断，供导入、生成和编辑器在不中断用户流程时呈现问题。
@@ -90,6 +105,7 @@ export function validateRigProfile(profile: unknown): string[] {
   const jointLimits = readArray('jointLimits')
   const contacts = readArray('contacts')
   const sockets = readArray('sockets')
+  const limbIk = profile.limbIk === undefined ? [] : readArray('limbIk')
   const boneIds = new Set<string>()
   const parentByBoneId = new Map<string, string | undefined>()
   let rootCount = 0
@@ -194,6 +210,41 @@ export function validateRigProfile(profile: unknown): string[] {
     else if (!boneIds.has(contact.boneId)) diagnostics.push(`${path}.boneId: unknown bone "${contact.boneId}"`)
     if (!isFiniteVector3(contact.localPosition)) diagnostics.push(`${path}.localPosition: expected finite Vector3`)
     if (!isFiniteQuaternion(contact.localRotation)) diagnostics.push(`${path}.localRotation: expected finite Quaternion`)
+  }
+  const limbIds = new Set<string>()
+  for (const [index, limb] of limbIk.entries()) {
+    const path = `limbIk[${index}]`
+    if (!isRecord(limb)) {
+      diagnostics.push(`${path}: expected object`)
+      continue
+    }
+    if (!isText(limb.id)) diagnostics.push(`${path}.id: expected non-empty string`)
+    else {
+      if (limbIds.has(limb.id)) diagnostics.push(`${path}.id: duplicate limb IK id "${limb.id}"`)
+      limbIds.add(limb.id)
+    }
+    if (!IK_SOLVERS.has(limb.solver as CharacterIkSolver)) diagnostics.push(`${path}.solver: expected analytic-two-bone, fabrik, or auto`)
+    if (!Array.isArray(limb.boneIds)) diagnostics.push(`${path}.boneIds: expected array`)
+    else {
+      if (limb.boneIds.length < 3) diagnostics.push(`${path}.boneIds: expected at least 3 bones`)
+      for (const [boneIndex, boneId] of limb.boneIds.entries()) {
+        const bonePath = `${path}.boneIds[${boneIndex}]`
+        if (!isText(boneId)) diagnostics.push(`${bonePath}: expected non-empty string`)
+        else if (!boneIds.has(boneId)) diagnostics.push(`${bonePath}: unknown bone "${boneId}"`)
+        if (boneIndex > 0 && isText(boneId)) {
+          const parentId = limb.boneIds[boneIndex - 1]
+          if (isText(parentId) && parentByBoneId.get(boneId) !== parentId) {
+            diagnostics.push(`${path}.boneIds: broken parent path between "${parentId}" and "${boneId}"`)
+          }
+        }
+      }
+    }
+    if (!isText(limb.contactId)) diagnostics.push(`${path}.contactId: expected non-empty string`)
+    else if (!contactIds.has(limb.contactId)) diagnostics.push(`${path}.contactId: unknown contact "${limb.contactId}"`)
+    if (!isFiniteVector3(limb.poleAxis) || Math.hypot(...limb.poleAxis) === 0) diagnostics.push(`${path}.poleAxis: expected non-zero finite Vector3`)
+    if (typeof limb.maxStretchRatio !== 'number' || !Number.isFinite(limb.maxStretchRatio) || limb.maxStretchRatio < .8 || limb.maxStretchRatio > 1) diagnostics.push(`${path}.maxStretchRatio: expected finite number in [0.8, 1]`)
+    if (typeof limb.maxCorrectionRadians !== 'number' || !Number.isFinite(limb.maxCorrectionRadians) || limb.maxCorrectionRadians <= 0 || limb.maxCorrectionRadians > Math.PI) diagnostics.push(`${path}.maxCorrectionRadians: expected finite number in (0, Math.PI]`)
+    if (typeof limb.weight !== 'number' || !Number.isFinite(limb.weight) || limb.weight < 0 || limb.weight > 1) diagnostics.push(`${path}.weight: expected finite number in [0, 1]`)
   }
   const socketIds = new Set<string>()
   for (const [index, socket] of sockets.entries()) {
