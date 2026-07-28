@@ -85,10 +85,28 @@ function rendererLifecycleFailures(source) {
   return issues
 }
 
+function hasExclusiveRendererBranches(source) {
+  const opening = /<template\b[^>]*>/.exec(source)
+  const closingIndex = source.lastIndexOf('</template>')
+  if (!opening || closingIndex < opening.index + opening[0].length) return false
+  // 只处理 Vue template 内的 HTML 注释，避免改写 script 中的字符串、模板字符串或 JS/TS 注释。
+  const template = source.slice(opening.index + opening[0].length, closingIndex).replace(/<!--[\s\S]*?-->/g, '')
+  return /<TresGroup\b[^>]*\bv-if="showComplexRenderer"[^>]*>[\s\S]*?<ComplexBipedPetRenderer[\s\S]*?<\/TresGroup>\s*<ProceduralPet\b[^>]*\bv-else/.test(template)
+}
+
 // 负例确保门禁检查真实调用和生命周期顺序，不能靠注释中的正确片段蒙混通过。
 const lifecycleFixture = renderer.replace(/createComplexBipedMotionController\s*\(\s*runtime\.value\s*\)/, 'createComplexBipedMotionController(runtime.value, compilation)')
 expect(rendererLifecycleFailures(`/* createComplexBipedMotionController(runtime.value, compilation) */\n${lifecycleFixture.replace('createComplexBipedMotionController(runtime.value, compilation)', 'createComplexBipedMotionController(runtime.value)')}`).includes('控制器必须消费创建当前 runtime 的同一局部 compilation'), '门禁自身必须拒绝仅靠注释伪造 compilation 接线')
 expect(rendererLifecycleFailures(lifecycleFixture.replace(/controller\.reset\(\)\s*try\s*\{\s*const compiledClip/, 'try { const compiledClip')).includes('动作编译替换 clip 前必须先 reset'), '门禁自身必须拒绝替换 clip 后才 reset')
+const commentedExclusiveFixture = `<template>
+  <ComplexBipedPetRenderer />
+  <ProceduralPet />
+  <!--
+    <TresGroup v-if="showComplexRenderer"><ComplexBipedPetRenderer /></TresGroup>
+    <ProceduralPet v-else />
+  -->
+</template>`
+expect(!hasExclusiveRendererBranches(commentedExclusiveFixture), '门禁自身必须拒绝用 Vue HTML 注释伪造简单/复杂 renderer 互斥结构')
 
 expect(canvas.includes('motionAsset?: StudioMotionAssetV2 | null'), 'Canvas 必须声明复杂动作资产输入')
 expect(canvas.includes('motionTimeMs?: number'), 'Canvas 必须声明复杂动作时间输入')
@@ -99,7 +117,7 @@ expect(renderer.includes('sampleBipedPetMotion'), '复杂 renderer 必须使用�
 expect(renderer.includes('createComplexBipedMotionController'), '复杂 renderer 必须使用唯一 Three 动作控制器')
 for (const failure of rendererLifecycleFailures(renderer)) expect(false, failure)
 expect(!renderer.includes('<TresCanvas') && !renderer.includes('new WebGLRenderer'), '复杂 renderer 禁止创建第二个 WebGL 场景')
-expect(/<TresGroup\b[^>]*\bv-if="showComplexRenderer"[^>]*>[\s\S]*?<ComplexBipedPetRenderer[\s\S]*?<\/TresGroup>\s*<ProceduralPet\b[^>]*\bv-else/.test(canvas), '简单与复杂 renderer 必须保持互斥')
+expect(hasExclusiveRendererBranches(canvas), '简单与复杂 renderer 必须保持互斥')
 expect(!/createComplexBiped(?:Motion|Ik)Controller/.test(withoutComments(simpleRenderer)), '简单 renderer 禁止创建复杂 IK 或动作控制器')
 expect(motionPage.includes(':motion-asset="draft"'), '动作工坊必须向唯一 Canvas 传递当前草稿')
 expect(motionPage.includes(':motion-time-ms="editor.playheadTimeMs"'), '动作工坊必须向唯一 Canvas 传递播放指针')
