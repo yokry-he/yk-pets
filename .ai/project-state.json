@@ -119,6 +119,7 @@
     "bipedPetProductionMechProfileComplete": false,
     "bipedPetHighDetailTopologyComplete": false,
     "bipedPetRootMotionContractComplete": true,
+    "bipedPetMotionVfxSignalsComplete": true,
     "bipedPetRootMotionComplete": false,
     "bipedPetMotionVfxComplete": false,
     "crossBrowserGpuManualAcceptanceComplete": false
@@ -237,7 +238,8 @@
     "biped-pet-root-motion-solver",
     "biped-pet-root-motion-shared-ballistic-timeline",
     "biped-pet-root-motion-action-aware-boundaries",
-    "biped-pet-root-motion-canonical-ballistic-transitions"
+    "biped-pet-root-motion-canonical-ballistic-transitions",
+    "biped-pet-motion-vfx-signals"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -256,17 +258,17 @@
   ],
   "nextPhase": "biped-pet-root-motion-vfx-and-acceptance",
   "latestCompletedBatch": {
-    "id": "biped-pet-root-motion-solver",
+    "id": "biped-pet-motion-vfx-signals",
     "domainPackage": "packages/pet-core",
     "rendererModified": false,
     "visualCasesModified": false,
-    "ballisticTimelineWorkBudget": 512,
-    "ballisticTimelineUnknownPolicy": "preserve-authorization",
-    "ballisticTouchdownEvidencePolicy": "canonical-component-transitions",
+    "motionVfxSignalThresholdPolicy": "strictly-greater-than",
+    "motionVfxBurstIdentityPolicy": "clip-kind-rounded-requested-time",
+    "motionVfxSustainIdentityPolicy": "clip-kind-active",
     "automatedCoverage": [
       "corepack pnpm --filter @yk-pets/pet-core test",
       "corepack pnpm --filter @yk-pets/pet-core typecheck",
-      "corepack pnpm run test:studio-biped-root-motion-probe",
+      "corepack pnpm typecheck",
       "node scripts/check-documentation.mjs",
       "node scripts/check-ai-handoff.mjs",
       "git diff --check"

@@ -385,7 +385,7 @@
 - 第一批覆盖行走循环、冲刺急停和起跳落地，并自动生成落地冲击环、落地尘点、速度拖尾和急停摩擦粒子。特效由动作标签与实际速度、减速度、落地冲量共同授权，使用有界对象池，不建设通用粒子编辑器。
 - 暂停保持累计状态，停止、普通回拖、异常时间跳跃、Clip 切换、runtime 重建和释放会清除旧速度、周期身份、足底锚与瞬时特效。单项失败只关闭对应 Root Motion 或 VFX，保持 FK/IK 安全路径。
 - 权威设计文档为 `docs/zh-CN/双足萌宠混合RootMotion与运动特效设计.md`。当前只把设计标记完成；`bipedPetRootMotionComplete`、`bipedPetMotionVfxComplete`、正式四足/机甲 Profile、高细节拓扑和跨浏览器 GPU 验收仍保持 `false`。
-- 可执行计划为 `docs/zh-CN/双足萌宠混合RootMotion与运动特效实施计划.md`，共八个 TDD 批次；每个修改 `apps/` 或 `packages/` 的提交都必须同步 AI 状态与交接上下文并立即推送。契约批次和第 39 节纯数值 Root Motion 求解已完成；Three 运行时消费和 VFX 生产实现仍未开始。
+- 可执行计划为 `docs/zh-CN/双足萌宠混合RootMotion与运动特效实施计划.md`，共八个 TDD 批次；每个修改 `apps/` 或 `packages/` 的提交都必须同步 AI 状态与交接上下文并立即推送。契约批次、第 39 节纯数值 Root Motion 求解及第 40 节确定性 VFX 信号已完成；Three 运行时消费和 VFX 对象池仍未开始。
 
 ## 38. 双足萌宠 Root Motion 契约与编译传播批次
 
@@ -411,4 +411,12 @@
 - `normalizeBipedPetRootMotion`、编译缓存、`resolveMotionTime` 与数值采样统一复用 `normalizeMotionDurationMs`：`1200.4→1200`、小于 100→100、大于 60000→60000，非有限值→1200。规范化结果递归冻结并在 `WeakMap` 绑定 canonical duration；高频运行时必须在资产编译阶段规范化一次并复用 canonical 定义。公开 raw/unknown 路径每次都防御读取、复制、清洗并冻结，明确保留其边界安全成本，不以可变对象身份缓存吞掉后续修改。
 - `motionIntensity` 由实际 applied 线速度与角速度归一化，`brakeIntensity` 使用 brake 窗口内的有界 smoothstep 脉冲，`landingImpulse` 使用上述合成落地启发式强度；三者都受动作权重和 `1e-12` 稳定零阈值约束，只作为后续特效消费信号，本批不创建任何 VFX。
 - `pet-core` 自动测试增至 207 项；新增时间线直接组件/转换、低重叠与低相邻等价、真实阈值 touchdown、精确相邻合并、`.001/.1/1-ULP` 正 gap 拆分、居中与偏心 overlap 内部 grounded valley 拆分、微窗口峰心前/正中/后及多个微窗口的真峰稳定性、`.25/.4/.45` 强度阈值两侧、2/3/4/5/6 个常规错峰窗口的真峰/单 touchdown/帧细分一致性、Bernstein 局部限制与全局权重归一化、40 组固定种子错峰预算上界、resolver canonical 局部端点包含判定、exact seam 分段侧别与同 timestamp 顺序、不可表示 iteration 锚的保守回退、once/loop/ping-pong 双向锚点、huge iteration 和帧细分不变性回归。版本化命令 `corepack pnpm run test:studio-biped-root-motion-probe` 继续固定执行 10,000 组有状态输入、42 个正反向 ULP touchdown、canonical 64 弹道窗授权链、4 组峰心前/正中/后/多微窗真峰稳定性和 40 组 2–6 窗固定种子错峰预算统计，并保留 once/loop/ping-pong 共 6 个高低强度精确相邻帧细分案例。错峰固定种子集 `exhausted=0`，最大 `179/512` work unit，并由测试锁定不超过 `192`；64 窗场景的 63 个尾窗峰值最高约 `2.9999986e-12`，严格低于 `4e-12` 世界接地阈值，共享分析仍只含 `129` 个结构边界、`64` 个支撑分量和 `502/512` work unit，`exhausted=false`。固定种子分类仍为 `1707 solved / 8272 clamped / 10 reset / 11 blocked`，另命中 `1169` 次 loop 接缝、`344` 次 applied landing 与 `3978` 次 brake；42 个 ULP 探针全部通过。每类 100,000 次 1/64 窗 raw/canonical reset 对照仍只观测防御规范化成本；每类 2,000 帧 canonical 连续弹道热路径均观察到 `200` 个授权帧和 `100` 次真实消费。所有耗时只作本机观测，不设置跨机器脆弱阈值。
-- 本批仍未让 Three 运行时容器消费这些累计/增量结果，也未实现任务 3 的确定性 VFX 信号消费或对象池。`.ai/project-state.json` 的完成项包含 `biped-pet-root-motion-solver`、`biped-pet-root-motion-shared-ballistic-timeline`、`biped-pet-root-motion-action-aware-boundaries` 与 `biped-pet-root-motion-canonical-ballistic-transitions`；`bipedPetRootMotionComplete`、`bipedPetMotionVfxComplete` 与跨浏览器 GPU 验收继续保持 `false`。
+- 本批之后第 40 节已完成任务 3 的确定性 VFX 信号派生；Three 运行时容器仍未消费这些累计/增量结果，VFX 对象池也尚未实现。`.ai/project-state.json` 的完成项包含 `biped-pet-root-motion-solver`、`biped-pet-root-motion-shared-ballistic-timeline`、`biped-pet-root-motion-action-aware-boundaries`、`biped-pet-root-motion-canonical-ballistic-transitions` 与 `biped-pet-motion-vfx-signals`；`bipedPetRootMotionComplete`、`bipedPetMotionVfxComplete` 与跨浏览器 GPU 验收继续保持 `false`。
+
+## 40. 双足萌宠确定性运动特效信号批次
+
+- `@yk-pets/pet-core` 新增框架无关的 `deriveBipedPetMotionVfxSignals`。它只组合已求解 Root Motion 的 `motionIntensity`、`landingImpulse`、`brakeIntensity` 与动作显式 `vfxTags`，不会从渲染状态、墙钟时间或隐藏历史猜测特效。没有授权标签、状态为 `reset/blocked`、请求时间倒退或同一时间重复采样时固定返回独立冻结的空数组。
+- 四种首批信号使用严格“大于”阈值：`landing-ring=.25`、`landing-dust=.4`、`speed-trail=.55`、`brake-sparks=.45`；等于阈值时不触发。`landingImpulse>0` 是实际 touchdown 的一次性权威；当前求解器在穿入接地阈值的同一帧先把 phase 归类为 `grounded`，所以落地环和尘点接受 `grounded|landing` 并拒绝 `takeoff|airborne`。急停火花要求 `grounded`，速度拖尾可随有效移动相位持续。落地环、尘点与急停火花是 `burst`，ID 为 ``${clipHash}:${kind}:${Math.round(requestedTimeMs)}``；速度拖尾是 `sustain`，ID 为 ``${clipHash}:${kind}:active``。信号按完整 Unicode code point 排序，重复标签只输出一次。
+- 公共入口防御负数/非有限请求时间、空白、控制字符、超 256 code-point 或非字符串 Clip 哈希，畸形数组、非法状态/相位、非有限强度和 Proxy getter 异常；任何失败都不抛出、不突变输入。每次结果及其信号对象都独立冻结，不借对象身份保存运行时状态。当前寿命预算为落地环/尘点 `480ms`、速度拖尾 `160ms`、急停火花 `320ms`，全部低于后续 Three 对象池的 `1200ms` 硬上限。
+- 本批按 TDD 先确认 9 项新测试因缺少公共 API 失败，再以独立 RED 锁定负时间和真实 ballistic touchdown 集成边界；`pet-core` 全量现为 217 项。覆盖标签授权、严格阈值两侧、burst 去重、sustain active 身份、同时间/倒退/reset/blocked、真实求解器 grounded touchdown、相位约束、非法 Clip 哈希、Unicode 身份、非有限信号、畸形/Proxy 输入、不突变、深冻结与不共享输出。
+- `.ai/project-state.json` 只新增 `bipedPetMotionVfxSignalsComplete=true` 与 `biped-pet-motion-vfx-signals` 完成项。Three 容器尚未消费 Root Motion，特效对象池和正式 renderer 生命周期尚未实现，因此 `bipedPetRootMotionComplete`、`bipedPetMotionVfxComplete`、正式四足/机甲 Profile、高细节拓扑与跨浏览器 GPU 验收继续保持 `false`。

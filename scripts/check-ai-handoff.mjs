@@ -199,6 +199,8 @@ if (state) {
   expect((state.completed || []).includes('biped-pet-hybrid-root-motion-vfx-plan'), '必须标记双足萌宠混合 Root Motion 与运动特效计划完成 / Hybrid biped Root Motion and motion-VFX plan must be marked complete')
   expect((state.completed || []).includes('biped-pet-root-motion-solver'), '必须标记框架无关 Root Motion 求解完成 / Framework-neutral Root Motion solver must be complete')
   expect((state.completed || []).includes('biped-pet-root-motion-shared-ballistic-timeline'), '必须标记 Root Motion 共享弹道时间线完成 / Shared Root Motion ballistic timeline must be complete')
+  expect(state.architecture?.bipedPetMotionVfxSignalsComplete === true, '必须标记确定性运动 VFX 信号模块完成 / Deterministic motion-VFX signal module must be complete')
+  expect((state.completed || []).includes('biped-pet-motion-vfx-signals'), '必须记录确定性运动 VFX 信号批次 / Deterministic motion-VFX signal batch must be recorded')
   for (const key of ['biped-pet-hybrid-ik-profile-contract', 'biped-pet-analytic-two-bone-ik', 'biped-pet-constrained-fabrik', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-hybrid-ik-phase-delivery']) expect((state.completed || []).includes(key), `必须标记混合 IK 交付项完成 / Hybrid-IK delivery item must be complete: ${key}`)
   expect((state.completed || []).includes('hybrid-ik-legacy-history-migration'), '必须标记混合 IK 历史门禁迁移完成 / Hybrid-IK history-gate migration must be complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
@@ -207,20 +209,20 @@ if (state) {
   for (const key of ['biped-pet-runtime-ik', 'biped-pet-foot-lock']) expect(!(state.notCompleted || []).includes(key), `已完成的混合 IK 交付项不得继续列为未完成 / Completed hybrid-IK item must not remain incomplete: ${key}`)
   expect(!(state.notCompleted || []).includes('biped-pet-quaternion-motion-compiler'), 'Quaternion 动作编译器已完成，不得继续列为未完成 / Completed Quaternion motion compiler must not remain incomplete')
   expect(state.nextPhase === 'biped-pet-root-motion-vfx-and-acceptance', '下一阶段必须是 Root Motion、动作特效与验收 / Next phase must be Root Motion, motion VFX, and acceptance')
-  const rootMotionCoverage = [
+  const motionVfxSignalCoverage = [
     'corepack pnpm --filter @yk-pets/pet-core test',
     'corepack pnpm --filter @yk-pets/pet-core typecheck',
-    'corepack pnpm run test:studio-biped-root-motion-probe',
+    'corepack pnpm typecheck',
     'node scripts/check-documentation.mjs',
     'node scripts/check-ai-handoff.mjs',
     'git diff --check',
   ]
-  expect(state.latestCompletedBatch?.id === 'biped-pet-root-motion-solver', '最新批次必须是框架无关 Root Motion 求解 / Latest batch must be the framework-neutral Root Motion solver')
-  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(rootMotionCoverage), 'Root Motion 批次 automatedCoverage 必须且只能列出真实验证项 / Root Motion automatedCoverage must contain only the actual verification items')
-  expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, '纯数值 Root Motion 批次不得声明渲染器或视觉案例修改 / Pure numeric Root Motion batch must not claim renderer or visual-case changes')
-  expect(state.latestCompletedBatch?.ballisticTimelineWorkBudget === 512, 'Root Motion 共享弹道时间线必须锁定单帧 512 work-unit 预算 / Shared ballistic timeline must lock the per-sample budget to 512 work units')
-  expect(state.latestCompletedBatch?.ballisticTimelineUnknownPolicy === 'preserve-authorization', 'Root Motion unknown 区间必须保留旧授权且不签发新授权 / Unknown ballistic ranges must preserve old authorization and issue no new authorization')
-  expect(state.latestCompletedBatch?.ballisticTouchdownEvidencePolicy === 'canonical-component-transitions', 'Root Motion touchdown 必须只由共享时间线的 canonical 组件转换签发 / Touchdown must be issued only by canonical component transitions from the shared timeline')
+  expect(state.latestCompletedBatch?.id === 'biped-pet-motion-vfx-signals', '最新批次必须是确定性运动 VFX 信号 / Latest batch must be deterministic motion-VFX signals')
+  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(motionVfxSignalCoverage), '运动 VFX 信号批次 automatedCoverage 必须且只能列出真实验证项 / Motion-VFX signal automatedCoverage must contain only the actual verification items')
+  expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, '纯领域 VFX 信号批次不得声明渲染器或视觉案例修改 / Domain-only VFX signals must not claim renderer or visual-case changes')
+  expect(state.latestCompletedBatch?.motionVfxSignalThresholdPolicy === 'strictly-greater-than', '运动 VFX 信号必须使用严格大于阈值 / Motion-VFX signals must use strict greater-than thresholds')
+  expect(state.latestCompletedBatch?.motionVfxBurstIdentityPolicy === 'clip-kind-rounded-requested-time', 'burst VFX 身份必须由 Clip、种类和舍入请求时间组成 / Burst VFX identity must use Clip, kind, and rounded requested time')
+  expect(state.latestCompletedBatch?.motionVfxSustainIdentityPolicy === 'clip-kind-active', 'sustain VFX 身份必须复用 active 身份 / Sustain VFX identity must reuse the active identity')
   expect((state.completed || []).includes('biped-pet-root-motion-action-aware-boundaries'), 'Root Motion action-aware 边界修复必须进入完成状态 / Action-aware Root Motion boundary repair must be recorded as complete')
   expect((state.completed || []).includes('biped-pet-root-motion-canonical-ballistic-transitions'), 'Root Motion canonical 弹道转换必须进入完成状态 / Canonical Root Motion ballistic transitions must be recorded as complete')
 }
