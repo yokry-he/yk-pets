@@ -183,6 +183,21 @@ const constructPoleHalfPlaneChain = (
     const result = mapToRig(planar)
     return validates(result) ? result : null
   }
+  const longestSegment = Math.max(...segmentLengths)
+  const longestSegmentCount = segmentLengths.filter(length => Math.abs(length - longestSegment) <= boundaryTolerance).length
+  if (targetDistance <= boundaryTolerance
+    && longestSegmentCount === 1
+    && Math.abs(2 * longestSegment - totalLength) <= boundaryTolerance) {
+    const longestIndex = segmentLengths.indexOf(longestSegment)
+    let travelled = 0
+    const planar: [number, number][] = [[0, 0]]
+    for (let index = 0; index < segmentLengths.length; index += 1) {
+      travelled += segmentLengths[index]! * (index === longestIndex ? 1 : -1)
+      planar.push([travelled, 0])
+    }
+    const result = mapToRig(planar)
+    return validates(result) ? result : null
+  }
   if (minimumReach > 0 && Math.abs(targetDistance - minimumReach) <= boundaryTolerance) {
     const longestIndex = segmentLengths.indexOf(Math.max(...segmentLengths))
     let travelled = 0
@@ -328,11 +343,13 @@ export const solveConstrainedFabrik = (input: ConstrainedFabrikInput): Constrain
   const root = [...positions[0]!] as RigVector3
   const segmentLengths: number[] = []
   let totalLength = 0
+  let longestSegmentLength = 0
   for (let index = 1; index < positions.length; index += 1) {
     const segmentLength = distance(positions[index - 1]!, positions[index]!)
     if (!Number.isFinite(segmentLength) || segmentLength <= LENGTH_EPSILON) return blockedResult(input)
     segmentLengths.push(segmentLength)
     totalLength += segmentLength
+    longestSegmentLength = Math.max(longestSegmentLength, segmentLength)
     if (!Number.isFinite(totalLength)) return blockedResult(input)
   }
 
@@ -340,12 +357,18 @@ export const solveConstrainedFabrik = (input: ConstrainedFabrikInput): Constrain
   const targetDirection = normalize(targetOffset) ?? normalize(subtract(positions.at(-1)!, root)) ?? [1, 0, 0]
   const targetDistance = distance(root, input.target)
   if (!Number.isFinite(targetDistance)) return blockedResult(input)
-  const physicalReach = computeSuffixReachIntervals(segmentLengths)
-  const minimumReach = physicalReach.minimum[0]!
+  const minimumReach = Math.max(0, 2 * longestSegmentLength - totalLength)
   const maximumReach = Math.min(totalLength, totalLength * input.maxStretchRatio)
   if (!Number.isFinite(maximumReach) || maximumReach <= 0 || minimumReach > maximumReach) return blockedResult(input)
-  const effectiveDistance = Math.max(minimumReach, Math.min(maximumReach, targetDistance))
-  const wasClamped = targetDistance < minimumReach || targetDistance > maximumReach
+  const reachComparisonTolerance = Math.max(
+    Number.EPSILON * 16,
+    Number.EPSILON * Math.max(totalLength, targetDistance, 1) * 16,
+  )
+  const wasClamped = targetDistance < minimumReach - reachComparisonTolerance
+    || targetDistance > maximumReach + reachComparisonTolerance
+  const effectiveDistance = wasClamped
+    ? Math.max(minimumReach, Math.min(maximumReach, targetDistance))
+    : targetDistance
   const effectiveTarget = wasClamped
     ? addScaled(root, targetDirection, effectiveDistance)
     : [...input.target] as RigVector3

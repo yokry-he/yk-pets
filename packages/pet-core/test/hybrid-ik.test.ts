@@ -203,6 +203,50 @@ test('FABRIK 两段单位链在目标等于根节点时由 Pole 决定折叠方�
   assert.ok(Math.abs(distance(result.positions[1]!, result.positions[2]!) - 1) <= 1e-8)
 })
 
+test('FABRIK 零距离且最长段等于其余和时直接共线闭合', () => {
+  const result = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [1, 0, 0], [3, 0, 0], [4, 0, 0]],
+    target: [0, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'solved')
+  assert.equal(result.error, 0)
+  assert.deepEqual(result.positions, [[0, 0, 0], [-1, 0, 0], [1, 0, 0], [0, 0, 0]])
+})
+
+test('FABRIK 非整数精确物理最小边界不因累计 ULP 漂移标记为 clamped', () => {
+  const lengths = [.6874339939560741, 7.705862665432504, 1.2902519720606502] as const
+  let cursor = 0
+  const positions: [number, number, number][] = [[0, 0, 0]]
+  for (const segmentLength of lengths) {
+    cursor += segmentLength
+    positions.push([cursor, 0, 0])
+  }
+  const result = solveConstrainedFabrik({
+    positions, target: [5.72817669941578, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'solved')
+  assert.equal(result.error, 0)
+  for (let index = 0; index < lengths.length; index += 1) {
+    assert.ok(Math.abs(distance(result.positions[index]!, result.positions[index + 1]!) - lengths[index]!) <= lengths[index]! * 1e-8)
+  }
+})
+
+test('FABRIK 的 ULP 容差不吞掉真实的微小可达域越界', () => {
+  const aboveMaximum = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [1, 0, 0], [2, 0, 0]],
+    target: [2 + 5e-13, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1,
+  })
+  const belowMinimum = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [2, 0, 0], [3, 0, 0]],
+    target: [1 - 5e-13, 0, 0], pole: [0, 1, 0], maxStretchRatio: 1,
+  })
+
+  assert.equal(aboveMaximum.status, 'clamped')
+  assert.equal(belowMinimum.status, 'clamped')
+})
+
 test('FABRIK 使用 Pole 打破直链同轴收缩奇异', () => {
   const result = solveConstrainedFabrik({
     positions: [[0, 0, 0], [1, 0, 0], [2, 0, 0]],
