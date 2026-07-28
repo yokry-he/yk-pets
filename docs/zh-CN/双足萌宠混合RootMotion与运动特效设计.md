@@ -58,11 +58,11 @@
 
 ### 4.2 框架无关领域层
 
-`packages/pet-core` 新增纯数值 Root Motion 求解器，输入当前与上一采样时间、动作时长与循环身份、归一化移动描述、角色身高和朝向、动作权重、调用方上一帧已经应用的局部位移与转向，以及可选的局部水平接触残差。
+`packages/pet-core` 新增纯数值 Root Motion 求解器，输入当前与上一采样时间、动作时长与循环身份、归一化移动描述、角色身高和朝向、动作权重、调用方上一帧已经应用的世界位移与转向，以及可选的局部水平接触残差。调用方只拥有 `previousAppliedWorld` 与 `previousAppliedTurnRadians` 这一组连续状态；局部 applied 状态不得作为第二份权威历史。
 
-输出把状态明确分为两层：`cumulativeLocal/World` 与 `cumulativeTurnRadians` 是由绝对动作时间直接求出的帧率无关期望目标；`appliedLocal/World` 与 `appliedTurnRadians` 是从调用方上一帧 applied 状态出发、经过单帧安全预算后本帧可以实际写入的绝对状态。`delta`、线速度和角速度只由 applied 轨迹派生；另外输出移动阶段、归一化运动强度、无量纲启发式落地强度、急停强度，以及 `solved | clamped | reset | blocked` 状态。
+输出把状态明确分为两层：`cumulativeLocal/World` 与 `cumulativeTurnRadians` 是由绝对动作时间直接求出的帧率无关期望目标；`appliedLocal/World` 与 `appliedTurnRadians` 是从调用方上一帧世界 applied 状态出发、经过单帧安全预算后本帧可以实际写入的绝对状态。求解器在世界空间追赶 `cumulativeWorld`，再用当前朝向的逆旋转派生 `appliedLocal` 与 `deltaLocal`。`deltaWorld` 必须等于 JavaScript 实际可表示的 `appliedWorld - previousAppliedWorld`，线速度、转向增量与角速度也只由实际写入值派生；因此极值加法没有改变位置时会返回零增量，而不会报告未实际发生的移动。另外输出移动阶段、归一化运动强度、无量纲启发式落地强度、急停强度，以及 `solved | clamped | reset | blocked` 状态。
 
-领域层不依赖 Vue、Pinia、TresJS、Three.js 或浏览器时钟。相同输入必须返回相同结果，调用方输入不得被修改。
+领域层不依赖 Vue、Pinia、TresJS、Three.js 或浏览器时钟。相同输入必须返回相同结果，调用方输入不得被修改。高频运行时必须在资产编译阶段规范化一次并复用与 canonical duration 绑定的冻结定义；公开 raw/unknown 输入路径每次都执行防御读取、复制、校验与冻结，供边界 API 使用，不应成为逐帧热路径，也不得用可变对象身份缓存掩盖调用方后续修改。
 
 ### 4.3 Three 运行时层
 
@@ -82,7 +82,7 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 
 ### 5.1 水平位移与步幅适配
 
-动作距离使用角色身高比例存储，运行时按当前编译模型尺寸换算。每个时间窗使用单调平滑进度曲线求期望累计距离；连续帧再从控制器保存的 `previousApplied` 指向当前 target 计算追赶误差，按单帧位移与转向预算钳制，输出 `applied = previousApplied + delta`。因此 target 不受预算污染，容器不会绕过预算，发生钳制后也能在后续帧继续追赶欠量。
+动作距离使用角色身高比例存储，运行时按当前编译模型尺寸换算。每个时间窗使用单调平滑进度曲线求期望累计距离；连续帧从控制器保存的 `previousAppliedWorld` 指向当前 `cumulativeWorld` 计算世界空间追赶误差与足锁修正的世界向量和，再对这一条向量应用单帧位移预算，输出 `appliedWorld = previousAppliedWorld + deltaWorld`。局部 applied 与 delta 统一由当前朝向逆变换得到。这样朝向改变不会旋转或重解释已经写入的世界历史，target 不受预算污染，容器不会绕过预算，发生钳制后也能在后续帧继续追赶欠量。
 
 行走循环的单周期位移必须可累加：跨越连续循环接缝时使用上一周期终点到下一周期起点的连续差值，不归零世界位置。普通时间倒退、异常大跳、Clip 切换或停止则清除累计身份和速度，不把预览拖动解释为反向移动。
 
@@ -101,7 +101,7 @@ Root Motion、IK 与 VFX 共用现有动作采样循环、Canvas、Skeleton 和�
 - 蓄力阶段保持双脚接触，降低骨盆并积累起跳强度；
 - 离地时释放接触锚，按模板高度与角色尺寸生成连续抛物线；
 - 空中阶段不启用足底锁定；
-- 弹道阶段方向使用 smoothstep 弧线的解析导数；所有 active 窗共享的正缩放避免极短窗求倒溢出，再按斜率绝对贡献和、`Number.EPSILON` 与有界 active 窗数构造相对求和误差界判零。这样阈值级微窗不能把主窗方向压到固定 epsilon 以下，对称窗口完全抵消时也不会把舍入残差误判为方向。落地只在合成弹道从下降转入接地时捕获；每个候选边界都用与窗长成比且有硬上限的双侧探针验证，物理前侧高于 `1e-12` 稳定零阈值且后侧 grounded 才是 touchdown。精确相邻窗显式视为连续，后侧探针则限制在物理方向下一个不同边界之前，因此任意正 gap 都不会被跨过。子窗结束而合成高度仍大于阈值时不触发；重叠、重复、相邻及刚高于阈值但中间存在 grounded gap 的极小延长尾窗也不能延迟或放大伪 touchdown。`landingImpulse` 是由跳高意图、动作权重和真实结束边界贡献窗权重占全部有效 ballistic 权重的比例得到的 `[0,1]` 无量纲启发式强度，不冒充 smoothstep 弹道端点导数为零时的真实碰撞速度；实际碰撞速度留给未来地形/物理层。
+- 移动阶段由实际 applied 轨迹决定：高度在角色身高的 `1e-12` 阈值内为 `grounded`，正的实际纵向增量为 `takeoff`，负增量为 `landing`，正高度且纵向静止为 `airborne`。target 的合成弹道只负责授权落地候选，不得提前驱动阶段或冲量。只有最近一个有效 target 转换是 touchdown、且 applied 世界高度本帧从阈值上方真正跨到地面时，才消费一次 `landingImpulse`；touchdown 后任何真实 target airborne（包括窗口内部越过稳定零阈值）都会清除过期授权。归一化 airborne 阈值固定为 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))`，同时匹配 target 自身相对零化和实际世界接地；查询通过固定节点预算和区间上界保持有界。低强度微窗若始终低于世界接地阈值、高强度微窗若仍被 target 相对阈值归零，都不得误清授权。暂停、reset、倒退、同时间重复采样、异常大跳、目标尚未经历 touchdown 或 stale touchdown 均不触发。候选仍用有界双侧探测区分重叠、重复、精确相邻与正 gap，强度仍由跳高意图、动作权重及结束贡献窗权重占比得到，是 `[0,1]` 无量纲启发式信号而非物理碰撞速度。
 
 第一阶段地面固定为角色预览平面，不做射线地形、坡度、台阶或碰撞体响应。
 

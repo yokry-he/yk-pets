@@ -42,8 +42,8 @@ export interface SampleBipedPetRootMotionInput {
   readonly characterHeight: number
   readonly facingRadians: number
   readonly actionWeight: number
-  /** 调用方上一帧实际应用的局部状态；与 previousAppliedTurnRadians 成对提供。 */
-  readonly previousAppliedLocal?: readonly [number, number, number]
+  /** 调用方上一帧实际写入容器的世界状态；与 previousAppliedTurnRadians 成对提供。 */
+  readonly previousAppliedWorld?: readonly [number, number, number]
   readonly previousAppliedTurnRadians?: number
   /** 局部水平接触残差；有限 X/Z 正值推动根节点沿同轴正向修正，Y 完全忽略。 */
   readonly footResidual: readonly [number, number, number]
@@ -65,8 +65,10 @@ export interface SampledBipedPetRootMotion {
   readonly deltaTurnRadians: number
   readonly linearVelocity: readonly [number, number, number]
   readonly angularVelocity: number
+  /** 实际 applied 高度与本帧实际垂直差值决定的运行时相位，不是 target 时间相位。 */
   readonly phase: 'grounded' | 'takeoff' | 'airborne' | 'landing'
   readonly motionIntensity: number
+  /** 仅在合法 target touchdown 已发生且 applied 本帧真实穿入 grounded 时输出一次。 */
   readonly landingImpulse: number
   readonly brakeIntensity: number
 }
@@ -382,7 +384,7 @@ interface SafeSampleInput {
   characterHeight: number
   facingRadians: number
   actionWeight: number
-  previousAppliedLocal?: RootMotionVector3
+  previousAppliedWorld?: RootMotionVector3
   previousAppliedTurnRadians?: number
   footResidual: RootMotionVector3
 }
@@ -396,7 +398,6 @@ interface RootMotionTarget {
   local: RootMotionVector3
   world: RootMotionVector3
   turnRadians: number
-  phase: RootMotionPhase
 }
 
 interface RootMotionAppliedState {
@@ -412,8 +413,8 @@ const ROOT_MOTION_FOOT_RESIDUAL_GAIN_PER_SECOND = .25
 const ROOT_MOTION_CONTINUITY_BASE_MS = 250
 const ROOT_MOTION_CONTINUITY_DURATION_RATIO = .5
 const MAX_ROOT_MOTION_CONTINUITY_SEGMENTS = 4
-const ROOT_MOTION_TAKEOFF_END = .25
 const ROOT_MOTION_SIGNAL_EPSILON = 1e-12
+const MAX_ROOT_MOTION_AIRBORNE_SEARCH_NODES = 512
 
 function canonicalZero(value: number): number {
   return value === 0 ? 0 : value
@@ -460,6 +461,7 @@ function stationaryRootMotionSample(
   resolved: ResolvedMotionTime,
   target: RootMotionTarget,
   applied: RootMotionAppliedState,
+  characterHeight: number,
 ): SampledBipedPetRootMotion {
   return frozenSample({
     status,
@@ -477,7 +479,7 @@ function stationaryRootMotionSample(
     deltaTurnRadians: 0,
     linearVelocity: zeroVector3(),
     angularVelocity: 0,
-    phase: target.phase,
+    phase: appliedPhase(applied.world, zeroVector3(), characterHeight),
     motionIntensity: 0,
     landingImpulse: 0,
     brakeIntensity: 0,
@@ -606,19 +608,19 @@ function parseSampleInput(input: unknown): SafeSampleParseResult {
     const characterHeight = Reflect.get(source, 'characterHeight')
     const facingRadians = Reflect.get(source, 'facingRadians')
     const actionWeight = Reflect.get(source, 'actionWeight')
-    const rawPreviousAppliedLocal = Reflect.get(source, 'previousAppliedLocal')
+    const rawPreviousAppliedWorld = Reflect.get(source, 'previousAppliedWorld')
     const previousAppliedTurnRadians = Reflect.get(source, 'previousAppliedTurnRadians')
-    const previousAppliedLocal = rawPreviousAppliedLocal === undefined
+    const previousAppliedWorld = rawPreviousAppliedWorld === undefined
       ? undefined
-      : copyFiniteVector3(rawPreviousAppliedLocal)
+      : copyFiniteVector3(rawPreviousAppliedWorld)
     const footResidual = copyFiniteHorizontalResidual(Reflect.get(source, 'footResidual'))
-    const hasPreviousAppliedLocal = rawPreviousAppliedLocal !== undefined
+    const hasPreviousAppliedWorld = rawPreviousAppliedWorld !== undefined
     const hasPreviousAppliedTurn = previousAppliedTurnRadians !== undefined
     if (!definition || typeof characterHeight !== 'number' || !Number.isFinite(characterHeight) || characterHeight <= 0
       || typeof facingRadians !== 'number' || !Number.isFinite(facingRadians)
       || typeof actionWeight !== 'number' || !Number.isFinite(actionWeight)
-      || hasPreviousAppliedLocal !== hasPreviousAppliedTurn
-      || (hasPreviousAppliedLocal && !previousAppliedLocal)
+      || hasPreviousAppliedWorld !== hasPreviousAppliedTurn
+      || (hasPreviousAppliedWorld && !previousAppliedWorld)
       || (hasPreviousAppliedTurn && (typeof previousAppliedTurnRadians !== 'number' || !Number.isFinite(previousAppliedTurnRadians)))
       || !footResidual) return { identity }
 
@@ -633,8 +635,8 @@ function parseSampleInput(input: unknown): SafeSampleParseResult {
         characterHeight,
         facingRadians,
         actionWeight: clamp(actionWeight, 0, 1),
-        ...(previousAppliedLocal === undefined ? {} : {
-          previousAppliedLocal,
+        ...(previousAppliedWorld === undefined ? {} : {
+          previousAppliedWorld,
           previousAppliedTurnRadians: previousAppliedTurnRadians as number,
         }),
         footResidual,
@@ -802,32 +804,23 @@ function ballisticTouchdownCandidates(definition: BipedPetRootMotionDefinition):
   return result
 }
 
-function ballisticHeightAndPhase(
+function ballisticHeight(
   definition: BipedPetRootMotionDefinition,
   timeMs: number,
   characterHeight: number,
   actionWeight: number,
-  direction: 1 | -1,
-): { height: number; phase: RootMotionPhase } {
+): number {
   if (definition.mode !== 'travel' || definition.verticalMode !== 'ballistic'
-    || definition.jumpHeight <= 0 || actionWeight <= 0) return { height: 0, phase: 'grounded' }
+    || definition.jumpHeight <= 0 || actionWeight <= 0) return 0
 
   let weightedHeight = 0
-  let weightedSlope = 0
-  let weightedSlopeMagnitude = 0
   let totalWeight = 0
-  let activeWeight = 0
-  let activeWindowCount = 0
   const ballisticWindows = effectiveBallisticWindows(definition)
   let maximumWeight = 0
-  let minimumDurationMs = Number.POSITIVE_INFINITY
   for (const window of ballisticWindows) {
     maximumWeight = Math.max(maximumWeight, window.weight)
-    if (timeMs > window.startMs && timeMs < window.endMs) {
-      minimumDurationMs = Math.min(minimumDurationMs, window.endMs - window.startMs)
-    }
   }
-  if (maximumWeight === 0) return { height: 0, phase: 'grounded' }
+  if (maximumWeight === 0) return 0
   for (const window of ballisticWindows) {
     const scaledWeight = window.weight / maximumWeight
     const linearProgress = clamp((timeMs - window.startMs) / (window.endMs - window.startMs), 0, 1)
@@ -835,36 +828,73 @@ function ballisticHeightAndPhase(
     const height = 4 * definition.jumpHeight * characterHeight * shapedProgress * (1 - shapedProgress)
     weightedHeight += scaledWeight * height
     totalWeight += scaledWeight
-    if (timeMs > window.startMs && timeMs < window.endMs) {
-      activeWeight += scaledWeight
-      // smoothstep 弹道的解析导数只用于阶段方向；以最短窗长缩放避免极短窗求倒溢出，最终使用严格符号以免公共正缩放改变结果。 / Use the analytic derivative for phase direction, scale it to avoid overflow, then preserve its strict sign under that positive scale.
-      const slopeContribution = scaledWeight
-        * 24 * (1 - 2 * shapedProgress) * linearProgress * (1 - linearProgress)
-        * minimumDurationMs / (window.endMs - window.startMs)
-      weightedSlope += slopeContribution
-      weightedSlopeMagnitude += Math.abs(slopeContribution)
-      activeWindowCount += 1
-    }
   }
   const height = totalWeight > 0 ? weightedHeight / totalWeight * actionWeight : 0
   const maximumHeight = definition.jumpHeight * characterHeight * actionWeight
-  if (activeWeight <= 0 || height <= maximumHeight * ROOT_MOTION_SIGNAL_EPSILON) return { height: 0, phase: 'grounded' }
+  return height <= maximumHeight * ROOT_MOTION_SIGNAL_EPSILON ? 0 : height
+}
 
-  // 相对误差界随公共正缩放同步，既吸收对称抵消的舍入残差，也不吞掉极短 active 窗缩放后的真实方向。 / A scale-relative error bound absorbs cancellation noise without suppressing a real sign after tiny-window scaling.
-  const slopeErrorBound = weightedSlopeMagnitude * Number.EPSILON * (16 + activeWindowCount * 2)
-  const stableWeightedSlope = Math.abs(weightedSlope) <= slopeErrorBound ? 0 : weightedSlope
-  const physicalSlope = totalWeight > 0 ? stableWeightedSlope / totalWeight * direction : 0
-  const activeMaximumHeight = maximumHeight * activeWeight / totalWeight
-  const relativeHeight = activeMaximumHeight > 0 ? clamp(height / activeMaximumHeight, 0, 1) : 0
-  const phaseHeightThreshold = 4 * smoothstep(ROOT_MOTION_TAKEOFF_END) * (1 - smoothstep(ROOT_MOTION_TAKEOFF_END))
-  return {
-    height,
-    phase: physicalSlope > 0 && relativeHeight < phaseHeightThreshold
-      ? 'takeoff'
-      : physicalSlope < 0 && relativeHeight <= phaseHeightThreshold
-        ? 'landing'
-        : 'airborne',
+function maximumNormalizedBallisticHeightInRange(
+  windows: readonly BipedPetRootMotionWindow[],
+  startMs: number,
+  endMs: number,
+): number {
+  let maximumWeight = 0
+  for (const window of windows) maximumWeight = Math.max(maximumWeight, window.weight)
+  if (maximumWeight === 0) return 0
+  let upperHeight = 0
+  let totalWeight = 0
+  for (const window of windows) {
+    const scaledWeight = window.weight / maximumWeight
+    totalWeight += scaledWeight
+    if (endMs <= window.startMs || startMs >= window.endMs) continue
+    const peakMs = clamp(
+      window.startMs + (window.endMs - window.startMs) * .5,
+      Math.max(startMs, window.startMs),
+      Math.min(endMs, window.endMs),
+    )
+    const linearProgress = clamp((peakMs - window.startMs) / (window.endMs - window.startMs), 0, 1)
+    const shapedProgress = smoothstep(linearProgress)
+    upperHeight += scaledWeight * 4 * shapedProgress * (1 - shapedProgress)
   }
+  return totalWeight > 0 ? upperHeight / totalWeight : 0
+}
+
+function hasCompositeBallisticAirborneInRange(
+  definition: BipedPetRootMotionDefinition,
+  durationMs: number,
+  actionWeight: number,
+  firstTimeMs: number,
+  secondTimeMs: number,
+): boolean {
+  const startMs = clamp(Math.min(firstTimeMs, secondTimeMs), 0, durationMs)
+  const endMs = clamp(Math.max(firstTimeMs, secondTimeMs), 0, durationMs)
+  if (!(endMs > startMs)) return false
+  const windows = effectiveBallisticWindows(definition)
+  if (windows.length === 0) return false
+  const verticalIntentScale = definition.jumpHeight * actionWeight
+  if (!(verticalIntentScale > 0)) return false
+  // 同时遵守 target 的相对零化与 applied 的世界接地阈值，避免低/高强度微窗在两层尺度之间制造伪 takeoff。 / Match both target-relative zeroing and applied world grounding so low/high-intensity micro-windows cannot create a false takeoff between scales.
+  const normalizedAirborneThreshold = Math.max(
+    ROOT_MOTION_SIGNAL_EPSILON,
+    ROOT_MOTION_SIGNAL_EPSILON / verticalIntentScale,
+  )
+
+  const pending: Array<readonly [number, number]> = [[startMs, endMs]]
+  let visitedNodes = 0
+  while (pending.length > 0) {
+    const [rangeStartMs, rangeEndMs] = pending.pop()!
+    const midpointMs = rangeStartMs + (rangeEndMs - rangeStartMs) * .5
+    if (normalizedCompositeBallisticHeight(windows, rangeEndMs) > normalizedAirborneThreshold
+      || normalizedCompositeBallisticHeight(windows, midpointMs) > normalizedAirborneThreshold) return true
+    if (maximumNormalizedBallisticHeightInRange(windows, rangeStartMs, rangeEndMs) <= normalizedAirborneThreshold) continue
+    if (midpointMs === rangeStartMs || midpointMs === rangeEndMs) return true
+    visitedNodes += 1
+    // 上界仍无法证明 grounded 时继续二分；达到固定工作预算后保守清除旧授权，绝不把未知区间误当成持续接地。 / Subdivide unresolved bounds; once the fixed work budget is exhausted, conservatively clear stale authorization.
+    if (visitedNodes >= MAX_ROOT_MOTION_AIRBORNE_SEARCH_NODES) return true
+    pending.push([rangeStartMs, midpointMs], [midpointMs, rangeEndMs])
+  }
+  return false
 }
 
 const HORIZONTAL_WINDOW_KINDS = new Set<BipedPetRootMotionWindowKind>(['travel', 'warp'])
@@ -882,17 +912,16 @@ function evaluateRootMotionTarget(input: SafeSampleInput, resolved: ResolvedMoti
   const turnRadians = canonicalZero(input.definition.mode === 'travel'
     ? input.definition.turnRadians * completedMotion * input.actionWeight
     : 0)
-  const ballistic = ballisticHeightAndPhase(
+  const ballistic = ballisticHeight(
     input.definition,
     resolved.resolvedTimeMs,
     input.characterHeight,
     input.actionWeight,
-    resolved.direction,
   )
-  const local = frozenVector3(horizontal, ballistic.height, 0)
+  const local = frozenVector3(horizontal, ballistic, 0)
   const world = rotateLocalVector(local, input.facingRadians)
-  return [horizontal, ballistic.height, turnRadians, ...world].every(Number.isFinite)
-    ? { local, world, turnRadians, phase: ballistic.phase }
+  return [horizontal, ballistic, turnRadians, ...world].every(Number.isFinite)
+    ? { local, world, turnRadians }
     : undefined
 }
 
@@ -913,6 +942,22 @@ function rotateLocalVector(vector: RootMotionVector3, facingRadians: number): Ro
     vector[1],
     -vector[0] * sine + vector[2] * cosine,
   )
+}
+
+function rotateWorldVector(vector: RootMotionVector3, facingRadians: number): RootMotionVector3 {
+  return rotateLocalVector(vector, -facingRadians)
+}
+
+function appliedPhase(
+  appliedWorld: RootMotionVector3,
+  deltaWorld: RootMotionVector3,
+  characterHeight: number,
+): RootMotionPhase {
+  const groundedThreshold = characterHeight * ROOT_MOTION_SIGNAL_EPSILON
+  if (appliedWorld[1] <= groundedThreshold) return 'grounded'
+  if (deltaWorld[1] > 0) return 'takeoff'
+  if (deltaWorld[1] < 0) return 'landing'
+  return 'airborne'
 }
 
 function stableSignal(value: number): number {
@@ -998,8 +1043,14 @@ function isContinuouslyActiveHorizontalWindow(
 
   const firstIteration = Math.floor(previousRequestedTimeMs / input.durationMs)
   const lastIteration = Math.floor(input.requestedTimeMs / input.durationMs)
-  if (lastIteration - firstIteration + 1 > MAX_ROOT_MOTION_CONTINUITY_SEGMENTS) return false
-  for (let iteration = firstIteration; iteration <= lastIteration; iteration += 1) {
+  const segmentCount = lastIteration - firstIteration + 1
+  if (!Number.isInteger(segmentCount) || segmentCount < 1 || segmentCount > MAX_ROOT_MOTION_CONTINUITY_SEGMENTS) return false
+  let priorIteration: number | undefined
+  for (let offset = 0; offset < segmentCount; offset += 1) {
+    const iteration = offset === segmentCount - 1 ? lastIteration : firstIteration + offset
+    // 超安全整数范围后相邻 iteration 可能不可表示；此时保守停用残差，而不是让扫描停滞或重复消费同一段。 / Adjacent iterations may be unrepresentable above the safe range; disable residual feedback instead of stalling or reusing a segment.
+    if (priorIteration !== undefined && iteration <= priorIteration) return false
+    priorIteration = iteration
     const segmentStartMs = iteration * input.durationMs
     const requestStartMs = Math.max(previousRequestedTimeMs, segmentStartMs)
     const requestEndMs = Math.min(input.requestedTimeMs, segmentStartMs + input.durationMs)
@@ -1014,53 +1065,115 @@ function isContinuouslyActiveHorizontalWindow(
   return true
 }
 
-function appliedState(local: RootMotionVector3, turnRadians: number, facingRadians: number): RootMotionAppliedState {
-  return { local, world: rotateLocalVector(local, facingRadians), turnRadians }
+function appliedState(world: RootMotionVector3, turnRadians: number, facingRadians: number): RootMotionAppliedState {
+  return { local: rotateWorldVector(world, facingRadians), world, turnRadians }
 }
 
-function landingImpulseForCrossing(input: SafeSampleInput, previousTimeMs: number, currentTimeMs: number): number {
-  if (input.definition.mode !== 'travel' || input.definition.verticalMode !== 'ballistic'
-    || input.definition.jumpHeight <= 0 || input.actionWeight <= 0 || currentTimeMs <= previousTimeMs) return 0
+interface TargetTouchdownAuthorization {
+  readonly boundaryMs: number
+  readonly impulse: number
+  readonly iteration: number
+  readonly reverse: boolean
+  readonly transitionTimeMs: number
+}
 
+function targetWasAirborneAfterTouchdown(
+  input: SafeSampleInput,
+  touchdown: TargetTouchdownAuthorization,
+  currentResolved: ResolvedMotionTime,
+): boolean {
+  if (touchdown.transitionTimeMs >= currentResolved.requestedTimeMs) return false
+  if (input.loopMode === 'once') {
+    return hasCompositeBallisticAirborneInRange(
+      input.definition,
+      input.durationMs,
+      input.actionWeight,
+      touchdown.boundaryMs,
+      currentResolved.resolvedTimeMs,
+    )
+  }
+
+  if (touchdown.iteration === currentResolved.iteration) {
+    return hasCompositeBallisticAirborneInRange(
+      input.definition,
+      input.durationMs,
+      input.actionWeight,
+      touchdown.boundaryMs,
+      currentResolved.resolvedTimeMs,
+    )
+  }
+
+  const touchdownRemainderAirborne = touchdown.reverse
+    ? hasCompositeBallisticAirborneInRange(input.definition, input.durationMs, input.actionWeight, 0, touchdown.boundaryMs)
+    : hasCompositeBallisticAirborneInRange(input.definition, input.durationMs, input.actionWeight, touchdown.boundaryMs, input.durationMs)
+  if (touchdownRemainderAirborne) return true
+  const currentReverse = input.loopMode === 'ping-pong'
+    && positiveModulo(currentResolved.iteration, 2) !== 0
+  return currentReverse
+    ? hasCompositeBallisticAirborneInRange(input.definition, input.durationMs, input.actionWeight, currentResolved.resolvedTimeMs, input.durationMs)
+    : hasCompositeBallisticAirborneInRange(input.definition, input.durationMs, input.actionWeight, 0, currentResolved.resolvedTimeMs)
+}
+
+function authorizedLandingImpulseAtOrBefore(input: SafeSampleInput, currentResolved: ResolvedMotionTime): number {
+  const currentTimeMs = currentResolved.requestedTimeMs
+  if (input.definition.mode !== 'travel' || input.definition.verticalMode !== 'ballistic'
+    || input.definition.jumpHeight <= 0 || input.actionWeight <= 0 || currentTimeMs < 0) return 0
   const candidateSet = ballisticTouchdownCandidates(input.definition)
   if (!Number.isFinite(candidateSet.totalWeight) || candidateSet.totalWeight <= 0) return 0
-  let impulse = 0
-  const considerTouchdown = (candidate: BallisticTouchdownCandidate, boundaryTimeMs: number) => {
-    if (!(boundaryTimeMs > previousTimeMs && boundaryTimeMs <= currentTimeMs)) return
-    // landingImpulse 是无量纲启发式强度，不冒充 smoothstep 弹道在端点为零的真实速度。 / landingImpulse is a dimensionless heuristic, not physical endpoint velocity.
-    // 它由跳高意图、动作权重和该真实结束边界的贡献窗权重占比共同决定。 / It scales with jump intent, action weight, and ending-contributor weight share.
-    const strength = input.definition.jumpHeight * input.actionWeight * candidate.weight / candidateSet.totalWeight
-    impulse = Math.max(impulse, stableSignal(strength))
-  }
-
-  for (const candidate of candidateSet.forward) {
-    if (input.loopMode === 'once') {
-      considerTouchdown(candidate, candidate.boundaryMs)
-      continue
+  const strength = (candidate: BallisticTouchdownCandidate) => stableSignal(
+    input.definition.jumpHeight * input.actionWeight * candidate.weight / candidateSet.totalWeight,
+  )
+  let latestTouchdown: TargetTouchdownAuthorization | undefined
+  const considerTouchdown = (
+    transitionTimeMs: number,
+    candidate: BallisticTouchdownCandidate,
+    iteration: number,
+    reverse: boolean,
+  ) => {
+    if (transitionTimeMs > currentTimeMs
+      || (latestTouchdown && transitionTimeMs < latestTouchdown.transitionTimeMs)) return
+    const impulse = strength(candidate)
+    if (!latestTouchdown || transitionTimeMs > latestTouchdown.transitionTimeMs) {
+      latestTouchdown = { boundaryMs: candidate.boundaryMs, impulse, iteration, reverse, transitionTimeMs }
+      return
+    }
+    if (impulse > latestTouchdown.impulse) {
+      latestTouchdown = { boundaryMs: candidate.boundaryMs, impulse, iteration, reverse, transitionTimeMs }
     }
   }
-  if (input.loopMode === 'once') return impulse
+  if (input.loopMode === 'once') {
+    for (const candidate of candidateSet.forward) considerTouchdown(candidate.boundaryMs, candidate, 0, false)
+    return latestTouchdown && !targetWasAirborneAfterTouchdown(input, latestTouchdown, currentResolved)
+      ? latestTouchdown.impulse
+      : 0
+  }
 
-  const firstIteration = Math.floor(previousTimeMs / input.durationMs)
-  const lastIteration = Math.floor(currentTimeMs / input.durationMs)
-  if (lastIteration - firstIteration + 1 > MAX_ROOT_MOTION_CONTINUITY_SEGMENTS) return 0
-  for (let iteration = firstIteration; iteration <= lastIteration; iteration += 1) {
+  const currentIteration = Math.floor(currentTimeMs / input.durationMs)
+  // 超过安全整数后 `iteration += 1` 可能不再前进；固定枚举当前与前一段并去重，保持授权查询严格有界。 / Above the safe-integer range, incrementing may stall; enumerate and deduplicate at most two segments instead.
+  const candidateIterations = [...new Set([
+    Math.max(0, currentIteration - 1),
+    currentIteration,
+  ])]
+  for (const iteration of candidateIterations) {
     const segmentStartMs = iteration * input.durationMs
     const reverse = input.loopMode === 'ping-pong' && positiveModulo(iteration, 2) !== 0
-    const candidates = reverse ? candidateSet.reverse : candidateSet.forward
-    for (const candidate of candidates) {
-      const touchdownTimeMs = reverse
+    const touchdowns = reverse ? candidateSet.reverse : candidateSet.forward
+    for (const candidate of touchdowns) {
+      const transitionTimeMs = reverse
         ? segmentStartMs + input.durationMs - candidate.boundaryMs
         : segmentStartMs + candidate.boundaryMs
-      considerTouchdown(candidate, touchdownTimeMs)
+      considerTouchdown(transitionTimeMs, candidate, iteration, reverse)
     }
   }
-  return impulse
+  return latestTouchdown && !targetWasAirborneAfterTouchdown(input, latestTouchdown, currentResolved)
+    ? latestTouchdown.impulse
+    : 0
 }
 
 /**
  * cumulative 是由绝对动作时间求出的期望目标；applied 才是调用方本帧可安全写入容器的状态。
- * 连续帧从 previousApplied 追赶目标并受预算限制；首帧、缺少应用状态、倒退或超出连续阈值会 reset。
+ * 高频运行时应先 normalize/compile 一次并复用 canonical 冻结定义；不可信 raw definition 每帧都会防御复制与校验。
+ * 连续帧从 previousAppliedWorld 追赶目标并受预算限制；首帧、缺少应用状态、倒退或超出连续阈值会 reset。
  */
 export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): SampledBipedPetRootMotion {
   const parsed = parseSampleInput(input)
@@ -1073,26 +1186,34 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
   const previousTimeMs = safeInput.previousRequestedTimeMs
   const elapsedMs = previousTimeMs === undefined ? Number.NaN : safeInput.requestedTimeMs - previousTimeMs
   const reset = previousTimeMs === undefined
-    || safeInput.previousAppliedLocal === undefined
+    || safeInput.previousAppliedWorld === undefined
     || safeInput.previousAppliedTurnRadians === undefined
     || elapsedMs < 0
     || elapsedMs > rootMotionContinuityLimitMs(safeInput.durationMs)
-  if (reset) return stationaryRootMotionSample('reset', currentResolved, currentTarget, currentTarget)
+  if (reset) return stationaryRootMotionSample(
+    'reset',
+    currentResolved,
+    currentTarget,
+    appliedState(currentTarget.world, currentTarget.turnRadians, safeInput.facingRadians),
+    safeInput.characterHeight,
+  )
 
   const previousApplied = appliedState(
-    safeInput.previousAppliedLocal!,
+    safeInput.previousAppliedWorld!,
     safeInput.previousAppliedTurnRadians!,
     safeInput.facingRadians,
   )
-  if (elapsedMs === 0) return stationaryRootMotionSample('solved', currentResolved, currentTarget, previousApplied)
+  if (elapsedMs === 0) return stationaryRootMotionSample(
+    'solved', currentResolved, currentTarget, previousApplied, safeInput.characterHeight,
+  )
 
   const elapsedSeconds = elapsedMs / 1000
-  const targetError = frozenVector3(
-    currentTarget.local[0] - previousApplied.local[0],
-    currentTarget.local[1] - previousApplied.local[1],
-    currentTarget.local[2] - previousApplied.local[2],
+  const targetErrorWorld = frozenVector3(
+    currentTarget.world[0] - previousApplied.world[0],
+    currentTarget.world[1] - previousApplied.world[1],
+    currentTarget.world[2] - previousApplied.world[2],
   )
-  const horizontalTargetError = Math.hypot(targetError[0], targetError[2])
+  const horizontalTargetError = Math.hypot(targetErrorWorld[0], targetErrorWorld[2])
   const horizontalIntentScale = clamp(
     horizontalTargetError / (safeInput.characterHeight * elapsedSeconds),
     0,
@@ -1117,36 +1238,43 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
       : 0,
   )
   if (!residualCorrection) return blockedRootMotionSample(currentResolved)
-  const rawDeltaLocal = frozenVector3(
-    targetError[0] + residualCorrection.value[0],
-    targetError[1],
-    targetError[2] + residualCorrection.value[2],
+  const residualCorrectionWorld = rotateLocalVector(residualCorrection.value, safeInput.facingRadians)
+  const rawDeltaWorld = frozenVector3(
+    targetErrorWorld[0] + residualCorrectionWorld[0],
+    targetErrorWorld[1],
+    targetErrorWorld[2] + residualCorrectionWorld[2],
   )
-  const boundedDelta = clampVectorLength(rawDeltaLocal, safeInput.characterHeight * MAX_ROOT_MOTION_DELTA_RATIO)
+  const boundedDelta = clampVectorLength(rawDeltaWorld, safeInput.characterHeight * MAX_ROOT_MOTION_DELTA_RATIO)
   if (!boundedDelta) return blockedRootMotionSample(currentResolved)
   const rawDeltaTurn = currentTarget.turnRadians - previousApplied.turnRadians
   if (!Number.isFinite(rawDeltaTurn)) return blockedRootMotionSample(currentResolved)
-  const deltaTurnRadians = canonicalZero(clamp(rawDeltaTurn, -MAX_ROOT_MOTION_TURN_DELTA, MAX_ROOT_MOTION_TURN_DELTA))
-  const turnClamped = deltaTurnRadians !== rawDeltaTurn
-  const appliedLocal = !boundedDelta.clamped && residualCorrection.value.every(value => value === 0)
-    ? currentTarget.local
+  const boundedDeltaTurnRadians = canonicalZero(clamp(rawDeltaTurn, -MAX_ROOT_MOTION_TURN_DELTA, MAX_ROOT_MOTION_TURN_DELTA))
+  const turnClamped = boundedDeltaTurnRadians !== rawDeltaTurn
+  const appliedWorld = !boundedDelta.clamped && residualCorrection.value.every(value => value === 0)
+    ? currentTarget.world
     : frozenVector3(
-        previousApplied.local[0] + boundedDelta.value[0],
-        previousApplied.local[1] + boundedDelta.value[1],
-        previousApplied.local[2] + boundedDelta.value[2],
+        previousApplied.world[0] + boundedDelta.value[0],
+        previousApplied.world[1] + boundedDelta.value[1],
+        previousApplied.world[2] + boundedDelta.value[2],
       )
-  const appliedWorld = rotateLocalVector(appliedLocal, safeInput.facingRadians)
+  const appliedLocal = rotateWorldVector(appliedWorld, safeInput.facingRadians)
   const appliedTurnRadians = canonicalZero(turnClamped
-    ? previousApplied.turnRadians + deltaTurnRadians
+    ? previousApplied.turnRadians + boundedDeltaTurnRadians
     : currentTarget.turnRadians)
-  const deltaWorld = rotateLocalVector(boundedDelta.value, safeInput.facingRadians)
+  const deltaWorld = frozenVector3(
+    appliedWorld[0] - previousApplied.world[0],
+    appliedWorld[1] - previousApplied.world[1],
+    appliedWorld[2] - previousApplied.world[2],
+  )
+  const deltaLocal = rotateWorldVector(deltaWorld, safeInput.facingRadians)
+  const deltaTurnRadians = canonicalZero(appliedTurnRadians - previousApplied.turnRadians)
   const linearVelocity = frozenVector3(
     deltaWorld[0] / elapsedSeconds,
     deltaWorld[1] / elapsedSeconds,
     deltaWorld[2] / elapsedSeconds,
   )
   const angularVelocity = canonicalZero(deltaTurnRadians / elapsedSeconds)
-  if (![...rawDeltaLocal, ...appliedLocal, ...appliedWorld, ...deltaWorld, ...linearVelocity, appliedTurnRadians, angularVelocity].every(Number.isFinite)) {
+  if (![...rawDeltaWorld, ...appliedLocal, ...appliedWorld, ...deltaLocal, ...deltaWorld, ...linearVelocity, appliedTurnRadians, angularVelocity].every(Number.isFinite)) {
     return blockedRootMotionSample(currentResolved)
   }
 
@@ -1157,7 +1285,11 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
   const brakeIntensity = stableSignal(
     brakeWindowIntensity(safeInput.definition.windows, currentResolved.resolvedTimeMs) * safeInput.actionWeight,
   )
-  const landingImpulse = landingImpulseForCrossing(safeInput, previousTimeMs, safeInput.requestedTimeMs)
+  const groundedThreshold = safeInput.characterHeight * ROOT_MOTION_SIGNAL_EPSILON
+  const appliedTouchedDown = previousApplied.world[1] > groundedThreshold && appliedWorld[1] <= groundedThreshold
+  const landingImpulse = appliedTouchedDown
+    ? authorizedLandingImpulseAtOrBefore(safeInput, currentResolved)
+    : 0
   return frozenSample({
     status: boundedDelta.clamped || turnClamped ? 'clamped' : 'solved',
     requestedTimeMs: currentResolved.requestedTimeMs,
@@ -1167,14 +1299,14 @@ export function sampleBipedPetRootMotion(input: SampleBipedPetRootMotionInput): 
     cumulativeWorld: currentTarget.world,
     appliedLocal,
     appliedWorld,
-    deltaLocal: boundedDelta.value,
+    deltaLocal,
     deltaWorld,
     cumulativeTurnRadians: currentTarget.turnRadians,
     appliedTurnRadians,
     deltaTurnRadians,
     linearVelocity,
     angularVelocity,
-    phase: currentTarget.phase,
+    phase: appliedPhase(appliedWorld, deltaWorld, safeInput.characterHeight),
     motionIntensity,
     landingImpulse,
     brakeIntensity,

@@ -4,7 +4,7 @@
 
 **Goal:** 为复杂双足萌宠建立由动作意图、角色体型、接触约束和确定性运动信号共同驱动的 Root Motion、重心转移与轻量 VFX 链路，使行走、冲刺急停和起跳落地在站内编辑与渲染时获得连续、可复现的真实位移。
 
-**Architecture:** `pet-core` 负责版本兼容的移动描述、纯数值 Root Motion 采样和 VFX 信号；它同时输出绝对时间确定的 target 与经过单帧预算的 applied 状态。Playground Three 层拥有 `previousApplied`，只把安全 applied 绝对状态写入现有角色对象，在 FK 后叠加有界重心补偿、继续执行现有 IK，并在同一场景维护有界 VFX 对象池。Studio 通过中文语义设置自动生成扩展数据，旧动作缺少扩展时保持原地播放。
+**Architecture:** `pet-core` 负责版本兼容的移动描述、纯数值 Root Motion 采样和 VFX 信号；它同时输出绝对时间确定的 target 与经过单帧预算的 applied 状态。Playground Three 层只拥有 `previousAppliedWorld/previousAppliedTurnRadians`，求解器在世界空间追赶 target，并按当前朝向逆变换派生局部结果；运行时只把安全 applied 绝对状态写入现有角色对象，在 FK 后叠加有界重心补偿、继续执行现有 IK，并在同一场景维护有界 VFX 对象池。Studio 通过中文语义设置自动生成扩展数据，旧动作缺少扩展时保持原地播放。
 
 **Tech Stack:** TypeScript 5.9、Node.js test runner、Vue 3、Pinia、Nuxt 4、Three.js、TresJS、pnpm 11。
 
@@ -187,7 +187,7 @@ const beforeSeam = sampleBipedPetRootMotion({ ...input, requestedTimeMs: 1190 })
 const nextCycle = sampleBipedPetRootMotion({
   ...input,
   previousRequestedTimeMs: 1190,
-  previousAppliedLocal: beforeSeam.appliedLocal,
+  previousAppliedWorld: beforeSeam.appliedWorld,
   previousAppliedTurnRadians: beforeSeam.appliedTurnRadians,
   requestedTimeMs: 1210,
 })
@@ -197,7 +197,7 @@ assert.equal(nextCycle.iteration, 1)
 const rewind = sampleBipedPetRootMotion({
   ...input,
   previousRequestedTimeMs: 800,
-  previousAppliedLocal: half.appliedLocal,
+  previousAppliedWorld: half.appliedWorld,
   previousAppliedTurnRadians: half.appliedTurnRadians,
   requestedTimeMs: 200,
 })
@@ -205,7 +205,7 @@ assert.equal(rewind.status, 'reset')
 assert.deepEqual(rewind.deltaLocal, [0, 0, 0])
 ```
 
-再覆盖 100/200ms 动作在 24/30/60FPS 的真实有状态序列、target/applied 欠量追赶、合成 ballistic 支撑区间与真实 touchdown、角色高度等比例缩放、单帧移动/转向钳制、canonical duration、非有限输入 `blocked`、输入不突变和普通回拖不生成反向速度。
+再覆盖 100/200ms 动作在 24/30/60FPS 的真实有状态序列、世界空间 target/applied 欠量追赶、朝向变化的世界位置不变量、由实际 applied 高度驱动的阶段与延迟 touchdown、角色高度等比例缩放、单帧移动/转向钳制、`Number.MAX_VALUE` 可表示增量、canonical duration、非有限输入 `blocked`、输入不突变和普通回拖不生成反向速度。
 
 - [ ] **步骤 2：运行定向测试确认红灯**
 
@@ -245,7 +245,7 @@ export interface SampledBipedPetRootMotion {
 }
 ```
 
-`cumulative*` 必须由动作定义、`requestedTimeMs` 和 `iteration` 直接计算，作为帧率无关 target；调用方通过 `previousAppliedLocal/previousAppliedTurnRadians` 提供上一帧已应用状态，求解器从 applied 指向 target 计算误差并输出新的 `applied*`、`delta*` 和真实应用速度。缺 applied、倒退、Clip 身份变化或超过 `max(250ms, duration×0.5)` 时 reset 并把 applied 初始化为 target，不发速度或瞬时事件。窗口使用 `smoothstep(t)=t²(3-2t)`，多个有效窗口按权重归一化。弹道高度使用 `4h·p·(1-p)`；每个候选边界都必须通过物理前侧高于、后侧低于 `1e-12` grounded 阈值的有界探测，只有合成弹道整体下降到接地才输出一次无量纲启发式 `landingImpulse`。强度只使用该真实结束边界的贡献窗权重占比，极小延长尾窗不得继承历史主窗权重并放大伪 touchdown。
+`cumulative*` 必须由动作定义、`requestedTimeMs` 和 `iteration` 直接计算，作为帧率无关 target；调用方通过唯一的 `previousAppliedWorld/previousAppliedTurnRadians` 提供上一帧已应用状态。求解器在世界空间从 applied 指向 target 计算误差和预算，使用实际可表示的 `appliedWorld - previousAppliedWorld` 输出 `deltaWorld` 与速度，再以当前朝向的逆旋转派生 `appliedLocal/deltaLocal`；朝向改变不得重解释既有世界位置。缺 applied、倒退、Clip 身份变化或超过 `max(250ms, duration×0.5)` 时 reset 并把 applied 初始化为 target，不发速度或瞬时事件。窗口使用 `smoothstep(t)=t²(3-2t)`，多个有效窗口按权重归一化。弹道高度使用 `4h·p·(1-p)`，但阶段由实际 applied 高度与纵向增量判定；target touchdown 只提供授权，只有 applied 随后真实越过接地阈值才输出一次无量纲 `landingImpulse`。touchdown 后任何实际 target airborne（包括窗口内部 epsilon 穿越）均以固定工作预算的区间上界查询清除旧授权；归一化阈值必须取 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))`，同时遵守 target 相对零化和世界接地。暂停、倒退、reset、同时间、大跳和未授权 applied 落地均不触发。
 
 安全预算固定为每帧不超过 `0.25 × characterHeight` 位移和 `π/4` 转向；超过时按方向等比钳制并返回 `clamped`，不改变累计 target，后续帧继续从 applied 追赶欠量。`footResidual` 只读取有限 X/Z，正值推动根节点沿对应局部轴正向修正，完全忽略 Y；仅在整个帧间时间映射都被连续 `travel/warp` 支撑组件覆盖时作为局部水平反馈，跨入、跨出或穿越 gap 的帧不消费残差。预算随真实时间差、动作权重和水平追赶误差缩放；纯函数不持有低通状态。
 
@@ -256,7 +256,7 @@ export interface SampledBipedPetRootMotion {
 ```bash
 corepack pnpm --filter @yk-pets/pet-core test
 # 另运行固定种子有状态 10,000 输入探针：保存每帧 applied，显式命中 solved/clamped/reset/blocked、loop 接缝、合成 landing 与 brake；不得用 previous===current 或大量 reset 代替主逻辑。
-# 运行可信 canonical 定义的 100,000 次 1 窗口/64 窗口微基准，确认采样热路径不逐帧复制并冻结窗口。
+# 分别运行可信 canonical 与公开 raw 定义的 100,000 次 1 窗口/64 窗口微基准；确认编译后热路径复用 canonical 冻结定义，raw 边界路径保留逐次防御复制与校验成本，且不以可变对象身份缓存吞掉修改。
 ```
 
 预期：单元测试通过；有状态探针各分类和信号达到最小命中数，全部输出有限且相同输入确定；微基准记录两种窗口规模的真实耗时。
@@ -484,7 +484,7 @@ export interface ComplexBipedRootMotionController {
 }
 ```
 
-控制器保存 `runtime.object` 的绑定 position/quaternion，以及当前 Clip 身份下最后一次成功写入的 `previousAppliedLocal/previousAppliedTurnRadians`。每帧把这两个状态传给纯函数，只将返回的 `appliedLocal/World` 与 `appliedTurnRadians` 绝对写入容器；禁止直接写 `cumulative*` target，也禁止在 Three 层再次累计 `delta*`。这样 target 仍由绝对时间确定，单帧预算不会被绕过，钳制后的欠量由后续求解帧继续追赶，速度与容器真实 applied 轨迹一致。
+控制器保存 `runtime.object` 的绑定 position/quaternion，以及当前 Clip 身份下最后一次成功写入的 `previousAppliedWorld/previousAppliedTurnRadians`。每帧把这两个唯一权威状态传给纯函数，只将返回的 `appliedWorld` 与 `appliedTurnRadians` 绝对写入容器；`appliedLocal` 仅供诊断与领域消费，不得另存为连续历史。禁止直接写 `cumulative*` target，也禁止在 Three 层再次累计 `delta*`。这样朝向切换不会旋转既有世界位置，target 仍由绝对时间确定，单帧预算不会被绕过，钳制后的欠量由后续求解帧继续追赶，速度与容器真实 applied 轨迹一致。
 
 角色高度从已计算的 `runtime.object.geometry.boundingBox` 读取；无有效包围盒时阻塞 Root Motion 但不阻塞 FK。首帧、停止、回拖、Clip 切换、runtime 重建或求解 reset 时清除旧 applied 所有权，让求解器把 applied 初始化为当前 target，且该帧不生成速度/VFX。控制器可显式拥有 foot residual 的低通状态，但纯数值求解器内部不得保存隐式滤波历史。
 
