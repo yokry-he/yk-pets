@@ -27,9 +27,7 @@ interface LimbRuntime {
   bones: Bone[]
   contact: CompiledCharacterContact
   contactBone: Bone
-  contactBindPosition: Vector3
   fallbackRotations: Quaternion[]
-  fallbackContactPosition: Vector3
   solver: 'analytic-two-bone' | 'fabrik'
   anchor: Vector3
   anchorOffset: Vector3
@@ -117,9 +115,7 @@ export function createComplexBipedIkController(
       bones: bones as Bone[],
       contact,
       contactBone,
-      contactBindPosition: contactBone.position.clone(),
       fallbackRotations: (bones as Bone[]).map(bone => bone.quaternion.clone()),
-      fallbackContactPosition: contactBone.position.clone(),
       solver,
       anchor: new Vector3(),
       anchorOffset: new Vector3(),
@@ -159,9 +155,8 @@ export function createComplexBipedIkController(
     lastResolvedTimeMs = undefined
   }
 
-  const restoreIkTranslations = () => {
+  const restorePelvisTranslation = () => {
     if (pelvis && pelvisBindPosition) pelvis.position.copy(pelvisBindPosition)
-    for (const limb of limbs) limb.contactBone.position.copy(limb.contactBindPosition)
   }
 
   const hasDiscontinuity = (sample: SampledBipedPetMotion) => {
@@ -204,7 +199,7 @@ export function createComplexBipedIkController(
     return bone.quaternion.toArray().every(Number.isFinite)
   }
 
-  const solveLimb = (limb: LimbRuntime, state: SampledBipedPetContactState, actionWeight: number) => {
+  const solveLimb = (limb: LimbRuntime, state: SampledBipedPetContactState, actionWeight: number, clipHash: string) => {
     if (!limb.anchored) return
     const mix = clamp01(limb.definition.weight) * actionWeight * clamp01(state.weight) * clamp01(state.confidence)
     if (mix <= 0) return
@@ -237,6 +232,10 @@ export function createComplexBipedIkController(
         report(`solve:${limb.definition.id}`, `${limb.definition.id} 的解析式 IK 无法求解，本帧保留 FK。`)
         return
       }
+      if (result.status === 'clamped') report(
+        `clamped:${limb.definition.id}:${clipHash}:analytic-two-bone`,
+        `${limb.definition.id} 的解析式 IK 结果为 clamped，已应用有限可达解并保留物理残差。`,
+      )
       limb.bones[1]!.getWorldPosition(childWorldPosition)
       applyWorldDirectionCorrection(limb.bones[0]!, childWorldPosition, result.positions[0]!, result.positions[1]!, mix, limb.definition.maxCorrectionRadians)
       limb.bones.at(-1)!.getWorldPosition(childWorldPosition)
@@ -255,6 +254,10 @@ export function createComplexBipedIkController(
         report(`solve:${limb.definition.id}`, `${limb.definition.id} 的 FABRIK 无法求解，本帧保留 FK。`)
         return
       }
+      if (result.status === 'clamped') report(
+        `clamped:${limb.definition.id}:${clipHash}:fabrik`,
+        `${limb.definition.id} 的 FABRIK 结果为 clamped，已应用有限可达解并保留物理残差。`,
+      )
       for (let index = 0; index < limb.bones.length - 1; index += 1) {
         limb.bones[index + 1]!.getWorldPosition(childWorldPosition)
         applyWorldDirectionCorrection(
@@ -299,7 +302,7 @@ export function createComplexBipedIkController(
         return
       }
       const actionWeight = clamp01(weightInput)
-      restoreIkTranslations()
+      restorePelvisTranslation()
       runtime.object.updateMatrixWorld(true)
       if (actionWeight <= 0 || compilation.status !== 'ready') {
         clearTemporalState()
@@ -345,11 +348,9 @@ export function createComplexBipedIkController(
         const state = findState(limb.definition.contactId)
         if (!state || state.weight <= 0 || limb.capturedThisFrame) continue
         for (const [index, bone] of limb.bones.entries()) limb.fallbackRotations[index]!.copy(bone.quaternion)
-        limb.fallbackContactPosition.copy(limb.contactBone.position)
-        try { solveLimb(limb, state, actionWeight) }
+        try { solveLimb(limb, state, actionWeight, sample.clipHash) }
         catch {
           for (const [index, bone] of limb.bones.entries()) bone.quaternion.copy(limb.fallbackRotations[index]!)
-          limb.contactBone.position.copy(limb.fallbackContactPosition)
           runtime.object.updateMatrixWorld(true)
           report(`runtime:${limb.definition.id}`, `${limb.definition.id} 的运行时 IK 异常，本帧已独立回退为 FK。`)
         }
@@ -360,7 +361,7 @@ export function createComplexBipedIkController(
       if (disposed) return
       clearTemporalState()
       if (!runtime.isDisposed()) {
-        restoreIkTranslations()
+        restorePelvisTranslation()
         runtime.object.updateMatrixWorld(true)
       }
     },
@@ -368,7 +369,7 @@ export function createComplexBipedIkController(
     dispose() {
       if (disposed) return
       if (!runtime.isDisposed()) {
-        restoreIkTranslations()
+        restorePelvisTranslation()
         runtime.object.updateMatrixWorld(true)
       }
       clearTemporalState()

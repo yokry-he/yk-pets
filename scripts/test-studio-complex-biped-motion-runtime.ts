@@ -84,6 +84,69 @@ function readChainLengths(runtime: ReturnType<typeof createRuntime>['runtime'], 
   })
 }
 
+// IK 不拥有 foot 的局部位移：外部写入在 apply/reset/dispose 全生命周期都必须保留。
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
+  const controller = createComplexBipedIkController(runtime, compilation)
+  const foot = runtime.bonesById.get('foot.left')!
+  foot.position.x = .025
+  const externalPosition = foot.position.toArray()
+  controller.apply(sampleBipedPetMotion(clip, 100), 0)
+  assert.deepEqual(foot.position.toArray(), externalPosition)
+  controller.reset()
+  assert.deepEqual(foot.position.toArray(), externalPosition)
+  const active = (timeMs: number) => sampleWith(sampleBipedPetMotion(clip, timeMs), {
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.left'],
+  })
+  controller.apply(active(120), 1)
+  controller.apply(active(140), 1)
+  assert.deepEqual(foot.position.toArray(), externalPosition)
+  controller.dispose()
+  assert.deepEqual(foot.position.toArray(), externalPosition)
+  runtime.dispose()
+}
+
+// walk 单支撑超域仍应用有限 clamped 解：有改善但不得伪装成完整锁定。
+{
+  const withIk = createRuntime()
+  const baseline = createRuntime()
+  const clip = compileBipedPetMotion(walk, { boneIds: withIk.compilation.bones.map(item => item.id) })
+  const fkDriver = createComplexBipedMotionController(withIk.runtime)
+  const baselineController = createComplexBipedMotionController(baseline.runtime)
+  const ikController = createComplexBipedIkController(withIk.runtime, withIk.compilation)
+  const locked = (timeMs: number) => sampleWith(sampleBipedPetMotion(clip, timeMs), {
+    contactStates: [{ contactId: 'foot.left', phase: 'locked', weight: 1, confidence: 1 }],
+    activeContacts: ['foot.left'],
+  })
+  fkDriver.apply(locked(100), 1)
+  baselineController.apply(locked(100), 1)
+  ikController.apply(locked(100), 1)
+  const anchor = readContactWorld(withIk.runtime, withIk.compilation, 'foot.left')
+  const baselineAnchor = readContactWorld(baseline.runtime, baseline.compilation, 'foot.left')
+  const positionsBefore = Object.fromEntries([...withIk.runtime.bonesById].map(([id, bone]) => [id, bone.position.toArray()]))
+  fkDriver.apply(locked(320), 1)
+  baselineController.apply(locked(320), 1)
+  ikController.apply(locked(320), 1)
+  const error = readContactWorld(withIk.runtime, withIk.compilation, 'foot.left').distanceTo(anchor)
+  const baselineError = readContactWorld(baseline.runtime, baseline.compilation, 'foot.left').distanceTo(baselineAnchor)
+  assert.ok(error > 1e-3 && error < baselineError, `clamped 应有限改善且不硬锁：ik=${error}, fk=${baselineError}`)
+  assert.ok(ikController.diagnostics().some(item => item.includes('leg.left') && item.includes('clamped')))
+  const diagnosticCount = ikController.diagnostics().length
+  fkDriver.apply(locked(320), 1)
+  ikController.apply(locked(320), 1)
+  assert.equal(ikController.diagnostics().length, diagnosticCount)
+  for (const [boneId, bone] of withIk.runtime.bonesById) if (boneId !== 'pelvis' && boneId !== 'root') {
+    assert.deepEqual(bone.position.toArray(), positionsBefore[boneId])
+  }
+  ikController.dispose()
+  fkDriver.dispose()
+  baselineController.dispose()
+  withIk.runtime.dispose()
+  baseline.runtime.dispose()
+}
+
 {
   const { compilation, runtime } = createRuntime()
   const clip = compileBipedPetMotion(wave, { boneIds: compilation.bones.map(item => item.id) })
