@@ -349,6 +349,7 @@ function blockedByProfile(recipe: CharacterModelRecipeV1, profileDiagnostics: re
 
 const isFiniteVector3 = (value: readonly number[]) => value.length === 3 && value.every(Number.isFinite)
 const isFiniteQuaternion = (value: readonly number[]) => value.length === 4 && value.every(Number.isFinite)
+const COMPILED_IK_SOLVERS = new Set<CharacterIkSolver>(['analytic-two-bone', 'fabrik', 'auto'])
 
 /**
  * 编译器是跨运行时的安全边界。即使 Profile 常量被调试代码或未来扩展意外污染，也必须返回可检查的 blocked 结果，
@@ -358,9 +359,11 @@ function ensureCompiledData(model: Omit<CompiledCharacterModel, 'status' | 'hash
   const errors: CharacterCompilationDiagnostic[] = []
   const error = (id: string, message: string, affectedSemantic?: string) => errors.push({ id, severity: 'error', message, ...(affectedSemantic ? { affectedSemantic } : {}) })
   const boneIds = new Set<string>()
+  const boneIndexById = new Map<string, number>()
   for (const [index, bone] of model.bones.entries()) {
     if (boneIds.has(bone.id)) error('bone-id-duplicate', `骨骼 ${index} 的 ID 重复：${bone.id}。`, bone.semantic)
     boneIds.add(bone.id)
+    boneIndexById.set(bone.id, index)
     if (!isFiniteVector3(bone.position)) error('bone-position', `骨骼 ${bone.id} 包含非有限位置。`, bone.semantic)
     if (bone.parentIndex !== -1 && (!Number.isInteger(bone.parentIndex) || bone.parentIndex < 0 || bone.parentIndex >= index)) {
       error('bone-parent-index', `骨骼 ${bone.id} 的父级索引必须位于当前骨骼之前。`, bone.semantic)
@@ -398,7 +401,9 @@ function ensureCompiledData(model: Omit<CompiledCharacterModel, 'status' | 'hash
       error('joint-limit-vector', `关节限制 ${limit.boneId} 包含非有限向量。`)
     }
   }
+  const contactIds = new Set<string>()
   for (const contact of model.contacts) {
+    contactIds.add(contact.id)
     if (!boneIds.has(contact.boneId)) error('contact-reference', `接触点 ${contact.id} 引用了不存在的骨骼：${contact.boneId}。`)
     if (!isFiniteVector3(contact.localPosition) || !isFiniteQuaternion(contact.localRotation)) {
       error('contact-transform', `接触点 ${contact.id} 包含非有限局部变换。`)
@@ -409,6 +414,38 @@ function ensureCompiledData(model: Omit<CompiledCharacterModel, 'status' | 'hash
     if (!isFiniteVector3(socket.localPosition) || !isFiniteQuaternion(socket.localRotation)) {
       error('socket-transform', `Socket ${socket.id} 包含非有限局部变换。`)
     }
+  }
+
+  const limbIds = new Set<string>()
+  for (const [index, limb] of model.limbIk.entries()) {
+    const label = `IK 肢体 ${index}`
+    if (typeof limb.id !== 'string' || limb.id.trim().length === 0) error('limb-ik-id', `${label} 的 ID 必须为非空字符串。`)
+    else {
+      if (limbIds.has(limb.id)) error('limb-ik-id-duplicate', `${label} 的 ID 重复：${limb.id}。`)
+      limbIds.add(limb.id)
+    }
+    if (!COMPILED_IK_SOLVERS.has(limb.solver)) error('limb-ik-solver', `${label} 的求解器类型无效。`)
+    if (!Array.isArray(limb.boneIds) || limb.boneIds.length < 3) error('limb-ik-chain-length', `${label} 至少需要三根连续骨骼。`)
+    else for (const [boneIndex, boneId] of limb.boneIds.entries()) {
+      if (typeof boneId !== 'string' || !boneIds.has(boneId)) {
+        error('limb-ik-bone-reference', `${label} 引用了不存在的骨骼：${String(boneId)}。`)
+        continue
+      }
+      if (boneIndex > 0) {
+        const previousId = limb.boneIds[boneIndex - 1]
+        const currentIndex = boneIndexById.get(boneId)
+        const previousIndex = typeof previousId === 'string' ? boneIndexById.get(previousId) : undefined
+        if (currentIndex !== undefined && previousIndex !== undefined && model.bones[currentIndex]?.parentIndex !== previousIndex) {
+          error('limb-ik-chain', `${label} 在 ${previousId} 与 ${boneId} 之间的父子路径不连续。`)
+        }
+      }
+    }
+    if (typeof limb.contactId !== 'string' || !contactIds.has(limb.contactId)) error('limb-ik-contact-reference', `${label} 引用了不存在的接触点：${String(limb.contactId)}。`)
+    const poleLength = isFiniteVector3(limb.poleAxis) ? Math.hypot(...limb.poleAxis) : Number.NaN
+    if (!Number.isFinite(poleLength) || poleLength <= 0) error('limb-ik-pole-axis', `${label} 的极向量必须为非零有限向量。`)
+    if (!Number.isFinite(limb.maxStretchRatio) || limb.maxStretchRatio < .8 || limb.maxStretchRatio > 1) error('limb-ik-stretch', `${label} 的伸展比必须为 [0.8, 1] 内的有限数值。`)
+    if (!Number.isFinite(limb.maxCorrectionRadians) || limb.maxCorrectionRadians <= 0 || limb.maxCorrectionRadians > Math.PI) error('limb-ik-correction', `${label} 的单帧修正角必须为 (0, Math.PI] 内的有限数值。`)
+    if (!Number.isFinite(limb.weight) || limb.weight < 0 || limb.weight > 1) error('limb-ik-weight', `${label} 的权重必须为 [0, 1] 内的有限数值。`)
   }
   return errors
 }

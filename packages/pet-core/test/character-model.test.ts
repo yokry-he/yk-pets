@@ -591,6 +591,30 @@ test('编译数据内部校验失败时 blocked 结果不保留 IK 定义', () =
   }
 })
 
+test('编译器会二次校验克隆后的 IK 定义并阻止瞬时污染', () => {
+  const profile = BIPED_PET_RIG_PROFILE as unknown as {
+    limbIk: Array<{ weight: number }>
+  }
+  const limb = profile.limbIk[0]!
+  const descriptor = Object.getOwnPropertyDescriptor(limb, 'weight')!
+  let reads = 0
+  try {
+    Object.defineProperty(limb, 'weight', {
+      configurable: true,
+      enumerable: true,
+      // Profile 预检会读取四次合法权重；第五次是编译克隆，用于模拟两阶段之间的调试污染。
+      get: () => ++reads <= 4 ? descriptor.value : Number.NaN,
+    })
+    const compiled = compileBipedPetCharacter(createBipedPetModelRecipe(200))
+
+    assert.equal(compiled.status, 'blocked')
+    assert.ok(compiled.diagnostics.some(item => item.id === 'limb-ik-weight' && item.message.includes('有限数值')))
+    assert.deepEqual(compiled.limbIk, [])
+  } finally {
+    Object.defineProperty(limb, 'weight', descriptor)
+  }
+})
+
 test('尾巴首节保留配方分段长度，单节尾巴的长度变化会改变末端与网格哈希', () => {
   const defaults = createBipedPetModelRecipe(200)
   const compileTail = (length: number) => compileBipedPetCharacter({
