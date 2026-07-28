@@ -390,8 +390,10 @@
 ## 38. 双足萌宠 Root Motion 契约与编译传播批次
 
 - `@yk-pets/pet-core` 新增版本化 Root Motion 定义，覆盖原地/移动模式、地面/弹道垂直策略、按角色身高归一化的距离与跳高、转向弧度、移动/变形/弹道/制动窗口，以及四种受支持的运动特效标签。旧动作缺少扩展时固定编译为 `in-place`，不会从现有根节点轨道猜测世界位移。
-- `normalizeBipedPetRootMotion` 防御未知对象、畸形数组和 Proxy 访问异常，不突变输入且不共享窗口数组或窗口对象。距离、转向和跳高分别限制在 `[-4, 4]`、`[-2π, 2π]` 和 `[0, 1.5]`；窗口限制在动作时长内，拒绝非正/非有限权重与无效区间，并按时间和 Unicode code-point 身份稳定排序；特效标签只保留受支持枚举、去重并稳定排序。所有修复只产生稳定中文 `warning`。
-- Quaternion Clip 现在携带规范化 `rootMotion`，因此语义变化会自然改变 Clip 哈希；blocked Clip 始终携带独立的安全原地定义。采样结果新增原始请求时间、解析后时间、周期、方向和已编译 Root Motion，周期与方向直接来自既有 `resolveMotionTime`，没有重复推导时间语义。
-- 规格复核已补齐三项边界：扩展命名空间的 `rootMotion`、`contacts`、`events` getter 或数组/条目访问异常会在外部读取边界局部降级为稳定 warning，不会吞掉后续内部编译错误；Clip 哈希按完整 Unicode code point 消费补充平面窗口 ID，同时保持 ASCII 路径不变；无效 Profile 会在 Root Motion 规范化之后阻塞，因此同时保留 Profile error 与 Root Motion warning，blocked 定义和诊断均不共享深层引用。
-- 自动验证已通过 `corepack pnpm --filter @yk-pets/pet-core test`（127 项）、`corepack pnpm --filter @yk-pets/pet-core typecheck`、`node scripts/check-ai-handoff.mjs`、`node scripts/check-documentation.mjs` 和 `git diff --check`。
+- `normalizeBipedPetRootMotion` 防御未知对象、畸形数组和 Proxy 访问异常，不突变输入且不共享窗口数组或窗口对象。只有 `undefined` 表示兼容旧资产的“缺失”；显式 `null`、无效命名空间或无效 Root Motion 都会产生稳定中文 `warning`。距离、转向和跳高分别限制在 `[-4, 4]`、`[-2π, 2π]` 和 `[0, 1.5]`；窗口限制在动作时长内，拒绝非正/非有限权重与无效区间，并按时间和 Unicode code-point 身份稳定排序；特效标签只保留受支持枚举、去重并稳定排序。
+- 动作资产最外层 `extensions` 的 getter、`ownKeys`、属性描述符与属性读取现在都在各自 `Reflect` 边界局部防御，包括已撤销 Proxy；读取失败会保留稳定诊断并降级为空扩展，不使用包围整个编译过程的宽泛 `catch`，因此不会误吞内部编程错误。命名空间内的 `rootMotion`、`contacts`、`events` getter 或数组/条目访问异常沿用同一局部降级原则。
+- 资源预算固定为 Root Motion 窗口 64 项、VFX 标签输入 16 项、接触候选 64 项和语义事件 64 项；超限集合只追加一条聚合 warning，并且只读取预算内条目。VFX 的 16 项输入预算允许无效值与重复值经过清洗，同时最终输出仍受四种支持枚举约束；其余 64 项预算与现有时间轴结构规模一致，保证 10,000 长度恶意数组仍为有界工作量和有界诊断。
+- Quaternion Clip 携带递归冻结的规范化 `rootMotion`，窗口、窗口数组和 VFX 标签数组均不可变；采样在当前 Clip 上复用同一不可变引用，不做逐帧深拷贝。历史 V1 Clip 缺少或携带畸形 `rootMotion` 时会通过 `WeakMap` 一次性迁移到冻结的安全原地定义，不提升 schema；blocked Clip 无条件使用零距离、零转向、grounded、空窗口和空标签的标准原地定义，不能残留输入弹道或特效语义。
+- Root Motion 的完整语义参与 Clip 哈希；表驱动测试锁定既有 ASCII 基线，并覆盖模式、距离、转向、垂直策略、跳高、窗口 ID/类型/起止/权重与 VFX 标签的逐字段变化。补充平面窗口 ID 按完整 Unicode code point 消费，ASCII 路径保持兼容；无效 Profile 仍在 Root Motion 规范化之后阻塞，因此同时保留 Profile error 与清洗 warning。
+- 自动验证已通过 `corepack pnpm --filter @yk-pets/pet-core test`（136 项）、`corepack pnpm --filter @yk-pets/pet-core typecheck`、10,000 长度资源预算探针、`node scripts/check-ai-handoff.mjs`、`node scripts/check-documentation.mjs` 和 `git diff --check`。
 - 本批只完成契约、清洗、编译和采样结果传播，不计算单帧或累计世界位移，不修改 Three 运行时容器，也不生成 VFX。下一批应实现框架无关的 Root Motion 数值采样器；`bipedPetRootMotionComplete` 与 `bipedPetMotionVfxComplete` 继续保持 `false`。

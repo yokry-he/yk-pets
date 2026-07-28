@@ -27,6 +27,16 @@ const fixtureMotion = createStudioMotionAsset({
   updatedAt: 1,
 })
 
+const canonicalInPlaceRootMotion = {
+  mode: 'in-place',
+  distance: 0,
+  turnRadians: 0,
+  verticalMode: 'grounded',
+  jumpHeight: 0,
+  windows: [],
+  vfxTags: [],
+}
+
 test('合法 Root Motion 扩展会规范化、进入 Clip 哈希并传播到采样结果', () => {
   const input = {
     mode: 'travel',
@@ -188,7 +198,7 @@ test('未知枚举、畸形对象和 Proxy 访问异常不会逃逸为运行时�
   const { proxy: revokedProxy, revoke } = Proxy.revocable({}, {})
   revoke()
 
-  for (const input of [null, [], 'bad', accessFailure, revokedProxy, { mode: 'travel', distance: .1, windows: windowAccessFailure }]) {
+  for (const input of [[], 'bad', accessFailure, revokedProxy, { mode: 'travel', distance: .1, windows: windowAccessFailure }]) {
     let result: ReturnType<typeof normalizeBipedPetRootMotion> | undefined
     assert.doesNotThrow(() => { result = normalizeBipedPetRootMotion(input, 1200) })
     assert.equal(result?.value.mode, 'in-place')
@@ -297,4 +307,244 @@ test('无效 Profile 不会遮蔽 Root Motion 警告且 blocked 定义保持深�
   assert.notEqual(first.rootMotion.windows, second.rootMotion.windows)
   assert.notEqual(first.rootMotion.vfxTags, normalized.value.vfxTags)
   assert.notEqual(first.rootMotion.vfxTags, second.rootMotion.vfxTags)
+})
+
+test('编译入口会局部隔离顶层和命名空间扩展访问异常', () => {
+  const throwingTopLevelGetter = Object.defineProperty({ ...fixtureMotion }, 'extensions', {
+    enumerable: true,
+    get() {
+      throw new Error('顶层 extensions getter 不应逃逸')
+    },
+  })
+  const throwingNamespaceGetter = Object.defineProperty({}, 'yk-pets/biped-motion/v1', {
+    enumerable: true,
+    get() {
+      throw new Error('命名空间 getter 不应逃逸')
+    },
+  })
+  const throwingOwnKeys = new Proxy({}, {
+    ownKeys() {
+      throw new Error('extensions ownKeys 不应逃逸')
+    },
+  })
+  const { proxy: revokedExtensions, revoke } = Proxy.revocable({}, {})
+  revoke()
+  const inputs = [
+    throwingTopLevelGetter,
+    { ...fixtureMotion, extensions: throwingNamespaceGetter },
+    { ...fixtureMotion, extensions: throwingOwnKeys },
+    { ...fixtureMotion, extensions: revokedExtensions },
+  ]
+
+  for (const input of inputs) {
+    let first: ReturnType<typeof compileBipedPetMotion> | undefined
+    let second: ReturnType<typeof compileBipedPetMotion> | undefined
+    assert.doesNotThrow(() => { first = compileBipedPetMotion(input) })
+    assert.doesNotThrow(() => { second = compileBipedPetMotion(input) })
+    assert.equal(first?.status, 'ready')
+    assert.deepEqual(first?.rootMotion, canonicalInPlaceRootMotion)
+    assert.deepEqual(first?.diagnostics, second?.diagnostics)
+    assert.ok(first?.diagnostics.some(item => item.severity === 'warning' && /[\u3400-\u9fff]/u.test(item.message)))
+  }
+})
+
+test('只有 undefined 是兼容缺失，显式 null 扩展会产生稳定 warning', () => {
+  assert.deepEqual(normalizeBipedPetRootMotion(undefined, 1200).diagnostics, [])
+  assert.deepEqual(normalizeBipedPetRootMotion(null, 1200).diagnostics.map(item => item.id), ['root-motion-input-invalid'])
+
+  const nullExtensions = compileBipedPetMotion({ ...fixtureMotion, extensions: null })
+  const nullNamespace = compileBipedPetMotion({
+    ...fixtureMotion,
+    extensions: { 'yk-pets/biped-motion/v1': null },
+  })
+  const nullRootMotion = compileBipedPetMotion({
+    ...fixtureMotion,
+    extensions: { 'yk-pets/biped-motion/v1': { rootMotion: null } },
+  })
+
+  assert.ok(nullExtensions.diagnostics.some(item => item.message.includes('extensions-invalid')))
+  assert.deepEqual(nullNamespace.diagnostics.map(item => item.id), ['biped-motion-extension-invalid'])
+  assert.deepEqual(nullRootMotion.diagnostics.map(item => item.id), ['root-motion-input-invalid'])
+})
+
+test('Root Motion 窗口与 VFX 标签按业务预算截断并聚合诊断', () => {
+  let windowReads = 0
+  let tagReads = 0
+  const windows = new Proxy([], {
+    get(target, property, receiver) {
+      if (property === 'length') return 10_000
+      if (typeof property === 'string' && /^\d+$/u.test(property)) windowReads += 1
+      return Reflect.get(target, property, receiver)
+    },
+  })
+  const vfxTags = new Proxy([], {
+    get(target, property, receiver) {
+      if (property === 'length') return 10_000
+      if (typeof property === 'string' && /^\d+$/u.test(property)) tagReads += 1
+      return Reflect.get(target, property, receiver)
+    },
+  })
+  const result = normalizeBipedPetRootMotion({ mode: 'travel', distance: .2, windows, vfxTags }, 1200)
+
+  assert.equal(windowReads, 64)
+  assert.equal(tagReads, 16)
+  assert.equal(result.diagnostics.filter(item => item.id === 'root-motion-windows-budget-exceeded').length, 1)
+  assert.equal(result.diagnostics.filter(item => item.id === 'root-motion-vfxTags-budget-exceeded').length, 1)
+  assert.ok(result.diagnostics.length <= 82)
+})
+
+test('接触候选与语义事件按业务预算截断并聚合诊断', () => {
+  let contactReads = 0
+  let eventReads = 0
+  const contacts = new Proxy([], {
+    get(target, property, receiver) {
+      if (property === 'length') return 10_000
+      if (typeof property === 'string' && /^\d+$/u.test(property)) contactReads += 1
+      return Reflect.get(target, property, receiver)
+    },
+  })
+  const events = new Proxy([], {
+    get(target, property, receiver) {
+      if (property === 'length') return 10_000
+      if (typeof property === 'string' && /^\d+$/u.test(property)) eventReads += 1
+      return Reflect.get(target, property, receiver)
+    },
+  })
+  const clip = compileBipedPetMotion({
+    ...fixtureMotion,
+    extensions: { 'yk-pets/biped-motion/v1': { contacts, events } },
+  })
+
+  assert.equal(contactReads, 64)
+  assert.equal(eventReads, 64)
+  assert.equal(clip.diagnostics.filter(item => item.id === 'biped-motion-contacts-budget-exceeded').length, 1)
+  assert.equal(clip.diagnostics.filter(item => item.id === 'biped-motion-events-budget-exceeded').length, 1)
+  assert.ok(clip.diagnostics.length <= 130)
+})
+
+test('采样复用递归冻结的 Root Motion 且无法污染 Clip 或哈希', () => {
+  const clip = compileBipedPetMotion({
+    ...fixtureMotion,
+    extensions: {
+      'yk-pets/biped-motion/v1': {
+        rootMotion: {
+          mode: 'travel',
+          distance: .5,
+          windows: [{ id: 'walk', kind: 'travel', startMs: 0, endMs: 1200, weight: .8 }],
+          vfxTags: ['speed-trail'],
+        },
+      },
+    },
+  })
+  const before = structuredClone(clip.rootMotion)
+  const hash = clip.hash
+  const sample = sampleBipedPetMotion(clip, 100)
+
+  assert.equal(sample.rootMotion, clip.rootMotion)
+  assert.ok(Object.isFrozen(sample.rootMotion))
+  assert.ok(Object.isFrozen(sample.rootMotion.windows))
+  assert.ok(Object.isFrozen(sample.rootMotion.windows[0]))
+  assert.ok(Object.isFrozen(sample.rootMotion.vfxTags))
+  assert.throws(() => { (sample.rootMotion as { distance: number }).distance = 3 }, TypeError)
+  assert.throws(() => { (sample.rootMotion.windows[0] as { weight: number }).weight = .1 }, TypeError)
+  assert.throws(() => { (sample.rootMotion.windows as unknown[]).push({}) }, TypeError)
+  assert.deepEqual(clip.rootMotion, before)
+  assert.equal(clip.hash, hash)
+})
+
+test('所有 blocked 路径无条件使用冻结的 canonical 原地 Root Motion', () => {
+  const clip = compileBipedPetMotion({
+    ...fixtureMotion,
+    extensions: {
+      'yk-pets/biped-motion/v1': {
+        rootMotion: {
+          mode: 'in-place',
+          distance: Number.POSITIVE_INFINITY,
+          verticalMode: 'ballistic',
+          windows: [{ id: 'residual', kind: 'ballistic', startMs: 0, endMs: 1200, weight: 1 }],
+          vfxTags: ['landing-ring'],
+        },
+      },
+    },
+  }, { profile: { ...BIPED_PET_RIG_PROFILE, bones: [] } })
+
+  assert.equal(clip.status, 'blocked')
+  assert.deepEqual(clip.rootMotion, canonicalInPlaceRootMotion)
+  assert.ok(Object.isFrozen(clip.rootMotion))
+  assert.ok(Object.isFrozen(clip.rootMotion.windows))
+  assert.ok(Object.isFrozen(clip.rootMotion.vfxTags))
+  assert.ok(clip.diagnostics.some(item => item.severity === 'warning' && item.id.startsWith('root-motion-')))
+  assert.ok(clip.diagnostics.some(item => item.severity === 'error' && item.id.startsWith('motion-profile-validation-')))
+})
+
+test('历史 V1 Clip 缺失或损坏 Root Motion 时采样迁移为冻结 canonical 原地定义', () => {
+  const current = compileBipedPetMotion({ ...fixtureMotion, extensions: undefined })
+  const { rootMotion: _readyRootMotion, ...legacyReady } = current
+  const blocked = compileBipedPetMotion(fixtureMotion, { profile: { ...BIPED_PET_RIG_PROFILE, bones: [] } })
+  const { rootMotion: _blockedRootMotion, ...legacyBlocked } = blocked
+  const missing = sampleBipedPetMotion(legacyReady as typeof current, 100)
+  const malformed = sampleBipedPetMotion({ ...legacyReady, rootMotion: null } as unknown as typeof current, 100)
+  const blockedMissing = sampleBipedPetMotion(legacyBlocked as typeof blocked, 100)
+  const blockedTravel = sampleBipedPetMotion({
+    ...blocked,
+    rootMotion: {
+      mode: 'travel',
+      distance: .8,
+      turnRadians: .3,
+      verticalMode: 'ballistic',
+      jumpHeight: .6,
+      windows: [{ id: 'legacy-travel', kind: 'ballistic', startMs: 0, endMs: 1200, weight: 1 }],
+      vfxTags: ['landing-ring'],
+    },
+  }, 100)
+
+  for (const sample of [missing, malformed, blockedMissing, blockedTravel]) {
+    assert.deepEqual(sample.rootMotion, canonicalInPlaceRootMotion)
+    assert.ok(Object.isFrozen(sample.rootMotion))
+    assert.ok(Object.isFrozen(sample.rootMotion.windows))
+    assert.ok(Object.isFrozen(sample.rootMotion.vfxTags))
+  }
+})
+
+test('Root Motion 哈希保持 ASCII 路径并覆盖全部契约字段', () => {
+  const base = {
+    mode: 'travel',
+    distance: .5,
+    turnRadians: .1,
+    verticalMode: 'ballistic',
+    jumpHeight: .3,
+    windows: [{ id: 'ascii-window', kind: 'travel', startMs: 0, endMs: 1000, weight: .5 }],
+    vfxTags: ['speed-trail'],
+  }
+  const compileHash = (rootMotion: unknown) => compileBipedPetMotion(createStudioMotionAsset({
+    id: 'hash-fixture',
+    nameZh: '哈希',
+    nameEn: 'Hash',
+    durationMs: 1200,
+    displayFps: 30,
+    loopMode: 'loop',
+    tracks: [],
+    propIds: [],
+    propEventTracks: [],
+    createdAt: 1,
+    updatedAt: 1,
+    extensions: { 'yk-pets/biped-motion/v1': { rootMotion } },
+  })).hash
+  const baseHash = compileHash(base)
+  const variants: readonly (readonly [string, unknown])[] = [
+    ['mode', { ...base, mode: 'in-place' }],
+    ['distance', { ...base, distance: .6 }],
+    ['turnRadians', { ...base, turnRadians: .2 }],
+    ['verticalMode', { ...base, verticalMode: 'grounded' }],
+    ['jumpHeight', { ...base, jumpHeight: .4 }],
+    ['window.id', { ...base, windows: [{ ...base.windows[0]!, id: 'ascii-window-b' }] }],
+    ['window.kind', { ...base, windows: [{ ...base.windows[0]!, kind: 'warp' }] }],
+    ['window.startMs', { ...base, windows: [{ ...base.windows[0]!, startMs: 100 }] }],
+    ['window.endMs', { ...base, windows: [{ ...base.windows[0]!, endMs: 1100 }] }],
+    ['window.weight', { ...base, windows: [{ ...base.windows[0]!, weight: .7 }] }],
+    ['vfxTags', { ...base, vfxTags: ['landing-ring'] }],
+  ]
+
+  assert.equal(baseHash, 'bpm-de56d188')
+  for (const [field, variant] of variants) assert.notEqual(compileHash(variant), baseHash, `${field} 未进入哈希`)
 })

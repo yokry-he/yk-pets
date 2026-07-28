@@ -82,6 +82,8 @@ export type MotionNormalizationDiagnosticCode =
   | 'keyframe-time-clamped'
   | 'keyframe-value-clamped'
   | 'duplicate-keyframe-time-replaced'
+  | 'extensions-invalid'
+  | 'extensions-access-failed'
 
 export interface MotionNormalizationDiagnostic {
   code: MotionNormalizationDiagnosticCode
@@ -170,7 +172,7 @@ export function normalizeMotionAsset(input: unknown, options: NormalizeMotionAss
   const propEventTracks = normalizePropEventTracks(source.propEventTracks, durationMs)
   const legacyAppearanceId = optionalText(source.appearanceId)
   const authoringAppearanceId = optionalText(source.authoringAppearanceId) || legacyAppearanceId
-  const extensions = collectExtensions(source)
+  const extensions = collectExtensions(source, diagnostics)
 
   return {
     asset: {
@@ -333,10 +335,55 @@ function normalizeStringList(input: unknown): string[] {
   return [...new Set(input.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map(item => item.trim()))]
 }
 
-function collectExtensions(source: Record<string, unknown>): Record<string, unknown> {
-  const extensions = isRecord(source.extensions) ? { ...source.extensions } : {}
-  for (const [key, value] of Object.entries(source)) {
-    if (!KNOWN_ASSET_KEYS.has(key)) extensions[key] = value
+function collectExtensions(source: Record<string, unknown>, diagnostics: MotionNormalizationDiagnostic[]): Record<string, unknown> {
+  const extensions: Record<string, unknown> = {}
+  let explicitExtensions: unknown
+  try {
+    explicitExtensions = Reflect.get(source, 'extensions')
+  }
+  catch {
+    diagnostics.push({ code: 'extensions-access-failed', path: 'extensions' })
+  }
+
+  if (explicitExtensions !== undefined) {
+    let extensionKeys: (string | symbol)[] | undefined
+    try {
+      if (!explicitExtensions || typeof explicitExtensions !== 'object' || Array.isArray(explicitExtensions)) {
+        diagnostics.push({ code: 'extensions-invalid', path: 'extensions' })
+      }
+      else extensionKeys = Reflect.ownKeys(explicitExtensions)
+    }
+    catch {
+      diagnostics.push({ code: 'extensions-access-failed', path: 'extensions' })
+    }
+    for (const key of extensionKeys ?? []) {
+      if (typeof key !== 'string') continue
+      try {
+        const descriptor = Reflect.getOwnPropertyDescriptor(explicitExtensions as object, key)
+        if (descriptor?.enumerable) extensions[key] = Reflect.get(explicitExtensions as object, key)
+      }
+      catch {
+        diagnostics.push({ code: 'extensions-access-failed', path: `extensions.${key}` })
+      }
+    }
+  }
+
+  let sourceKeys: (string | symbol)[] = []
+  try {
+    sourceKeys = Reflect.ownKeys(source)
+  }
+  catch {
+    diagnostics.push({ code: 'extensions-access-failed', path: '$' })
+  }
+  for (const key of sourceKeys) {
+    if (typeof key !== 'string' || KNOWN_ASSET_KEYS.has(key)) continue
+    try {
+      const descriptor = Reflect.getOwnPropertyDescriptor(source, key)
+      if (descriptor?.enumerable) extensions[key] = Reflect.get(source, key)
+    }
+    catch {
+      diagnostics.push({ code: 'extensions-access-failed', path: key })
+    }
   }
   return extensions
 }

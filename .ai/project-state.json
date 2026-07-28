@@ -115,10 +115,10 @@
     "hybridIkLegacyHistoryMigrationComplete": true,
     "bipedPetHybridRootMotionVfxDesignComplete": true,
     "bipedPetHybridRootMotionVfxPlanComplete": true,
-    "bipedPetRootMotionContractComplete": true,
     "bipedPetProductionQuadrupedProfileComplete": false,
     "bipedPetProductionMechProfileComplete": false,
     "bipedPetHighDetailTopologyComplete": false,
+    "bipedPetRootMotionContractComplete": true,
     "bipedPetRootMotionComplete": false,
     "bipedPetMotionVfxComplete": false,
     "crossBrowserGpuManualAcceptanceComplete": false

@@ -31,6 +31,9 @@ export interface BipedPetRootMotionNormalizationResult {
   diagnostics: readonly { id: string; severity: 'warning'; message: string }[]
 }
 
+export const MAX_BIPED_PET_ROOT_MOTION_WINDOWS = 64
+export const MAX_BIPED_PET_MOTION_VFX_TAG_INPUTS = 16
+
 type RootMotionDiagnostic = BipedPetRootMotionNormalizationResult['diagnostics'][number]
 type SafeProperty = { ok: true; value: unknown } | { ok: false; value: undefined }
 
@@ -101,13 +104,21 @@ function readArray(
   value: unknown,
   diagnostics: RootMotionDiagnostic[],
   field: 'windows' | 'vfxTags',
+  maximumItems: number,
 ): { values: unknown[]; accessFailed: boolean; validContainer: boolean } {
   try {
     if (!Array.isArray(value)) return { values: [], accessFailed: false, validContainer: false }
     const length = Reflect.get(value, 'length')
     if (!Number.isSafeInteger(length) || length < 0) throw new TypeError('invalid array length')
+    const boundedLength = Math.min(length, maximumItems)
+    if (length > maximumItems) {
+      diagnostics.push(diagnostic(
+        `root-motion-${field}-budget-exceeded`,
+        `Root Motion 的 ${field} 超过 ${maximumItems} 项预算，仅处理预算内条目。`,
+      ))
+    }
     const values: unknown[] = []
-    for (let index = 0; index < length; index += 1) values.push(Reflect.get(value, index))
+    for (let index = 0; index < boundedLength; index += 1) values.push(Reflect.get(value, index))
     return { values, accessFailed: false, validContainer: true }
   }
   catch {
@@ -145,7 +156,7 @@ function normalizeWindows(
   const property = readProperty(source, 'windows', diagnostics)
   if (!property.ok) return { value: [], invalidContainer: true }
   if (property.value === undefined) return { value: [], invalidContainer: false }
-  const array = readArray(property.value, diagnostics, 'windows')
+  const array = readArray(property.value, diagnostics, 'windows', MAX_BIPED_PET_ROOT_MOTION_WINDOWS)
   if (!array.validContainer) {
     if (!array.accessFailed) diagnostics.push(diagnostic('root-motion-windows-invalid', 'Root Motion 的 windows 不是数组，已忽略该字段。'))
     return { value: [], invalidContainer: true }
@@ -228,7 +239,7 @@ function normalizeVfxTags(
   const property = readProperty(source, 'vfxTags', diagnostics)
   if (!property.ok) return { value: [], invalidContainer: true }
   if (property.value === undefined) return { value: [], invalidContainer: false }
-  const array = readArray(property.value, diagnostics, 'vfxTags')
+  const array = readArray(property.value, diagnostics, 'vfxTags', MAX_BIPED_PET_MOTION_VFX_TAG_INPUTS)
   if (!array.validContainer) {
     if (!array.accessFailed) diagnostics.push(diagnostic('root-motion-vfx-tags-invalid', 'Root Motion 的 vfxTags 不是数组，已忽略该字段。'))
     return { value: [], invalidContainer: true }
@@ -259,7 +270,7 @@ export function normalizeBipedPetRootMotion(input: unknown, durationMs: number):
 
   const source = safeRecord(input)
   if (!source) {
-    if (input !== undefined && input !== null) diagnostics.push(diagnostic('root-motion-input-invalid', 'Root Motion 扩展不是对象，已使用原地回退。'))
+    if (input !== undefined) diagnostics.push(diagnostic('root-motion-input-invalid', 'Root Motion 扩展不是对象，已使用原地回退。'))
     return { value: inPlaceRootMotion(), diagnostics }
   }
 

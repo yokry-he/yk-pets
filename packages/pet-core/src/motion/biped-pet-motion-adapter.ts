@@ -1,6 +1,6 @@
 /**
  * 文件职责 / File responsibility
- * 定义双足萌宠语义动作适配器的版本化 Quaternion Clip 契约；具体映射、编译与采样在后续任务补充。
+ * 定义并实现双足萌宠语义姿态适配、Quaternion Clip 编译及安全采样传播；数值 Root Motion 由后续模块负责。
  */
 
 import { BIPED_PET_RIG_PROFILE } from '../character/biped-pet-profile'
@@ -17,6 +17,8 @@ import {
 
 export const BIPED_PET_MOTION_ADAPTER_ID = 'biped-pet-motion-adapter/v1' as const
 export const BIPED_PET_QUATERNION_CLIP_SCHEMA_VERSION = 1 as const
+export const MAX_BIPED_PET_MOTION_CONTACT_CANDIDATES = 64
+export const MAX_BIPED_PET_MOTION_SEMANTIC_EVENTS = 64
 
 export interface BipedPetBoneQuaternionKeyframe {
   timeMs: number
@@ -127,6 +129,23 @@ const HIND_RIGHT_DISTRIBUTION: RotationDistribution = [['hip.right', .1], ['thig
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
 const compareCodePoints = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0
 const numericSuffix = (boneId: string) => Number.parseInt(boneId.split('.').at(-1) || '0', 10)
+const canonicalRootMotions = new WeakSet<object>()
+const sampledRootMotionCache = new WeakMap<object, BipedPetRootMotionDefinition>()
+
+function freezeRootMotionDefinition(value: BipedPetRootMotionDefinition): BipedPetRootMotionDefinition {
+  const rootMotion: BipedPetRootMotionDefinition = {
+    ...value,
+    windows: Object.freeze(value.windows.map(item => Object.freeze({ ...item }))),
+    vfxTags: Object.freeze([...value.vfxTags]),
+  }
+  Object.freeze(rootMotion)
+  canonicalRootMotions.add(rootMotion)
+  return rootMotion
+}
+
+function canonicalInPlaceRootMotion(durationMs: number): BipedPetRootMotionDefinition {
+  return freezeRootMotionDefinition(normalizeBipedPetRootMotion(undefined, durationMs).value)
+}
 
 /**
  * 把现有云狐语义姿态分配到当前真实骨骼集合。输出是相对绑定姿态的 Quaternion，不包含渲染器对象。
@@ -259,7 +278,16 @@ function readBipedMotionExtensionSource(asset: StudioMotionAssetV2): {
 } {
   try {
     const source = asset.extensions?.['yk-pets/biped-motion/v1']
-    if (!source || typeof source !== 'object' || Array.isArray(source)) return { diagnostics: [] }
+    if (source === undefined) return { diagnostics: [] }
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+      return {
+        diagnostics: [{
+          id: 'biped-motion-extension-invalid',
+          severity: 'warning',
+          message: '双足萌宠动作扩展命名空间不是对象，已忽略该扩展。',
+        }],
+      }
+    }
     return { source: source as Record<PropertyKey, unknown>, diagnostics: [] }
   }
   catch {
@@ -298,14 +326,23 @@ function readExtensionField(
 function readExtensionArray(
   value: unknown,
   field: 'contacts' | 'events',
+  maximumItems: number,
   diagnostics: BipedPetMotionDiagnostic[],
 ): unknown[] {
   try {
     if (!Array.isArray(value)) return []
     const length = Reflect.get(value, 'length')
     if (!Number.isSafeInteger(length) || length < 0) throw new TypeError('invalid extension array length')
+    const boundedLength = Math.min(length, maximumItems)
+    if (length > maximumItems) {
+      diagnostics.push({
+        id: `biped-motion-${field}-budget-exceeded`,
+        severity: 'warning',
+        message: `双足萌宠动作扩展字段 ${field} 超过 ${maximumItems} 项预算，仅处理预算内条目。`,
+      })
+    }
     const items: unknown[] = []
-    for (let index = 0; index < length; index += 1) items.push(Reflect.get(value, index))
+    for (let index = 0; index < boundedLength; index += 1) items.push(Reflect.get(value, index))
     return items
   }
   catch {
@@ -344,8 +381,12 @@ function readBipedMotionMetadata(
   const eventsField = readExtensionField(source, 'events')
   if (!contactsField.ok) diagnostics.push(contactsField.diagnostic)
   if (!eventsField.ok) diagnostics.push(eventsField.diagnostic)
-  const contactItems = contactsField.ok ? readExtensionArray(contactsField.value, 'contacts', diagnostics) : []
-  const eventItems = eventsField.ok ? readExtensionArray(eventsField.value, 'events', diagnostics) : []
+  const contactItems = contactsField.ok
+    ? readExtensionArray(contactsField.value, 'contacts', MAX_BIPED_PET_MOTION_CONTACT_CANDIDATES, diagnostics)
+    : []
+  const eventItems = eventsField.ok
+    ? readExtensionArray(eventsField.value, 'events', MAX_BIPED_PET_MOTION_SEMANTIC_EVENTS, diagnostics)
+    : []
   const contactIds = new Set(profile.contacts.map(item => item.id))
   for (const [index, item] of contactItems.entries()) {
     let value: Record<string, unknown> | undefined
@@ -455,7 +496,6 @@ function sameQuaternion(left: MotionQuaternion, right: MotionQuaternion) {
 function blockedMotionClip(
   asset: StudioMotionAssetV2,
   profile: CharacterRigProfile,
-  rootMotion: BipedPetRootMotionDefinition,
   diagnostics: readonly BipedPetMotionDiagnostic[],
 ): BipedPetQuaternionClip {
   const value = {
@@ -466,11 +506,7 @@ function blockedMotionClip(
     durationMs: asset.durationMs,
     loopMode: asset.loopMode,
     status: 'blocked' as const,
-    rootMotion: {
-      ...rootMotion,
-      windows: rootMotion.windows.map(item => ({ ...item })),
-      vfxTags: [...rootMotion.vfxTags],
-    },
+    rootMotion: canonicalInPlaceRootMotion(asset.durationMs),
     boneTracks: [],
     rootPositionTrack: [],
     contacts: [],
@@ -494,6 +530,7 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
   diagnostics.push(...extension.diagnostics)
   const rootMotion = readRootMotionDefinition(asset, extension.source)
   diagnostics.push(...rootMotion.diagnostics)
+  const compiledRootMotion = freezeRootMotionDefinition(rootMotion.value)
   const profileDiagnostics = validateRigProfile(profile)
   if (profile.id !== 'biped-pet/v1' || profileDiagnostics.length) {
     diagnostics.push(...profileDiagnostics.map((message, index): BipedPetMotionDiagnostic => ({
@@ -501,10 +538,7 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
       severity: 'error',
       message: `双足萌宠动作 Profile 无法安全编译：${message}`,
     })))
-    const safeRootMotion = rootMotion.value.mode === 'in-place'
-      ? rootMotion.value
-      : normalizeBipedPetRootMotion(undefined, asset.durationMs).value
-    return blockedMotionClip(asset, profile, safeRootMotion, diagnostics)
+    return blockedMotionClip(asset, profile, diagnostics)
   }
 
   const times = [...new Set([0, asset.durationMs, ...asset.tracks.flatMap(track => track.keyframes.map(keyframe => keyframe.timeMs))])]
@@ -536,10 +570,7 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
     }
   }
   if (diagnostics.some(item => item.severity === 'error')) {
-    const safeRootMotion = rootMotion.value.mode === 'in-place'
-      ? rootMotion.value
-      : normalizeBipedPetRootMotion(undefined, asset.durationMs).value
-    return blockedMotionClip(asset, profile, safeRootMotion, diagnostics)
+    return blockedMotionClip(asset, profile, diagnostics)
   }
 
   const value = {
@@ -550,7 +581,7 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
     durationMs: asset.durationMs,
     loopMode: asset.loopMode,
     status: 'ready' as const,
-    rootMotion: rootMotion.value,
+    rootMotion: compiledRootMotion,
     boneTracks: [...boneKeyframes].map(([boneId, keyframes]) => ({ boneId, keyframes })),
     rootPositionTrack,
     contacts: metadata.contacts,
@@ -612,6 +643,32 @@ function sampleContactStates(contacts: readonly BipedPetMotionContactCandidate[]
   return [...states.values()].sort((left, right) => compareCodePoints(left.contactId, right.contactId))
 }
 
+function rootMotionForSample(clip: BipedPetQuaternionClip): BipedPetRootMotionDefinition {
+  const cached = sampledRootMotionCache.get(clip)
+  if (cached) return cached
+  if (clip.status !== 'ready') {
+    const rootMotion = canonicalInPlaceRootMotion(clip.durationMs)
+    sampledRootMotionCache.set(clip, rootMotion)
+    return rootMotion
+  }
+  let input: unknown
+  try {
+    input = Reflect.get(clip, 'rootMotion')
+  }
+  catch {
+    input = undefined
+  }
+  if (input && typeof input === 'object' && canonicalRootMotions.has(input)) {
+    return input as BipedPetRootMotionDefinition
+  }
+  const normalized = normalizeBipedPetRootMotion(input, clip.durationMs)
+  const rootMotion = normalized.diagnostics.length
+    ? canonicalInPlaceRootMotion(clip.durationMs)
+    : freezeRootMotionDefinition(normalized.value)
+  sampledRootMotionCache.set(clip, rootMotion)
+  return rootMotion
+}
+
 /** 在任意时间采样 Clip；blocked 输入始终返回可直接忽略的空姿态。 */
 export function sampleBipedPetMotion(clip: BipedPetQuaternionClip, timeMs: number): SampledBipedPetMotion {
   const resolved = resolveMotionTime(timeMs, clip.durationMs, clip.loopMode)
@@ -624,7 +681,7 @@ export function sampleBipedPetMotion(clip: BipedPetQuaternionClip, timeMs: numbe
     resolvedTimeMs: resolved.resolvedTimeMs,
     iteration: resolved.iteration,
     direction: resolved.direction,
-    rootMotion: clip.rootMotion,
+    rootMotion: rootMotionForSample(clip),
   }
   if (clip.status !== 'ready') return { ...identity, bones: [], rootPosition: [0, 0, 0], activeContacts: [], contactStates: [] }
   const contactStates = sampleContactStates(clip.contacts, resolved.resolvedTimeMs)

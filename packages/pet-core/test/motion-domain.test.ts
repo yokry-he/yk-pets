@@ -120,6 +120,29 @@ test('legacy motion metadata migrates without becoming appearance-bound', () => 
   assert.ok(result.diagnostics.some(item => item.code === 'duration-clamped'))
 })
 
+test('动作资产规范化会局部忽略不可访问的 extensions 并返回稳定诊断', () => {
+  const inaccessibleExtensions = new Proxy({}, {
+    ownKeys() {
+      throw new Error('extensions ownKeys 不应逃逸')
+    },
+  })
+  let first: ReturnType<typeof normalizeMotionAsset> | undefined
+  let second: ReturnType<typeof normalizeMotionAsset> | undefined
+  const input = {
+    id: 'unsafe-extensions',
+    nameZh: '不可信扩展',
+    nameEn: 'Unsafe extensions',
+    durationMs: 1200,
+    extensions: inaccessibleExtensions,
+  }
+
+  assert.doesNotThrow(() => { first = normalizeMotionAsset(input, { now: 1 }) })
+  assert.doesNotThrow(() => { second = normalizeMotionAsset(input, { now: 1 }) })
+  assert.equal(first?.asset.extensions, undefined)
+  assert.deepEqual(first?.diagnostics, second?.diagnostics)
+  assert.deepEqual(first?.diagnostics.filter(item => item.code === 'extensions-access-failed').map(item => item.path), ['extensions'])
+})
+
 test('normalization sorts tracks and replaces duplicate times with the last value', () => {
   const result = normalizeMotionAsset({
     schemaVersion: 2,
