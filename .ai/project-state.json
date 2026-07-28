@@ -93,6 +93,7 @@
     "bipedPetHybridIkCompilationPropagationComplete": true,
     "bipedPetAnalyticTwoBoneIkComplete": true,
     "bipedPetConstrainedFabrikSolverComplete": true,
+    "bipedPetConstrainedFabrikConstraintFixComplete": true,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
     "bipedPetRootMotionComplete": false,

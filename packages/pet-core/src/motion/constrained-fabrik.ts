@@ -124,6 +124,87 @@ const segmentLengthsArePreserved = (positions: readonly RigVector3[], segmentLen
   },
 )
 
+/**
+ * 把多段链在一个内部关节点处分成前、后两条聚合段，先精确解出聚合三角形，
+ * 再沿两条射线按原始段长展开各关节点。这样无需等待奇异直线姿态渐近收敛，
+ * 同时保证所有内部点都位于 Root→Target 主轴和 Pole 定义的同一半平面。
+ */
+const constructPoleHalfPlaneChain = (
+  root: RigVector3,
+  target: RigVector3,
+  bendDirection: RigVector3,
+  segmentLengths: readonly number[],
+  tolerance: number,
+): RigVector3[] | null => {
+  const targetOffset = subtract(target, root)
+  const targetDirection = normalize(targetOffset)
+  const targetDistance = distance(root, target)
+  if (!targetDirection || !Number.isFinite(targetDistance) || targetDistance <= LENGTH_EPSILON) return null
+
+  const totalLength = segmentLengths.reduce((sum, item) => sum + item, 0)
+  let prefixLength = 0
+  let best: { split: number, axisDistance: number, height: number } | null = null
+  for (let split = 1; split < segmentLengths.length; split += 1) {
+    prefixLength += segmentLengths[split - 1]!
+    const suffixLength = totalLength - prefixLength
+    const commonScale = Math.max(prefixLength, suffixLength, targetDistance)
+    const normalizedPrefix = prefixLength / commonScale
+    const normalizedSuffix = suffixLength / commonScale
+    const normalizedTarget = targetDistance / commonScale
+    const feasibilityEpsilon = Number.EPSILON * 32
+    if (normalizedTarget < Math.abs(normalizedPrefix - normalizedSuffix) - feasibilityEpsilon
+      || normalizedTarget > normalizedPrefix + normalizedSuffix + feasibilityEpsilon) continue
+
+    const normalizedAxisDistance = (
+      normalizedPrefix * normalizedPrefix
+      - normalizedSuffix * normalizedSuffix
+      + normalizedTarget * normalizedTarget
+    ) / (2 * normalizedTarget)
+    const normalizedHeightSquared = normalizedPrefix * normalizedPrefix - normalizedAxisDistance * normalizedAxisDistance
+    if (normalizedHeightSquared < -feasibilityEpsilon) continue
+    const height = Math.sqrt(Math.max(0, normalizedHeightSquared)) * commonScale
+    const candidate = {
+      split,
+      axisDistance: normalizedAxisDistance * commonScale,
+      height,
+    }
+    // 优先选择三角形高度最大的分割，远离退化直线能让 Pole 朝向更稳定。
+    if (!best || candidate.height > best.height) best = candidate
+  }
+  if (!best) return null
+
+  const pivot = add(addScaled(root, targetDirection, best.axisDistance), scale(bendDirection, best.height))
+  const prefixDirection = normalize(subtract(pivot, root))
+  const suffixDirection = normalize(subtract(target, pivot))
+  if (!isFiniteVector(pivot) || !prefixDirection || !suffixDirection) return null
+
+  const result: RigVector3[] = [[...root] as RigVector3]
+  let travelled = 0
+  for (let index = 1; index <= best.split; index += 1) {
+    travelled += segmentLengths[index - 1]!
+    result.push(addScaled(root, prefixDirection, travelled))
+  }
+  travelled = 0
+  for (let index = best.split + 1; index <= segmentLengths.length; index += 1) {
+    travelled += segmentLengths[index - 1]!
+    result.push(addScaled(pivot, suffixDirection, travelled))
+  }
+  if (!result.every(isFiniteVector)
+    || !segmentLengthsArePreserved(result, segmentLengths)
+    || distance(result.at(-1)!, target) > tolerance) return null
+  return result
+}
+
+const satisfiesPoleHalfPlane = (
+  positions: readonly RigVector3[],
+  root: RigVector3,
+  bendDirection: RigVector3,
+  totalLength: number,
+): boolean => {
+  const tolerance = Math.max(LENGTH_EPSILON, totalLength * 1e-10)
+  return positions.slice(1, -1).every(position => dot(subtract(position, root), bendDirection) >= -tolerance)
+}
+
 export const solveConstrainedFabrik = (input: ConstrainedFabrikInput): ConstrainedFabrikResult => {
   if (!isRecord(input)) return blockedResult(input)
   const rawPositions = input.positions
@@ -186,6 +267,20 @@ export const solveConstrainedFabrik = (input: ConstrainedFabrikInput): Constrain
   const polePoint = addScaled(root, bendDirection, totalLength)
   if (!isFiniteVector(polePoint)) return blockedResult(input)
 
+  // 配置上限小于物理链长时，直线展开会违反“保持原段长”；使用聚合两段三角形直接命中钳制点。
+  if (wasClamped) {
+    const constrainedPositions = constructPoleHalfPlaneChain(root, effectiveTarget, bendDirection, segmentLengths, tolerance)
+    if (!constrainedPositions || !satisfiesPoleHalfPlane(constrainedPositions, root, bendDirection, totalLength)) {
+      return blockedResult(input)
+    }
+    return {
+      status: 'clamped',
+      positions: constrainedPositions,
+      iterations: 0,
+      error: finiteResidual(constrainedPositions.at(-1)!, input.target),
+    }
+  }
+
   let iterations = 0
   let solveError = distance(positions.at(-1)!, effectiveTarget)
   while (iterations < maxIterations && solveError > tolerance) {
@@ -214,11 +309,20 @@ export const solveConstrainedFabrik = (input: ConstrainedFabrikInput): Constrain
 
   if (!segmentLengthsArePreserved(positions, segmentLengths)) return blockedResult(input, positions, iterations)
   if (solveError > tolerance) return blockedResult(input, positions, iterations)
-  const resultPositions = positions.map(position => [...position] as RigVector3)
+  // 顺序 Pole 投影可能被后续关节再次改变局部轴；成功返回前统一复核全链半平面，
+  // 有可行聚合分割时改用同一平面内的确定性保长解，否则绝不伪称 solved。
+  const constrainedPositions = constructPoleHalfPlaneChain(root, effectiveTarget, bendDirection, segmentLengths, tolerance)
+  const resultPositions = constrainedPositions
+    && satisfiesPoleHalfPlane(constrainedPositions, root, bendDirection, totalLength)
+    ? constrainedPositions
+    : (satisfiesPoleHalfPlane(positions, root, bendDirection, totalLength)
+      ? positions.map(position => [...position] as RigVector3)
+      : null)
+  if (!resultPositions) return blockedResult(input, positions, iterations)
   return {
-    status: wasClamped ? 'clamped' : 'solved',
+    status: 'solved',
     positions: resultPositions,
     iterations,
-    error: wasClamped ? finiteResidual(resultPositions.at(-1)!, input.target) : solveError,
+    error: distance(resultPositions.at(-1)!, input.target),
   }
 }

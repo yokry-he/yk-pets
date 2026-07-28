@@ -58,6 +58,74 @@ test('FABRIK 按伸展比例钳制目标且不伪造段长', () => {
   }
 })
 
+test('FABRIK 对接近一的配置伸展上限使用确定性保长解', () => {
+  for (const maxStretchRatio of [.95, .99]) {
+    const result = solveConstrainedFabrik({
+      positions: [[0, 0, 0], [0, -1, 0], [0, -2, 0]],
+      target: [100, 0, 0], pole: [0, 0, 1], maxStretchRatio,
+    })
+
+    assert.equal(result.status, 'clamped')
+    assert.ok(Math.abs(distance(result.positions[0]!, result.positions.at(-1)!) - 2 * maxStretchRatio) <= 1e-4)
+    assert.ok(Math.abs(distance(result.positions[0]!, result.positions[1]!) - 1) < 1e-8)
+    assert.ok(Math.abs(distance(result.positions[1]!, result.positions[2]!) - 1) < 1e-8)
+  }
+})
+
+test('FABRIK 为不同段长的配置上限构造确定性保长姿态', () => {
+  const input = {
+    positions: [[0, 0, 0], [0, -.7, 0], [0, -1.8, 0], [0, -2.7, 0], [0, -3.5, 0]] as const,
+    target: [30, 4, -2] as const,
+    pole: [0, 0, 5] as const,
+    maxStretchRatio: .9,
+  }
+  const first = solveConstrainedFabrik(input)
+  const second = solveConstrainedFabrik(input)
+
+  assert.equal(first.status, 'clamped')
+  assert.deepEqual(first, second)
+  assert.ok(Math.abs(distance(first.positions[0]!, first.positions.at(-1)!) - 3.5 * .9) <= 1e-4)
+  for (let index = 1; index < first.positions.length; index += 1) {
+    const expected = distance(input.positions[index - 1]!, input.positions[index]!)
+    assert.ok(Math.abs(distance(first.positions[index - 1]!, first.positions[index]!) - expected) <= expected * 1e-8)
+  }
+})
+
+test('FABRIK 最终所有内部关节点位于 Pole 定义的统一弯曲半平面', () => {
+  const target = [1, -2, .5] as const
+  const pole = [0, 0, 1] as const
+  const result = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [0, -1, 0], [0, -2, 0], [0, -3, 0], [0, -4, 0]],
+    target, pole, maxStretchRatio: 1,
+  })
+  const targetLength = Math.hypot(...target)
+  const axis = target.map(value => value / targetLength)
+  const poleAlongAxis = pole[0] * axis[0]! + pole[1] * axis[1]! + pole[2] * axis[2]!
+  const projectedPole = pole.map((value, index) => value - axis[index]! * poleAlongAxis)
+  const projectedPoleLength = Math.hypot(...projectedPole)
+  const bend = projectedPole.map(value => value / projectedPoleLength)
+
+  assert.equal(result.status, 'solved')
+  assert.ok(result.error <= 1e-4)
+  for (const position of result.positions.slice(1, -1)) {
+    const signedDistance = position[0] * bend[0]! + position[1] * bend[1]! + position[2] * bend[2]!
+    assert.ok(signedDistance >= -1e-8, `内部关节点越过 Pole 半平面：${signedDistance}`)
+  }
+  for (let index = 1; index < result.positions.length; index += 1) {
+    assert.ok(Math.abs(distance(result.positions[index - 1]!, result.positions[index]!) - 1) < 1e-8)
+  }
+})
+
+test('FABRIK 找不到可行聚合分割且未收敛时安全阻塞', () => {
+  const result = solveConstrainedFabrik({
+    positions: [[0, 0, 0], [4, 0, 0], [7, 0, 0], [9, 0, 0]],
+    target: [.5, 0, 0], pole: [0, 1, 0], maxIterations: 1, tolerance: 1e-12, maxStretchRatio: 1,
+  })
+
+  assert.equal(result.status, 'blocked')
+  assert.ok([...result.positions.flat(), result.error].every(Number.isFinite))
+})
+
 test('FABRIK 不突变输入、不共享输出引用并保持确定性', () => {
   const input = {
     positions: [[0, 0, 0], [.2, -1, 0], [.1, -2, 0], [0, -3, 0]] as [number, number, number][],
