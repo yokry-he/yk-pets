@@ -253,7 +253,7 @@ export interface SampledBipedPetRootMotion {
 }
 ```
 
-`cumulative*` 必须由动作定义、`requestedTimeMs` 和 `iteration` 直接计算，作为帧率无关 target；调用方通过 `previousAppliedWorld/previousAppliedTurnRadians` 提供上一帧已应用状态，并把上一帧返回的 `landingAuthorization` 作为 `previousLandingAuthorization` 原样回传。求解器在世界空间从 applied 指向 target 计算误差和预算，使用实际可表示的 `appliedWorld - previousAppliedWorld` 输出 `deltaWorld` 与速度，再以当前朝向的逆旋转派生 `appliedLocal/deltaLocal`；朝向改变不得重解释既有世界位置。缺 applied、倒退、Clip 身份变化或超过 `max(250ms, duration×0.5)` 时 reset 并把 applied 初始化为 target，同时清除授权且不发速度或瞬时事件。窗口使用 `smoothstep(t)=t²(3-2t)`，多个有效窗口按权重归一化。弹道高度使用 `4h·p·(1-p)`，但阶段由实际 applied 高度与纵向增量判定。所有合法 `ballistic` end/start 事件必须先保留并按同边界聚合，不得由固定阈值或相邻/重叠关系提前删除；候选只复用共享 action-aware 时间线的两个紧邻区域，且仅在遍历方向 before 为 proven `airborne`、after 为 proven `grounded` 时签发冻结授权，任一侧 `unknown` 都不签发。授权跨后续 `actionWeight` 淡出与不合格微尾窗保持，只有 applied 随后真实越过接地阈值才消费一次并输出无量纲 `landingImpulse`；后续真实 target airborne 清除旧授权。归一化阈值必须取 `max(1e-12, 1e-12 / (jumpHeight × actionWeight))`，同时遵守 target 相对零化和世界接地。每次连续采样必须以唯一排序边界和支撑分量构建一次内部只读时间线，全部 takeoff/touchdown/stale 与候选双侧查询共享最多 `512` 个 work unit；`unknown` 不签发、不清除授权，也不得用跨调用缓存续算。loop/ping-pong 的内部事件查询直接使用原窗口 canonical resolved 边界锚点，避免十进制绝对事件时间重映射产生 1 ULP 身份漂移；`0/duration` 端点仍由分段枚举决定侧别，loop 周期缝映射到下一周期，ping-pong 转折显式翻转方向。暂停保留授权但不触发，倒退、reset、大跳和未授权 applied 落地均不触发。
+`cumulative*` 必须由动作定义、`requestedTimeMs` 和 `iteration` 直接计算，作为帧率无关 target；调用方通过 `previousAppliedWorld/previousAppliedTurnRadians` 提供上一帧已应用状态，并把上一帧返回的 `landingAuthorization` 作为 `previousLandingAuthorization` 原样回传。求解器在世界空间从 applied 指向 target 计算误差和预算，使用实际可表示的 `appliedWorld - previousAppliedWorld` 输出 `deltaWorld` 与速度，再以当前朝向的逆旋转派生 `appliedLocal/deltaLocal`；朝向改变不得重解释既有世界位置。缺 applied、倒退、Clip 身份变化或超过 `max(250ms, duration×0.5)` 时 reset 并把 applied 初始化为 target，同时清除授权且不发速度或瞬时事件。窗口使用 `smoothstep(t)=t²(3-2t)`，多个有效窗口按权重归一化；弹道高度使用 `4h·p·(1-p)`，但阶段由实际 applied 高度与纵向增量判定。共享 action-aware 时间线必须成为唯一事件权威：请求端点不进入结构边界，窗口首尾只提示初始切分；时间线在一个 `512` work-unit 预算内直接输出 proven airborne 组件、双向 takeoff/touchdown 的 canonical resolved 时间与组件强度，复杂度为 `O(W log W + 512W)`。混合增减贡献区间必须以复合高度和导数上下界生成有序证明叶，不得用单个 airborne midpoint 代表整段；两侧 proven airborne 且窗口精确相邻时合并零宽接地点；任意正宽 proven grounded gap（包括 `.001ms` 和一个 ULP）拆分；低于阈值的相邻/重叠窗口不得改变主组件，实际 touchdown 可早于窗口 end。`unknown` 不输出转换、不签发也不清除授权。loop/ping-pong、周期缝与转折点先在 canonical 局部区间筛选并保持同 timestamp 的转换顺序，再映射到最多四段绝对请求区间，不能重新枚举窗口端点候选；转换与区间分类必须共用 iteration 锚、段宽和 modulo 一致性检查，不可表示时统一回退 incomplete/unknown。授权跨后续 `actionWeight` 淡出与不合格微尾窗保持，只有 applied 随后真实越过接地阈值才消费一次并输出无量纲 `landingImpulse`；后续 canonical takeoff 清除旧授权。暂停保留授权但不触发，倒退、reset、大跳和未授权 applied 落地均不触发。
 
 安全预算固定为每帧不超过 `0.25 × characterHeight` 位移和 `π/4` 转向；超过时按方向等比钳制并返回 `clamped`，不改变累计 target，后续帧继续从 applied 追赶欠量。`footResidual` 只读取有限 X/Z，正值推动根节点沿对应局部轴正向修正，完全忽略 Y；仅在整个帧间时间映射都被连续 `travel/warp` 支撑组件覆盖时作为局部水平反馈，跨入、跨出或穿越 gap 的帧不消费残差。预算随真实时间差、动作权重和水平追赶误差缩放；纯函数不持有低通状态。
 
@@ -266,7 +266,7 @@ corepack pnpm --filter @yk-pets/pet-core test
 corepack pnpm run test:studio-biped-root-motion-probe
 ```
 
-预期：单元测试通过；可复现探针保存每帧 applied 与授权，10,000 组固定种子输入达到 solved/clamped/reset/blocked、loop 接缝、landing 与 brake 最小命中数，42 个正反向 ULP applied touchdown 全部通过；canonical 64 弹道窗场景验证主窗授权跨 63 个低于世界接地阈值的 ULP 尾窗保持并最终消费，后续高窗仍清除 stale 授权，且共享分析统计始终不超过 `512` work unit。100,000 次 1/64 窗口 canonical/raw reset 对照只观测防御规范化成本，不代表时间线热路径；另以每类 2,000 帧的 1/64 窗 canonical 连续弹道序列逐帧回传 previous applied、turn 与 authorization，要求真实签发并消费 token。所有耗时只作本机观测，不设置脆弱阈值。
+预期：单元测试通过；可复现探针保存每帧 applied 与授权，10,000 组固定种子输入达到 solved/clamped/reset/blocked、loop 接缝、landing 与 brake 最小命中数，42 个正反向 ULP applied touchdown 全部通过；canonical 64 弹道窗场景验证主窗授权跨 63 个低于世界接地阈值的 ULP 尾窗保持并最终消费，后续高窗仍清除 stale 授权，且共享分析统计始终不超过 `512` work unit。另以 once/loop/ping-pong 的高低强度精确相邻窗锁定跨 `10ms` 请求边界前后的帧细分不变性：低强度路径始终只消费一次完整主冲量，高强度路径始终没有内部授权。100,000 次 1/64 窗口 canonical/raw reset 对照只观测防御规范化成本，不代表时间线热路径；每类 2,000 帧的 1/64 窗 canonical 连续弹道序列逐帧回传 previous applied、turn 与 authorization，要求真实签发并消费 token。所有耗时只作本机观测，不设置脆弱阈值。
 
 - [ ] **步骤 5：提交推送**
 
@@ -459,7 +459,7 @@ assert.deepEqual(runtime.object.position.toArray(), objectBindPosition)
 assert.deepEqual(runtime.object.quaternion.toArray(), objectBindQuaternion)
 ```
 
-再覆盖不同帧率的正常连续序列到同一时间得到相同容器 applied 变换、巨大 target 跳变不绕过单帧预算且后续帧追赶欠量、暂停重复 apply 不继续移动且保留待消费授权、停止/回拖/Clip 切换清除 `previousApplied`、`previousLandingAuthorization` 与旧欠量、角色尺寸改变步幅、双/单支撑重心、跳跃腾空不锁脚、Root Motion blocked 时保留 FK/IK、重复 dispose 和释放后拒绝写入。
+再覆盖不同帧率的正常连续序列到同一时间得到相同容器 applied 变换、同一 canonical touchdown 在跨边界帧与边界处细分帧下得到相同授权/冲量、巨大 target 跳变不绕过单帧预算且后续帧追赶欠量、暂停重复 apply 不继续移动且保留待消费授权、停止/回拖/Clip 切换清除 `previousApplied`、`previousLandingAuthorization` 与旧欠量、角色尺寸改变步幅、双/单支撑重心、跳跃腾空不锁脚、Root Motion blocked 时保留 FK/IK、重复 dispose 和释放后拒绝写入。
 
 - [ ] **步骤 2：运行新脚本确认红灯**
 
@@ -491,7 +491,7 @@ export interface ComplexBipedRootMotionController {
 }
 ```
 
-控制器保存 `runtime.object` 的绑定 position/quaternion，以及当前 Clip 身份下最后一次成功写入的 `previousAppliedWorld/previousAppliedTurnRadians` 与只读 `previousLandingAuthorization`。每帧把三者传给纯函数，把返回的 `landingAuthorization` 原样保存到下一连续帧，并只将 `appliedWorld` 与 `appliedTurnRadians` 绝对写入容器；`appliedLocal` 仅供诊断与领域消费，不得另存为连续历史。授权不允许重建、改写强度或附加可变引用，只在求解器输出 `landingImpulse` 后视为已消费。禁止直接写 `cumulative*` target，也禁止在 Three 层再次累计 `delta*`。这样朝向切换不会旋转既有世界位置，target 仍由绝对时间确定，单帧预算不会被绕过，钳制后的欠量由后续求解帧继续追赶，速度与容器真实 applied 轨迹一致。
+控制器保存 `runtime.object` 的绑定 position/quaternion，以及当前 Clip 身份下最后一次成功写入的 `previousAppliedWorld/previousAppliedTurnRadians` 与只读 `previousLandingAuthorization`。每帧把三者传给纯函数，把返回的 `landingAuthorization` 原样保存到下一连续帧，并只将 `appliedWorld` 与 `appliedTurnRadians` 绝对写入容器；`appliedLocal` 仅供诊断与领域消费，不得另存为连续历史。授权不允许重建、改写强度、把 touchdown 时间吸附回窗口 end，或附加可变引用，只在求解器输出 `landingImpulse` 后视为已消费；Three 层不得重新枚举窗口首尾或根据当前帧端点补签事件。禁止直接写 `cumulative*` target，也禁止在 Three 层再次累计 `delta*`。这样朝向切换不会旋转既有世界位置，target 仍由绝对时间确定，单帧预算不会被绕过，钳制后的欠量由后续求解帧继续追赶，速度与容器真实 applied 轨迹一致。
 
 角色高度从已计算的 `runtime.object.geometry.boundingBox` 读取；无有效包围盒时阻塞 Root Motion 但不阻塞 FK。首帧、停止、回拖、Clip 切换、runtime 重建、dispose 或求解 reset 时同时清除旧 applied 与落地授权所有权，让求解器把 applied 初始化为当前 target，且该帧不生成速度/VFX。暂停只保留授权而不消费；实际 applied 落地消费后使用求解器返回的空授权覆盖控制器状态。控制器可显式拥有 foot residual 的低通状态，但纯数值求解器内部不得保存隐式滤波历史。
 

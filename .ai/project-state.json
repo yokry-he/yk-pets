@@ -236,7 +236,8 @@
     "biped-pet-hybrid-root-motion-vfx-plan",
     "biped-pet-root-motion-solver",
     "biped-pet-root-motion-shared-ballistic-timeline",
-    "biped-pet-root-motion-action-aware-boundaries"
+    "biped-pet-root-motion-action-aware-boundaries",
+    "biped-pet-root-motion-canonical-ballistic-transitions"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -261,7 +262,7 @@
     "visualCasesModified": false,
     "ballisticTimelineWorkBudget": 512,
     "ballisticTimelineUnknownPolicy": "preserve-authorization",
-    "ballisticTouchdownEvidencePolicy": "adjacent-region-airborne-to-grounded",
+    "ballisticTouchdownEvidencePolicy": "canonical-component-transitions",
     "automatedCoverage": [
       "corepack pnpm --filter @yk-pets/pet-core test",
       "corepack pnpm --filter @yk-pets/pet-core typecheck",

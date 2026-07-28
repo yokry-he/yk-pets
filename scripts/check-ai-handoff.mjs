@@ -220,8 +220,9 @@ if (state) {
   expect(state.latestCompletedBatch?.rendererModified === false && state.latestCompletedBatch?.visualCasesModified === false, '纯数值 Root Motion 批次不得声明渲染器或视觉案例修改 / Pure numeric Root Motion batch must not claim renderer or visual-case changes')
   expect(state.latestCompletedBatch?.ballisticTimelineWorkBudget === 512, 'Root Motion 共享弹道时间线必须锁定单帧 512 work-unit 预算 / Shared ballistic timeline must lock the per-sample budget to 512 work units')
   expect(state.latestCompletedBatch?.ballisticTimelineUnknownPolicy === 'preserve-authorization', 'Root Motion unknown 区间必须保留旧授权且不签发新授权 / Unknown ballistic ranges must preserve old authorization and issue no new authorization')
-  expect(state.latestCompletedBatch?.ballisticTouchdownEvidencePolicy === 'adjacent-region-airborne-to-grounded', 'Root Motion touchdown 必须由共享时间线的相邻区域 airborne→grounded 证据签发 / Touchdown must be issued by adjacent-region airborne-to-grounded evidence from the shared timeline')
+  expect(state.latestCompletedBatch?.ballisticTouchdownEvidencePolicy === 'canonical-component-transitions', 'Root Motion touchdown 必须只由共享时间线的 canonical 组件转换签发 / Touchdown must be issued only by canonical component transitions from the shared timeline')
   expect((state.completed || []).includes('biped-pet-root-motion-action-aware-boundaries'), 'Root Motion action-aware 边界修复必须进入完成状态 / Action-aware Root Motion boundary repair must be recorded as complete')
+  expect((state.completed || []).includes('biped-pet-root-motion-canonical-ballistic-transitions'), 'Root Motion canonical 弹道转换必须进入完成状态 / Canonical Root Motion ballistic transitions must be recorded as complete')
 }
 
 for (const routeFile of ['appearance.vue', 'motion.vue', 'props.vue', 'library.vue']) expect(existsSync(path.join(root, 'apps/playground/app/pages/studio', routeFile)), `缺少 Studio 路由文件 / Missing Studio route file: ${routeFile}`)

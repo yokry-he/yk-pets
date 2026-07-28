@@ -7,9 +7,8 @@ import { normalizeMotionDurationMs, resolveMotionTime, type ResolvedMotionTime, 
 import {
   BIPED_PET_ROOT_MOTION_SIGNAL_EPSILON,
   analyzeBipedPetBallisticTimeline,
+  bipedPetBallisticTransitionsInRequestedRange,
   classifyBipedPetBallisticRequestedRange,
-  classifyBipedPetBallisticResolvedBoundarySide,
-  type BipedPetBallisticTimelineAnalysis,
 } from './biped-pet-root-motion-timeline'
 
 export type BipedPetRootMotionMode = 'in-place' | 'travel'
@@ -729,54 +728,15 @@ function weightedWindowProgress(
   return totalWeight > 0 ? weightedProgress / totalWeight : 0
 }
 
-interface BallisticTouchdownCandidate {
-  readonly boundaryMs: number
-  readonly weight: number
-}
-
 const ballisticWindowCache = new WeakMap<BipedPetRootMotionDefinition, readonly BipedPetRootMotionWindow[]>()
-const ballisticTouchdownCandidateCache = new WeakMap<BipedPetRootMotionDefinition, {
-  readonly forward: readonly BallisticTouchdownCandidate[]
-  readonly reverse: readonly BallisticTouchdownCandidate[]
-  readonly totalWeight: number
-}>()
 
 function ballisticWindows(definition: BipedPetRootMotionDefinition): readonly BipedPetRootMotionWindow[] {
   const cached = ballisticWindowCache.get(definition)
   if (cached) return cached
-  // 候选枚举与 action 强度无关；所有合法 ballistic 窗都进入共享时间线，是否形成事件只由本帧证据决定。
+  // 所有合法 ballistic 窗进入共享 action-aware 时间线；窗口端点自身不再拥有事件语义。
   const windows = Object.freeze(definition.windows.filter(window => window.kind === 'ballistic'))
   ballisticWindowCache.set(definition, windows)
   return windows
-}
-
-function ballisticTouchdownCandidates(definition: BipedPetRootMotionDefinition): {
-  readonly forward: readonly BallisticTouchdownCandidate[]
-  readonly reverse: readonly BallisticTouchdownCandidate[]
-  readonly totalWeight: number
-} {
-  const cached = ballisticTouchdownCandidateCache.get(definition)
-  if (cached) return cached
-  const windows = ballisticWindows(definition)
-  const totalWeight = windows.reduce((sum, window) => sum + window.weight, 0)
-  const forwardWeights = new Map<number, number>()
-  const reverseWeights = new Map<number, number>()
-  for (const window of windows) {
-    forwardWeights.set(window.endMs, (forwardWeights.get(window.endMs) ?? 0) + window.weight)
-    reverseWeights.set(window.startMs, (reverseWeights.get(window.startMs) ?? 0) + window.weight)
-  }
-  const candidates = (weights: ReadonlyMap<number, number>) => Object.freeze(
-    [...weights]
-      .map(([boundaryMs, weight]) => Object.freeze({ boundaryMs, weight }))
-      .sort((left, right) => left.boundaryMs - right.boundaryMs),
-  )
-  const result = Object.freeze({
-    forward: candidates(forwardWeights),
-    reverse: candidates(reverseWeights),
-    totalWeight,
-  })
-  ballisticTouchdownCandidateCache.set(definition, result)
-  return result
 }
 
 function ballisticHeight(
@@ -988,195 +948,26 @@ function appliedState(
     : undefined
 }
 
-interface QualifiedTouchdownEvent {
-  readonly transitionTimeMs: number
-  readonly resolvedBoundaryMs: number
-  readonly impulse: number
-}
-
-interface QualifiedTakeoffEvent {
-  readonly transitionTimeMs: number
-  readonly resolvedBoundaryMs: number
-}
-
-function touchdownCandidateIsQualified(
-  input: SafeSampleInput,
-  analysis: BipedPetBallisticTimelineAnalysis,
-  candidate: BallisticTouchdownCandidate,
-  reverse: boolean,
-): boolean {
-  const incomingDirection: -1 | 1 = reverse ? -1 : 1
-  const before = classifyBipedPetBallisticResolvedBoundarySide(
-    analysis,
-    candidate.boundaryMs,
-    incomingDirection === 1 ? -1 : 1,
-  )
-
-  let afterBoundaryMs = candidate.boundaryMs
-  let outgoingDirection = incomingDirection
-  if (candidate.boundaryMs === input.durationMs && incomingDirection === 1) {
-    if (input.loopMode === 'loop') afterBoundaryMs = 0
-    else if (input.loopMode === 'ping-pong') outgoingDirection = -1
-  }
-  else if (candidate.boundaryMs === 0 && incomingDirection === -1 && input.loopMode === 'ping-pong') {
-    outgoingDirection = 1
-  }
-  const after = classifyBipedPetBallisticResolvedBoundarySide(
-    analysis,
-    afterBoundaryMs,
-    outgoingDirection,
-  )
-  return before === 'airborne' && after === 'grounded'
-}
-
 function requestedRangeHasProvenTargetAirborne(
-  analysis: BipedPetBallisticTimelineAnalysis,
+  analysis: ReturnType<typeof analyzeBipedPetBallisticTimeline>,
   firstRequestedTimeMs: number,
   secondRequestedTimeMs: number,
-  firstResolvedTimeMs?: number,
-  secondResolvedTimeMs?: number,
 ): boolean {
   return classifyBipedPetBallisticRequestedRange(
     analysis,
     firstRequestedTimeMs,
     secondRequestedTimeMs,
-    firstResolvedTimeMs === undefined && secondResolvedTimeMs === undefined
-      ? undefined
-      : { firstResolvedTimeMs, secondResolvedTimeMs },
   ) === 'airborne'
-}
-
-function qualifiedTouchdownEventsInRange(
-  input: SafeSampleInput,
-  analysis: BipedPetBallisticTimelineAnalysis,
-  previousRequestedTimeMs: number,
-): readonly QualifiedTouchdownEvent[] {
-  if (input.definition.mode !== 'travel' || input.definition.verticalMode !== 'ballistic'
-    || input.definition.jumpHeight <= 0 || input.actionWeight <= 0 || input.requestedTimeMs < 0) return []
-  const candidateSet = ballisticTouchdownCandidates(input.definition)
-  if (!Number.isFinite(candidateSet.totalWeight) || candidateSet.totalWeight <= 0) return []
-  const events: QualifiedTouchdownEvent[] = []
-  const considerCandidate = (
-    transitionTimeMs: number,
-    candidate: BallisticTouchdownCandidate,
-    reverse: boolean,
-  ) => {
-    if (!(transitionTimeMs > previousRequestedTimeMs && transitionTimeMs <= input.requestedTimeMs)
-      || !touchdownCandidateIsQualified(input, analysis, candidate, reverse)) return
-    const impulse = stableSignal(
-      input.definition.jumpHeight * input.actionWeight * candidate.weight / candidateSet.totalWeight,
-    )
-    if (impulse > 0) events.push(Object.freeze({
-      transitionTimeMs,
-      resolvedBoundaryMs: candidate.boundaryMs,
-      impulse,
-    }))
-  }
-
-  if (input.loopMode === 'once') {
-    for (const candidate of candidateSet.forward) {
-      considerCandidate(candidate.boundaryMs, candidate, false)
-    }
-  }
-  else {
-    const startRequestedTimeMs = Math.max(0, previousRequestedTimeMs)
-    const firstIteration = Math.floor(startRequestedTimeMs / input.durationMs)
-    const lastIteration = Math.floor(input.requestedTimeMs / input.durationMs)
-    const segmentCount = lastIteration - firstIteration + 1
-    if (!Number.isInteger(segmentCount) || segmentCount < 1 || segmentCount > MAX_ROOT_MOTION_CONTINUITY_SEGMENTS) return []
-    let priorIteration: number | undefined
-    for (let offset = 0; offset < segmentCount; offset += 1) {
-      const iteration = offset === segmentCount - 1 ? lastIteration : firstIteration + offset
-      if (priorIteration !== undefined && iteration <= priorIteration) return []
-      priorIteration = iteration
-      const segmentStartMs = iteration * input.durationMs
-      const reverse = input.loopMode === 'ping-pong' && positiveModulo(iteration, 2) !== 0
-      const candidates = reverse ? candidateSet.reverse : candidateSet.forward
-      for (const candidate of candidates) {
-        const transitionTimeMs = reverse
-          ? segmentStartMs + input.durationMs - candidate.boundaryMs
-          : segmentStartMs + candidate.boundaryMs
-        considerCandidate(transitionTimeMs, candidate, reverse)
-      }
-    }
-  }
-  return Object.freeze(events.sort((left, right) => (
-    left.transitionTimeMs - right.transitionTimeMs || left.impulse - right.impulse
-  )))
-}
-
-function qualifiedTakeoffEventsInRange(
-  input: SafeSampleInput,
-  analysis: BipedPetBallisticTimelineAnalysis,
-  previousRequestedTimeMs: number,
-): readonly QualifiedTakeoffEvent[] {
-  if (input.definition.mode !== 'travel' || input.definition.verticalMode !== 'ballistic'
-    || input.definition.jumpHeight <= 0 || input.actionWeight <= 0 || input.requestedTimeMs < 0) return []
-  const windows = ballisticWindows(input.definition)
-  const events: QualifiedTakeoffEvent[] = []
-  const considerWindow = (transitionTimeMs: number, resolvedBoundaryMs: number) => {
-    if (!(transitionTimeMs > previousRequestedTimeMs && transitionTimeMs <= input.requestedTimeMs)
-      || !requestedRangeHasProvenTargetAirborne(
-        analysis,
-        transitionTimeMs,
-        input.requestedTimeMs,
-        resolvedBoundaryMs,
-      )) return
-    events.push(Object.freeze({ transitionTimeMs, resolvedBoundaryMs }))
-  }
-
-  if (input.loopMode === 'once') {
-    for (const window of windows) considerWindow(window.startMs, window.startMs)
-  }
-  else {
-    const startRequestedTimeMs = Math.max(0, previousRequestedTimeMs)
-    const firstIteration = Math.floor(startRequestedTimeMs / input.durationMs)
-    const lastIteration = Math.floor(input.requestedTimeMs / input.durationMs)
-    const segmentCount = lastIteration - firstIteration + 1
-    if (!Number.isInteger(segmentCount) || segmentCount < 1 || segmentCount > MAX_ROOT_MOTION_CONTINUITY_SEGMENTS) return []
-    let priorIteration: number | undefined
-    for (let offset = 0; offset < segmentCount; offset += 1) {
-      const iteration = offset === segmentCount - 1 ? lastIteration : firstIteration + offset
-      if (priorIteration !== undefined && iteration <= priorIteration) return []
-      priorIteration = iteration
-      const segmentStartMs = iteration * input.durationMs
-      const reverse = input.loopMode === 'ping-pong' && positiveModulo(iteration, 2) !== 0
-      for (const window of windows) {
-        const transitionTimeMs = reverse
-          ? segmentStartMs + input.durationMs - window.endMs
-          : segmentStartMs + window.startMs
-        considerWindow(transitionTimeMs, reverse ? window.endMs : window.startMs)
-      }
-    }
-  }
-  return Object.freeze(events.sort((left, right) => left.transitionTimeMs - right.transitionTimeMs))
-}
-
-function targetIsGroundedAtRequestedTime(input: SafeSampleInput, requestedTimeMs: number): boolean {
-  const resolved = resolveMotionTime(
-    requestedTimeMs,
-    input.durationMs,
-    input.loopMode,
-  )
-  return ballisticHeight(
-    input.definition,
-    resolved.resolvedTimeMs,
-    input.characterHeight,
-    input.actionWeight,
-  ) <= input.characterHeight * ROOT_MOTION_SIGNAL_EPSILON
-}
-
-function authorizationStartsFromGroundedTarget(
-  input: SafeSampleInput,
-  authorization: BipedPetLandingAuthorization,
-): boolean {
-  return targetIsGroundedAtRequestedTime(input, authorization.touchdownRequestedTimeMs)
 }
 
 function advanceLandingAuthorization(
   input: SafeSampleInput,
   previousRequestedTimeMs: number,
 ): BipedPetLandingAuthorization | undefined {
+  if (input.definition.mode !== 'travel' || input.definition.verticalMode !== 'ballistic'
+    || input.definition.jumpHeight <= 0 || input.actionWeight <= 0 || input.requestedTimeMs < 0) {
+    return input.previousLandingAuthorization
+  }
   const analysis = analyzeBipedPetBallisticTimeline({
     windows: ballisticWindows(input.definition),
     durationMs: input.durationMs,
@@ -1186,46 +977,32 @@ function advanceLandingAuthorization(
     previousRequestedTimeMs,
     requestedTimeMs: input.requestedTimeMs,
   })
+  const mapped = bipedPetBallisticTransitionsInRequestedRange(
+    analysis,
+    previousRequestedTimeMs,
+    input.requestedTimeMs,
+  )
+  // unknown、预算耗尽和不可表示的超大 iteration 都不得改变 caller-owned 授权。
+  if (!mapped.complete) return input.previousLandingAuthorization
   let authorization = input.previousLandingAuthorization
   let cursorTimeMs = previousRequestedTimeMs
-  let cursorResolvedBoundaryMs: number | undefined
-  const timeline = [
-    ...qualifiedTakeoffEventsInRange(input, analysis, previousRequestedTimeMs).map(event => ({ ...event, kind: 'takeoff' as const })),
-    ...qualifiedTouchdownEventsInRange(input, analysis, previousRequestedTimeMs).map(event => ({ ...event, kind: 'touchdown' as const })),
-  ].sort((left, right) => left.transitionTimeMs - right.transitionTimeMs
-    || (left.kind === right.kind ? 0 : left.kind === 'takeoff' ? -1 : 1))
-  for (const event of timeline) {
+  for (const event of mapped.transitions) {
     if (event.kind === 'takeoff') {
-      // 新的有效腾空是独立动作事实；即使旧 ULP touchdown 因时间映射舍入仍落在窗内，也必须清除旧授权。
       authorization = undefined
     }
     else {
-      if (authorization
-        && (authorizationStartsFromGroundedTarget(input, authorization)
-          || targetIsGroundedAtRequestedTime(input, cursorTimeMs))
-        && requestedRangeHasProvenTargetAirborne(
-          analysis,
-          cursorTimeMs,
-          event.transitionTimeMs,
-          cursorResolvedBoundaryMs,
-          event.resolvedBoundaryMs,
-        )) authorization = undefined
       authorization = Object.freeze({
-        touchdownRequestedTimeMs: event.transitionTimeMs,
-        impulse: event.impulse,
+        touchdownRequestedTimeMs: event.requestedTimeMs,
+        impulse: event.strength,
       })
     }
-    cursorTimeMs = event.transitionTimeMs
-    cursorResolvedBoundaryMs = event.resolvedBoundaryMs
+    cursorTimeMs = event.requestedTimeMs
   }
-  if (authorization
-    && (authorizationStartsFromGroundedTarget(input, authorization)
-      || targetIsGroundedAtRequestedTime(input, cursorTimeMs))
+  if (mapped.transitions.length === 0 && authorization
     && requestedRangeHasProvenTargetAirborne(
       analysis,
       cursorTimeMs,
       input.requestedTimeMs,
-      cursorResolvedBoundaryMs,
     )) return undefined
   return authorization
 }

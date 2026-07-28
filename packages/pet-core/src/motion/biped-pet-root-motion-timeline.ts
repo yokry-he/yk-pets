@@ -1,6 +1,7 @@
 /**
  * 文件职责 / File responsibility
- * 以单次采样共享的固定工作预算分析复合弹道时间线，向授权逻辑提供可证明的 airborne/grounded 结论。
+ * 在单次共享预算内把 action-aware 复合弹道解析为可证明的 airborne 组件与双向转换。
+ * 请求帧只负责把 canonical 转换映射到绝对时间，绝不参与结构边界或事件判定。
  */
 
 import type { StudioMotionLoopMode } from './motion-time'
@@ -9,8 +10,13 @@ export const MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS = 512
 export const BIPED_PET_ROOT_MOTION_SIGNAL_EPSILON = 1e-12
 
 const MAX_BIPED_PET_BALLISTIC_REQUEST_SEGMENTS = 4
+const BALLISTIC_DERIVATIVE_CRITICAL_PROGRESS = Object.freeze([
+  0.233783518068081,
+  0.766216481931919,
+])
 
 export type BipedPetBallisticTimelineEvidence = 'airborne' | 'grounded' | 'unknown'
+export type BipedPetBallisticTimelineTransitionKind = 'takeoff' | 'touchdown'
 
 export interface BipedPetBallisticTimelineWindow {
   readonly id: string
@@ -25,8 +31,10 @@ export interface AnalyzeBipedPetBallisticTimelineInput {
   readonly loopMode: StudioMotionLoopMode
   readonly jumpHeight: number
   readonly actionWeight: number
-  readonly previousRequestedTimeMs: number
-  readonly requestedTimeMs: number
+  /** 兼容旧调用签名；请求端点不会参与 canonical 结构分析。 */
+  readonly previousRequestedTimeMs?: number
+  /** 兼容旧调用签名；请求端点只应传给转换/区间查询函数。 */
+  readonly requestedTimeMs?: number
 }
 
 export interface BipedPetBallisticTimelineStats {
@@ -37,15 +45,59 @@ export interface BipedPetBallisticTimelineStats {
   readonly exhausted: boolean
 }
 
-interface BipedPetBallisticTimelineRegion {
+export interface BipedPetBallisticTimelineRegion {
   readonly startMs: number
   readonly endMs: number
   readonly evidence: BipedPetBallisticTimelineEvidence
+  readonly witnessTimeMs?: number
+}
+
+/**
+ * start/end 是可证明 airborne 的最外侧可表示点；相邻的 grounded 点用于双向事件映射，
+ * 因而正向与反向均在自己真正进入 grounded 的一侧签发 touchdown。
+ */
+export interface BipedPetBallisticTimelineComponent {
+  readonly index: number
+  readonly startMs: number
+  readonly endMs: number
+  readonly startGroundedMs: number
+  readonly endGroundedMs: number
+  readonly strength: number
+}
+
+export interface BipedPetBallisticTimelineTransition {
+  readonly componentIndex: number
+  readonly resolvedTimeMs: number
+  readonly traversalDirection: -1 | 1
+  readonly kind: BipedPetBallisticTimelineTransitionKind
+  readonly strength: number
+}
+
+export interface BipedPetBallisticRequestedTransition extends BipedPetBallisticTimelineTransition {
+  readonly requestedTimeMs: number
 }
 
 interface BipedPetBallisticResolvedRange {
   readonly startMs: number
   readonly endMs: number
+}
+
+interface TimelineSample {
+  readonly height: number
+  readonly evidence: BipedPetBallisticTimelineEvidence
+}
+
+interface ClassifiedInterval {
+  readonly startMs: number
+  readonly endMs: number
+  readonly evidence: BipedPetBallisticTimelineEvidence
+  readonly witnessTimeMs?: number
+  readonly witnessHeight?: number
+}
+
+interface ThresholdEdge {
+  readonly airborneMs: number
+  readonly groundedMs: number
 }
 
 export interface BipedPetBallisticTimelineAnalysis {
@@ -54,22 +106,55 @@ export interface BipedPetBallisticTimelineAnalysis {
   readonly boundaries: readonly number[]
   readonly boundaryEvidence: readonly BipedPetBallisticTimelineEvidence[]
   readonly regions: readonly BipedPetBallisticTimelineRegion[]
+  readonly components: readonly BipedPetBallisticTimelineComponent[]
+  readonly transitions: readonly BipedPetBallisticTimelineTransition[]
   readonly stats: BipedPetBallisticTimelineStats
-}
-
-export interface BipedPetBallisticRequestedRangeAnchors {
-  /** 与 firstRequestedTimeMs 同一事件携带的 canonical 内部 resolved 边界，避免绝对时间相减产生 1 ULP 漂移。 */
-  readonly firstResolvedTimeMs?: number
-  /** 与 secondRequestedTimeMs 同一事件携带的 canonical 内部 resolved 边界。0/duration 必须保留分段侧别。 */
-  readonly secondResolvedTimeMs?: number
 }
 
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
 const positiveModulo = (value: number, modulus: number) => ((value % modulus) + modulus) % modulus
+const canonicalOffsetsAgree = (left: number, right: number, durationMs: number) => (
+  Math.abs(left - right) <= Number.EPSILON * Math.max(1, durationMs) * 8
+)
+
+interface CanonicalIterationSegment {
+  readonly startMs: number
+  readonly endMs: number
+}
+
+function canonicalIterationSegment(
+  iteration: number,
+  durationMs: number,
+): CanonicalIterationSegment | undefined {
+  const startMs = iteration * durationMs
+  const endMs = startMs + durationMs
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)
+    || !canonicalOffsetsAgree(positiveModulo(startMs, durationMs), 0, durationMs)
+    || !canonicalOffsetsAgree(endMs - startMs, durationMs, durationMs)) return undefined
+  return Object.freeze({ startMs, endMs })
+}
+
+function canonicalRequestedOffset(
+  requestedTimeMs: number,
+  segmentStartMs: number,
+  durationMs: number,
+): number | undefined {
+  const derivedOffsetMs = requestedTimeMs - segmentStartMs
+  const resolvedOffsetMs = positiveModulo(requestedTimeMs, durationMs)
+  return canonicalOffsetsAgree(derivedOffsetMs, resolvedOffsetMs, durationMs)
+    ? resolvedOffsetMs
+    : undefined
+}
 
 function smoothstep(progress: number): number {
   const bounded = clamp(progress, 0, 1)
   return bounded * bounded * (3 - 2 * bounded)
+}
+
+function normalizedBallisticHeightDerivative(progress: number, durationMs: number): number {
+  const bounded = clamp(progress, 0, 1)
+  const smoothed = smoothstep(bounded)
+  return 24 * bounded * (1 - bounded) * (1 - 2 * smoothed) / durationMs
 }
 
 function normalizedCompositeHeight(
@@ -87,26 +172,83 @@ function normalizedCompositeHeight(
   return weightedHeight / totalScaledWeight
 }
 
-function maximumNormalizedCompositeHeight(
+/**
+ * 每个弹道窗在自身中点前后分别单调。逐窗最小值之和是安全下界，逐窗最大值之和是安全上界；
+ * 两者可能偏松，但不会把混合增减贡献中的 valley 伪造成整段 airborne 或 grounded。
+ */
+function normalizedCompositeHeightBounds(
   windows: readonly BipedPetBallisticTimelineWindow[],
   maximumWeight: number,
   totalScaledWeight: number,
   startMs: number,
   endMs: number,
-): number {
-  if (!(maximumWeight > 0) || !(totalScaledWeight > 0)) return 0
+): {
+  readonly lower: number
+  readonly upper: number
+  readonly lowerDerivative: number
+  readonly upperDerivative: number
+} {
+  if (!(maximumWeight > 0) || !(totalScaledWeight > 0)) {
+    return Object.freeze({ lower: 0, upper: 0, lowerDerivative: 0, upperDerivative: 0 })
+  }
+  let lowerHeight = 0
   let upperHeight = 0
+  let lowerDerivative = 0
+  let upperDerivative = 0
   for (const window of windows) {
     if (endMs <= window.startMs || startMs >= window.endMs) continue
+    const durationMs = window.endMs - window.startMs
+    const startLinearProgress = clamp((startMs - window.startMs) / durationMs, 0, 1)
+    const endLinearProgress = clamp((endMs - window.startMs) / durationMs, 0, 1)
+    const startProgress = smoothstep(startLinearProgress)
+    const endProgress = smoothstep(endLinearProgress)
+    const startHeight = 4 * startProgress * (1 - startProgress)
+    const endHeight = 4 * endProgress * (1 - endProgress)
     const peakMs = clamp(
       window.startMs + (window.endMs - window.startMs) * .5,
       Math.max(startMs, window.startMs),
       Math.min(endMs, window.endMs),
     )
     const progress = smoothstep((peakMs - window.startMs) / (window.endMs - window.startMs))
-    upperHeight += window.weight / maximumWeight * 4 * progress * (1 - progress)
+    const scaledWeight = window.weight / maximumWeight
+    lowerHeight += scaledWeight * Math.min(startHeight, endHeight)
+    upperHeight += scaledWeight * 4 * progress * (1 - progress)
+    const derivativeCandidates = [
+      normalizedBallisticHeightDerivative(startLinearProgress, durationMs),
+      normalizedBallisticHeightDerivative(endLinearProgress, durationMs),
+      ...BALLISTIC_DERIVATIVE_CRITICAL_PROGRESS
+        .filter(candidate => candidate > startLinearProgress && candidate < endLinearProgress)
+        .map(candidate => normalizedBallisticHeightDerivative(candidate, durationMs)),
+    ]
+    lowerDerivative += scaledWeight * Math.min(...derivativeCandidates)
+    upperDerivative += scaledWeight * Math.max(...derivativeCandidates)
   }
-  return upperHeight / totalScaledWeight
+  return Object.freeze({
+    lower: lowerHeight / totalScaledWeight,
+    upper: upperHeight / totalScaledWeight,
+    lowerDerivative: lowerDerivative / totalScaledWeight,
+    upperDerivative: upperDerivative / totalScaledWeight,
+  })
+}
+
+/**
+ * 单窗或全部同向单调贡献的复合曲线没有内部 grounded valley；其 airborne 超水平集在当前区间内连通。
+ */
+function hasConnectedAirborneSuperlevel(
+  windows: readonly BipedPetBallisticTimelineWindow[],
+  startMs: number,
+  endMs: number,
+): boolean {
+  const active = windows.filter(window => window.startMs < endMs && window.endMs > startMs)
+  if (active.length <= 1) return true
+  let allNonDecreasing = true
+  let allNonIncreasing = true
+  for (const window of active) {
+    const peakMs = window.startMs + (window.endMs - window.startMs) * .5
+    if (endMs > peakMs) allNonDecreasing = false
+    if (startMs < peakMs) allNonIncreasing = false
+  }
+  return allNonDecreasing || allNonIncreasing
 }
 
 function safeWindows(
@@ -145,27 +287,16 @@ function resolvedRequestedRanges(
   secondRequestedTimeMs: number,
   durationMs: number,
   loopMode: StudioMotionLoopMode,
-  anchors?: BipedPetBallisticRequestedRangeAnchors,
 ): { readonly complete: boolean; readonly ranges: readonly BipedPetBallisticResolvedRange[] } {
   const startRequestedTimeMs = Math.max(0, Math.min(firstRequestedTimeMs, secondRequestedTimeMs))
   const endRequestedTimeMs = Math.max(0, Math.max(firstRequestedTimeMs, secondRequestedTimeMs))
-  const orderedForward = firstRequestedTimeMs <= secondRequestedTimeMs
-  const startResolvedAnchorMs = orderedForward ? anchors?.firstResolvedTimeMs : anchors?.secondResolvedTimeMs
-  const endResolvedAnchorMs = orderedForward ? anchors?.secondResolvedTimeMs : anchors?.firstResolvedTimeMs
-  const canonicalAnchor = (value: number | undefined) => typeof value === 'number'
-    && Number.isFinite(value) && value > 0 && value < durationMs
-    ? value
-    : undefined
-  const safeStartResolvedAnchorMs = canonicalAnchor(startResolvedAnchorMs)
-  const safeEndResolvedAnchorMs = canonicalAnchor(endResolvedAnchorMs)
   if (!(endRequestedTimeMs > startRequestedTimeMs)) return Object.freeze({ complete: true, ranges: Object.freeze([]) })
   if (loopMode === 'once') {
+    const startMs = clamp(startRequestedTimeMs, 0, durationMs)
+    const endMs = clamp(endRequestedTimeMs, 0, durationMs)
     return Object.freeze({
       complete: true,
-      ranges: Object.freeze([Object.freeze({
-        startMs: safeStartResolvedAnchorMs ?? clamp(startRequestedTimeMs, 0, durationMs),
-        endMs: safeEndResolvedAnchorMs ?? clamp(endRequestedTimeMs, 0, durationMs),
-      })]),
+      ranges: Object.freeze(endMs > startMs ? [Object.freeze({ startMs, endMs })] : []),
     })
   }
 
@@ -184,58 +315,59 @@ function resolvedRequestedRanges(
       return Object.freeze({ complete: false, ranges: Object.freeze([]) })
     }
     priorIteration = iteration
-    const segmentStartMs = iteration * durationMs
-    const segmentEndMs = segmentStartMs + durationMs
-    if (!Number.isFinite(segmentStartMs) || !Number.isFinite(segmentEndMs)) {
+    const segment = canonicalIterationSegment(iteration, durationMs)
+    if (!segment) return Object.freeze({ complete: false, ranges: Object.freeze([]) })
+    const requestStartMs = Math.max(startRequestedTimeMs, segment.startMs)
+    const requestEndMs = Math.min(endRequestedTimeMs, segment.endMs)
+    if (!(requestEndMs > requestStartMs)) continue
+    const localStartMs = offset === 0
+      ? canonicalRequestedOffset(requestStartMs, segment.startMs, durationMs)
+      : 0
+    const localEndMs = offset === segmentCount - 1
+      ? canonicalRequestedOffset(requestEndMs, segment.startMs, durationMs)
+      : durationMs
+    if (localStartMs === undefined || localEndMs === undefined) {
       return Object.freeze({ complete: false, ranges: Object.freeze([]) })
     }
-    const requestStartMs = Math.max(startRequestedTimeMs, segmentStartMs)
-    const requestEndMs = Math.min(endRequestedTimeMs, segmentEndMs)
-    if (!(requestEndMs > requestStartMs)) continue
-    const localStartMs = requestStartMs - segmentStartMs
-    const localEndMs = requestEndMs - segmentStartMs
     const reverse = loopMode === 'ping-pong' && positiveModulo(iteration, 2) !== 0
-    let resolvedRequestStartMs = reverse ? durationMs - localStartMs : localStartMs
-    let resolvedRequestEndMs = reverse ? durationMs - localEndMs : localEndMs
-    if (requestStartMs === startRequestedTimeMs && safeStartResolvedAnchorMs !== undefined) {
-      resolvedRequestStartMs = safeStartResolvedAnchorMs
-    }
-    if (requestEndMs === endRequestedTimeMs && safeEndResolvedAnchorMs !== undefined) {
-      resolvedRequestEndMs = safeEndResolvedAnchorMs
-    }
+    const resolvedStartMs = reverse ? durationMs - localStartMs : localStartMs
+    const resolvedEndMs = reverse ? durationMs - localEndMs : localEndMs
     ranges.push(Object.freeze({
-      startMs: Math.min(resolvedRequestStartMs, resolvedRequestEndMs),
-      endMs: Math.max(resolvedRequestStartMs, resolvedRequestEndMs),
+      startMs: Math.min(resolvedStartMs, resolvedEndMs),
+      endMs: Math.max(resolvedStartMs, resolvedEndMs),
     }))
   }
   return Object.freeze({ complete: true, ranges: Object.freeze(ranges) })
 }
 
+function stableComponentStrength(value: number): number {
+  const bounded = clamp(value, 0, 1)
+  if (bounded <= BIPED_PET_ROOT_MOTION_SIGNAL_EPSILON) return 0
+  return bounded >= 1 - BIPED_PET_ROOT_MOTION_SIGNAL_EPSILON ? 1 : bounded
+}
+
 /**
- * 每个唯一边界点与每个自适应区间各消耗一个 work unit；所有查询只读取返回值，不会追加隐藏状态或重置预算。
+ * 每个高度样本、区间上界证明各消耗一个共享 work unit。任何预算耗尽或不可表示区间均保留 unknown，
+ * 且整个分析不输出转换，避免局部证明改变 caller-owned 授权。
  */
 export function analyzeBipedPetBallisticTimeline(
   input: AnalyzeBipedPetBallisticTimelineInput,
 ): BipedPetBallisticTimelineAnalysis {
   const durationMs = Number.isFinite(input.durationMs) && input.durationMs > 0 ? input.durationMs : 1
   const windows = safeWindows(input.windows, durationMs)
-  const requestedRanges = resolvedRequestedRanges(
-    input.previousRequestedTimeMs,
-    input.requestedTimeMs,
-    durationMs,
-    input.loopMode,
-  )
+  // 只有动作结构可以形成 canonical 边界；请求帧端点绝不进入这里。
   const boundaries = [...new Set([
     0,
     durationMs,
     ...windows.flatMap(window => [window.startMs, window.endMs]),
-    ...requestedRanges.ranges.flatMap(range => [range.startMs, range.endMs]),
   ])].sort((left, right) => left - right)
   const maximumWeight = windows.reduce((maximum, window) => Math.max(maximum, window.weight), 0)
   const totalScaledWeight = maximumWeight > 0
     ? windows.reduce((total, window) => total + window.weight / maximumWeight, 0)
     : 0
-  const verticalIntentScale = input.jumpHeight * input.actionWeight
+  const verticalIntentScale = Number.isFinite(input.jumpHeight * input.actionWeight)
+    ? input.jumpHeight * input.actionWeight
+    : 0
   const airborneThreshold = verticalIntentScale > 0
     ? Math.max(BIPED_PET_ROOT_MOTION_SIGNAL_EPSILON, BIPED_PET_ROOT_MOTION_SIGNAL_EPSILON / verticalIntentScale)
     : Number.POSITIVE_INFINITY
@@ -249,54 +381,403 @@ export function analyzeBipedPetBallisticTimeline(
     workUnits += 1
     return true
   }
-  const heightAt = (timeMs: number) => normalizedCompositeHeight(
-    windows,
-    maximumWeight,
-    totalScaledWeight,
-    timeMs,
-  )
-  const boundaryEvidence = boundaries.map<BipedPetBallisticTimelineEvidence>(boundaryMs => {
-    if (!consumeWorkUnit()) return 'unknown'
-    return heightAt(boundaryMs) > airborneThreshold ? 'airborne' : 'grounded'
-  })
-  const classifyInterval = (startMs: number, endMs: number): BipedPetBallisticTimelineEvidence => {
-    if (!consumeWorkUnit()) return 'unknown'
-    const midpointMs = startMs + (endMs - startMs) * .5
-    if (heightAt(midpointMs) > airborneThreshold) return 'airborne'
-    if (maximumNormalizedCompositeHeight(
-      windows,
-      maximumWeight,
-      totalScaledWeight,
-      startMs,
-      endMs,
-    ) <= airborneThreshold) return 'grounded'
-    if (midpointMs === startMs || midpointMs === endMs) return 'unknown'
-    const firstEvidence = classifyInterval(startMs, midpointMs)
-    if (firstEvidence === 'airborne') return 'airborne'
-    const secondEvidence = classifyInterval(midpointMs, endMs)
-    if (secondEvidence === 'airborne') return 'airborne'
-    return firstEvidence === 'grounded' && secondEvidence === 'grounded' ? 'grounded' : 'unknown'
+  const samples = new Map<number, TimelineSample>()
+  const sampleAt = (timeMs: number): TimelineSample => {
+    const cached = samples.get(timeMs)
+    if (cached) return cached
+    if (!consumeWorkUnit()) return Object.freeze({ height: 0, evidence: 'unknown' })
+    const height = normalizedCompositeHeight(windows, maximumWeight, totalScaledWeight, timeMs)
+    const sample = Object.freeze({
+      height,
+      evidence: height > airborneThreshold ? 'airborne' as const : 'grounded' as const,
+    })
+    samples.set(timeMs, sample)
+    return sample
   }
-  const regions = boundaries.slice(0, -1).map((startMs, index) => Object.freeze({
-    startMs,
-    endMs: boundaries[index + 1]!,
-    evidence: classifyInterval(startMs, boundaries[index + 1]!),
+  const boundsAt = (startMs: number, endMs: number): ReturnType<typeof normalizedCompositeHeightBounds> | undefined => {
+    if (!consumeWorkUnit()) return undefined
+    return normalizedCompositeHeightBounds(windows, maximumWeight, totalScaledWeight, startMs, endMs)
+  }
+  const classifyInterval = (startMs: number, endMs: number): readonly ClassifiedInterval[] => {
+    const midpointMs = startMs + (endMs - startMs) * .5
+    if (midpointMs === startMs || midpointMs === endMs) {
+      // 相邻浮点数之间虽无可采样内点，但非负窗的严格上界仍能证明这个正宽 ULP gap 为 grounded。
+      const bounds = boundsAt(startMs, endMs)
+      if (bounds?.upper !== undefined && bounds.upper <= airborneThreshold) {
+        return [Object.freeze({ startMs, endMs, evidence: 'grounded' })]
+      }
+      const start = sampleAt(startMs)
+      const end = sampleAt(endMs)
+      if (start.evidence === 'unknown' || end.evidence === 'unknown') {
+        return [Object.freeze({ startMs, endMs, evidence: 'unknown' })]
+      }
+      const witnessTimeMs = start.evidence === 'airborne'
+        ? startMs
+        : end.evidence === 'airborne' ? endMs : undefined
+      const witnessHeight = start.evidence === 'airborne'
+        ? start.height
+        : end.evidence === 'airborne' ? end.height : undefined
+      return [Object.freeze({
+        startMs,
+        endMs,
+        evidence: witnessTimeMs === undefined ? 'unknown' : 'airborne',
+        ...(witnessTimeMs === undefined ? {} : { witnessTimeMs, witnessHeight }),
+      })]
+    }
+    const midpoint = sampleAt(midpointMs)
+    if (midpoint.evidence === 'unknown') {
+      return [Object.freeze({ startMs, endMs, evidence: 'unknown' })]
+    }
+    const connectedAirborneSuperlevel = hasConnectedAirborneSuperlevel(windows, startMs, endMs)
+    if (midpoint.evidence === 'airborne' && connectedAirborneSuperlevel) {
+      return [Object.freeze({
+        startMs,
+        endMs,
+        evidence: 'airborne',
+        witnessTimeMs: midpointMs,
+        witnessHeight: midpoint.height,
+      })]
+    }
+    const bounds = boundsAt(startMs, endMs)
+    if (bounds === undefined) return [Object.freeze({ startMs, endMs, evidence: 'unknown' })]
+    if (bounds.upper <= airborneThreshold) return [Object.freeze({ startMs, endMs, evidence: 'grounded' })]
+    if (midpoint.evidence === 'airborne' && bounds.lower > airborneThreshold) {
+      return [Object.freeze({
+        startMs,
+        endMs,
+        evidence: 'airborne',
+        witnessTimeMs: midpointMs,
+        witnessHeight: midpoint.height,
+      })]
+    }
+    if (!connectedAirborneSuperlevel) {
+      const start = sampleAt(startMs)
+      const end = sampleAt(endMs)
+      if (start.evidence === 'unknown' || end.evidence === 'unknown') {
+        return [Object.freeze({ startMs, endMs, evidence: 'unknown' })]
+      }
+      const nonDecreasing = bounds.lowerDerivative >= 0
+      const nonIncreasing = bounds.upperDerivative <= 0
+      if ((nonDecreasing && end.evidence === 'grounded')
+        || (nonIncreasing && start.evidence === 'grounded')) {
+        return [Object.freeze({ startMs, endMs, evidence: 'grounded' })]
+      }
+      if ((nonDecreasing && start.evidence === 'airborne')
+        || (nonIncreasing && end.evidence === 'airborne')) {
+        const witnessTimeMs = start.evidence === 'airborne' ? startMs : endMs
+        const witnessHeight = start.evidence === 'airborne' ? start.height : end.height
+        return [Object.freeze({ startMs, endMs, evidence: 'airborne', witnessTimeMs, witnessHeight })]
+      }
+      if ((nonDecreasing || nonIncreasing) && start.evidence !== end.evidence) {
+        const witnessTimeMs = start.evidence === 'airborne' ? startMs : endMs
+        const witnessHeight = start.evidence === 'airborne' ? start.height : end.height
+        return [Object.freeze({ startMs, endMs, evidence: 'airborne', witnessTimeMs, witnessHeight })]
+      }
+    }
+    /*
+     * 混合增减贡献中，airborne witness 也只证明“存在 air”；只有下界证明整段 air 后才能停止。
+     * 其余情况保留左右有序证明叶，避免居中或偏心的正宽 grounded valley 被吞并。
+     */
+    const first = classifyInterval(startMs, midpointMs)
+    const second = classifyInterval(midpointMs, endMs)
+    return Object.freeze([...first, ...second])
+  }
+
+  const boundaryEvidence = boundaries.map(boundaryMs => sampleAt(boundaryMs).evidence)
+  const classifiedRegions = boundaries.slice(0, -1).flatMap((startMs, index) => (
+    classifyInterval(startMs, boundaries[index + 1]!)
+  ))
+  const publicRegions = classifiedRegions.map(region => Object.freeze({
+    startMs: region.startMs,
+    endMs: region.endMs,
+    evidence: region.evidence,
+    ...(region.witnessTimeMs === undefined ? {} : { witnessTimeMs: region.witnessTimeMs }),
   }))
+
+  const refineStartEdge = (groundedMs: number, airborneMs: number): ThresholdEdge | undefined => {
+    let ground = groundedMs
+    let air = airborneMs
+    if (sampleAt(ground).evidence !== 'grounded' || sampleAt(air).evidence !== 'airborne') return undefined
+    if (air - ground <= Number.EPSILON * Math.max(1, Math.abs(ground), Math.abs(air)) * 32) {
+      return Object.freeze({ airborneMs: air, groundedMs: ground })
+    }
+    while (true) {
+      const midpointMs = ground + (air - ground) * .5
+      if (midpointMs === ground || midpointMs === air) break
+      const midpoint = sampleAt(midpointMs)
+      if (midpoint.evidence === 'unknown') return undefined
+      if (midpoint.evidence === 'airborne') air = midpointMs
+      else ground = midpointMs
+    }
+    return Object.freeze({ airborneMs: air, groundedMs: ground })
+  }
+  const refineEndEdge = (airborneMs: number, groundedMs: number): ThresholdEdge | undefined => {
+    let air = airborneMs
+    let ground = groundedMs
+    if (sampleAt(air).evidence !== 'airborne' || sampleAt(ground).evidence !== 'grounded') return undefined
+    if (ground - air <= Number.EPSILON * Math.max(1, Math.abs(air), Math.abs(ground)) * 32) {
+      return Object.freeze({ airborneMs: air, groundedMs: ground })
+    }
+    while (true) {
+      const midpointMs = air + (ground - air) * .5
+      if (midpointMs === air || midpointMs === ground) break
+      const midpoint = sampleAt(midpointMs)
+      if (midpoint.evidence === 'unknown') return undefined
+      if (midpoint.evidence === 'airborne') air = midpointMs
+      else ground = midpointMs
+    }
+    return Object.freeze({ airborneMs: air, groundedMs: ground })
+  }
+
+  const components: BipedPetBallisticTimelineComponent[] = []
+  const hasUnknownStructure = boundaryEvidence.includes('unknown')
+    || classifiedRegions.some(region => region.evidence === 'unknown')
+  if (!hasUnknownStructure) {
+    let firstAirborneRegionIndex: number | undefined
+    const finishComponent = (lastAirborneRegionIndex: number) => {
+      if (firstAirborneRegionIndex === undefined) return
+      const firstRegion = classifiedRegions[firstAirborneRegionIndex]!
+      const lastRegion = classifiedRegions[lastAirborneRegionIndex]!
+      const firstWitnessMs = firstRegion.witnessTimeMs
+      const lastWitnessMs = lastRegion.witnessTimeMs
+      if (firstWitnessMs === undefined || lastWitnessMs === undefined) {
+        exhausted = true
+        return
+      }
+      const startEdge = refineStartEdge(firstRegion.startMs, firstWitnessMs)
+      const endEdge = refineEndEdge(lastWitnessMs, lastRegion.endMs)
+      if (!startEdge || !endEdge) {
+        exhausted = true
+        return
+      }
+      let maximumWitnessHeight = 0
+      for (let index = firstAirborneRegionIndex; index <= lastAirborneRegionIndex; index += 1) {
+        maximumWitnessHeight = Math.max(maximumWitnessHeight, classifiedRegions[index]?.witnessHeight ?? 0)
+      }
+      /*
+       * 每个成员窗的 canonical 中点不依赖结构提示边界；它们避免低强度切分稀释组件强度，且不会借用无关窗口权重。
+       * Each member midpoint is independent from boundary hints, preventing weak splits from diluting strength or borrowing unrelated weights.
+       */
+      for (const window of windows) {
+        const midpointMs = window.startMs + (window.endMs - window.startMs) * .5
+        if (midpointMs < firstRegion.startMs || midpointMs > lastRegion.endMs) continue
+        const midpoint = sampleAt(midpointMs)
+        if (midpoint.evidence === 'unknown') {
+          exhausted = true
+          return
+        }
+        if (midpoint.evidence === 'airborne') maximumWitnessHeight = Math.max(maximumWitnessHeight, midpoint.height)
+      }
+      const strength = stableComponentStrength(maximumWitnessHeight * verticalIntentScale)
+      if (!(strength > 0)) return
+      components.push(Object.freeze({
+        index: components.length,
+        startMs: startEdge.airborneMs,
+        endMs: endEdge.airborneMs,
+        startGroundedMs: startEdge.groundedMs,
+        endGroundedMs: endEdge.groundedMs,
+        strength,
+      }))
+    }
+    const hasExactSupportAdjacency = (boundaryMs: number) => windows.some(window => window.endMs === boundaryMs)
+      && windows.some(window => window.startMs === boundaryMs)
+    for (let index = 0; index < classifiedRegions.length; index += 1) {
+      const region = classifiedRegions[index]!
+      if (region.evidence === 'airborne') {
+        if (firstAirborneRegionIndex === undefined) firstAirborneRegionIndex = index
+        else if (index > firstAirborneRegionIndex
+          && sampleAt(region.startMs).evidence === 'grounded'
+          && !hasExactSupportAdjacency(region.startMs)) {
+          /*
+           * grounded 边界仅在窗口精确首尾相接时桥接；overlap 内的正宽 grounded gap 必须形成两组转换。
+           * Bridge a grounded boundary only for exact window adjacency; a positive-width overlap valley must produce two transition pairs.
+           */
+          finishComponent(index - 1)
+          firstAirborneRegionIndex = index
+          if (exhausted) break
+        }
+        continue
+      }
+      if (firstAirborneRegionIndex !== undefined) {
+        finishComponent(index - 1)
+        firstAirborneRegionIndex = undefined
+        if (exhausted) break
+      }
+    }
+    if (!exhausted && firstAirborneRegionIndex !== undefined) finishComponent(classifiedRegions.length - 1)
+  }
+
+  // 任何未知/耗尽都返回无转换，避免部分组件改变旧授权。 / Unknown or exhausted analyses emit no transitions, so partial components cannot alter prior authorization.
+  const safeComponents = exhausted || hasUnknownStructure ? [] : components
+  const rawTransitions = safeComponents.flatMap<BipedPetBallisticTimelineTransition>(component => [
+    Object.freeze({
+      componentIndex: component.index,
+      resolvedTimeMs: component.startMs,
+      traversalDirection: 1,
+      kind: 'takeoff',
+      strength: component.strength,
+    }),
+    Object.freeze({
+      componentIndex: component.index,
+      resolvedTimeMs: component.endGroundedMs,
+      traversalDirection: 1,
+      kind: 'touchdown',
+      strength: component.strength,
+    }),
+    Object.freeze({
+      componentIndex: component.index,
+      resolvedTimeMs: component.endMs,
+      traversalDirection: -1,
+      kind: 'takeoff',
+      strength: component.strength,
+    }),
+    Object.freeze({
+      componentIndex: component.index,
+      resolvedTimeMs: component.startGroundedMs,
+      traversalDirection: -1,
+      kind: 'touchdown',
+      strength: component.strength,
+    }),
+  ])
+  const firstComponentIndex = safeComponents[0]?.index
+  const lastComponentIndex = safeComponents.at(-1)?.index
+  const firstRegionIsAirborne = classifiedRegions[0]?.evidence === 'airborne'
+  const lastRegionIsAirborne = classifiedRegions.at(-1)?.evidence === 'airborne'
+  const hasSupportAtStart = windows.some(window => window.startMs === 0)
+  const hasSupportAtEnd = windows.some(window => window.endMs === durationMs)
+  const transitions = rawTransitions.filter(transition => {
+    if (input.loopMode === 'loop' && firstRegionIsAirborne && lastRegionIsAirborne
+      && hasSupportAtStart && hasSupportAtEnd) {
+      if (transition.traversalDirection === 1
+        && ((transition.componentIndex === firstComponentIndex && transition.kind === 'takeoff')
+          || (transition.componentIndex === lastComponentIndex && transition.kind === 'touchdown'))) return false
+    }
+    if (input.loopMode === 'ping-pong') {
+      if (lastRegionIsAirborne && hasSupportAtEnd && transition.componentIndex === lastComponentIndex
+        && ((transition.traversalDirection === 1 && transition.kind === 'touchdown')
+          || (transition.traversalDirection === -1 && transition.kind === 'takeoff'))) return false
+      if (firstRegionIsAirborne && hasSupportAtStart && transition.componentIndex === firstComponentIndex
+        && ((transition.traversalDirection === -1 && transition.kind === 'touchdown')
+          || (transition.traversalDirection === 1 && transition.kind === 'takeoff'))) return false
+    }
+    return true
+  }).sort((left, right) => left.traversalDirection - right.traversalDirection
+    || left.resolvedTimeMs - right.resolvedTimeMs
+    || (left.kind === right.kind ? 0 : left.kind === 'takeoff' ? -1 : 1))
   const stats = Object.freeze({
     workUnits,
     maximumWorkUnits: MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS,
     boundaryCount: boundaries.length,
     supportComponentCount: supportComponentCount(windows),
-    exhausted,
+    exhausted: exhausted || hasUnknownStructure,
   })
   return Object.freeze({
     durationMs,
     loopMode: input.loopMode,
     boundaries: Object.freeze(boundaries),
     boundaryEvidence: Object.freeze(boundaryEvidence),
-    regions: Object.freeze(regions),
+    regions: Object.freeze(publicRegions),
+    components: Object.freeze(safeComponents),
+    transitions: Object.freeze(transitions),
     stats,
   })
+}
+
+/**
+ * 将 canonical 双向转换映射到本次绝对请求区间；最多处理四个周期，超大 iteration 保守返回 incomplete。
+ */
+export function bipedPetBallisticTransitionsInRequestedRange(
+  analysis: BipedPetBallisticTimelineAnalysis,
+  previousRequestedTimeMs: number,
+  requestedTimeMs: number,
+): { readonly complete: boolean; readonly transitions: readonly BipedPetBallisticRequestedTransition[] } {
+  if (analysis.stats.exhausted || !(requestedTimeMs > previousRequestedTimeMs) || requestedTimeMs < 0) {
+    return Object.freeze({ complete: !analysis.stats.exhausted, transitions: Object.freeze([]) })
+  }
+  const events: Array<{
+    readonly event: BipedPetBallisticRequestedTransition
+    readonly sequence: number
+  }> = []
+  let sequence = 0
+  const appendIteration = (
+    segmentStartMs: number,
+    direction: -1 | 1,
+    localStartMs: number,
+    localEndMs: number,
+    includeLocalStart: boolean,
+  ) => {
+    if (localEndMs < localStartMs) return
+    const ordered = analysis.transitions
+      .filter(transition => transition.traversalDirection === direction)
+      .map(transition => Object.freeze({
+        transition,
+        localOffsetMs: direction === 1
+          ? transition.resolvedTimeMs
+          : analysis.durationMs - transition.resolvedTimeMs,
+      }))
+      .sort((left, right) => left.localOffsetMs - right.localOffsetMs)
+    for (const { transition, localOffsetMs } of ordered) {
+      const afterStart = localOffsetMs > localStartMs
+        || (includeLocalStart && localOffsetMs === localStartMs)
+      if (!afterStart || localOffsetMs > localEndMs) continue
+      const eventRequestedTimeMs = segmentStartMs + localOffsetMs
+      if (!Number.isFinite(eventRequestedTimeMs)) continue
+      events.push(Object.freeze({
+        event: Object.freeze({ ...transition, requestedTimeMs: eventRequestedTimeMs }),
+        sequence,
+      }))
+      sequence += 1
+    }
+  }
+  if (analysis.loopMode === 'once') {
+    appendIteration(
+      0,
+      1,
+      clamp(previousRequestedTimeMs, 0, analysis.durationMs),
+      clamp(requestedTimeMs, 0, analysis.durationMs),
+      previousRequestedTimeMs < 0,
+    )
+  }
+  else {
+    const startRequestedTimeMs = Math.max(0, previousRequestedTimeMs)
+    const firstIteration = Math.floor(startRequestedTimeMs / analysis.durationMs)
+    const lastIteration = Math.floor(requestedTimeMs / analysis.durationMs)
+    const segmentCount = lastIteration - firstIteration + 1
+    if (!Number.isInteger(segmentCount) || segmentCount < 1
+      || segmentCount > MAX_BIPED_PET_BALLISTIC_REQUEST_SEGMENTS) {
+      return Object.freeze({ complete: false, transitions: Object.freeze([]) })
+    }
+    let priorIteration: number | undefined
+    for (let offset = 0; offset < segmentCount; offset += 1) {
+      const iteration = offset === segmentCount - 1 ? lastIteration : firstIteration + offset
+      if (priorIteration !== undefined && iteration <= priorIteration) {
+        return Object.freeze({ complete: false, transitions: Object.freeze([]) })
+      }
+      priorIteration = iteration
+      const segment = canonicalIterationSegment(iteration, analysis.durationMs)
+      if (!segment) return Object.freeze({ complete: false, transitions: Object.freeze([]) })
+      const localStartMs = offset === 0
+        ? canonicalRequestedOffset(startRequestedTimeMs, segment.startMs, analysis.durationMs)
+        : 0
+      const localEndMs = offset === segmentCount - 1
+        ? canonicalRequestedOffset(requestedTimeMs, segment.startMs, analysis.durationMs)
+        : analysis.durationMs
+      if (localStartMs === undefined || localEndMs === undefined) {
+        return Object.freeze({ complete: false, transitions: Object.freeze([]) })
+      }
+      const direction = analysis.loopMode === 'ping-pong' && positiveModulo(iteration, 2) !== 0 ? -1 : 1
+      appendIteration(
+        segment.startMs,
+        direction,
+        localStartMs,
+        localEndMs,
+        segment.startMs > previousRequestedTimeMs,
+      )
+    }
+  }
+  events.sort((left, right) => left.event.requestedTimeMs - right.event.requestedTimeMs
+    || left.sequence - right.sequence)
+  return Object.freeze({ complete: true, transitions: Object.freeze(events.map(item => item.event)) })
 }
 
 export function classifyBipedPetBallisticResolvedRange(
@@ -304,45 +785,21 @@ export function classifyBipedPetBallisticResolvedRange(
   firstTimeMs: number,
   secondTimeMs: number,
 ): BipedPetBallisticTimelineEvidence {
+  if (analysis.stats.exhausted) return 'unknown'
   const startMs = clamp(Math.min(firstTimeMs, secondTimeMs), 0, analysis.durationMs)
   const endMs = clamp(Math.max(firstTimeMs, secondTimeMs), 0, analysis.durationMs)
-  const startIndex = analysis.boundaries.indexOf(startMs)
-  const endIndex = analysis.boundaries.indexOf(endMs)
-  if (startIndex < 0 || endIndex < startIndex) return 'unknown'
-  let unknown = false
-  for (let index = startIndex; index <= endIndex; index += 1) {
-    const evidence = analysis.boundaryEvidence[index]
-    if (evidence === 'airborne') return 'airborne'
-    if (evidence === 'unknown') unknown = true
-  }
-  for (let index = startIndex; index < endIndex; index += 1) {
-    const evidence = analysis.regions[index]?.evidence
-    if (evidence === 'airborne') return 'airborne'
-    if (evidence === 'unknown' || evidence === undefined) unknown = true
-  }
-  return unknown ? 'unknown' : 'grounded'
-}
-
-/**
- * 读取 canonical 边界某一侧紧邻区域的既有证据；越出 once 时间轴的区域按 grounded 处理。
- * 该查询不执行新采样、不消耗额外 work unit，loop/ping-pong 的 seam 映射由事件调用方明确提供。
- */
-export function classifyBipedPetBallisticResolvedBoundarySide(
-  analysis: BipedPetBallisticTimelineAnalysis,
-  boundaryMs: number,
-  direction: -1 | 1,
-): BipedPetBallisticTimelineEvidence {
-  const boundaryIndex = analysis.boundaries.indexOf(boundaryMs)
-  if (boundaryIndex < 0) return 'unknown'
-  const regionIndex = direction === -1 ? boundaryIndex - 1 : boundaryIndex
-  return analysis.regions[regionIndex]?.evidence ?? 'grounded'
+  if (!(endMs > startMs)) return 'grounded'
+  if (analysis.components.some(component => endMs >= component.startMs && startMs <= component.endMs)) return 'airborne'
+  return analysis.regions.some(region => region.evidence === 'unknown'
+    && region.endMs > startMs && region.startMs < endMs)
+    ? 'unknown'
+    : 'grounded'
 }
 
 export function classifyBipedPetBallisticRequestedRange(
   analysis: BipedPetBallisticTimelineAnalysis,
   firstRequestedTimeMs: number,
   secondRequestedTimeMs: number,
-  anchors?: BipedPetBallisticRequestedRangeAnchors,
 ): BipedPetBallisticTimelineEvidence {
   if (!(Math.max(firstRequestedTimeMs, secondRequestedTimeMs) > Math.min(firstRequestedTimeMs, secondRequestedTimeMs))) {
     return 'grounded'
@@ -352,9 +809,8 @@ export function classifyBipedPetBallisticRequestedRange(
     secondRequestedTimeMs,
     analysis.durationMs,
     analysis.loopMode,
-    anchors,
   )
-  if (!requestedRanges.complete) return 'unknown'
+  if (!requestedRanges.complete || analysis.stats.exhausted) return 'unknown'
   let unknown = false
   for (const range of requestedRanges.ranges) {
     const evidence = classifyBipedPetBallisticResolvedRange(analysis, range.startMs, range.endMs)

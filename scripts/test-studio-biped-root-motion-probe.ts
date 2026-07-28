@@ -1,6 +1,6 @@
 /**
  * 文件职责 / File responsibility
- * 以固定种子复现双足萌宠 Root Motion 的有状态、ULP 边界、规范化成本与连续弹道热路径探针。
+ * 以固定种子复现双足萌宠 Root Motion 的有状态、ULP、帧细分不变性、规范化成本与连续弹道热路径探针。
  */
 
 import assert from 'node:assert/strict'
@@ -280,7 +280,7 @@ function runBallisticTimelineProbe() {
   assert.ok(analysis.stats.workUnits > 0
     && analysis.stats.workUnits <= MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS)
   assert.equal(analysis.stats.maximumWorkUnits, MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS)
-  assert.equal(analysis.stats.boundaryCount, 130)
+  assert.equal(analysis.stats.boundaryCount, 129, '请求端点不得进入 64 窗 canonical 结构边界')
   assert.equal(analysis.stats.supportComponentCount, 64)
   assert.equal(analysis.stats.exhausted, false)
 
@@ -306,6 +306,7 @@ function runBallisticTimelineProbe() {
   const startedAt = performance.now()
   let previous = sampleDeterministically({ ...base, actionWeight: 1, requestedTimeMs: 5 })
   let signedImpulse = 0
+  let signedTouchdownRequestedTimeMs: number | undefined
   for (const requestedTimeMs of [10, 84, 85, 86]) {
     previous = sampleDeterministically({
       ...base,
@@ -316,9 +317,14 @@ function runBallisticTimelineProbe() {
       previousAppliedTurnRadians: previous.appliedTurnRadians,
       previousLandingAuthorization: previous.landingAuthorization,
     })
-    if (requestedTimeMs === 10) signedImpulse = previous.landingAuthorization?.impulse ?? 0
+    if (requestedTimeMs === 10) {
+      signedImpulse = previous.landingAuthorization?.impulse ?? 0
+      signedTouchdownRequestedTimeMs = previous.landingAuthorization?.touchdownRequestedTimeMs
+      assert.ok(signedTouchdownRequestedTimeMs !== undefined
+        && signedTouchdownRequestedTimeMs < 10 && signedTouchdownRequestedTimeMs > 9.9999)
+    }
     if (requestedTimeMs === 84 || requestedTimeMs === 85) {
-      assert.equal(previous.landingAuthorization?.touchdownRequestedTimeMs, 10)
+      assert.equal(previous.landingAuthorization?.touchdownRequestedTimeMs, signedTouchdownRequestedTimeMs)
     }
   }
   assert.ok(signedImpulse > 0)
@@ -368,6 +374,71 @@ function runBallisticTimelineProbe() {
     analysis: analysis.stats,
     elapsedMs: performance.now() - startedAt,
   }
+}
+
+function runFrameSubdivisionProbe() {
+  const sequence = (
+    loopMode: 'once' | 'loop' | 'ping-pong',
+    continuationWeight: number,
+    requestedTimes: readonly number[],
+  ) => {
+    const definition = normalizeBipedPetRootMotion({
+      mode: 'travel',
+      distance: 0,
+      turnRadians: 0,
+      verticalMode: 'ballistic',
+      jumpHeight: 1,
+      windows: [
+        { id: 'main', kind: 'ballistic', startMs: 0, endMs: 10, weight: 1 },
+        { id: 'adjacent', kind: 'ballistic', startMs: 10, endMs: 20, weight: continuationWeight },
+      ],
+      vfxTags: [],
+    }, 100).value
+    const base = {
+      definition,
+      durationMs: 100,
+      loopMode,
+      characterHeight: 4,
+      facingRadians: 0,
+      actionWeight: 1,
+      footResidual: [0, 0, 0] as const,
+    }
+    let previous = sampleDeterministically({ ...base, requestedTimeMs: 5 })
+    let totalImpulse = 0
+    const authorizationTimes = new Set<number>()
+    for (const requestedTimeMs of requestedTimes) {
+      previous = sampleDeterministically({
+        ...base,
+        requestedTimeMs,
+        previousRequestedTimeMs: previous.requestedTimeMs,
+        previousAppliedWorld: previous.appliedWorld,
+        previousAppliedTurnRadians: previous.appliedTurnRadians,
+        previousLandingAuthorization: previous.landingAuthorization,
+      })
+      totalImpulse += previous.landingImpulse
+      if (previous.landingAuthorization) {
+        authorizationTimes.add(previous.landingAuthorization.touchdownRequestedTimeMs)
+      }
+    }
+    return { totalImpulse, authorizationTimes: [...authorizationTimes] }
+  }
+
+  let cases = 0
+  for (const loopMode of ['once', 'loop', 'ping-pong'] as const) {
+    const directLow = sequence(loopMode, 7.5e-13, [10.000001, 11, 12, 13, 14])
+    const subdividedLow = sequence(loopMode, 7.5e-13, [10, 10.000001, 11, 12, 13, 14])
+    assert.deepEqual(directLow, subdividedLow, `${loopMode} 低强度相邻窗不得受 10ms 请求帧细分影响`)
+    assert.deepEqual(directLow, { totalImpulse: 1, authorizationTimes: directLow.authorizationTimes })
+    assert.equal(directLow.authorizationTimes.length, 1)
+    assert.ok(directLow.authorizationTimes[0]! < 10 && directLow.authorizationTimes[0]! > 9.9999)
+
+    const directHigh = sequence(loopMode, 1, [10.000001, 11, 12, 13, 14])
+    const subdividedHigh = sequence(loopMode, 1, [10, 10.000001, 11, 12, 13, 14])
+    assert.deepEqual(directHigh, subdividedHigh, `${loopMode} 高强度精确相邻窗不得因跨边界帧签发伪授权`)
+    assert.deepEqual(directHigh, { totalImpulse: 0, authorizationTimes: [] })
+    cases += 2
+  }
+  return { cases, loopModes: 3 }
 }
 
 function benchmarkDefinition(windowCount: 1 | 64): BipedPetRootMotionDefinition {
@@ -521,6 +592,7 @@ const result = {
   stateful: runStatefulProbe(),
   ulp: runUlpProbes(),
   ballisticTimeline: runBallisticTimelineProbe(),
+  frameSubdivision: runFrameSubdivisionProbe(),
   normalizationCostObservation: runNormalizationCostObservation(),
   continuousBallisticObservation: runContinuousBallisticPerformanceObservation(),
 }

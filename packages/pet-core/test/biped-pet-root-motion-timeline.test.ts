@@ -8,6 +8,7 @@ import test from 'node:test'
 import {
   MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS,
   analyzeBipedPetBallisticTimeline,
+  bipedPetBallisticTransitionsInRequestedRange,
   classifyBipedPetBallisticRequestedRange,
 } from '../src/motion/biped-pet-root-motion-timeline.ts'
 
@@ -44,6 +45,250 @@ function lowUlpTailWindows() {
   return tails
 }
 
+function analyze(
+  windows: readonly { readonly id: string; readonly startMs: number; readonly endMs: number; readonly weight: number }[],
+  loopMode: 'once' | 'loop' | 'ping-pong' = 'once',
+  previousRequestedTimeMs = 5,
+  requestedTimeMs = 10,
+) {
+  return analyzeBipedPetBallisticTimeline({
+    windows,
+    durationMs: 100,
+    loopMode,
+    jumpHeight: 1,
+    actionWeight: 1,
+    previousRequestedTimeMs,
+    requestedTimeMs,
+  })
+}
+
+test('canonical 组件与转换完全独立于请求帧端点', () => {
+  const windows = [
+    { id: 'first', startMs: 0, endMs: 10, weight: 1 },
+    { id: 'adjacent', startMs: 10, endMs: 20, weight: 1 },
+  ]
+  const exact = analyze(windows, 'once', 5, 10)
+  const crossed = analyze(windows, 'once', 5, 10.000001)
+
+  assert.deepEqual(exact.boundaries, [0, 10, 20, 100])
+  assert.deepEqual(crossed.boundaries, exact.boundaries)
+  assert.deepEqual(crossed.components, exact.components)
+  assert.deepEqual(crossed.transitions, exact.transitions)
+  assert.equal(exact.components.length, 1, '两侧 proven airborne 且仅精确相邻时必须合并为一个组件')
+  assert.ok(exact.components[0]!.startMs > 0 && exact.components[0]!.endMs < 20)
+  assert.equal(
+    exact.transitions.some(transition => transition.resolvedTimeMs === 10),
+    false,
+    '零宽接地点不是结构转换',
+  )
+})
+
+test('低于阈值的重叠/相邻尾窗不改变主组件，touchdown 位于真实复合阈值交点', () => {
+  const main = { id: 'main', startMs: 0, endMs: 10, weight: 1 }
+  const overlap = analyze([main, { id: 'tail', startMs: 9.999999, endMs: 20, weight: 7.5e-13 }])
+  const adjacent = analyze([main, { id: 'tail', startMs: 10, endMs: 20, weight: 7.5e-13 }])
+  const earlyBoundary = analyze([main, { id: 'tail', startMs: 4, endMs: 20, weight: 7.5e-13 }])
+
+  assert.deepEqual(overlap.components, adjacent.components)
+  assert.deepEqual(overlap.transitions, adjacent.transitions)
+  assert.equal(overlap.components.length, 1)
+  assert.equal(overlap.components[0]!.strength, 1, '相对零尾窗不得稀释主组件完整强度')
+  assert.equal(earlyBoundary.components.length, 1)
+  assert.equal(earlyBoundary.components[0]!.strength, 1, '更早的无效结构提示也不得稀释主组件强度')
+  const touchdown = overlap.transitions.find(transition => (
+    transition.traversalDirection === 1 && transition.kind === 'touchdown'
+  ))
+  assert.ok(touchdown && touchdown.resolvedTimeMs < 10 && touchdown.resolvedTimeMs > 9.9999)
+})
+
+test('任意正宽 proven grounded gap 都拆分组件，精确相邻不拆分', () => {
+  const first = { id: 'first', startMs: 0, endMs: 10, weight: 1 }
+  for (const gapMs of [.001, .1, nextUp(10) - 10]) {
+    const analysis = analyze([
+      first,
+      { id: 'second', startMs: 10 + gapMs, endMs: 20, weight: 1 },
+    ])
+    assert.equal(analysis.components.length, 2, `${String(gapMs)}ms 正 gap 必须形成两个组件`)
+    assert.equal(
+      analysis.transitions.filter(transition => transition.traversalDirection === 1).length,
+      4,
+    )
+  }
+  assert.equal(analyze([first, { id: 'second', startMs: 10, endMs: 20, weight: 1 }]).components.length, 1)
+})
+
+test('同一结构 overlap 区间内部的正宽 composite grounded valley 也拆分组件', () => {
+  const analysis = analyzeBipedPetBallisticTimeline({
+    windows: [
+      { id: 'first', startMs: 0, endMs: 100, weight: 1 },
+      { id: 'second', startMs: 99.995, endMs: 199.995, weight: 1 },
+    ],
+    durationMs: 200,
+    loopMode: 'once',
+    jumpHeight: 1,
+    actionWeight: 1e-4,
+  })
+
+  assert.equal(analysis.stats.exhausted, false)
+  assert.equal(analysis.components.length, 2, 'overlap 内部的正宽 proven ground valley 不得被首个 airborne witness 吞并')
+  const forward = analysis.transitions.filter(transition => transition.traversalDirection === 1)
+  assert.deepEqual(forward.map(transition => transition.kind), ['takeoff', 'touchdown', 'takeoff', 'touchdown'])
+  assert.ok(forward[1]!.resolvedTimeMs > 99.995 && forward[1]!.resolvedTimeMs < 99.9975)
+  assert.ok(forward[2]!.resolvedTimeMs > 99.9975 && forward[2]!.resolvedTimeMs < 100)
+})
+
+test('midpoint airborne 的偏心 overlap grounded valley 仍由上下界证明并拆分', () => {
+  const analysis = analyzeBipedPetBallisticTimeline({
+    windows: [
+      { id: 'first', startMs: 0, endMs: 100, weight: 1 },
+      { id: 'second', startMs: 99.996, endMs: 150, weight: .8 },
+    ],
+    durationMs: 150,
+    loopMode: 'once',
+    jumpHeight: 1,
+    actionWeight: .0001074085909395288,
+  })
+
+  assert.equal(analysis.stats.exhausted, false)
+  assert.equal(analysis.components.length, 2, 'airborne midpoint 只是 witness，不得把偏心 grounded valley 当作整段 air')
+  const forward = analysis.transitions.filter(transition => transition.traversalDirection === 1)
+  assert.deepEqual(forward.map(transition => transition.kind), ['takeoff', 'touchdown', 'takeoff', 'touchdown'])
+  assert.ok(forward[1]!.resolvedTimeMs > 99.996 && forward[1]!.resolvedTimeMs < 99.9969524)
+  assert.ok(forward[2]!.resolvedTimeMs > 99.9969524 && forward[2]!.resolvedTimeMs < 99.998)
+})
+
+test('once/loop/ping-pong 只映射 canonical 转换且保留遍历方向', () => {
+  const windows = [{ id: 'jump', startMs: 20, endMs: 80, weight: 1 }]
+  const once = analyze(windows, 'once')
+  const loop = analyze(windows, 'loop')
+  const ping = analyze(windows, 'ping-pong')
+  const forwardTouchdown = once.transitions.find(transition => (
+    transition.traversalDirection === 1 && transition.kind === 'touchdown'
+  ))!
+  const reverseTouchdown = ping.transitions.find(transition => (
+    transition.traversalDirection === -1 && transition.kind === 'touchdown'
+  ))!
+
+  assert.deepEqual(
+    bipedPetBallisticTransitionsInRequestedRange(once, 50, 90).transitions.map(event => event.requestedTimeMs),
+    [forwardTouchdown.resolvedTimeMs],
+  )
+  assert.deepEqual(
+    bipedPetBallisticTransitionsInRequestedRange(loop, 150, 190).transitions.map(event => event.requestedTimeMs),
+    [100 + forwardTouchdown.resolvedTimeMs],
+  )
+  const reverseEvents = bipedPetBallisticTransitionsInRequestedRange(ping, 150, 190).transitions
+  assert.deepEqual(reverseEvents.map(event => event.requestedTimeMs), [200 - reverseTouchdown.resolvedTimeMs])
+  assert.equal(reverseEvents[0]?.traversalDirection, -1)
+
+  const huge = bipedPetBallisticTransitionsInRequestedRange(loop, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER + 1000)
+  assert.equal(huge.complete, false)
+  assert.deepEqual(huge.transitions, [])
+})
+
+test('巨大绝对时间把相邻 canonical 转换舍入为同一时刻时仍保留遍历顺序', () => {
+  const windows = [
+    { id: 'first', startMs: 20, endMs: 30, weight: 1 },
+    { id: 'second', startMs: 30.001, endMs: 40, weight: 1 },
+  ]
+  const loop = analyze(windows, 'loop')
+  const forwardSegmentStartMs = 2 ** 40 * 100
+  const forward = bipedPetBallisticTransitionsInRequestedRange(
+    loop,
+    forwardSegmentStartMs + 29,
+    forwardSegmentStartMs + 31,
+  ).transitions
+
+  assert.equal(forward.length, 2)
+  assert.equal(forward[0]!.requestedTimeMs, forward[1]!.requestedTimeMs, '两个绝对事件会舍入为同一 double')
+  assert.deepEqual(forward.map(event => event.kind), ['touchdown', 'takeoff'])
+
+  const ping = analyze(windows, 'ping-pong')
+  const reverseSegmentStartMs = (2 ** 40 + 1) * 100
+  const reverse = bipedPetBallisticTransitionsInRequestedRange(
+    ping,
+    reverseSegmentStartMs + 69,
+    reverseSegmentStartMs + 71,
+  ).transitions
+
+  assert.equal(reverse.length, 2)
+  assert.equal(reverse[0]!.requestedTimeMs, reverse[1]!.requestedTimeMs, '反向事件也会舍入为同一 double')
+  assert.deepEqual(reverse.map(event => event.kind), ['touchdown', 'takeoff'])
+  assert.deepEqual(reverse.map(event => event.traversalDirection), [-1, -1])
+})
+
+test('巨大绝对时间先按 canonical 局部区间判定事件，再生成舍入后的 requested 时间', () => {
+  const analysis = analyze([
+    { id: 'jump', startMs: 20, endMs: 29.001, weight: 1 },
+  ], 'loop')
+  const segmentStartMs = 2 ** 40 * 100
+  const events = bipedPetBallisticTransitionsInRequestedRange(
+    analysis,
+    segmentStartMs + 29,
+    segmentStartMs + 31,
+  ).transitions
+
+  assert.equal(events.length, 1, 'canonical touchdown 严格位于局部 (29, 31]，不得因绝对时间向下舍入而丢失')
+  assert.equal(events[0]!.kind, 'touchdown')
+  assert.equal(events[0]!.requestedTimeMs, segmentStartMs + 29)
+})
+
+test('超安全整数的 iteration 锚与 canonical 余数不一致时保守返回 incomplete', () => {
+  const analysis = analyze([
+    { id: 'unrepresentable-anchor', startMs: 1, endMs: 3, weight: 1 },
+  ], 'loop')
+  const previousRequestedTimeMs = 112589990684259900
+  const requestedTimeMs = 112589990684259920
+  const mapped = bipedPetBallisticTransitionsInRequestedRange(
+    analysis,
+    previousRequestedTimeMs,
+    requestedTimeMs,
+  )
+
+  assert.equal(mapped.complete, false)
+  assert.deepEqual(mapped.transitions, [])
+  assert.equal(
+    classifyBipedPetBallisticRequestedRange(analysis, previousRequestedTimeMs, requestedTimeMs),
+    'unknown',
+    '不可表示锚的 requested range 也不得伪称 proven airborne',
+  )
+})
+
+test('普通 loop 端点使用 resolver canonical modulo 而不是容差内的 raw subtraction', () => {
+  const windowStartMs = 1000.1234565003246
+  const analysis = analyzeBipedPetBallisticTimeline({
+    windows: [{ id: 'canonical-endpoint', startMs: windowStartMs, endMs: windowStartMs + 1, weight: 1 }],
+    durationMs: 4093,
+    loopMode: 'loop',
+    jumpHeight: 1,
+    actionWeight: 1,
+  })
+  const mapped = bipedPetBallisticTransitionsInRequestedRange(analysis, 999, 1000.123456789)
+
+  assert.equal(mapped.complete, true)
+  assert.deepEqual(mapped.transitions, [], 'takeoff 位于 resolver current 之后，不得被 raw subtraction 越界包含')
+})
+
+test('exact seam 的上一 segment 终点保持 canonical duration 侧别', () => {
+  for (const loopMode of ['loop', 'ping-pong'] as const) {
+    const analysis = analyze([
+      { id: 'next', startMs: 0, endMs: 10, weight: 1 },
+      { id: 'previous', startMs: 90, endMs: 100, weight: 1 },
+    ], loopMode)
+
+    assert.equal(
+      classifyBipedPetBallisticRequestedRange(analysis, 99, 100),
+      'airborne',
+      `${loopMode} 的上一 segment localEnd 必须保留 duration 而不是 modulo 0`,
+    )
+    assert.deepEqual(
+      bipedPetBallisticTransitionsInRequestedRange(analysis, 99, 100).transitions,
+      [],
+      `${loopMode} 的连续 seam 不产生转换`,
+    )
+  }
+})
+
 test('共享时间线在一个固定工作预算内证明 63 个低强度 ULP 尾窗均未腾空', () => {
   const analysis = analyzeBipedPetBallisticTimeline({
     windows: [
@@ -62,7 +307,7 @@ test('共享时间线在一个固定工作预算内证明 63 个低强度 ULP �
   assert.equal(analysis.stats.maximumWorkUnits, MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS)
   assert.ok(analysis.stats.workUnits > 0
     && analysis.stats.workUnits <= MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS)
-  assert.equal(analysis.stats.boundaryCount, 130, '反例必须实际覆盖全部唯一 ULP 边界')
+  assert.equal(analysis.stats.boundaryCount, 129, '结构边界只覆盖动作窗口，不得混入 84ms 请求端点')
   assert.equal(analysis.stats.supportComponentCount, 64)
   assert.equal(analysis.stats.exhausted, false)
   assert.ok(Object.isFrozen(analysis) && Object.isFrozen(analysis.stats))
@@ -118,5 +363,7 @@ test('全局预算耗尽时区间保持 unknown 且不会伪造 airborne 证明'
 
   assert.equal(analysis.stats.workUnits, MAX_BIPED_PET_BALLISTIC_TIMELINE_WORK_UNITS)
   assert.equal(analysis.stats.exhausted, true)
+  assert.deepEqual(analysis.components, [])
+  assert.deepEqual(analysis.transitions, [], 'unknown 分析不得泄露部分转换')
   assert.equal(classifyBipedPetBallisticRequestedRange(analysis, 0, 100), 'unknown')
 })
