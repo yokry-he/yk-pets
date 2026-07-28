@@ -7,8 +7,13 @@ import { BIPED_PET_RIG_PROFILE } from '../character/biped-pet-profile'
 import { validateRigProfile, type CharacterRigProfile, type RigVector3 } from '../character/rig-profile'
 import { evaluateNormalizedMotionAsset, type EvaluatedCloudFoxPose } from './motion-evaluator'
 import { normalizeMotionAsset, type StudioMotionAssetV2 } from './motion-asset'
-import { resolveMotionTime, type StudioMotionLoopMode } from './motion-time'
+import { resolveMotionTime, type ResolvedMotionTime, type StudioMotionLoopMode } from './motion-time'
 import { IDENTITY_MOTION_QUATERNION, motionEulerToQuaternion, slerpMotionQuaternion, type MotionQuaternion } from './quaternion-motion'
+import {
+  normalizeBipedPetRootMotion,
+  type BipedPetRootMotionDefinition,
+  type BipedPetRootMotionNormalizationResult,
+} from './biped-pet-root-motion'
 
 export const BIPED_PET_MOTION_ADAPTER_ID = 'biped-pet-motion-adapter/v1' as const
 export const BIPED_PET_QUATERNION_CLIP_SCHEMA_VERSION = 1 as const
@@ -59,6 +64,7 @@ export interface BipedPetQuaternionClip {
   loopMode: StudioMotionLoopMode
   status: 'ready' | 'blocked'
   hash: string
+  rootMotion: BipedPetRootMotionDefinition
   boneTracks: readonly BipedPetBoneQuaternionTrack[]
   rootPositionTrack: readonly BipedPetRootPositionKeyframe[]
   contacts: readonly BipedPetMotionContactCandidate[]
@@ -87,7 +93,11 @@ export interface SampledBipedPetMotion {
   clipHash: string
   durationMs: number
   loopMode: StudioMotionLoopMode
+  requestedTimeMs: number
   resolvedTimeMs: number
+  iteration: number
+  direction: ResolvedMotionTime['direction']
+  rootMotion: BipedPetRootMotionDefinition
   bones: readonly { boneId: string, rotation: MotionQuaternion }[]
   rootPosition: RigVector3
   activeContacts: readonly string[]
@@ -242,6 +252,26 @@ function motionHash(value: unknown) {
   return `bpm-${(result >>> 0).toString(16).padStart(8, '0')}`
 }
 
+function readRootMotionDefinition(asset: StudioMotionAssetV2): BipedPetRootMotionNormalizationResult {
+  try {
+    const source = asset.extensions?.['yk-pets/biped-motion/v1']
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+      return normalizeBipedPetRootMotion(undefined, asset.durationMs)
+    }
+    return normalizeBipedPetRootMotion(Reflect.get(source, 'rootMotion'), asset.durationMs)
+  }
+  catch {
+    return {
+      value: normalizeBipedPetRootMotion(undefined, asset.durationMs).value,
+      diagnostics: [{
+        id: 'root-motion-extension-access-failed',
+        severity: 'warning',
+        message: 'Root Motion 扩展无法安全读取，已使用原地回退。',
+      }],
+    }
+  }
+}
+
 function readBipedMotionMetadata(asset: StudioMotionAssetV2, profile: CharacterRigProfile) {
   const diagnostics: BipedPetMotionDiagnostic[] = []
   const contacts: BipedPetMotionContactCandidate[] = []
@@ -337,6 +367,7 @@ function blockedMotionClip(asset: StudioMotionAssetV2, profile: CharacterRigProf
     durationMs: asset.durationMs,
     loopMode: asset.loopMode,
     status: 'blocked' as const,
+    rootMotion: normalizeBipedPetRootMotion(undefined, asset.durationMs).value,
     boneTracks: [],
     rootPositionTrack: [],
     contacts: [],
@@ -371,6 +402,8 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
     severity: 'warning',
     message: `动作资产已规范化：${item.code}:${item.path}`,
   }))
+  const rootMotion = readRootMotionDefinition(asset)
+  diagnostics.push(...rootMotion.diagnostics)
   const metadata = readBipedMotionMetadata(asset, profile)
   diagnostics.push(...metadata.diagnostics)
   const hasRootPosition = asset.tracks.some(track => track.channelId.startsWith('root.position.'))
@@ -403,6 +436,7 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
     durationMs: asset.durationMs,
     loopMode: asset.loopMode,
     status: 'ready' as const,
+    rootMotion: rootMotion.value,
     boneTracks: [...boneKeyframes].map(([boneId, keyframes]) => ({ boneId, keyframes })),
     rootPositionTrack,
     contacts: metadata.contacts,
@@ -472,7 +506,11 @@ export function sampleBipedPetMotion(clip: BipedPetQuaternionClip, timeMs: numbe
     clipHash: clip.hash,
     durationMs: clip.durationMs,
     loopMode: clip.loopMode,
+    requestedTimeMs: resolved.requestedTimeMs,
     resolvedTimeMs: resolved.resolvedTimeMs,
+    iteration: resolved.iteration,
+    direction: resolved.direction,
+    rootMotion: clip.rootMotion,
   }
   if (clip.status !== 'ready') return { ...identity, bones: [], rootPosition: [0, 0, 0], activeContacts: [], contactStates: [] }
   const contactStates = sampleContactStates(clip.contacts, resolved.resolvedTimeMs)

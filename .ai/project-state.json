@@ -115,6 +115,7 @@
     "hybridIkLegacyHistoryMigrationComplete": true,
     "bipedPetHybridRootMotionVfxDesignComplete": true,
     "bipedPetHybridRootMotionVfxPlanComplete": true,
+    "bipedPetRootMotionContractComplete": true,
     "bipedPetProductionQuadrupedProfileComplete": false,
     "bipedPetProductionMechProfileComplete": false,
     "bipedPetHighDetailTopologyComplete": false,

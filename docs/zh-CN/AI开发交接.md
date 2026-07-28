@@ -385,4 +385,12 @@
 - 第一批覆盖行走循环、冲刺急停和起跳落地，并自动生成落地冲击环、落地尘点、速度拖尾和急停摩擦粒子。特效由动作标签与实际速度、减速度、落地冲量共同授权，使用有界对象池，不建设通用粒子编辑器。
 - 暂停保持累计状态，停止、普通回拖、异常时间跳跃、Clip 切换、runtime 重建和释放会清除旧速度、周期身份、足底锚与瞬时特效。单项失败只关闭对应 Root Motion 或 VFX，保持 FK/IK 安全路径。
 - 权威设计文档为 `docs/zh-CN/双足萌宠混合RootMotion与运动特效设计.md`。当前只把设计标记完成；`bipedPetRootMotionComplete`、`bipedPetMotionVfxComplete`、正式四足/机甲 Profile、高细节拓扑和跨浏览器 GPU 验收仍保持 `false`。
-- 可执行计划为 `docs/zh-CN/双足萌宠混合RootMotion与运动特效实施计划.md`，共八个 TDD 批次；每个修改 `apps/` 或 `packages/` 的提交都必须同步 AI 状态与交接上下文并立即推送。当前只把计划标记完成，尚未开始 Root Motion 或 VFX 生产实现。
+- 可执行计划为 `docs/zh-CN/双足萌宠混合RootMotion与运动特效实施计划.md`，共八个 TDD 批次；每个修改 `apps/` 或 `packages/` 的提交都必须同步 AI 状态与交接上下文并立即推送。当前已完成第一批版本兼容契约与编译传播；Root Motion 数值采样、运行时消费和 VFX 生产实现仍未开始。
+
+## 38. 双足萌宠 Root Motion 契约与编译传播批次
+
+- `@yk-pets/pet-core` 新增版本化 Root Motion 定义，覆盖原地/移动模式、地面/弹道垂直策略、按角色身高归一化的距离与跳高、转向弧度、移动/变形/弹道/制动窗口，以及四种受支持的运动特效标签。旧动作缺少扩展时固定编译为 `in-place`，不会从现有根节点轨道猜测世界位移。
+- `normalizeBipedPetRootMotion` 防御未知对象、畸形数组和 Proxy 访问异常，不突变输入且不共享窗口数组或窗口对象。距离、转向和跳高分别限制在 `[-4, 4]`、`[-2π, 2π]` 和 `[0, 1.5]`；窗口限制在动作时长内，拒绝非正/非有限权重与无效区间，并按时间和 Unicode code-point 身份稳定排序；特效标签只保留受支持枚举、去重并稳定排序。所有修复只产生稳定中文 `warning`。
+- Quaternion Clip 现在携带规范化 `rootMotion`，因此语义变化会自然改变 Clip 哈希；blocked Clip 始终携带独立的安全原地定义。采样结果新增原始请求时间、解析后时间、周期、方向和已编译 Root Motion，周期与方向直接来自既有 `resolveMotionTime`，没有重复推导时间语义。
+- 自动验证已通过 `corepack pnpm --filter @yk-pets/pet-core test`（124 项）、`corepack pnpm --filter @yk-pets/pet-core typecheck`、`node scripts/check-ai-handoff.mjs`、`node scripts/check-documentation.mjs` 和 `git diff --check`。
+- 本批只完成契约、清洗、编译和采样结果传播，不计算单帧或累计世界位移，不修改 Three 运行时容器，也不生成 VFX。下一批应实现框架无关的 Root Motion 数值采样器；`bipedPetRootMotionComplete` 与 `bipedPetMotionVfxComplete` 继续保持 `false`。
