@@ -86,6 +86,7 @@
     "bipedPetThreeMotionControllerComplete": true,
     "bipedPetComplexMotionPreviewWiringComplete": true,
     "bipedPetBeginnerMotionTemplateEntryComplete": true,
+    "bipedPetSemanticMotionPhase1DeliveryComplete": true,
     "bipedPetRuntimeIkComplete": false,
     "bipedPetFootLockComplete": false,
     "bipedPetRootMotionComplete": false,
@@ -183,19 +184,18 @@
     "studio-complex-model-beginner-parameter-editor",
     "biped-pet-phase1-delivery",
     "biped-pet-complex-prop-socket-preview",
-    "studio-model-variant-lazy-hydration-review"
+    "studio-model-variant-lazy-hydration-review",
+    "biped-pet-semantic-motion-phase1-delivery"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
     "real-chrome-side-panel-manual-acceptance",
     "real-gpu-webgl-manual-acceptance",
     "true-3d-raycast-gizmo-manipulation",
-    "complex-model-semantic-motion-task8",
     "parametric-rig-skin-and-socket-validation",
     "semantic-motion-solving-ik-foot-lock-root-motion",
     "motion-driven-deterministic-vfx",
     "simple-complex-motion-variants-and-publishing",
-    "biped-pet-quaternion-motion-compiler",
     "biped-pet-runtime-ik",
     "biped-pet-foot-lock",
     "biped-pet-root-motion",
@@ -204,20 +204,23 @@
     "biped-pet-profile-runtime-expansion",
     "cross-browser-gpu-manual-acceptance"
   ],
-  "nextPhase": "biped-pet-motion-and-browser-acceptance",
+  "nextPhase": "biped-pet-ik-foot-lock-and-motion-quality",
   "latestCompletedBatch": {
-    "id": "studio-model-variant-lazy-hydration-review",
-    "domainPackage": "apps/playground",
-    "rendererModified": false,
+    "id": "biped-pet-semantic-motion-phase1-delivery",
+    "domainPackage": "packages/pet-core + apps/playground",
+    "rendererModified": true,
     "visualCasesModified": true,
     "automatedCoverage": [
-      "corepack pnpm run test:studio-model-variants",
-      "node scripts/check-studio-model-mode.mjs",
-      "corepack pnpm run check:studio-complex-biped-model",
-      "corepack pnpm --filter @nova/playground typecheck",
+      "corepack pnpm typecheck",
+      "corepack pnpm test",
+      "corepack pnpm build:playground",
       "node scripts/check-documentation.mjs",
       "node scripts/check-ai-handoff.mjs",
       "git diff --check"
+    ],
+    "browserCoverage": [
+      "Chrome 1440×900：五个基础动作模板、复杂模型 ready、播放/暂停/停止、简单/复杂切换、无横向溢出、控制台无错误",
+      "Chrome 760×900：五个模板入口可见、复杂模型 ready、无横向溢出、控制台无错误"
     ]
   },
   "mandatoryDevelopmentPolicy": {

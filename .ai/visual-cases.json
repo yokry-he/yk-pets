@@ -482,6 +482,31 @@
         "pending: 分别注入 10、50、100 个历史复杂宠物与伪造 ready/blocked 摘要，确认除当前访问项外的历史条目保持待重新生成且页面交互流畅",
         "pending: 在 760×900 复核该懒水合批次的模式切换、简单模型、控制台和刷新状态；自动测试与本次 1440 功能复测不替代窄屏和跨浏览器 GPU/WebGL 验收"
       ]
+    },
+    {
+      "id": "biped-pet-semantic-motion-phase1",
+      "route": "/studio/motion",
+      "setup": {
+        "modelMode": "complex",
+        "templates": ["待机呼吸", "行走循环", "起跳与落地", "招手", "直拳组合"],
+        "viewports": [[1440, 900], [760, 900]]
+      },
+      "automatedChecks": [
+        "quaternion-normalization-and-shortest-path-slerp",
+        "semantic-pose-to-profile-bone-mapping",
+        "joint-limit-clamping-before-quaternion",
+        "deterministic-clip-compilation-and-sampling",
+        "bind-pose-relative-three-runtime-controller",
+        "five-basic-motion-template-registration",
+        "single-canvas-complex-preview-wiring"
+      ],
+      "manualChecks": [
+        "passed-2026-07-28-chrome-1440: 五个基础模板均可一键复制为本地可编辑动作，复杂模型保持 ready，并显示 3600/1200/2400/3200/4000 ms 对应时长",
+        "passed-2026-07-28-chrome-playback: 行走循环播放指针从 0 前进，暂停后稳定在同一毫秒，停止后回到 0；简单/复杂模式切换后 Canvas 模式与复杂状态一致",
+        "passed-2026-07-28-responsive-and-console: 1440×900 与 760×900 均满足 clientWidth === scrollWidth，窄屏五个模板按钮全部可见，控制台无 error",
+        "pending: 在真实复杂角色拓扑完成后逐动作复核足底滑动、重心、穿模、肢体弧线和最终像素；当前低细节程序化网格只能证明编译与播放链路",
+        "pending: Safari/Firefox、不同 GPU/WebGL 驱动与最终像素仍属于 cross-browser-gpu-manual-acceptance，不由本次 Chrome 功能验收替代"
+      ]
     }
   ]
 }
