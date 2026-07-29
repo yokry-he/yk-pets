@@ -216,7 +216,7 @@ const expectedMotionStructure = [
   ['builtin-energetic-step', 8000, 16, 272, []],
   ['builtin-starlight-sway', 10000, 15, 255, ['builtin-glow-sticks']],
   ['builtin-horse-stance-punch', 8400, 15, 163, []],
-  ['builtin-nebula-staff-spin', 12000, 16, 214, ['builtin-nebula-staff']],
+  ['builtin-nebula-staff-spin', 12000, 16, 230, ['builtin-nebula-staff']],
   ['builtin-cartwheel', 8800, 16, 196, []],
   ['builtin-sprint-stop', 9200, 16, 222, []],
 ] as const

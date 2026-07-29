@@ -8,7 +8,9 @@ import {
   applyBipedPetBodyStyle,
   compileBipedPetCharacter,
   compileBipedPetMotion,
+  compileBipedPetMotionAdaptationPlan,
   createBipedPetModelRecipe,
+  deriveStudioPropRig,
   normalizeBipedPetRootMotion,
   sampleBipedPetMotion,
   type BipedPetRootMotionDefinition,
@@ -17,6 +19,7 @@ import {
   type SampledBipedPetMotion,
 } from '../packages/pet-core/src/index.ts'
 import { BASIC_BIPED_STUDIO_MOTIONS } from '../apps/playground/app/domain/studio-basic-biped-motions.ts'
+import { BUILT_IN_STUDIO_MOTIONS } from '../apps/playground/app/domain/studio-built-in-motions.ts'
 import { BUILT_IN_STUDIO_PROPS } from '../apps/playground/app/domain/studio-built-in-props.ts'
 import { createComplexBipedPetObject } from '../apps/playground/app/three/create-complex-biped-pet-object.ts'
 import { createComplexBipedRootMotionController } from '../apps/playground/app/three/apply-complex-biped-root-motion.ts'
@@ -909,6 +912,66 @@ for (const invalidState of [
   controller.dispose()
   weapon.dispose()
   propObject.removeFromParent()
+  runtime.dispose()
+}
+
+// 星云棍术必须使用真实内置 Rig 与挂载偏移让副手在换手、横扫和下劈阶段贴住副握点，不能只在人工可达目标上通过。
+const staffMotion = BUILT_IN_STUDIO_MOTIONS.find(item => item.id === 'builtin-nebula-staff-spin')!
+const staffAsset = BUILT_IN_STUDIO_PROPS.find(item => item.id === 'builtin-nebula-staff')!
+const staffRig = deriveStudioPropRig(staffAsset).value
+for (const [timeMs, constraintId] of [[3800, 'staff-handoff-grip'], [6100, 'staff-sweep-grip'], [9700, 'staff-impact-grip']] as const) {
+  const { compilation, runtime } = createRuntime()
+  const clip = compileBipedPetMotion(staffMotion, { boneIds: compilation.bones.map(item => item.id) })
+  const staffObject = runtime.sockets['hand.right']!.mount.clone(false)
+  staffObject.position.set(-.32, 0, 0)
+  runtime.sockets['hand.right']!.mount.add(staffObject)
+  runtime.object.updateMatrixWorld(true)
+  const armReach = readArmSegmentLengths(runtime).reduce((sum, value) => sum + value, 0)
+  const adaptationPlan = compileBipedPetMotionAdaptationPlan({
+    definition: clip.adaptationDefinition,
+    clipHash: clip.hash,
+    profileId: compilation.profileId,
+    characterHash: compilation.hash,
+    characterHeight: readCharacterHeight(runtime),
+    armReach: { left: armReach, right: armReach },
+    propRigs: { 'nebula-staff-main': staffRig },
+  })
+  const sample = sampleBipedPetMotion(clip, timeMs, { adaptationPlan })
+  const constraint = adaptationPlan.constraints.find(item => item.id === constraintId)!
+  const weapon = createComplexBipedWeaponConstraintController(runtime, compilation)
+  let report: ReturnType<typeof weapon.apply> | undefined
+  let debugPositions: Record<string, number[]> = {}
+  const controller = createComplexBipedMotionController(runtime, compilation, {
+    beforeLegIk(context) {
+      runtime.object.updateMatrixWorld(true)
+      debugPositions = {
+        shoulder: runtime.bonesById.get('upper-arm.left')!.getWorldPosition(runtime.object.position.clone()).toArray(),
+        primary: runtime.object.position.clone().set(...staffRig.primaryGrip.position).applyMatrix4(staffObject.matrixWorld).toArray(),
+        secondary: runtime.object.position.clone().set(...staffRig.secondaryGrip!.position).applyMatrix4(staffObject.matrixWorld).toArray(),
+      }
+      report = weapon.apply({
+        requestedTimeMs: context.sample.requestedTimeMs,
+        weight: context.weight,
+        adaptation: context.sample.adaptation,
+        propHandle: {
+          instanceId: 'nebula-staff-main',
+          object: staffObject,
+          primaryGrip: staffRig.primaryGrip,
+          constraint,
+        },
+      })
+    },
+  })
+  controller.apply(sample, 1)
+  runtime.object.updateMatrixWorld(true)
+  const targetWorld = runtime.object.position.clone().set(...staffRig.secondaryGrip!.position).applyMatrix4(staffObject.matrixWorld)
+  const leftHandWorld = runtime.bonesById.get('hand.left')!.getWorldPosition(runtime.object.position.clone())
+  const residual = leftHandWorld.distanceTo(targetWorld)
+  assert.ok(report && report.appliedWeight >= .8, `${timeMs}ms 副手约束权重不足：${JSON.stringify({ report, debugPositions, armReach })}`)
+  assert.ok(residual <= readCharacterHeight(runtime) * .04, `${timeMs}ms 副手没有贴住副握点：residual=${residual}, report=${JSON.stringify(report)}`)
+  controller.dispose()
+  weapon.dispose()
+  staffObject.removeFromParent()
   runtime.dispose()
 }
 

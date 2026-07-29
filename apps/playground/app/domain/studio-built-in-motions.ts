@@ -191,7 +191,7 @@ const nebulaStaffAdaptation: BipedPetMotionAdaptationDefinition = {
   phases: [
     { id: 'staff-01-prepare', role: 'prepare', startMs: 0, endMs: 900, intensity: .72 },
     { id: 'staff-02-spin', role: 'spin', startMs: 900, endMs: 3200, intensity: 1 },
-    { id: 'staff-03-handoff', role: 'handoff', startMs: 3200, endMs: 4300, intensity: .88 },
+    { id: 'staff-03-handoff', role: 'handoff', startMs: 3200, endMs: 4300, intensity: 1 },
     { id: 'staff-04-sweep', role: 'sweep', startMs: 4300, endMs: 7600, intensity: 1 },
     { id: 'staff-05-takeoff', role: 'takeoff', startMs: 7600, endMs: 9300, intensity: .94 },
     { id: 'staff-06-impact', role: 'impact', startMs: 9300, endMs: 10100, intensity: 1 },
@@ -205,7 +205,7 @@ const nebulaStaffAdaptation: BipedPetMotionAdaptationDefinition = {
     { id: 'staff-recover-step', phaseId: 'staff-07-recover', target: 'stage-forward', translation: true, rotation: false, maxDistance: .12, maxTurnRadians: 0 },
   ],
   constraints: [
-    { id: 'staff-handoff-grip', kind: 'secondary-grip', phaseId: 'staff-03-handoff', limbId: 'arm.left', propInstanceId: 'nebula-staff-main', pointId: 'secondaryGrip', weight: .82 },
+    { id: 'staff-handoff-grip', kind: 'secondary-grip', phaseId: 'staff-03-handoff', limbId: 'arm.left', propInstanceId: 'nebula-staff-main', pointId: 'secondaryGrip', weight: 1 },
     { id: 'staff-sweep-grip', kind: 'secondary-grip', phaseId: 'staff-04-sweep', limbId: 'arm.left', propInstanceId: 'nebula-staff-main', pointId: 'secondaryGrip', weight: 1 },
     { id: 'staff-impact-grip', kind: 'secondary-grip', phaseId: 'staff-06-impact', limbId: 'arm.left', propInstanceId: 'nebula-staff-main', pointId: 'secondaryGrip', weight: 1 },
   ],
@@ -249,9 +249,10 @@ const nebulaStaffSpin = motion({
     track('body.rotation.y', [[0, 0], [900, .25], [2100, -.45], [3200, .55], [4300, -.65], [5400, .75], [6500, -.85], [7600, .9], [8700, -.7], [9300, .55], [9800, -.6], [10800, .2], [12000, 0]]),
     track('head.rotation.y', [[0, 0], [900, .35], [2100, -.55], [3200, .65], [4300, -.75], [5400, .8], [6500, -.9], [7600, .85], [8700, -.65], [9300, .6], [9800, -.7], [10800, .25], [12000, 0]]),
     track('frontPaw.left.rotation.x', [[0, 0], [900, -.5], [2100, .9], [3200, -.85], [4300, .95], [5400, -1], [6500, .8], [7600, -.9], [8700, 1.1], [9300, -.65], [9800, -1.2], [10800, -.35], [12000, 0]]),
-    track('frontPaw.right.rotation.x', [[0, 0], [900, .75], [2100, -.95], [3200, 1.05], [4300, -1.1], [5400, 1.15], [6500, -.9], [7600, 1.05], [8700, -.85], [9300, 1.2], [9800, .35], [10800, .45], [12000, 0]]),
+    // 双手阶段由主手把长棍带到身体中线，副手 IK 才能在不拉伸骨骼的前提下抓住 secondaryGrip。
+    track('frontPaw.right.rotation.x', [[0, 0], [900, .75], [2100, -.95], [3200, 1], [3800, 1], [4200, 1], [4300, .5], [4400, 0], [5400, 0], [6100, 0], [6500, 0], [7400, 0], [7600, 0], [8700, -.85], [9300, 0], [9700, 0], [9800, 0], [10000, 0], [10100, 0], [10800, .45], [12000, 0]]),
     track('frontPaw.left.rotation.z', [[0, 0], [900, -.8], [2100, -.2], [3200, .65], [4300, -.75], [5400, .7], [6500, -.9], [7600, .8], [8700, -.55], [9300, -1.2], [9800, -.4], [10800, -.8], [12000, 0]]),
-    track('frontPaw.right.rotation.z', [[0, 0], [900, .8], [2100, .25], [3200, -.7], [4300, .8], [5400, -.75], [6500, .95], [7600, -.85], [8700, .6], [9300, 1.25], [9800, .45], [10800, .85], [12000, 0]]),
+    track('frontPaw.right.rotation.z', [[0, 0], [900, .8], [2100, .25], [3200, -3], [3800, -3], [4200, -3], [4300, -3], [4400, -3], [5400, -3], [6100, 3], [6500, 2], [7400, -3], [7600, -3], [8700, .6], [9300, -2], [9700, 2], [9800, 2], [10000, 2], [10100, 2], [10800, .85], [12000, 0]]),
     track('frontPaw.right.tip.rotation.z', [[0, 0], [900, .4], [1500, 2.2], [2100, 4.4], [2700, 6.1], [3200, 4.8], [3800, 2.3], [4300, 0], [4900, -2.2], [5400, -4.5], [6000, -6.1], [6500, -3.4], [7100, 0], [7600, 3.1], [8200, 6.2], [8700, 4], [9300, 1.2], [9800, -1.8], [10800, -.5], [12000, 0]]),
     track('hindPaw.left.rotation.z', [[0, 0], [900, .35], [2100, -.2], [3200, .42], [4300, -.35], [5400, .5], [6500, -.4], [7600, .48], [8700, -.3], [9300, -.55], [9800, .45], [10800, .2], [12000, 0]]),
     track('hindPaw.right.rotation.z', [[0, 0], [900, -.35], [2100, .2], [3200, -.42], [4300, .35], [5400, -.5], [6500, .4], [7600, -.48], [8700, .3], [9300, .55], [9800, -.45], [10800, -.2], [12000, 0]]),
