@@ -565,6 +565,18 @@
         "missing": ["project-state"],
         "reason": "Root Motion 零宽支撑判定修复已更新双语交接但遗漏机器状态；由 renderer 阶段收口提交补齐。",
         "remediatedBy": "a52c2381da4b0ec8b474dcfb32d5eb32b1d16f89"
+      },
+      {
+        "commit": "8858386192bdc14511a931076984f5fba6dae5e2",
+        "missing": ["project-state", "handoff-context"],
+        "reason": "动作预览时间实时定位修复提交遗漏 AI 包；由星云棍术阶段收口提交补齐状态和双语交接。",
+        "remediatedBy": "0e9fb37cd909cf6b94becc140c9f663e857f77d1"
+      },
+      {
+        "commit": "db48fbcdca9190752e8a82728c8da555eef97417",
+        "missing": ["project-state", "handoff-context"],
+        "reason": "星云棍术双手握持轨迹修复提交遗漏 AI 包；由星云棍术阶段收口提交补齐状态和双语交接。",
+        "remediatedBy": "0e9fb37cd909cf6b94becc140c9f663e857f77d1"
       }
     ]
   },

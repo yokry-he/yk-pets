@@ -53,6 +53,7 @@ const contextPaths = new Set([
 ])
 const hybridIkHistoryMigrationClosure = '813281b424e23edd8cb4ec9cff1e16cf9b74a2ce'
 const rootMotionHistoryMigrationClosure = 'a52c2381da4b0ec8b474dcfb32d5eb32b1d16f89'
+const advancedChoreographyHistoryMigrationClosure = '0e9fb37cd909cf6b94becc140c9f663e857f77d1'
 const legacyHistoryMigrationExceptions = new Map([
   ['7c07bfdcd70ad2ef5ffdf76be408785b3e623dad', {
     missing: ['project-state', 'handoff-context'],
@@ -98,6 +99,16 @@ const legacyHistoryMigrationExceptions = new Map([
     missing: ['project-state'],
     reason: 'Root Motion 零宽支撑判定修复已更新双语交接但遗漏机器状态；由 renderer 阶段收口提交补齐。',
     remediatedBy: rootMotionHistoryMigrationClosure,
+  }],
+  ['8858386192bdc14511a931076984f5fba6dae5e2', {
+    missing: ['project-state', 'handoff-context'],
+    reason: '动作预览时间实时定位修复提交遗漏 AI 包；由星云棍术阶段收口提交补齐状态和双语交接。',
+    remediatedBy: advancedChoreographyHistoryMigrationClosure,
+  }],
+  ['db48fbcdca9190752e8a82728c8da555eef97417', {
+    missing: ['project-state', 'handoff-context'],
+    reason: '星云棍术双手握持轨迹修复提交遗漏 AI 包；由星云棍术阶段收口提交补齐状态和双语交接。',
+    remediatedBy: advancedChoreographyHistoryMigrationClosure,
   }],
 ])
 const failures = []

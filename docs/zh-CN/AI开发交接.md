@@ -533,3 +533,4 @@
 - 2026-07-29 Chromium 1440×900 实测覆盖 `450/2100/3800/6100/8500/9700/11200ms`。七阶段姿态、主手握持、三段副手加入、支撑/腾空/恢复、棍花与横扫轨迹均可观察，`9700ms` 明确可见青白冲击环与黄色火花；播放、暂停、停止、`9700→2100ms` 回拖、简单/复杂互斥均正常，Canvas 始终为 1。干净标签页 console error 和 hydration mismatch 均为 0。
 - Chromium 760×900 实测无横向溢出，工具栏正常换行，自动适配摘要与技术信息单列；播放、暂停、停止、模型模式切换和主要操作未被浮动按钮遮挡，Canvas 为 1。两项证据已写入 `.ai/visual-cases.json` 的 `biped-pet-nebula-staff-adaptation`。
 - 本阶段只关闭“星云棍术纵向样板”和可复用双足持械动作适配运行时，不关闭舞蹈、组合拳、体操、冲刺等完整高级动作库，也不关闭人类、四足、机甲、高细节拓扑、Safari/Firefox、不同 GPU/WebGL、最终像素与性能边界。下一阶段为 `biped-pet-motion-library-and-cross-browser-acceptance`。
+- 真实 Pull Request 历史事件首次运行精确发现两个已推送修复提交未同提交更新 AI 包：`8858386192bdc14511a931076984f5fba6dae5e2`（动作预览时间实时定位）与 `db48fbcdca9190752e8a82728c8da555eef97417`（双手握持轨迹），两者实际都缺少 `project-state` 和 `handoff-context`。门禁没有通配放行，只在完整 SHA、缺失类型完全一致，且同时更新机器状态和双语交接的已推送阶段收口 `0e9fb37cd909cf6b94becc140c9f663e857f77d1` 位于当前历史时迁移；错误 base、未知 SHA、额外缺失类型或未来功能提交继续失败。
