@@ -36,6 +36,7 @@
     "check:3d-pet-skill": "node scripts/check-3d-pet-authoring-skill.mjs",
     "test:pet-studio-local-patches": "node --import ./packages/local-agent/node_modules/tsx/dist/loader.mjs scripts/test-pet-studio-local-patches.ts",
     "test:cloud-fox-surface": "node --import ./packages/local-agent/node_modules/tsx/dist/loader.mjs scripts/test-cloud-fox-surface-model.ts",
+    "test:cloud-fox-limb-assembly": "node --import ./packages/local-agent/node_modules/tsx/dist/loader.mjs scripts/test-cloud-fox-limb-assembly.ts",
     "check:pet-actions": "node scripts/check-pet-actions.mjs",
     "check:nebula": "node scripts/check-nebula-overlay.mjs",
     "check:tail": "node scripts/check-tail-design.mjs",
