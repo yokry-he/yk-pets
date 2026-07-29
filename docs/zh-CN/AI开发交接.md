@@ -473,3 +473,11 @@
 - Warp、约束和特效必须引用预算内实际保留的阶段。`weapon-trail` 固定使用两个不同语义点，`impact-sparks` 与 `impact-ring` 固定使用一个语义点；引用缺失、点数量错误或未知枚举只丢弃对应增强，不影响原动作关键帧。
 - 顶层对象、四类数组、单项字段与特效点数组均隔离 Proxy/getter 异常。输出定义、嵌套条目、语义点数组和诊断全部递归冻结；单次诊断最多 `128` 项且使用有界中文 warning，不向调用方抛出损坏持久化数据。
 - TDD 首轮确认公共入口缺失时新增合法用例单独失败、原有 `220` 项继续通过；第二轮确认重复/排序、引用、Proxy 和预算四组用例先失败。完成实现后 `corepack pnpm --filter @yk-pets/pet-core test` 为 `225/225`，`corepack pnpm --filter @yk-pets/pet-core typecheck` 与 `git diff --check` 均 exit 0。机器状态新增 `bipedPetMotionAdaptationContractComplete=true`；下一批为道具动作 Rig 语义点契约。
+
+## 47. 道具动作 Rig 语义点批次
+
+- 新增版本化命名空间 `yk-pets/prop-rig/v1`，统一声明 `primaryGrip`、`secondaryGrip`、`trailStart`、`trailEnd` 和 `impactPoint`。每个点使用道具局部位置与单位 Quaternion；显式五点完整时状态为 `ready`，输入和输出不共享引用且全部递归冻结。
+- 无显式扩展时，只读取本站参数化 `components`、现有 `grip` 锚点和最多 `48` 个组件，不读取 `localModel`、GLB 或任何外部格式。纯数值层级矩阵按固定 XYZ Euler、局部缩放和父子变换计算资产局部 AABB；旋转后的长棍仍能识别真实 X 主轴，子级可继承父级可见性和变换。
+- 最长轴必须比次长轴至少大 `1.35` 倍。可证明时按主轴生成副握点、两端轨迹点和命中点并返回 `derived`；球体、粒子、隐藏长轴、空几何、断裂层级或近似等轴道具返回 `primary-only`，不会伪造双手约束。
+- 显式扩展优先于自动推导；扩展 getter、字段 Proxy、非有限位置和无效 Quaternion 均局部隔离。零 Quaternion 修复为单位旋转并给出 warning；显式其他点不完整但主握点有效时保留显式主握点，主握点本身损坏时回退资产 `grip`，避免错误覆盖成原点。诊断最多 `32` 项并全部冻结。
+- TDD 首轮确认两个公共入口缺失时新增用例失败、原有 `225` 项继续通过；第二轮确认显式优先、旋转圆柱和退化输入先失败；自审回归又确认损坏主握点错误覆盖资产锚点。最终 `corepack pnpm --filter @yk-pets/pet-core test` 为 `232/232`，`pet-core` 类型检查与 `git diff --check` 均 exit 0。机器状态新增 `bipedPetPropRigContractComplete=true`；下一批为尺寸化动作适配计划与动作样本。
