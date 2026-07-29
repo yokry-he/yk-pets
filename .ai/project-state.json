@@ -125,8 +125,11 @@
     "bipedPetMotionVfxPoolComplete": true,
     "bipedPetRootMotionRendererLifecycleComplete": true,
     "bipedPetRootMotionBeginnerSettingsComplete": true,
-    "bipedPetRootMotionComplete": false,
-    "bipedPetMotionVfxComplete": false,
+    "bipedPetRootMotionComplete": true,
+    "bipedPetMotionVfxComplete": true,
+    "bipedPetRootMotionRuntimeWiringComplete": true,
+    "bipedPetMotionVfxRuntimeComplete": true,
+    "bipedPetRootMotionVfxPhaseDeliveryComplete": true,
     "crossBrowserGpuManualAcceptanceComplete": false
   },
   "completed": [
@@ -248,7 +251,8 @@
     "biped-pet-built-in-root-motion-semantics",
     "biped-pet-root-motion-three-runtime",
     "biped-pet-motion-vfx-pool",
-    "biped-pet-root-motion-vfx-renderer-settings"
+    "biped-pet-root-motion-vfx-renderer-settings",
+    "biped-pet-root-motion-vfx-phase-delivery"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
@@ -256,21 +260,17 @@
     "real-gpu-webgl-manual-acceptance",
     "true-3d-raycast-gizmo-manipulation",
     "parametric-rig-skin-and-socket-validation",
-    "semantic-motion-root-motion",
-    "motion-driven-deterministic-vfx",
     "simple-complex-motion-variants-and-publishing",
-    "biped-pet-root-motion",
     "biped-pet-complex-motion-library",
-    "biped-pet-motion-vfx",
     "biped-pet-profile-runtime-expansion",
     "cross-browser-gpu-manual-acceptance"
   ],
-  "nextPhase": "biped-pet-root-motion-vfx-and-acceptance",
+  "nextPhase": "biped-pet-advanced-choreography-warping-and-cross-browser-acceptance",
   "latestCompletedBatch": {
-    "id": "biped-pet-root-motion-vfx-renderer-settings",
+    "id": "biped-pet-root-motion-vfx-phase-delivery",
     "domainPackage": "apps/playground",
     "rendererModified": true,
-    "visualCasesModified": false,
+    "visualCasesModified": true,
     "rootMotionContainerConsumerComplete": true,
     "balanceControllerComplete": true,
     "ikFrameReportComplete": true,
@@ -441,16 +441,16 @@
       "unscaledJumpWindow": [720, 1200]
     },
     "automatedCoverage": [
-      "corepack pnpm run check:studio-complex-biped-root-motion",
-      "corepack pnpm run test:studio-model-variants",
-      "corepack pnpm run test:studio-complex-biped-root-motion-runtime",
-      "corepack pnpm --filter @nova/playground typecheck",
+      "corepack pnpm typecheck",
+      "corepack pnpm test",
       "corepack pnpm build:playground",
       "node scripts/check-documentation.mjs",
       "node scripts/check-ai-handoff.mjs",
-      "git diff --check"
+      "git diff --check",
+      "pull-request-history-event-simulation"
     ],
-    "browserCoverage": []
+    "browserAcceptanceStatus": "chromium-complete-cross-browser-pending",
+    "browserCoverage": ["chromium-1440x900", "chromium-760x900"]
   },
   "mandatoryDevelopmentPolicy": {
     "sameBranchOnly": true,
@@ -505,6 +505,30 @@
         "missing": ["project-state"],
         "reason": "历史接触 Clip 兼容修复已更新交接但遗漏机器状态；由阶段收口提交补齐。",
         "remediatedBy": "813281b424e23edd8cb4ec9cff1e16cf9b74a2ce"
+      },
+      {
+        "commit": "ad6ffeb7a5797cfb4df70b7b53e6b21b17d1c77e",
+        "missing": ["project-state"],
+        "reason": "Root Motion 落地强度修复已更新交接但遗漏机器状态；由 renderer 阶段收口提交补齐。",
+        "remediatedBy": "a52c2381da4b0ec8b474dcfb32d5eb32b1d16f89"
+      },
+      {
+        "commit": "b1975536849713b131220b3530521cf8b0f423ef",
+        "missing": ["project-state"],
+        "reason": "Root Motion 错峰预算修复已更新交接但遗漏机器状态；由 renderer 阶段收口提交补齐。",
+        "remediatedBy": "a52c2381da4b0ec8b474dcfb32d5eb32b1d16f89"
+      },
+      {
+        "commit": "2ef7f4055667cd13635343e13570039abeba35d8",
+        "missing": ["project-state"],
+        "reason": "Root Motion 连续支撑端点修复已更新双语交接但遗漏机器状态；由 renderer 阶段收口提交补齐。",
+        "remediatedBy": "a52c2381da4b0ec8b474dcfb32d5eb32b1d16f89"
+      },
+      {
+        "commit": "b9b75560cc592417ce58af38efbe0b43f0c793cb",
+        "missing": ["project-state"],
+        "reason": "Root Motion 零宽支撑判定修复已更新双语交接但遗漏机器状态；由 renderer 阶段收口提交补齐。",
+        "remediatedBy": "a52c2381da4b0ec8b474dcfb32d5eb32b1d16f89"
       }
     ]
   },

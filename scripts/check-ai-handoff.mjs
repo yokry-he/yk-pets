@@ -51,27 +51,53 @@ const contextPaths = new Set([
   'docs/zh-CN/AI开发路线图.md',
   'docs/en/AI-DEVELOPMENT-ROADMAP.md',
 ])
-const legacyHistoryMigrationClosure = '813281b424e23edd8cb4ec9cff1e16cf9b74a2ce'
+const hybridIkHistoryMigrationClosure = '813281b424e23edd8cb4ec9cff1e16cf9b74a2ce'
+const rootMotionHistoryMigrationClosure = 'a52c2381da4b0ec8b474dcfb32d5eb32b1d16f89'
 const legacyHistoryMigrationExceptions = new Map([
   ['7c07bfdcd70ad2ef5ffdf76be408785b3e623dad', {
     missing: ['project-state', 'handoff-context'],
     reason: '混合 IK Profile 边界修复提交遗漏 AI 包；由阶段收口提交补齐状态和双语交接。',
+    remediatedBy: hybridIkHistoryMigrationClosure,
   }],
   ['59123c5e23004597f59ce2e3c4f819574e643479', {
     missing: ['project-state', 'handoff-context'],
     reason: 'blocked 角色 IK 编译修复提交遗漏 AI 包；由阶段收口提交补齐状态和双语交接。',
+    remediatedBy: hybridIkHistoryMigrationClosure,
   }],
   ['bbf1861dea6d957630010d88a8561cc50c26c956', {
     missing: ['project-state', 'handoff-context'],
     reason: 'IK 编译安全复核提交遗漏 AI 包；由阶段收口提交补齐状态和双语交接。',
+    remediatedBy: hybridIkHistoryMigrationClosure,
   }],
   ['63f479f968482decc3b68f4133f50e77810b0b1a', {
     missing: ['project-state'],
     reason: '循环接触连续性修复已更新交接但遗漏机器状态；由阶段收口提交补齐。',
+    remediatedBy: hybridIkHistoryMigrationClosure,
   }],
   ['41ed499445c8f0e96d476e95dc180d21e2a36e11', {
     missing: ['project-state'],
     reason: '历史接触 Clip 兼容修复已更新交接但遗漏机器状态；由阶段收口提交补齐。',
+    remediatedBy: hybridIkHistoryMigrationClosure,
+  }],
+  ['ad6ffeb7a5797cfb4df70b7b53e6b21b17d1c77e', {
+    missing: ['project-state'],
+    reason: 'Root Motion 落地强度修复已更新交接但遗漏机器状态；由 renderer 阶段收口提交补齐。',
+    remediatedBy: rootMotionHistoryMigrationClosure,
+  }],
+  ['b1975536849713b131220b3530521cf8b0f423ef', {
+    missing: ['project-state'],
+    reason: 'Root Motion 错峰预算修复已更新交接但遗漏机器状态；由 renderer 阶段收口提交补齐。',
+    remediatedBy: rootMotionHistoryMigrationClosure,
+  }],
+  ['2ef7f4055667cd13635343e13570039abeba35d8', {
+    missing: ['project-state'],
+    reason: 'Root Motion 连续支撑端点修复已更新双语交接但遗漏机器状态；由 renderer 阶段收口提交补齐。',
+    remediatedBy: rootMotionHistoryMigrationClosure,
+  }],
+  ['b9b75560cc592417ce58af38efbe0b43f0c793cb', {
+    missing: ['project-state'],
+    reason: 'Root Motion 零宽支撑判定修复已更新双语交接但遗漏机器状态；由 renderer 阶段收口提交补齐。',
+    remediatedBy: rootMotionHistoryMigrationClosure,
   }],
 ])
 const failures = []
@@ -140,33 +166,43 @@ if (state) {
     'bipedPetComplexMotionProductionWiringComplete',
     'bipedPetHybridIkPhaseDeliveryComplete',
   ]
-  const incompleteHybridIkBoundaries = [
+  const completedRootMotionVfxFlags = [
     'bipedPetRootMotionComplete',
     'bipedPetMotionVfxComplete',
+    'bipedPetRootMotionRuntimeWiringComplete',
+    'bipedPetMotionVfxRuntimeComplete',
+    'bipedPetRootMotionVfxPhaseDeliveryComplete',
+  ]
+  const incompleteBipedPetBoundaries = [
     'bipedPetProductionQuadrupedProfileComplete',
     'bipedPetProductionMechProfileComplete',
     'bipedPetHighDetailTopologyComplete',
     'crossBrowserGpuManualAcceptanceComplete',
   ]
   for (const key of completedHybridIkFlags) expect(state.architecture?.[key] === true, `双足萌宠混合 IK 完成状态缺失 / Missing completed hybrid-IK state: ${key}`)
-  for (const key of incompleteHybridIkBoundaries) expect(state.architecture?.[key] === false, `双足萌宠未完成边界错误 / Incorrect incomplete biped-pet boundary: ${key}`)
+  for (const key of completedRootMotionVfxFlags) expect(state.architecture?.[key] === true, `双足萌宠 Root Motion/VFX 交付状态缺失 / Missing completed biped-pet Root Motion/VFX state: ${key}`)
+  for (const key of incompleteBipedPetBoundaries) expect(state.architecture?.[key] === false, `双足萌宠未完成边界错误 / Incorrect incomplete biped-pet boundary: ${key}`)
   expect(state.architecture?.hybridIkLegacyHistoryMigrationComplete === true, '混合 IK 历史门禁迁移必须标记完成 / Hybrid-IK history-gate migration must be complete')
   // 内建正反夹具用于防止后续把已交付能力改回 false，或把明确边界误改为 true。
-  const positiveHybridIkFixture = Object.fromEntries([
+  const positiveBipedPetDeliveryFixture = Object.fromEntries([
     ...completedHybridIkFlags.map(key => [key, true]),
-    ...incompleteHybridIkBoundaries.map(key => [key, false]),
+    ...completedRootMotionVfxFlags.map(key => [key, true]),
+    ...incompleteBipedPetBoundaries.map(key => [key, false]),
   ])
-  const negativeHybridIkFixture = { ...positiveHybridIkFixture, bipedPetRootMotionComplete: true }
-  const matchesHybridIkBoundary = fixture => completedHybridIkFlags.every(key => fixture[key] === true)
-    && incompleteHybridIkBoundaries.every(key => fixture[key] === false)
-  expect(matchesHybridIkBoundary(positiveHybridIkFixture), '混合 IK 正向状态夹具必须通过 / Positive hybrid-IK state fixture must pass')
-  expect(!matchesHybridIkBoundary(negativeHybridIkFixture), '混合 IK 负向状态夹具必须失败 / Negative hybrid-IK state fixture must fail')
+  const missingDeliveryFixture = { ...positiveBipedPetDeliveryFixture, bipedPetRootMotionComplete: false }
+  const overclaimedBoundaryFixture = { ...positiveBipedPetDeliveryFixture, crossBrowserGpuManualAcceptanceComplete: true }
+  const matchesBipedPetDeliveryBoundary = fixture => completedHybridIkFlags.every(key => fixture[key] === true)
+    && completedRootMotionVfxFlags.every(key => fixture[key] === true)
+    && incompleteBipedPetBoundaries.every(key => fixture[key] === false)
+  expect(matchesBipedPetDeliveryBoundary(positiveBipedPetDeliveryFixture), '双足萌宠 Root Motion/VFX 交付正向状态夹具必须通过 / Positive biped-pet Root Motion/VFX delivery fixture must pass')
+  expect(!matchesBipedPetDeliveryBoundary(missingDeliveryFixture), '缺失 Root Motion/VFX 交付状态的负向夹具必须失败 / Missing Root Motion/VFX delivery fixture must fail')
+  expect(!matchesBipedPetDeliveryBoundary(overclaimedBoundaryFixture), '越界标记跨浏览器 GPU 验收完成的负向夹具必须失败 / Overclaimed cross-browser GPU fixture must fail')
   expect(state.mandatoryDevelopmentPolicy?.updateAiPackageForEveryFeatureCommit === true, '必须启用每个功能提交更新 AI 包 / Per-feature-commit AI update policy must be enabled')
   const expectedLegacyExceptions = [...legacyHistoryMigrationExceptions].map(([commit, item]) => ({
     commit,
     missing: item.missing,
     reason: item.reason,
-    remediatedBy: legacyHistoryMigrationClosure,
+    remediatedBy: item.remediatedBy,
   }))
   expect(JSON.stringify(state.mandatoryDevelopmentPolicy?.legacyHistoryMigrationExceptions) === JSON.stringify(expectedLegacyExceptions), '历史迁移例外必须与门禁中的完整 SHA、缺失类型、原因和收口提交完全一致 / Legacy migration exceptions must exactly match the gate SHA, missing types, reasons, and closure commit')
   expect((state.completed || []).includes('motion-semantic-rig'), '必须标记语义 Rig 领域已完成 / Semantic Rig domain must be marked complete')
@@ -210,27 +246,32 @@ if (state) {
   expect(state.architecture?.bipedPetRootMotionRendererLifecycleComplete === true, '必须标记 Root Motion renderer 生命周期完成 / Root Motion renderer lifecycle must be complete')
   expect(state.architecture?.bipedPetRootMotionBeginnerSettingsComplete === true, '必须标记 Root Motion 新手设置完成 / Root Motion beginner settings must be complete')
   expect((state.completed || []).includes('biped-pet-root-motion-vfx-renderer-settings'), '必须记录 Root Motion/VFX renderer 与设置批次 / Root Motion/VFX renderer and settings batch must be recorded')
+  expect((state.completed || []).includes('biped-pet-root-motion-vfx-phase-delivery'), '必须记录 Root Motion/VFX 阶段交付 / Root Motion/VFX phase delivery must be recorded')
   for (const key of ['biped-pet-hybrid-ik-profile-contract', 'biped-pet-analytic-two-bone-ik', 'biped-pet-constrained-fabrik', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-hybrid-ik-phase-delivery']) expect((state.completed || []).includes(key), `必须标记混合 IK 交付项完成 / Hybrid-IK delivery item must be complete: ${key}`)
   expect((state.completed || []).includes('hybrid-ik-legacy-history-migration'), '必须标记混合 IK 历史门禁迁移完成 / Hybrid-IK history-gate migration must be complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
   expect((state.notCompleted || []).includes('browser-screenshot-baselines'), '必须保留浏览器截图基线未完成 / Browser screenshot baselines must remain incomplete')
-  for (const key of ['biped-pet-root-motion', 'biped-pet-complex-motion-library', 'biped-pet-motion-vfx', 'biped-pet-profile-runtime-expansion', 'cross-browser-gpu-manual-acceptance']) expect((state.notCompleted || []).includes(key), `必须保留双足萌宠后续边界 / Biped-pet future boundary must remain incomplete: ${key}`)
+  for (const key of ['biped-pet-complex-motion-library', 'biped-pet-profile-runtime-expansion', 'cross-browser-gpu-manual-acceptance']) expect((state.notCompleted || []).includes(key), `必须保留双足萌宠后续边界 / Biped-pet future boundary must remain incomplete: ${key}`)
+  for (const key of ['semantic-motion-root-motion', 'motion-driven-deterministic-vfx', 'biped-pet-root-motion', 'biped-pet-motion-vfx']) expect(!(state.notCompleted || []).includes(key), `已完成的 Root Motion/VFX 项不得继续列为未完成 / Completed Root Motion/VFX item must not remain incomplete: ${key}`)
   for (const key of ['biped-pet-runtime-ik', 'biped-pet-foot-lock']) expect(!(state.notCompleted || []).includes(key), `已完成的混合 IK 交付项不得继续列为未完成 / Completed hybrid-IK item must not remain incomplete: ${key}`)
   expect(!(state.notCompleted || []).includes('biped-pet-quaternion-motion-compiler'), 'Quaternion 动作编译器已完成，不得继续列为未完成 / Completed Quaternion motion compiler must not remain incomplete')
-  expect(state.nextPhase === 'biped-pet-root-motion-vfx-and-acceptance', '下一阶段必须是 Root Motion、动作特效与验收 / Next phase must be Root Motion, motion VFX, and acceptance')
-  const rootMotionRuntimeCoverage = [
-    'corepack pnpm run check:studio-complex-biped-root-motion',
-    'corepack pnpm run test:studio-model-variants',
-    'corepack pnpm run test:studio-complex-biped-root-motion-runtime',
-    'corepack pnpm --filter @nova/playground typecheck',
+  expect(state.nextPhase === 'biped-pet-advanced-choreography-warping-and-cross-browser-acceptance', '下一阶段必须是高级编舞、动作适配与跨浏览器验收 / Next phase must be advanced choreography, motion warping, and cross-browser acceptance')
+  const rootMotionVfxDeliveryCoverage = [
+    'corepack pnpm typecheck',
+    'corepack pnpm test',
     'corepack pnpm build:playground',
     'node scripts/check-documentation.mjs',
     'node scripts/check-ai-handoff.mjs',
     'git diff --check',
+    'pull-request-history-event-simulation',
   ]
-  expect(state.latestCompletedBatch?.id === 'biped-pet-root-motion-vfx-renderer-settings', '最新批次必须是 Root Motion/VFX renderer 与设置 / Latest batch must be Root Motion/VFX renderer and settings')
-  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(rootMotionRuntimeCoverage), 'Root Motion/VFX renderer 批次 automatedCoverage 必须且只能列出真实验证项 / Root Motion/VFX renderer automatedCoverage must contain only actual validation')
-  expect(state.latestCompletedBatch?.rendererModified === true && state.latestCompletedBatch?.visualCasesModified === false, '本批必须如实声明 renderer 已修改且视觉案例未修改 / This batch must report renderer modification without visual-case changes')
+  expect(state.latestCompletedBatch?.id === 'biped-pet-root-motion-vfx-phase-delivery', '最新批次必须是 Root Motion/VFX 阶段交付 / Latest batch must be the Root Motion/VFX phase delivery')
+  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(rootMotionVfxDeliveryCoverage), 'Root Motion/VFX 阶段 automatedCoverage 必须且只能列出真实验证项 / Root Motion/VFX phase automatedCoverage must contain only actual validation')
+  expect(state.latestCompletedBatch?.rendererModified === true && state.latestCompletedBatch?.visualCasesModified === true, '本阶段必须如实声明 renderer 与视觉案例均已修改 / This phase must report both renderer and visual-case changes')
+  const browserCoverage = state.latestCompletedBatch?.browserCoverage || []
+  const chromiumCoverageComplete = JSON.stringify(browserCoverage) === JSON.stringify(['chromium-1440x900', 'chromium-760x900'])
+  expect(browserCoverage.length === 0 || chromiumCoverageComplete, '浏览器覆盖只能为空或精确记录两个 Chromium 视口 / Browser coverage must be empty or record exactly both Chromium viewports')
+  expect(state.latestCompletedBatch?.browserAcceptanceStatus === (chromiumCoverageComplete ? 'chromium-complete-cross-browser-pending' : 'pending-main-agent'), '浏览器验收状态必须与真实 Chromium 证据一致 / Browser acceptance status must match actual Chromium evidence')
   expect(state.latestCompletedBatch?.rootMotionContainerConsumerComplete === true && state.latestCompletedBatch?.balanceControllerComplete === true && state.latestCompletedBatch?.ikFrameReportComplete === true, 'Three Root Motion、重心与 IK 报告必须完成 / Three Root Motion, balance, and IK reports must be complete')
   expect(JSON.stringify(state.latestCompletedBatch?.rootMotionOrder) === JSON.stringify(['restore-bind-pose', 'fk', 'root-motion', 'balance', 'update-matrix-world', 'ik']), 'Three 动作运行顺序必须固定 / Three motion runtime order must remain fixed')
   expect(state.latestCompletedBatch?.rootMotionPositionOwnership === 'bind-position-plus-applied-world' && state.latestCompletedBatch?.rootMotionTurnOwnership === 'world-yaw-times-bind-quaternion', 'Root Motion 容器所有权必须保持绝对写入 / Root Motion container ownership must remain absolute')
@@ -432,6 +473,7 @@ if (visualCases) {
   const lazyHydrationCase = visualCases.cases.find(item => item.id === 'studio-model-variant-lazy-hydration-review')
   const semanticMotionCase = visualCases.cases.find(item => item.id === 'biped-pet-semantic-motion-phase1')
   const hybridIkCase = visualCases.cases.find(item => item.id === 'biped-pet-hybrid-ik-foot-lock')
+  const rootMotionVfxCase = visualCases.cases.find(item => item.id === 'biped-pet-root-motion-motion-vfx')
   expect(Boolean(phaseOneCase), '缺少双足萌宠第一阶段人工验收案例 / Missing biped-pet Phase 1 manual acceptance case')
   expect(JSON.stringify(phaseOneCase?.setup?.viewports) === JSON.stringify([[1440, 900], [760, 900]]), '第一阶段人工案例必须覆盖 1440×900 与 760×900 / Phase 1 manual case must cover 1440×900 and 760×900')
   expect(['soft', 'athletic', 'round', 'slender'].every(style => phaseOneCase?.setup?.bodyStyles?.includes(style)), '第一阶段人工案例必须覆盖四个体型模板 / Phase 1 manual case must cover four body styles')
@@ -445,6 +487,28 @@ if (visualCases) {
   const hybridIkManualChecks = hybridIkCase?.manualChecks || []
   expect(Boolean(hybridIkCase) && JSON.stringify(hybridIkCase?.setup?.viewports) === JSON.stringify([[1440, 900], [760, 900]]), '混合 IK 人工案例必须覆盖 1440×900 与 760×900 / Hybrid-IK manual case must cover 1440×900 and 760×900')
   expect(hybridIkManualChecks.some(check => check.startsWith('passed-')) && hybridIkManualChecks.some(check => check.startsWith('pending:')), '混合 IK 人工案例必须同时记录 Chromium 功能验收与剩余图形边界 / Hybrid-IK manual case must record both Chromium functional acceptance and remaining graphics boundaries')
+  const rootMotionVfxManualChecks = rootMotionVfxCase?.manualChecks || []
+  const rootMotionVfxAutomatedChecks = [
+    'corepack pnpm typecheck',
+    'corepack pnpm test',
+    'corepack pnpm build:playground',
+    'node scripts/check-documentation.mjs',
+    'node scripts/check-ai-handoff.mjs',
+    'git diff --check',
+    'pull-request-history-event-simulation',
+  ]
+  const desktopEvidence = rootMotionVfxManualChecks.find(check => check.includes('Chromium 1440×900')) || ''
+  const narrowEvidence = rootMotionVfxManualChecks.find(check => check.includes('Chromium 760×900')) || ''
+  const browserCoverage = state?.latestCompletedBatch?.browserCoverage || []
+  const chromiumCoverageComplete = JSON.stringify(browserCoverage) === JSON.stringify(['chromium-1440x900', 'chromium-760x900'])
+  expect(Boolean(rootMotionVfxCase), '缺少双足萌宠 Root Motion/VFX 浏览器案例 / Missing biped-pet Root Motion/VFX browser case')
+  expect(rootMotionVfxCase?.setup?.modelMode === 'complex' && JSON.stringify(rootMotionVfxCase?.setup?.viewports) === JSON.stringify([[1440, 900], [760, 900]]), 'Root Motion/VFX 案例必须覆盖复杂模式与两个 Chromium 视口 / Root Motion/VFX case must cover complex mode and both Chromium viewports')
+  expect(JSON.stringify(rootMotionVfxCase?.automatedChecks) === JSON.stringify(rootMotionVfxAutomatedChecks), 'Root Motion/VFX 案例自动验证必须与阶段门禁一致 / Root Motion/VFX automated checks must match the phase gate')
+  expect((desktopEvidence.startsWith('pending:') || desktopEvidence.startsWith('passed-')) && (narrowEvidence.startsWith('pending:') || narrowEvidence.startsWith('passed-')), 'Root Motion/VFX 案例必须显式记录两个 Chromium 视口的待验或已验证据 / Root Motion/VFX case must explicitly record pending or passed evidence for both Chromium viewports')
+  if (chromiumCoverageComplete) expect(desktopEvidence.startsWith('passed-') && narrowEvidence.startsWith('passed-'), '已标记 Chromium 覆盖完成时两个视口都必须有 passed 证据 / Both viewports require passed evidence when Chromium coverage is complete')
+  else expect(desktopEvidence.startsWith('pending:') && narrowEvidence.startsWith('pending:'), '尚无 Chromium 覆盖时两个视口必须保持 pending / Both viewports must remain pending without Chromium coverage')
+  expect(rootMotionVfxManualChecks.some(check => check.startsWith('pending:') && check.includes('Safari/Firefox') && check.includes('GPU/WebGL')), 'Root Motion/VFX 案例必须保留跨浏览器 GPU/WebGL 边界 / Root Motion/VFX case must retain the cross-browser GPU/WebGL boundary')
+  expect(rootMotionVfxManualChecks.some(check => check.startsWith('pending:') && check.includes('高细节拓扑')), 'Root Motion/VFX 案例必须保留高细节拓扑边界 / Root Motion/VFX case must retain the high-detail-topology boundary')
 }
 
 const sessionStart = safeRead('.ai/session-start.md')
@@ -475,6 +539,7 @@ expect(handoffZh.includes('双足萌宠混合 Root Motion 与运动特效设计'
 expect(handoffZh.includes('双足萌宠混合RootMotion与运动特效实施计划.md') && handoffEn.includes('双足萌宠混合RootMotion与运动特效实施计划.md'), '中英文交接必须同步混合 Root Motion 与运动特效计划 / Handoffs must synchronize the hybrid Root Motion and motion-VFX plan')
 expect(handoffZh.includes('Three Root Motion、重心与 IK 协同批次') && handoffEn.includes('Three Root Motion, balance, and IK coordination'), '中英文交接必须同步 Three Root Motion 协同批次 / Handoffs must synchronize the Three Root Motion coordination batch')
 expect(handoffZh.includes('同一场景的有界运动 VFX 对象池批次') && handoffEn.includes('Bounded same-scene motion-VFX pool'), '中英文交接必须同步有界 Three 运动特效对象池 / Handoffs must synchronize the bounded Three motion-VFX pool')
+expect(handoffZh.includes('Root Motion 与运动特效阶段交付') && handoffEn.includes('Root Motion and motion-VFX phase delivery'), '中英文交接必须同步 Root Motion 与运动特效阶段交付 / Handoffs must synchronize the Root Motion and motion-VFX phase delivery')
 expect(motionVfxRuntime.includes('new InstancedMesh')
   && motionVfxRuntime.includes('MAX_BURST_INSTANCES = 16')
   && motionVfxRuntime.includes('MAX_LIFETIME_MS = 1200')
@@ -553,9 +618,9 @@ function isAncestor(ancestor, descendant) {
   try { execFileSync('git', ['merge-base', '--is-ancestor', ancestor, descendant], { cwd: root, stdio: 'ignore' }); return true }
   catch { return false }
 }
-function migrationClosureCoversAiPackage(headSha) {
-  if (!isAncestor(legacyHistoryMigrationClosure, headSha)) return false
-  const changedFiles = git(['diff-tree', '--root', '--no-commit-id', '--name-only', '-z', '-r', legacyHistoryMigrationClosure]).split('\0').filter(Boolean)
+function migrationClosureCoversAiPackage(closureCommit, headSha) {
+  if (!isAncestor(closureCommit, headSha)) return false
+  const changedFiles = git(['diff-tree', '--root', '--no-commit-id', '--name-only', '-z', '-r', closureCommit]).split('\0').filter(Boolean)
   return changedFiles.includes('.ai/project-state.json') && changedFiles.some(isContextPath)
 }
 function checkCommitHistoryPolicy() {
@@ -574,6 +639,8 @@ function checkCommitHistoryPolicy() {
   }
   const headSha = pullRequest.head?.sha
   const headRef = pullRequest.head?.ref
+  const baseRef = pullRequest.base?.ref
+  if (baseRef !== state?.baseBranch) { failures.push(`PR 事件目标分支错误 / PR event base branch is incorrect: ${String(baseRef || '')}`); return }
   if (!headSha) { failures.push('PR 事件缺少 head SHA / PR event is missing head SHA'); return }
   ensureCommitAvailable(headSha, headRef)
   let markerCommit = ''
@@ -594,7 +661,8 @@ function checkCommitHistoryPolicy() {
     if (!changedFiles.includes('.ai/project-state.json')) missing.push('project-state')
     if (!changedFiles.some(isContextPath)) missing.push('handoff-context')
     if (!missing.length) continue
-    if (matchesLegacyHistoryMigrationException(commit, missing) && migrationClosureCoversAiPackage(headSha)) continue
+    const migrationException = legacyHistoryMigrationExceptions.get(commit)
+    if (matchesLegacyHistoryMigrationException(commit, missing) && migrationClosureCoversAiPackage(migrationException.remediatedBy, headSha)) continue
     if (!changedFiles.includes('.ai/project-state.json')) failures.push(`功能提交 ${shortSha} 未更新 .ai/project-state.json / Feature commit ${shortSha} did not update .ai/project-state.json`)
     if (!changedFiles.some(isContextPath)) failures.push(`功能提交 ${shortSha} 未更新交接上下文 / Feature commit ${shortSha} did not update a handoff context file`)
   }

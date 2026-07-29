@@ -677,9 +677,9 @@ corepack pnpm build:playground
 
 实现结果保持单一现有 `TresCanvas`：复杂 renderer 对每个角色 runtime 只创建一个动作控制器和一个 VFX 控制器，VFX `Group` 作为角色同父级 sibling primitive。每帧复用位置 tuple、局部 `+Z` 临时向量和 frame 对象，直接读取角色容器的共同父级局部 position，并由最终 Quaternion 的 `atan2(x,z)` 朝向推进特效；不使用世界坐标二次换算。Store 分离编辑器显示 `playheadTimeMs` 与复杂 runtime 单调 `playbackRequestedTimeMs`，loop/ping-pong 接缝和反向半程不会误触 rewind，暂停/恢复连续，只有打开/替换、用户回拖和停止重新对齐。Clip 切换、无动作、blocked、停止和真实回拖显式 reset；动作/时间 watcher 使用防重入安全同步边界并显式返回完成状态，无 clip/runtime 的空路径不能恢复 ready。诊断按 failure domain 与动作身份恢复；旧 clip 先清除，异常尽力 reset，reset 失败则清浅引用与 runtime key、逆序释放，使同配方可在下一次同步重建，只向父层发有界中文 blocked 诊断。
 
-新手设置已接入动作属性“基础”页，只公开移动模式、自动特效、预计结果和恢复推荐值；简单/复杂模型说明、键盘焦点与 ARIA 由独立组件承担。组件使用 inline-size container query，在真实属性栏宽度低于 `360px` 时单列，正文/控制为 `11–12px`、辅助信息不低于 `10px`。Store 更新只替换当前草稿版本化命名空间中的 `rootMotion`，保留 contacts、events、`sourceMotionId`、命名空间未知字段和其他扩展并形成单个撤销项；模式切换不覆盖特效开关，关闭只清标签。推荐恢复优先使用打开时 baseline 已有 Root Motion，并按当前/baseline 时长缩放；baseline 缺少定义时只信 `copyBuiltInMotion` 写入的显式 `sourceMotionId` 并按当前时长缩放模板窗口，绝不通过中英文名称猜测，无可用推荐时才使用 `.42` 身高整段 travel 回退。
+新手设置已接入动作属性“基础”页，只公开移动模式、自动特效、预计结果和恢复推荐值；简单/复杂模型说明、键盘焦点与 ARIA 由独立组件承担。组件保留 inline-size container query，在属性栏自身宽度低于 `360px` 时单列；同时跟随动作工作区的 `780px` 窄视口断点强制移动方式与预计结果单列，覆盖移动端属性面板扩为全宽的真实布局。正文/控制为 `11–12px`、辅助信息不低于 `10px`，桌面布局不受窄视口规则影响。Store 更新只替换当前草稿版本化命名空间中的 `rootMotion`，保留 contacts、events、`sourceMotionId`、命名空间未知字段和其他扩展并形成单个撤销项；模式切换不覆盖特效开关，关闭只清标签。推荐恢复优先使用打开时 baseline 已有 Root Motion，并按当前/baseline 时长缩放；baseline 缺少定义时只信 `copyBuiltInMotion` 写入的显式 `sourceMotionId` 并按当前时长缩放模板窗口，绝不通过中英文名称猜测，无可用推荐时才使用 `.42` 身高整段 travel 回退。
 
-TDD 首轮分别得到静态门禁缺少生命周期/组件的失败列表与 `updateRootMotionSettings is not a function`；追加回归先复现模式切换错误恢复 `speed-trail`、半时长跳跃窗口保持 `[720,1200]`、时间轴回退缺少显式 reset。双审继续复现：请求 `2500ms` 时 runtime 只能看到 loop resolved `100ms`、watcher 无安全异常边界、双语同名自定义动作被错误恢复为内置 travel、注释/字符串伪实现仍能通过字符串门禁、真实 310px 属性栏仍显示最小 `7px` 文案、空 frame sync 错误清除 blocked，以及真实 jump 副本 `2400→1200ms` 后恢复为 `[720,1824]`。对应回归现覆盖两周期 loop、ping-pong 反向/暂停恢复/用户回拖、失败域与动作身份恢复、真实复制缩放、provenance 冲突、TypeScript 调用与 Vue 模板 AST 负探针及容器响应式。最终步骤 5 的五条命令均通过；Playground 构建只出现既有 sourcemap、`#__PURE__` 和大 chunk 警告。
+TDD 首轮分别得到静态门禁缺少生命周期/组件的失败列表与 `updateRootMotionSettings is not a function`；追加回归先复现模式切换错误恢复 `speed-trail`、半时长跳跃窗口保持 `[720,1200]`、时间轴回退缺少显式 reset。双审继续复现：请求 `2500ms` 时 runtime 只能看到 loop resolved `100ms`、watcher 无安全异常边界、双语同名自定义动作被错误恢复为内置 travel、注释/字符串伪实现仍能通过字符串门禁、真实 310px 属性栏仍显示最小 `7px` 文案、空 frame sync 错误清除 blocked，以及真实 jump 副本 `2400→1200ms` 后恢复为 `[720,1824]`。任务 8 的首轮 Chromium 760×900 检查进一步证明：页面无横向溢出，但属性面板和设置组件实际宽 `708px`，原 `360px` 容器条件不触发，模式按钮仍为两列、摘要仍为三列；新增门禁先以“760px 窄视口缺少单列规则”失败，再由 `780px` viewport 规则转绿。对应回归现覆盖两周期 loop、ping-pong 反向/暂停恢复/用户回拖、失败域与动作身份恢复、真实复制缩放、provenance 冲突、TypeScript 调用与 Vue 模板 AST 负探针、窄容器及真实 760px viewport 响应式。最终步骤 5 的五条命令均通过；Playground 构建只出现既有 sourcemap、`#__PURE__` 和大 chunk 警告。
 
 - [ ] **步骤 6：提交推送**
 
@@ -693,6 +693,8 @@ git push origin agent/cloud-fox-studio-v0610
 
 **文件：**
 
+- 修改：`apps/playground/app/components/studio/StudioRootMotionSettings.vue`
+- 修改：`scripts/check-studio-complex-biped-root-motion.mjs`
 - 修改：`.ai/project-state.json`
 - 修改：`.ai/visual-cases.json`
 - 修改：`docs/zh-CN/项目状态.md`
@@ -701,8 +703,9 @@ git push origin agent/cloud-fox-studio-v0610
 - 修改：`docs/zh-CN/AI开发交接.md`
 - 修改：`docs/en/AI-DEVELOPMENT-HANDOFF.md`
 - 修改：`scripts/check-ai-handoff.mjs`
+- 修改：`docs/zh-CN/双足萌宠混合RootMotion与运动特效实施计划.md`
 
-- [ ] **步骤 1：先更新硬门禁的预期交付状态**
+- [x] **步骤 1：先更新硬门禁的预期交付状态**
 
 只有前七个任务全部通过后，才把以下状态改为 `true`：
 
@@ -718,7 +721,7 @@ git push origin agent/cloud-fox-studio-v0610
 
 `bipedPetProductionQuadrupedProfileComplete`、`bipedPetProductionMechProfileComplete`、`bipedPetHighDetailTopologyComplete` 和 `crossBrowserGpuManualAcceptanceComplete` 必须保持 `false`。`nextPhase` 更新为 `biped-pet-advanced-choreography-warping-and-cross-browser-acceptance`。
 
-- [ ] **步骤 2：运行完整自动验证**
+- [x] **步骤 2：运行完整自动验证**
 
 ```bash
 corepack pnpm typecheck
@@ -731,13 +734,13 @@ git diff --check
 
 预期：全部通过；记录每条命令的真实结果和构建警告，不得把结构态 AI 门禁表述为真实 PR 历史门禁。
 
-- [ ] **步骤 3：执行模拟 Pull Request 历史门禁**
+- [x] **步骤 3：执行模拟 Pull Request 历史门禁**
 
 创建临时 `pull_request` 事件 JSON，base 使用 `agent/yk-pets-rebrand-v0610`，head 使用当前 HEAD，通过 `GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH=<临时文件> node scripts/check-ai-handoff.mjs` 运行。临时文件位于 `mktemp -d` 目录，结束后删除该具体临时目录。
 
 预期：当前批次每个修改 `apps/` 或 `packages/` 的提交都同时包含 `.ai/project-state.json` 与至少一个交接上下文，历史门禁通过；不得新增宽泛例外。
 
-- [ ] **步骤 4：桌面浏览器验收**
+- [x] **步骤 4：桌面浏览器验收**
 
 在 Chromium 1440×900：
 
@@ -748,18 +751,18 @@ git diff --check
 5. 切换简单/复杂模式，确认简单模式不创建复杂 Root Motion/VFX；
 6. 检查 `scrollWidth === clientWidth`、控制台无 error、无 hydration mismatch。
 
-- [ ] **步骤 5：窄屏浏览器验收**
+- [x] **步骤 5：窄屏浏览器验收**
 
-在 Chromium 760×900 重复行走、冲刺、跳跃、暂停/停止和模式切换，确认新手设置单列重排、无横向溢出、Canvas 与浮动按钮不遮挡关键控制。该结果不能替代 Safari、Firefox 或不同 GPU/WebGL。
+在 Chromium 760×900 重复行走、冲刺、跳跃、暂停/停止和模式切换，确认新手设置单列重排、无横向溢出、Canvas 与浮动按钮不遮挡关键控制。首轮检查中 `document/client/body` 均为 `760px` 且无横向溢出，但属性面板与新手设置实际宽 `708px`，只依赖 `360px` 容器查询导致移动方式和预计结果未单列；门禁与 `780px` 窄视口规则修复后必须重新检查真实计算样式。该结果不能替代 Safari、Firefox 或不同 GPU/WebGL。
 
-- [ ] **步骤 6：同步文档与视觉案例**
+- [x] **步骤 6：同步文档与视觉案例**
 
 视觉案例 `biped-pet-root-motion-motion-vfx` 必须同时记录 `passed-*` Chromium 结果和 `pending:` 跨浏览器/GPU/高细节拓扑边界。项目状态和中英文交接必须说明 Root Motion 的所有权、VFX 预算、实际动作范围、测试结果与已知限制。
 
-- [ ] **步骤 7：最终提交推送并更新 PR**
+- [x] **步骤 7：最终提交推送并更新 PR**
 
 ```bash
-git add .ai/project-state.json .ai/visual-cases.json docs/zh-CN/项目状态.md docs/zh-CN/工坊工作区.md docs/zh-CN/工坊工作区验收.md docs/zh-CN/AI开发交接.md docs/en/AI-DEVELOPMENT-HANDOFF.md scripts/check-ai-handoff.mjs
+git add apps/playground/app/components/studio/StudioRootMotionSettings.vue scripts/check-studio-complex-biped-root-motion.mjs .ai/project-state.json .ai/visual-cases.json docs/zh-CN/项目状态.md docs/zh-CN/工坊工作区.md docs/zh-CN/工坊工作区验收.md docs/zh-CN/AI开发交接.md docs/en/AI-DEVELOPMENT-HANDOFF.md docs/zh-CN/双足萌宠混合RootMotion与运动特效实施计划.md scripts/check-ai-handoff.mjs
 git commit -m "完成双足萌宠RootMotion与运动特效"
 git push origin agent/cloud-fox-studio-v0610
 ```

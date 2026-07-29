@@ -140,6 +140,9 @@ function formatRatio(value: number): string {
 @container root-motion-panel (max-width:360px){
   .root-motion-mode-group,.root-motion-summary{grid-template-columns:minmax(0,1fr)}
 }
+@media(max-width:780px){
+  .root-motion-mode-group,.root-motion-summary{grid-template-columns:minmax(0,1fr)}
+}
 @media(prefers-reduced-motion:reduce){
   .root-motion-switch-track,.root-motion-switch-thumb{transition:none}
 }

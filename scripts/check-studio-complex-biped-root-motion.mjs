@@ -49,12 +49,30 @@ const sfcParts = (source, filename) => {
   const scriptAst = ts.createSourceFile(filename, scriptSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
   const script = ts.createPrinter({ removeComments: true }).printFile(scriptAst)
   const template = (parsed.descriptor.template?.content ?? '').replace(/<!--[\s\S]*?-->/gu, '')
+  const styles = parsed.descriptor.styles.map(style => style.content).join('\n').replace(/\/\*[\s\S]*?\*\//gu, '')
   const calls = collectTsNodes(scriptAst, ts.isCallExpression)
   const propertyAccesses = collectTsNodes(scriptAst, ts.isPropertyAccessExpression)
   const identifiers = collectTsNodes(scriptAst, ts.isIdentifier)
   const templateElements = collectTemplateElements(parsed.descriptor.template?.ast)
-  return { script, scriptAst, calls, propertyAccesses, identifiers, template, templateElements, combined: `${script}\n${template}` }
+  return { script, scriptAst, calls, propertyAccesses, identifiers, styles, template, templateElements, combined: `${script}\n${template}` }
 }
+const maxWidthMediaRules = (styles) => {
+  const rules = []
+  const headerPattern = /@media\s*\(\s*max-width\s*:\s*(\d+(?:\.\d+)?)px\s*\)\s*\{/gu
+  let match
+  while ((match = headerPattern.exec(styles)) !== null) {
+    let depth = 1
+    let cursor = headerPattern.lastIndex
+    while (cursor < styles.length && depth > 0) {
+      if (styles[cursor] === '{') depth += 1
+      else if (styles[cursor] === '}') depth -= 1
+      cursor += 1
+    }
+    rules.push({ maxWidth: Number(match[1]), body: styles.slice(headerPattern.lastIndex, cursor - 1) })
+  }
+  return rules
+}
+const hasSingleColumnRootMotionGrids = styles => /\.root-motion-mode-group\s*,\s*\.root-motion-summary\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0\s*,\s*1fr\)/u.test(styles)
 const callText = (parts, call) => call.expression.getText(parts.scriptAst)
 const callsNamed = (parts, name) => parts.calls.filter(call => callText(parts, call) === name)
 const hasCall = (parts, name, predicate = () => true) => callsNamed(parts, name).some(predicate)
@@ -143,7 +161,9 @@ expect(elementsNamed(settingsParts, 'button').some(element => attribute(element,
 expect(elementsNamed(settingsParts, 'button').filter(element => directive(element, 'bind', 'aria-pressed')).length >= 2, '移动方式按钮必须公开 aria-pressed / Movement-mode buttons must expose aria-pressed')
 const settingsTemplate = settingsParts.template
 expect(!/(骨骼|窗口数组|速度阈值|粒子数量)/.test(settingsTemplate), '新手界面不得暴露底层骨骼、窗口或粒子参数 / Beginner UI must not expose low-level rig, window, or particle parameters')
-expect(/container-type:inline-size/.test(settings) && /@container\s+root-motion-panel\s*\(max-width:[^)]+\)[\s\S]*grid-template-columns:\s*minmax\(0,1fr\)/.test(settings), '根运动设置必须按真实容器宽度切为单列 / Root-motion settings must become one column from its actual container width')
+expect(/container-type:inline-size/.test(settingsParts.styles) && /@container\s+root-motion-panel\s*\(max-width:[^)]+\)[\s\S]*grid-template-columns:\s*minmax\(0,1fr\)/.test(settingsParts.styles), '根运动设置必须按真实容器宽度切为单列 / Root-motion settings must become one column from its actual container width')
+const narrowViewportRule = maxWidthMediaRules(settingsParts.styles).find(rule => rule.maxWidth >= 760 && rule.maxWidth <= 780 && hasSingleColumnRootMotionGrids(rule.body))
+expect(Boolean(narrowViewportRule), '760px 窄视口下移动方式与预计结果必须切为单列 / Movement modes and summaries must become one column at the 760px narrow viewport')
 expect(/root-motion-mode-button\{[^}]*font-size:12px/.test(settings) && /root-motion-settings-guidance\{[^}]*font-size:11px/.test(settings) && /root-motion-summary-label\{[^}]*font-size:10px/.test(settings), '正文与控制字号必须保持可读的 10–12px 下限 / Body and control copy must preserve a readable 10–12px floor')
 
 expect(packageJson.scripts?.['check:studio-complex-biped-root-motion'] === 'node scripts/check-studio-complex-biped-root-motion.mjs', 'package.json 必须注册 Root Motion Studio 门禁 / package.json must register the Root Motion Studio gate')
