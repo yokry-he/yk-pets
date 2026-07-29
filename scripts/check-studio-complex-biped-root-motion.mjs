@@ -103,6 +103,8 @@ const settings = read('apps/playground/app/components/studio/StudioRootMotionSet
 const motionPageSource = read('apps/playground/app/pages/studio/motion.vue')
 const canvasSource = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const proceduralSource = read('apps/playground/app/components/studio/ProceduralPet.vue')
+const propInstanceSource = read('apps/playground/app/components/studio/ComplexBipedPropInstance.vue')
+const propInstancesSource = read('apps/playground/app/components/studio/ComplexBipedPropInstances.vue')
 const store = read('apps/playground/app/stores/studio-motion-editor.ts')
 const assetStore = read('apps/playground/app/stores/studio-assets.ts')
 const packageJson = JSON.parse(read('package.json') || '{}')
@@ -111,11 +113,13 @@ const settingsParts = sfcParts(settings, 'StudioRootMotionSettings.vue')
 const motionPageParts = sfcParts(motionPageSource, 'motion.vue')
 const canvasParts = sfcParts(canvasSource, 'CloudFoxStudioCanvas.vue')
 const proceduralParts = sfcParts(proceduralSource, 'ProceduralPet.vue')
+const propInstanceParts = sfcParts(propInstanceSource, 'ComplexBipedPropInstance.vue')
+const propInstancesParts = sfcParts(propInstancesSource, 'ComplexBipedPropInstances.vue')
 const commentOnlyProbe = sfcParts(`<script setup lang="ts">/* vfxController.apply(frame.vfxSignals, motionVfxFrame) */</script><template><!-- <primitive v-if="motionVfxObject" :object="motionVfxObject" :dispose="false" /> --></template>`, 'CommentOnlyProbe.vue')
 const stringOnlyProbe = sfcParts(`<script setup lang="ts">void 'vfxController.apply(frame.vfxSignals, motionVfxFrame)'</script><template>{{ '<primitive v-if="motionVfxObject" :object="motionVfxObject" :dispose="false" />' }}</template>`, 'StringOnlyProbe.vue')
 const renderer = rendererParts.combined
 const motionPage = motionPageParts.combined
-for (const parts of [rendererParts, settingsParts, motionPageParts, canvasParts, proceduralParts]) {
+for (const parts of [rendererParts, settingsParts, motionPageParts, canvasParts, proceduralParts, propInstanceParts, propInstancesParts]) {
   for (const element of parts.templateElements) if (element.parent) partsParentLookup.set(element.node, element.parent)
 }
 expect(callsNamed(commentOnlyProbe, 'vfxController.apply').length === 0 && elementsNamed(commentOnlyProbe, 'primitive').length === 0, 'SFC 门禁必须忽略 JS 与 HTML 注释中的伪实现 / SFC gate must ignore fake implementations inside JS and HTML comments')
@@ -137,7 +141,7 @@ expect(/function\s+applyMotion\(\):\s*boolean[\s\S]{0,500}!clip[\s\S]{0,180}retu
 expect(/watch\(\(\)\s*=>\s*props\.motionAsset,\s*syncMotionAsset/.test(renderer) && /watch\(\(\)\s*=>\s*\[props\.motionTimeMs,\s*props\.motionWeight\][\s\S]{0,100}syncMotionFrame/.test(renderer), 'Vue watcher 不得直接调用可能抛错的 compile/apply / Vue watchers must not directly invoke throwing compile/apply paths')
 expect(/function\s+compileMotion\([\s\S]{0,180}motionClip\.value\s*=\s*undefined[\s\S]{0,520}resetMotionPreview/.test(renderer), 'Clip 切换必须先清旧 clip 再执行可能失败的 reset / Clip switching must clear the old clip before a fallible reset')
 expect(/motionVfxController\.value\s*=\s*undefined[\s\S]{0,320}motionController\.value\s*=\s*undefined[\s\S]{0,320}runtime\.value\s*=\s*undefined/.test(renderer), '释放前必须先按 VFX、动作、runtime 清空浅引用 / Shallow refs must detach in VFX, motion, runtime order before cleanup')
-expect(/vfxController\?\.dispose\(\)[\s\S]{0,260}controller\?\.dispose\(\)[\s\S]{0,260}currentRuntime\?\.dispose\(\)/.test(renderer), '资源必须按 VFX、动作、runtime 逆序尽力释放 / Resources must be best-effort disposed in VFX, motion, runtime reverse order')
+expect(/weaponVfxController\?\.dispose\(\)[\s\S]{0,240}vfxController\?\.dispose\(\)[\s\S]{0,240}weaponConstraintController\?\.dispose\(\)[\s\S]{0,240}controller\?\.dispose\(\)[\s\S]{0,240}currentRuntime\?\.dispose\(\)/.test(renderer), '资源必须按持械 VFX、运动 VFX、持械约束、动作、runtime 逆序尽力释放 / Resources must dispose in weapon-VFX, motion-VFX, constraint, motion, runtime order')
 expect(/String\(error\s+instanceof\s+Error\s*\?\s*error\.message\s*:\s*error\)/.test(renderer) && /catch\s*\{\s*return\s+'未知错误'/.test(renderer), '释放诊断必须安全字符串化任意抛出值 / Cleanup diagnostics must safely stringify arbitrary thrown values')
 expect(/watch\(\(\)\s*=>\s*\[props\.motionTimeMs,\s*props\.motionWeight\][\s\S]{0,100}syncMotionFrame/.test(renderer) && /function\s+syncMotionFrame\([\s\S]{0,180}applyMotion/.test(renderer), '时间变化只能经安全边界采样动作，不得重建控制器 / Time changes must only sample motion through the safe boundary without rebuilding controllers')
 expect(elementsNamed(rendererParts, 'TresCanvas').length === 0 && callsNamed(rendererParts, 'requestAnimationFrame').length === 0 && !rendererParts.identifiers.some(identifier => identifier.text === 'Skeleton'), '复杂 renderer 不得创建 Canvas、RAF 或 Skeleton / Complex renderer must not create Canvas, RAF, or Skeleton')
@@ -158,6 +162,22 @@ expect(/WEAPON_TRAIL_SAMPLE_INTERVAL_MS\s*=\s*40/.test(motionAdaptationSource) &
 expect(!/(?:Date\.now|performance\.now|requestAnimationFrame|cancelAnimationFrame)\s*\(/.test(weaponVfxSource), '持械特效控制器不得读取墙钟或创建 RAF / Weapon-VFX controller must not read wall-clock time or create RAF')
 expect(/disposing\s*=\s*true[\s\S]{0,1200}geometry\.dispose\(\)[\s\S]{0,500}material\.dispose\(\)/.test(weaponVfxSource), '持械特效释放必须先封存并尽力释放 Geometry 与 Material / Weapon-VFX disposal must seal first and best-effort release geometry and material')
 
+expect(callsNamed(propInstanceParts, 'emit', call => call.arguments[0]?.getText(propInstanceParts.scriptAst) === "'ready'").length >= 1, '单道具组件必须真实发布 ready 句柄 / A prop instance must emit a real ready handle')
+expect(callsNamed(propInstanceParts, 'emit', call => call.arguments[0]?.getText(propInstanceParts.scriptAst) === "'released'").length >= 1, '单道具组件必须在卸载前真实发布 released / A prop instance must emit a real released event before unmount')
+expect(callsNamed(propInstancesParts, 'emit', call => call.arguments[0]?.getText(propInstancesParts.scriptAst) === "'ready'").length >= 1
+  && callsNamed(propInstancesParts, 'emit', call => call.arguments[0]?.getText(propInstancesParts.scriptAst) === "'released'").length >= 1,
+'道具集合组件只能转发 ready/released 事件 / The prop collection must only forward ready/released events')
+const propInstancesElement = elementsNamed(rendererParts, 'ComplexBipedPropInstances').find(element => (
+  directive(element, 'on', 'ready', 'onPropReady') && directive(element, 'on', 'released', 'onPropReleased')
+))
+expect(Boolean(propInstancesElement), '复杂 renderer 必须接收道具 ready/released 事件 / Complex renderer must consume prop ready/released events')
+expect(callsNamed(rendererParts, 'createComplexBipedWeaponConstraintController').length === 1
+  && callsNamed(rendererParts, 'createComplexBipedWeaponVfxController').length === 1,
+'复杂 renderer 必须各创建一个持械约束与持械特效控制器 / Complex renderer must create one weapon constraint and one weapon-VFX controller')
+expect(hasCall(rendererParts, 'compileBipedPetMotionAdaptationPlan') && hasCall(rendererParts, 'sampleBipedPetWeaponVfxSignals'), 'renderer 必须编译尺寸化适配计划并采样真实武器信号 / Renderer must compile a sized adaptation plan and sample real weapon signals')
+expect(hasCall(rendererParts, 'isComplexBipedPropRuntimeHandleAttached'), 'renderer 必须在每次读取前淘汰被外部移除的道具句柄 / Renderer must reject externally detached prop handles before use')
+const weaponVfxPrimitive = elementsNamed(rendererParts, 'primitive').find(element => directive(element, 'if', undefined, 'weaponVfxObject') && directive(element, 'bind', 'object', 'weaponVfxObject') && directive(element, 'bind', 'dispose', 'false'))
+expect(Boolean(weaponVfxPrimitive), '持械 VFX Group 必须作为角色同级 primitive / Weapon-VFX Group must be a sibling primitive')
 expect(elementsNamed(canvasParts, 'TresCanvas').length === 1, 'Studio 画布必须只保留一个 TresCanvas / Studio preview must retain exactly one TresCanvas')
 expect(callsNamed(proceduralParts, 'createComplexBipedMotionController').length === 0 && callsNamed(proceduralParts, 'createComplexBipedMotionVfxController').length === 0, 'ProceduralPet 不得创建复杂控制器 / ProceduralPet must not create complex controllers')
 const complexGroup = elementsNamed(canvasParts, 'TresGroup').find(element => directive(element, 'if', undefined, 'showComplexRenderer'))

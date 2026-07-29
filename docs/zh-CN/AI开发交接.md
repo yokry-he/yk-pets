@@ -507,3 +507,11 @@
 - 每帧只根据 `requestedTimeMs` 计算衰减、轨迹姿态、火花抛散和冲击环扩张；回拖和 `reset()` 清空活动槽及去重账本但保留所有 Three/GPU 资源。每种效果独立初始化，单类 Geometry/Material/挂载失败只将该类列为 unavailable；默认资源和工厂 provisional 资源都按对象身份管理，跨类共享时不会重复释放。
 - `dispose()` 在释放前先用 `disposing` 封存同步重入，再对活动槽、唯一 Geometry、唯一 Material、自有子节点和父级逐项尽力清理。任意资源抛出 `Error`、`undefined` 等值都会进入中文聚合且不阻断后续资源，旧实例最终封存、父级解绑、二次释放幂等。
 - TDD 信号轮先在原有 `237` 项保持通过时得到两个公共入口缺失失败；对象池轮稳定得到 `ERR_MODULE_NOT_FOUND: complex-biped-weapon-vfx.ts`。完成后 pet-core 为 `240/240`，定向 Three 运行时测试、Playground 类型检查、40ms/24-30-60FPS/池容量/故障释放静态门禁与 `git diff --check` 均通过。机器状态新增 `bipedPetWeaponMotionVfxComplete=true`；下一批为道具句柄与 renderer 生命周期接线。
+
+## 51. 复杂模型持械动作 renderer 接线批次
+
+- `ComplexBipedPropInstance` 在道具 Group 完成真实 reparent 后发布只读 runtime 句柄，并在卸载前按 `instanceId + Group` 身份发布释放事件；集合组件只转发事件，不保存第二份 Three 所有权。同一 `instanceId` 只接受一个 Group，陈旧对象不能释放替换后的句柄；Group 被外部移除或 reparent 后会在下一次读取时失效并触发适配计划重编译。
+- `ComplexBipedPetRenderer` 现在维护唯一浅句柄 Map 和道具 Rig 派生表，并按实际编译骨骼局部段长计算左右臂展。道具晚挂载、资产更新或卸载时，renderer 经既有安全同步边界重新编译尺寸化适配计划；无道具和缺少语义点时只关闭依赖它的增强，不阻断基础动作。
+- 每个角色 runtime 只创建一个副手持械约束控制器和一个持械 VFX 控制器。帧顺序固定为 `动作/FK → Root Motion → Balance → 世界矩阵 → 副手约束 → 腿 IK → 最终矩阵 → 原运动 VFX → 武器 VFX`；副手约束由动作控制器的 `beforeLegIk` hook 注入，武器语义点在最终姿态后转换到角色与 VFX 的共同父级坐标系。
+- 武器帧使用两组预分配容器交替保存当前帧与前帧，逐帧不创建 Map、Canvas、RAF 或 Skeleton。暂停、回拖、Clip 切换、无动作、blocked 和停止权重会同时清动作、两类 VFX、持械约束及轨迹历史；运行时释放顺序固定为持械 VFX → 原运动 VFX → 持械约束 → 动作控制器 → 角色 runtime，单项失败不阻断后续清理。
+- TDD 首轮确认句柄导出和 renderer 生命周期门禁缺失；完成后定向运行时测试覆盖真实挂点、重复 Group、未挂载 Group、陈旧释放与外部移除，静态 AST 门禁覆盖真实 Vue emit/listener、唯一控制器、适配编译/采样、sibling primitive、逆序释放和单 Canvas 边界。`corepack pnpm run test:studio-complex-biped-root-motion-runtime`、Playground 类型检查、Root Motion/VFX 静态门禁与 `git diff --check` 均通过。机器状态新增 `bipedPetWeaponRuntimeWiringComplete=true`；下一批为星云长棍与十二秒棍术的内置资产和新手自动优化界面。

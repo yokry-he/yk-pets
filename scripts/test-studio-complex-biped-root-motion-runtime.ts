@@ -17,6 +17,7 @@ import {
   type SampledBipedPetMotion,
 } from '../packages/pet-core/src/index.ts'
 import { BASIC_BIPED_STUDIO_MOTIONS } from '../apps/playground/app/domain/studio-basic-biped-motions.ts'
+import { BUILT_IN_STUDIO_PROPS } from '../apps/playground/app/domain/studio-built-in-props.ts'
 import { createComplexBipedPetObject } from '../apps/playground/app/three/create-complex-biped-pet-object.ts'
 import { createComplexBipedRootMotionController } from '../apps/playground/app/three/apply-complex-biped-root-motion.ts'
 import { createComplexBipedBalanceController } from '../apps/playground/app/three/apply-complex-biped-balance.ts'
@@ -25,6 +26,13 @@ import { createComplexBipedMotionController } from '../apps/playground/app/three
 import { createComplexBipedWeaponConstraintController } from '../apps/playground/app/three/apply-complex-biped-weapon-constraint.ts'
 import { createComplexBipedMotionVfxController } from '../apps/playground/app/three/complex-biped-motion-vfx.ts'
 import { createComplexBipedWeaponVfxController } from '../apps/playground/app/three/complex-biped-weapon-vfx.ts'
+import {
+  isComplexBipedPropRuntimeHandleAttached,
+  registerComplexBipedPropRuntimeHandle,
+  releaseComplexBipedPropRuntimeHandle,
+  resolveComplexBipedPropMount,
+  type ComplexBipedPropRuntimeHandle,
+} from '../apps/playground/app/three/complex-biped-prop-mounts.ts'
 
 const walkAsset = BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-walk')
 const jumpAsset = BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-jump')
@@ -949,6 +957,38 @@ for (const bodyStyle of ['soft', 'athletic', 'round', 'slender'] as const) {
   assert.deepEqual(propObject.matrixWorld.elements, propMatrix)
   weapon.dispose()
   propObject.removeFromParent()
+  runtime.dispose()
+}
+
+// 道具 runtime 句柄必须验证真实父级并按 instanceId/object 身份单写入；旧对象不能误删新句柄。 / Prop-runtime handles validate their real parent and enforce single ownership by instanceId/object, so a stale object cannot release a newer handle.
+{
+  const { runtime } = createRuntime()
+  const asset = BUILT_IN_STUDIO_PROPS[0]!
+  const mount = resolveComplexBipedPropMount(runtime, { space: 'local', mountId: 'right-front-paw' })
+  const object = runtime.object.clone(false)
+  mount.object.add(object)
+  const handles = new Map<string, ComplexBipedPropRuntimeHandle>()
+  const handle = { instanceId: 'staff-main', asset, object, mount }
+  assert.equal(registerComplexBipedPropRuntimeHandle(handles, handle), true)
+  assert.strictEqual(handles.get('staff-main'), handle)
+  assert.equal(isComplexBipedPropRuntimeHandleAttached(handle), true)
+  assert.equal(registerComplexBipedPropRuntimeHandle(handles, handle), true)
+
+  const duplicateObject = runtime.object.clone(false)
+  mount.object.add(duplicateObject)
+  assert.equal(registerComplexBipedPropRuntimeHandle(handles, { ...handle, object: duplicateObject }), false)
+  assert.strictEqual(handles.get('staff-main')?.object, object)
+  const detachedObject = runtime.object.clone(false)
+  assert.equal(registerComplexBipedPropRuntimeHandle(handles, { ...handle, instanceId: 'detached', object: detachedObject }), false)
+  assert.equal(releaseComplexBipedPropRuntimeHandle(handles, 'staff-main', duplicateObject), false)
+  assert.equal(handles.size, 1)
+  object.removeFromParent()
+  assert.equal(isComplexBipedPropRuntimeHandleAttached(handle), false)
+  mount.object.add(object)
+  assert.equal(releaseComplexBipedPropRuntimeHandle(handles, 'staff-main', object), true)
+  assert.equal(handles.size, 0)
+  duplicateObject.removeFromParent()
+  object.removeFromParent()
   runtime.dispose()
 }
 

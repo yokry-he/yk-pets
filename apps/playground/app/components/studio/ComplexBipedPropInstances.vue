@@ -5,7 +5,9 @@
 -->
 <script setup lang="ts">
 import type { EvaluatedMotionPropInstance, StudioPropAssetV2 } from '@yk-pets/pet-core'
+import type { Group } from 'three'
 import type { ComplexBipedPetObject } from '~/three/create-complex-biped-pet-object'
+import type { ComplexBipedPropRuntimeHandle } from '~/three/complex-biped-prop-mounts'
 import ComplexBipedPropInstance from './ComplexBipedPropInstance.vue'
 
 const props = defineProps<{
@@ -14,12 +16,24 @@ const props = defineProps<{
   propAssets?: readonly StudioPropAssetV2[]
   preservePropMaterials?: boolean
 }>()
+const emit = defineEmits<{
+  ready: [handle: ComplexBipedPropRuntimeHandle]
+  released: [instanceId: string, object: Group]
+}>()
 
 const assetById = computed(() => new Map((props.propAssets || []).map(asset => [asset.id, asset])))
 const renderableInstances = computed(() => (props.instances || []).flatMap(instance => {
   const asset = assetById.value.get(instance.propId)
   return asset ? [{ instance, asset }] : []
 }))
+
+function forwardReady(handle: ComplexBipedPropRuntimeHandle) {
+  emit('ready', handle)
+}
+
+function forwardReleased(instanceId: string, object: Group) {
+  emit('released', instanceId, object)
+}
 </script>
 
 <template>
@@ -30,5 +44,7 @@ const renderableInstances = computed(() => (props.instances || []).flatMap(insta
     :instance="entry.instance"
     :asset="entry.asset"
     :preserve-prop-materials="preservePropMaterials"
+    @ready="forwardReady"
+    @released="forwardReleased"
   />
 </template>

@@ -120,6 +120,7 @@
     "bipedPetMotionAdaptationPlanComplete": true,
     "bipedPetSecondaryGripRuntimeComplete": true,
     "bipedPetWeaponMotionVfxComplete": true,
+    "bipedPetWeaponRuntimeWiringComplete": true,
     "bipedPetProductionQuadrupedProfileComplete": false,
     "bipedPetProductionMechProfileComplete": false,
     "bipedPetHighDetailTopologyComplete": false,
@@ -262,7 +263,8 @@
     "biped-pet-prop-rig-contract",
     "biped-pet-motion-adaptation-plan",
     "biped-pet-secondary-grip-runtime",
-    "biped-pet-weapon-motion-vfx"
+    "biped-pet-weapon-motion-vfx",
+    "biped-pet-weapon-runtime-wiring"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",
