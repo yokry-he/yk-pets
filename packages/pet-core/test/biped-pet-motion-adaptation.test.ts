@@ -53,6 +53,82 @@ function normalizeMotionAdaptation(input: unknown, durationMs: number) {
   return (normalizer as MotionAdaptationNormalizer)(input, durationMs)
 }
 
+type NormalizedMotionAdaptationDefinition = ReturnType<MotionAdaptationNormalizer>['value']
+
+type MotionAdaptationPlanCompiler = (input: {
+  definition: NormalizedMotionAdaptationDefinition
+  clipHash: string
+  profileId: string
+  characterHash: string
+  characterHeight: number
+  armReach: { left: number; right: number }
+  propRigs: Readonly<Record<string, unknown>>
+}) => {
+  key: string
+  phases: readonly { id: string; startMs: number; endMs: number; intensity: number; fadeMs: number }[]
+  warpWindows: readonly { id: string; maxDistanceWorld: number; maxTurnRadians: number }[]
+  constraints: readonly { id: string; armReachWorld: number; targetPoint: { position: readonly number[] } }[]
+  effectCues: readonly { id: string; points: readonly { position: readonly number[] }[] }[]
+  diagnostics: readonly { id: string; severity: 'warning'; message: string }[]
+}
+
+type MotionAdaptationSampler = (
+  plan: ReturnType<MotionAdaptationPlanCompiler>,
+  requestedTimeMs: number,
+  resolvedTimeMs: number,
+) => {
+  requestedTimeMs: number
+  resolvedTimeMs: number
+  activePhaseIds: readonly string[]
+  constraintWeights: Readonly<Record<string, number>>
+  activeEffectCueIds: readonly string[]
+}
+
+function compileMotionAdaptationPlan(input: Parameters<MotionAdaptationPlanCompiler>[0]) {
+  const compiler = Reflect.get(petCore, 'compileBipedPetMotionAdaptationPlan')
+  assert.equal(typeof compiler, 'function', 'compileBipedPetMotionAdaptationPlan 应从 pet-core 公共入口导出')
+  return (compiler as MotionAdaptationPlanCompiler)(input)
+}
+
+function sampleMotionAdaptation(
+  plan: ReturnType<MotionAdaptationPlanCompiler>,
+  requestedTimeMs: number,
+  resolvedTimeMs: number,
+) {
+  const sampler = Reflect.get(petCore, 'sampleBipedPetMotionAdaptation')
+  assert.equal(typeof sampler, 'function', 'sampleBipedPetMotionAdaptation 应从 pet-core 公共入口导出')
+  return (sampler as MotionAdaptationSampler)(plan, requestedTimeMs, resolvedTimeMs)
+}
+
+function completeStaffRig(axisLength = 1.6) {
+  const point = (position: readonly [number, number, number]) => ({ position, rotation: [0, 0, 0, 1] })
+  return {
+    primaryGrip: point([0, 0, 0]),
+    secondaryGrip: point([-.45, 0, 0]),
+    trailStart: point([-axisLength, 0, 0]),
+    trailEnd: point([axisLength, 0, 0]),
+    impactPoint: point([axisLength, 0, 0]),
+  }
+}
+
+function samplePlanDefinition() {
+  return normalizeMotionAdaptation({
+    phases: [{ id: 'sweep', role: 'sweep', startMs: 100, endMs: 1000, intensity: 1 }],
+    warpWindows: [{
+      id: 'sweep-warp', phaseId: 'sweep', target: 'stage-forward', translation: true, rotation: true,
+      maxDistance: .45, maxTurnRadians: 1.2,
+    }],
+    constraints: [{
+      id: 'left-grip', kind: 'secondary-grip', phaseId: 'sweep', limbId: 'arm.left',
+      propInstanceId: 'staff', pointId: 'secondaryGrip', weight: 1,
+    }],
+    effectCues: [{
+      id: 'sweep-trail', kind: 'weapon-trail', phaseId: 'sweep', propInstanceId: 'staff',
+      pointIds: ['trailStart', 'trailEnd'], threshold: .25, lifetimeMs: 240,
+    }],
+  }, 1200).value
+}
+
 test('动作适配扩展规范化并稳定冻结', () => {
   const result = normalizeMotionAdaptation({
     phases: [{ id: 'sweep', role: 'sweep', startMs: 4200, endMs: 6500, intensity: .9 }],
@@ -227,4 +303,101 @@ test('四类动作适配数组遵守固定输入预算', () => {
   assert.equal(result.value.constraints.length, 16)
   assert.equal(result.value.effectCues.length, 32)
   assert.equal(result.diagnostics.filter(item => item.id.includes('budget-exceeded')).length, 4)
+})
+
+test('适配计划按角色尺寸编译并以完整角色与道具身份缓存', () => {
+  const definition = samplePlanDefinition()
+  const common = {
+    definition,
+    clipHash: 'clip-a',
+    profileId: 'biped-pet/v1',
+    propRigs: { staff: completeStaffRig() },
+  }
+  const athleticInput = {
+    ...common,
+    characterHash: 'athletic',
+    characterHeight: 4.2,
+    armReach: { left: 1.18, right: 1.18 },
+  }
+  const athletic = compileMotionAdaptationPlan(athleticInput)
+  const sameAthletic = compileMotionAdaptationPlan(structuredClone(athleticInput))
+  const round = compileMotionAdaptationPlan({
+    ...common,
+    characterHash: 'round',
+    characterHeight: 3.4,
+    armReach: { left: .86, right: .86 },
+  })
+  const longerStaff = compileMotionAdaptationPlan({
+    ...athleticInput,
+    propRigs: { staff: completeStaffRig(2.1) },
+  })
+  const changedClip = compileMotionAdaptationPlan({ ...athleticInput, clipHash: 'clip-b' })
+  const changedProfile = compileMotionAdaptationPlan({ ...athleticInput, profileId: 'biped-pet/v2' })
+
+  assert.strictEqual(athletic, sameAthletic)
+  assert.ok(athletic.warpWindows[0]!.maxDistanceWorld > round.warpWindows[0]!.maxDistanceWorld)
+  assert.equal(athletic.constraints[0]?.armReachWorld, 1.18)
+  assert.notEqual(athletic.key, round.key)
+  assert.notEqual(athletic.key, longerStaff.key)
+  assert.notEqual(athletic.key, changedClip.key)
+  assert.notEqual(athletic.key, changedProfile.key)
+  assert.ok(Object.isFrozen(athletic))
+  assert.ok(Object.isFrozen(athletic.constraints[0]?.targetPoint.position))
+})
+
+test('缺少道具语义点只关闭关联增强并保留基础阶段与 Warp', () => {
+  const plan = compileMotionAdaptationPlan({
+    definition: samplePlanDefinition(),
+    clipHash: 'clip-missing-prop',
+    profileId: 'biped-pet/v1',
+    characterHash: 'round',
+    characterHeight: 3.4,
+    armReach: { left: .86, right: .86 },
+    propRigs: { staff: { primaryGrip: completeStaffRig().primaryGrip } },
+  })
+
+  assert.deepEqual(plan.phases.map(item => item.id), ['sweep'])
+  assert.deepEqual(plan.warpWindows.map(item => item.id), ['sweep-warp'])
+  assert.deepEqual(plan.constraints, [])
+  assert.deepEqual(plan.effectCues, [])
+  assert.ok(plan.diagnostics.some(item => item.id.includes('point-missing')))
+})
+
+test('适配采样使用 120ms smoothstep 淡变且暂停、回拖和帧率无关', () => {
+  const plan = compileMotionAdaptationPlan({
+    definition: samplePlanDefinition(),
+    clipHash: 'clip-sampling',
+    profileId: 'biped-pet/v1',
+    characterHash: 'athletic',
+    characterHeight: 4.2,
+    armReach: { left: 1.18, right: 1.18 },
+    propRigs: { staff: completeStaffRig() },
+  })
+
+  assert.equal(plan.phases[0]?.fadeMs, 120)
+  assert.deepEqual(sampleMotionAdaptation(plan, 100, 100), {
+    requestedTimeMs: 100,
+    resolvedTimeMs: 100,
+    activePhaseIds: ['sweep'],
+    constraintWeights: { 'left-grip': 0 },
+    activeEffectCueIds: ['sweep-trail'],
+  })
+  assert.equal(sampleMotionAdaptation(plan, 160, 160).constraintWeights['left-grip'], .5)
+  assert.equal(sampleMotionAdaptation(plan, 220, 220).constraintWeights['left-grip'], 1)
+  assert.deepEqual(sampleMotionAdaptation(plan, 220, 220), sampleMotionAdaptation(plan, 220, 220))
+  assert.deepEqual(sampleMotionAdaptation(plan, 1300, 300), {
+    requestedTimeMs: 1300,
+    resolvedTimeMs: 300,
+    activePhaseIds: ['sweep'],
+    constraintWeights: { 'left-grip': 1 },
+    activeEffectCueIds: ['sweep-trail'],
+  })
+
+  const frameSamples = [24, 30, 60].map((fps) => {
+    const halfSecondFrame = fps / 2
+    return sampleMotionAdaptation(plan, halfSecondFrame * 1000 / fps, halfSecondFrame * 1000 / fps)
+  })
+  assert.deepEqual(frameSamples[0], frameSamples[1])
+  assert.deepEqual(frameSamples[1], frameSamples[2])
+  assert.deepEqual(sampleMotionAdaptation(plan, 90, 90).activePhaseIds, [])
 })

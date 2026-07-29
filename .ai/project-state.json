@@ -117,6 +117,7 @@
     "bipedPetHybridRootMotionVfxPlanComplete": true,
     "bipedPetMotionAdaptationContractComplete": true,
     "bipedPetPropRigContractComplete": true,
+    "bipedPetMotionAdaptationPlanComplete": true,
     "bipedPetProductionQuadrupedProfileComplete": false,
     "bipedPetProductionMechProfileComplete": false,
     "bipedPetHighDetailTopologyComplete": false,
@@ -256,7 +257,8 @@
     "biped-pet-root-motion-vfx-renderer-settings",
     "biped-pet-root-motion-vfx-phase-delivery",
     "biped-pet-motion-adaptation-contract",
-    "biped-pet-prop-rig-contract"
+    "biped-pet-prop-rig-contract",
+    "biped-pet-motion-adaptation-plan"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

@@ -4,6 +4,12 @@
  */
 
 import { normalizeMotionDurationMs } from './motion-time'
+import {
+  normalizeStudioPropRig,
+  type StudioPropRigDefinition,
+  type StudioPropRigPoint,
+  type StudioPropRigPointId,
+} from '../props/prop-rig'
 
 export const BIPED_PET_MOTION_ADAPTATION_NAMESPACE = 'yk-pets/biped-motion-adaptation/v1' as const
 
@@ -69,6 +75,50 @@ export interface BipedPetMotionAdaptationNormalizationResult {
   readonly diagnostics: readonly BipedPetMotionAdaptationDiagnostic[]
 }
 
+export interface BipedPetMotionAdaptationCompileInput {
+  readonly definition: BipedPetMotionAdaptationDefinition
+  readonly clipHash: string
+  readonly profileId: string
+  readonly characterHash: string
+  readonly characterHeight: number
+  readonly armReach: Readonly<{ left: number; right: number }>
+  readonly propRigs: Readonly<Record<string, StudioPropRigDefinition>>
+}
+
+export interface CompiledBipedPetMotionPhase extends BipedPetMotionPhase {
+  readonly fadeMs: number
+}
+
+export interface CompiledBipedPetWarpWindow extends BipedPetMotionWarpWindow {
+  readonly maxDistanceWorld: number
+}
+
+export interface CompiledBipedPetMotionConstraint extends BipedPetMotionConstraint {
+  readonly armReachWorld: number
+  readonly targetPoint: StudioPropRigPoint
+}
+
+export interface CompiledBipedPetMotionEffectCue extends BipedPetMotionEffectCue {
+  readonly points: readonly StudioPropRigPoint[]
+}
+
+export interface CompiledBipedPetMotionAdaptationPlan {
+  readonly key: string
+  readonly phases: readonly CompiledBipedPetMotionPhase[]
+  readonly warpWindows: readonly CompiledBipedPetWarpWindow[]
+  readonly constraints: readonly CompiledBipedPetMotionConstraint[]
+  readonly effectCues: readonly CompiledBipedPetMotionEffectCue[]
+  readonly diagnostics: readonly BipedPetMotionAdaptationDiagnostic[]
+}
+
+export interface SampledBipedPetMotionAdaptation {
+  readonly requestedTimeMs: number
+  readonly resolvedTimeMs: number
+  readonly activePhaseIds: readonly string[]
+  readonly constraintWeights: Readonly<Record<string, number>>
+  readonly activeEffectCueIds: readonly string[]
+}
+
 export const MAX_BIPED_PET_MOTION_ADAPTATION_PHASES = 16
 export const MAX_BIPED_PET_MOTION_ADAPTATION_WARP_WINDOWS = 32
 export const MAX_BIPED_PET_MOTION_ADAPTATION_CONSTRAINTS = 16
@@ -79,11 +129,17 @@ const MAX_DIAGNOSTICS = 128
 const MAX_WARP_DISTANCE = 4
 const MAX_WARP_TURN_RADIANS = Math.PI * 2
 const MAX_EFFECT_LIFETIME_MS = 2000
+const MOTION_ADAPTATION_FADE_MS = 120
+const MAX_COMPILED_PLAN_CACHE_ENTRIES = 64
+const MAX_CHARACTER_DIMENSION = 1000
 const PHASE_ROLES = new Set<BipedPetMotionPhaseRole>(['prepare', 'spin', 'handoff', 'sweep', 'takeoff', 'impact', 'recover'])
 const WARP_TARGETS = new Set<BipedPetMotionWarpTarget>(['stage-forward'])
 const CONSTRAINT_KINDS = new Set<BipedPetMotionConstraintKind>(['secondary-grip'])
 const LIMB_IDS = new Set<BipedPetMotionLimbId>(['arm.left', 'arm.right'])
 const EFFECT_KINDS = new Set<BipedPetMotionEffectCueKind>(['weapon-trail', 'impact-sparks', 'impact-ring'])
+const PROP_RIG_POINT_IDS = new Set<StudioPropRigPointId>(['primaryGrip', 'secondaryGrip', 'trailStart', 'trailEnd', 'impactPoint'])
+
+const compiledPlanCache = new Map<string, CompiledBipedPetMotionAdaptationPlan>()
 
 type AdaptationArrayField = 'phases' | 'warpWindows' | 'constraints' | 'effectCues'
 
@@ -511,5 +567,308 @@ export function normalizeBipedPetMotionAdaptation(
   return Object.freeze({
     value,
     diagnostics: Object.freeze(diagnostics.map(item => Object.freeze(item))),
+  })
+}
+
+function inferAdaptationDurationMs(definition: unknown): number {
+  try {
+    const source = safeRecord(definition)
+    if (!source) return 1200
+    const phases = Reflect.get(source, 'phases')
+    if (!Array.isArray(phases)) return 1200
+    const length = Math.min(
+      Number.isSafeInteger(Reflect.get(phases, 'length')) ? Reflect.get(phases, 'length') : 0,
+      MAX_BIPED_PET_MOTION_ADAPTATION_PHASES,
+    )
+    let maximumEndMs = 0
+    for (let index = 0; index < length; index += 1) {
+      const phase = safeRecord(Reflect.get(phases, index))
+      const endMs = phase ? Reflect.get(phase, 'endMs') : undefined
+      if (typeof endMs === 'number' && Number.isFinite(endMs)) maximumEndMs = Math.max(maximumEndMs, endMs)
+    }
+    return normalizeMotionDurationMs(maximumEndMs || 1200)
+  }
+  catch {
+    return 1200
+  }
+}
+
+function stablePlanIdentity(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
+  if (Array.isArray(value)) return `[${value.map(stablePlanIdentity).join(',')}]`
+  const record = value as Record<string, unknown>
+  return `{${Object.keys(record).sort(compareCodePoints).map(key => `${JSON.stringify(key)}:${stablePlanIdentity(record[key])}`).join(',')}}`
+}
+
+function planHash(identity: string): string {
+  let result = 2166136261
+  for (const character of identity) {
+    result ^= character.codePointAt(0)!
+    result = Math.imul(result, 16777619)
+  }
+  return `bpma-${(result >>> 0).toString(16).padStart(8, '0')}`
+}
+
+function freezeCompiledPoint(point: StudioPropRigPoint): StudioPropRigPoint {
+  return Object.freeze({
+    position: Object.freeze([...point.position]) as readonly [number, number, number],
+    rotation: Object.freeze([...point.rotation]) as StudioPropRigPoint['rotation'],
+  })
+}
+
+function readPositiveDimension(
+  value: unknown,
+  fallback: number,
+  id: string,
+  label: string,
+  diagnostics: BipedPetMotionAdaptationDiagnostic[],
+): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    warning(diagnostics, id, `${label}不是正有限数，已回退为 ${fallback}。`)
+    return fallback
+  }
+  const normalized = clamp(value, Number.MIN_VALUE, MAX_CHARACTER_DIMENSION)
+  if (normalized !== value) warning(diagnostics, `${id}-clamped`, `${label}已钳制到安全范围。`)
+  return normalized
+}
+
+function readCompileInput(input: BipedPetMotionAdaptationCompileInput): {
+  definition: unknown
+  clipHash: string
+  profileId: string
+  characterHash: string
+  characterHeight: number
+  armReach: { left: number; right: number }
+  propRigs?: Record<PropertyKey, unknown>
+  diagnostics: BipedPetMotionAdaptationDiagnostic[]
+} {
+  const diagnostics: BipedPetMotionAdaptationDiagnostic[] = []
+  const source = safeRecord(input)
+  if (!source) {
+    warning(diagnostics, 'motion-adaptation-compile-input-invalid', '动作适配计划输入不是对象，已使用安全空计划。')
+    return {
+      definition: undefined,
+      clipHash: 'unknown-clip',
+      profileId: 'unknown-profile',
+      characterHash: 'unknown-character',
+      characterHeight: 1,
+      armReach: { left: 1, right: 1 },
+      diagnostics,
+    }
+  }
+  let fields: Record<string, unknown>
+  try {
+    fields = Object.fromEntries([
+      'definition', 'clipHash', 'profileId', 'characterHash', 'characterHeight', 'armReach', 'propRigs',
+    ].map(field => [field, Reflect.get(source, field)]))
+  }
+  catch {
+    warning(diagnostics, 'motion-adaptation-compile-input-access-failed', '动作适配计划输入无法安全读取，已使用安全空计划。')
+    return {
+      definition: undefined,
+      clipHash: 'unknown-clip',
+      profileId: 'unknown-profile',
+      characterHash: 'unknown-character',
+      characterHeight: 1,
+      armReach: { left: 1, right: 1 },
+      diagnostics,
+    }
+  }
+  const textIdentity = (value: unknown, fallback: string, id: string, label: string) => {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    warning(diagnostics, id, `${label}无效，已使用安全身份。`)
+    return fallback
+  }
+  let leftReach: unknown
+  let rightReach: unknown
+  try {
+    const reach = safeRecord(fields.armReach)
+    leftReach = reach && Reflect.get(reach, 'left')
+    rightReach = reach && Reflect.get(reach, 'right')
+  }
+  catch {
+    warning(diagnostics, 'motion-adaptation-arm-reach-access-failed', '角色臂展无法安全读取，已使用安全尺寸。')
+  }
+  return {
+    definition: fields.definition,
+    clipHash: textIdentity(fields.clipHash, 'unknown-clip', 'motion-adaptation-clip-hash-invalid', 'Clip 哈希'),
+    profileId: textIdentity(fields.profileId, 'unknown-profile', 'motion-adaptation-profile-id-invalid', 'Profile 身份'),
+    characterHash: textIdentity(fields.characterHash, 'unknown-character', 'motion-adaptation-character-hash-invalid', '角色哈希'),
+    characterHeight: readPositiveDimension(fields.characterHeight, 1, 'motion-adaptation-character-height-invalid', '角色高度', diagnostics),
+    armReach: {
+      left: readPositiveDimension(leftReach, 1, 'motion-adaptation-left-arm-reach-invalid', '左臂展', diagnostics),
+      right: readPositiveDimension(rightReach, 1, 'motion-adaptation-right-arm-reach-invalid', '右臂展', diagnostics),
+    },
+    propRigs: safeRecord(fields.propRigs),
+    diagnostics,
+  }
+}
+
+function readPropRig(
+  propRigs: Record<PropertyKey, unknown> | undefined,
+  propInstanceId: string,
+  diagnostics: BipedPetMotionAdaptationDiagnostic[],
+): StudioPropRigDefinition {
+  let candidate: unknown
+  try {
+    candidate = propRigs && Object.hasOwn(propRigs, propInstanceId)
+      ? Reflect.get(propRigs, propInstanceId)
+      : undefined
+  }
+  catch {
+    warning(diagnostics, `motion-adaptation-prop-${propInstanceId}-access-failed`, `动作适配道具 ${propInstanceId} 无法安全读取，已关闭关联增强。`)
+  }
+  const normalized = normalizeStudioPropRig(candidate)
+  for (const diagnostic of normalized.diagnostics) {
+    warning(diagnostics, `motion-adaptation-prop-${propInstanceId}-${diagnostic.id}`, `道具 ${propInstanceId}：${diagnostic.message}`)
+  }
+  return normalized.value
+}
+
+function compiledPoint(
+  rig: StudioPropRigDefinition,
+  pointId: string,
+): StudioPropRigPoint | undefined {
+  if (!PROP_RIG_POINT_IDS.has(pointId as StudioPropRigPointId)) return undefined
+  return rig[pointId as StudioPropRigPointId]
+}
+
+/**
+ * 把规范化动作意图按当前角色和道具尺寸编译为可缓存的纯数值计划。
+ * 缺失语义点只移除依赖它的增强，基础动作、阶段和 Warp 继续可用。
+ */
+export function compileBipedPetMotionAdaptationPlan(
+  input: BipedPetMotionAdaptationCompileInput,
+): CompiledBipedPetMotionAdaptationPlan {
+  const safeInput = readCompileInput(input)
+  const normalized = normalizeBipedPetMotionAdaptation(
+    safeInput.definition,
+    inferAdaptationDurationMs(safeInput.definition),
+  )
+  const diagnostics = [...safeInput.diagnostics, ...normalized.diagnostics]
+  const definition = normalized.value
+  const propIds = [...new Set([
+    ...definition.constraints.map(item => item.propInstanceId),
+    ...definition.effectCues.map(item => item.propInstanceId),
+  ])].sort(compareCodePoints)
+  const rigs = new Map<string, StudioPropRigDefinition>()
+  for (const propInstanceId of propIds) {
+    rigs.set(propInstanceId, readPropRig(safeInput.propRigs, propInstanceId, diagnostics))
+  }
+
+  const phases = definition.phases.map((phase): CompiledBipedPetMotionPhase => Object.freeze({
+    ...phase,
+    fadeMs: Math.min(MOTION_ADAPTATION_FADE_MS, (phase.endMs - phase.startMs) / 2),
+  }))
+  const warpWindows = definition.warpWindows.map((window): CompiledBipedPetWarpWindow => Object.freeze({
+    ...window,
+    maxDistanceWorld: window.maxDistance * safeInput.characterHeight,
+  }))
+  const constraints = definition.constraints.flatMap((constraint): CompiledBipedPetMotionConstraint[] => {
+    const targetPoint = compiledPoint(rigs.get(constraint.propInstanceId)!, constraint.pointId)
+    if (!targetPoint) {
+      warning(
+        diagnostics,
+        `motion-adaptation-constraint-${constraint.id}-point-missing`,
+        `动作适配约束 ${constraint.id} 缺少道具语义点 ${constraint.pointId}，已关闭该约束。`,
+      )
+      return []
+    }
+    return [Object.freeze({
+      ...constraint,
+      armReachWorld: constraint.limbId === 'arm.left' ? safeInput.armReach.left : safeInput.armReach.right,
+      targetPoint: freezeCompiledPoint(targetPoint),
+    })]
+  })
+  const effectCues = definition.effectCues.flatMap((cue): CompiledBipedPetMotionEffectCue[] => {
+    const rig = rigs.get(cue.propInstanceId)!
+    const points = cue.pointIds.map(pointId => compiledPoint(rig, pointId))
+    if (points.some(point => !point)) {
+      warning(
+        diagnostics,
+        `motion-adaptation-effect-${cue.id}-point-missing`,
+        `动作适配特效 ${cue.id} 缺少所需道具语义点，已关闭该特效。`,
+      )
+      return []
+    }
+    return [Object.freeze({
+      ...cue,
+      pointIds: Object.freeze([...cue.pointIds]),
+      points: Object.freeze(points.map(point => freezeCompiledPoint(point!))),
+    })]
+  })
+  const identity = stablePlanIdentity({
+    clipHash: safeInput.clipHash,
+    profileId: safeInput.profileId,
+    characterHash: safeInput.characterHash,
+    characterHeight: safeInput.characterHeight,
+    armReach: safeInput.armReach,
+    definition,
+    propRigs: propIds.map(propInstanceId => ({ propInstanceId, rig: rigs.get(propInstanceId) })),
+    diagnostics,
+  })
+  const cached = compiledPlanCache.get(identity)
+  if (cached) {
+    compiledPlanCache.delete(identity)
+    compiledPlanCache.set(identity, cached)
+    return cached
+  }
+  const plan = Object.freeze({
+    key: planHash(identity),
+    phases: Object.freeze(phases),
+    warpWindows: Object.freeze(warpWindows),
+    constraints: Object.freeze(constraints),
+    effectCues: Object.freeze(effectCues),
+    diagnostics: Object.freeze(diagnostics.map(item => Object.freeze({ ...item }))),
+  })
+  compiledPlanCache.set(identity, plan)
+  if (compiledPlanCache.size > MAX_COMPILED_PLAN_CACHE_ENTRIES) {
+    const oldestKey = compiledPlanCache.keys().next().value
+    if (oldestKey !== undefined) compiledPlanCache.delete(oldestKey)
+  }
+  return plan
+}
+
+function smoothstep(progress: number): number {
+  const value = clamp(progress, 0, 1)
+  return value * value * (3 - 2 * value)
+}
+
+function sampledPhaseWeight(phase: CompiledBipedPetMotionPhase, timeMs: number): number {
+  if (timeMs < phase.startMs || timeMs > phase.endMs) return 0
+  if (phase.fadeMs <= 0) return phase.intensity
+  const fadeIn = smoothstep((timeMs - phase.startMs) / phase.fadeMs)
+  const fadeOut = smoothstep((phase.endMs - timeMs) / phase.fadeMs)
+  return phase.intensity * Math.min(fadeIn, fadeOut)
+}
+
+/** 在调用方已经解析循环时间后采样阶段、约束权重与特效提示；函数不持有播放状态。 */
+export function sampleBipedPetMotionAdaptation(
+  plan: CompiledBipedPetMotionAdaptationPlan,
+  requestedTimeMs: number,
+  resolvedTimeMs: number,
+): SampledBipedPetMotionAdaptation {
+  const safeRequestedTimeMs = typeof requestedTimeMs === 'number' && Number.isFinite(requestedTimeMs) ? requestedTimeMs : 0
+  const safeResolvedTimeMs = typeof resolvedTimeMs === 'number' && Number.isFinite(resolvedTimeMs) ? resolvedTimeMs : 0
+  const phaseWeights = new Map<string, number>()
+  const activePhaseIds: string[] = []
+  for (const phase of plan.phases) {
+    if (safeResolvedTimeMs < phase.startMs || safeResolvedTimeMs > phase.endMs) continue
+    activePhaseIds.push(phase.id)
+    phaseWeights.set(phase.id, sampledPhaseWeight(phase, safeResolvedTimeMs))
+  }
+  const constraintWeights = Object.fromEntries(plan.constraints.flatMap((constraint) => {
+    if (!phaseWeights.has(constraint.phaseId)) return []
+    return [[constraint.id, constraint.weight * phaseWeights.get(constraint.phaseId)!]]
+  }))
+  const activeEffectCueIds = plan.effectCues
+    .filter(cue => phaseWeights.has(cue.phaseId))
+    .map(cue => cue.id)
+  return Object.freeze({
+    requestedTimeMs: safeRequestedTimeMs,
+    resolvedTimeMs: safeResolvedTimeMs,
+    activePhaseIds: Object.freeze(activePhaseIds),
+    constraintWeights: Object.freeze(constraintWeights),
+    activeEffectCueIds: Object.freeze(activeEffectCueIds),
   })
 }

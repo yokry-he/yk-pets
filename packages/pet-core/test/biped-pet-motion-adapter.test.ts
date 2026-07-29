@@ -7,10 +7,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   adaptCloudFoxPoseToBipedPet,
+  BIPED_PET_MOTION_ADAPTATION_NAMESPACE,
   BIPED_PET_MOTION_ADAPTER_ID,
   BIPED_PET_RIG_PROFILE,
   CLOUD_FOX_SEMANTIC_RIG_ID,
   compileBipedPetMotion,
+  compileBipedPetMotionAdaptationPlan,
   createStudioMotionAsset,
   createNeutralCloudFoxPoseValues,
   motionEulerToQuaternion,
@@ -148,6 +150,98 @@ test('动作资产会确定性编译为真实骨骼 Quaternion Clip', () => {
   assert.ok(first.boneTracks.some(item => item.boneId === 'pelvis'))
   assert.ok(first.boneTracks.some(item => item.boneId === 'chest'))
   assert.deepEqual(first.rootPositionTrack.map(item => item.timeMs), [0, 1000])
+})
+
+test('动作适配扩展会编入 Clip、参与哈希且旧采样调用保持兼容', () => {
+  const adaptation = {
+    phases: [{ id: 'sweep', role: 'sweep', startMs: 100, endMs: 400, intensity: 1 }],
+    warpWindows: [{
+      id: 'sweep-warp', phaseId: 'sweep', target: 'stage-forward', translation: true, rotation: false,
+      maxDistance: .4, maxTurnRadians: 0,
+    }],
+    constraints: [],
+    effectCues: [],
+  }
+  const create = (definition?: unknown, loopMode: 'once' | 'loop' | 'ping-pong' = 'loop') => createStudioMotionAsset({
+    id: 'motion-adaptation-clip',
+    nameZh: '动作适配编译',
+    nameEn: 'Adaptation compilation',
+    durationMs: 1000,
+    loopMode,
+    extensions: definition === undefined ? {} : { [BIPED_PET_MOTION_ADAPTATION_NAMESPACE]: definition },
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  const clean = compileBipedPetMotion(create())
+  const clip = compileBipedPetMotion(create(adaptation))
+  const changed = compileBipedPetMotion(create({
+    ...adaptation,
+    phases: [{ ...adaptation.phases[0]!, id: 'sweep-changed' }],
+    warpWindows: [],
+  }))
+
+  assert.deepEqual(clean.adaptationDefinition, { phases: [], warpWindows: [], constraints: [], effectCues: [] })
+  assert.deepEqual(clip.adaptationDefinition.phases.map(item => item.id), ['sweep'])
+  assert.ok(Object.isFrozen(clip.adaptationDefinition.phases[0]))
+  assert.notEqual(clip.hash, clean.hash)
+  assert.notEqual(clip.hash, changed.hash)
+  assert.equal(sampleBipedPetMotion(clip, 1200).adaptation, undefined)
+
+  const adaptationPlan = compileBipedPetMotionAdaptationPlan({
+    definition: clip.adaptationDefinition,
+    clipHash: clip.hash,
+    profileId: clip.profileId,
+    characterHash: 'fixture-character',
+    characterHeight: 4,
+    armReach: { left: 1, right: 1 },
+    propRigs: {},
+  })
+  const loop = sampleBipedPetMotion(clip, 1200, { adaptationPlan })
+  assert.equal(loop.resolvedTimeMs, 200)
+  assert.deepEqual(loop.adaptation, {
+    requestedTimeMs: 1200,
+    resolvedTimeMs: 200,
+    activePhaseIds: ['sweep'],
+    constraintWeights: {},
+    activeEffectCueIds: [],
+  })
+
+  const pingPongClip = compileBipedPetMotion(create(adaptation, 'ping-pong'))
+  const pingPongPlan = compileBipedPetMotionAdaptationPlan({
+    definition: pingPongClip.adaptationDefinition,
+    clipHash: pingPongClip.hash,
+    profileId: pingPongClip.profileId,
+    characterHash: 'fixture-character',
+    characterHeight: 4,
+    armReach: { left: 1, right: 1 },
+    propRigs: {},
+  })
+  const pingPong = sampleBipedPetMotion(pingPongClip, 1800, { adaptationPlan: pingPongPlan })
+  assert.equal(pingPong.resolvedTimeMs, 200)
+  assert.equal(pingPong.direction, -1)
+  assert.deepEqual(pingPong.adaptation?.activePhaseIds, ['sweep'])
+})
+
+test('损坏动作适配命名空间只增加 warning 并保留可采样基础动作', () => {
+  const damagedAdaptation = new Proxy({}, {
+    get() {
+      throw new Error('blocked adaptation getter')
+    },
+  })
+  const clip = compileBipedPetMotion(createStudioMotionAsset({
+    id: 'motion-damaged-adaptation',
+    nameZh: '损坏动作适配',
+    nameEn: 'Damaged adaptation',
+    durationMs: 1000,
+    extensions: { [BIPED_PET_MOTION_ADAPTATION_NAMESPACE]: damagedAdaptation },
+    createdAt: 1,
+    updatedAt: 1,
+  }))
+
+  assert.equal(clip.status, 'ready')
+  assert.deepEqual(clip.adaptationDefinition, { phases: [], warpWindows: [], constraints: [], effectCues: [] })
+  assert.ok(clip.diagnostics.some(item => item.id.includes('motion-adaptation')))
+  assert.doesNotThrow(() => sampleBipedPetMotion(clip, 300))
 })
 
 test('Clip 采样使用动作循环时间、Quaternion 最短路径和根位移线性插值', () => {

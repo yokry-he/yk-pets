@@ -481,3 +481,12 @@
 - 最长轴必须比次长轴至少大 `1.35` 倍。可证明时按主轴生成副握点、两端轨迹点和命中点并返回 `derived`；球体、粒子、隐藏长轴、空几何、断裂层级或近似等轴道具返回 `primary-only`，不会伪造双手约束。
 - 显式扩展优先于自动推导；扩展 getter、字段 Proxy、非有限位置和无效 Quaternion 均局部隔离。零 Quaternion 修复为单位旋转并给出 warning；显式其他点不完整但主握点有效时保留显式主握点，主握点本身损坏时回退资产 `grip`，避免错误覆盖成原点。诊断最多 `32` 项并全部冻结。
 - TDD 首轮确认两个公共入口缺失时新增用例失败、原有 `225` 项继续通过；第二轮确认显式优先、旋转圆柱和退化输入先失败；自审回归又确认损坏主握点错误覆盖资产锚点。最终 `corepack pnpm --filter @yk-pets/pet-core test` 为 `232/232`，`pet-core` 类型检查与 `git diff --check` 均 exit 0。机器状态新增 `bipedPetPropRigContractComplete=true`；下一批为尺寸化动作适配计划与动作样本。
+
+## 48. 尺寸化动作适配计划与采样批次
+
+- `compileBipedPetMotionAdaptationPlan` 现在把规范化编舞意图按角色高度、左右臂展和道具 Rig 编译为框架无关只读计划。Warp 的归一化距离会转换为 `maxDistanceWorld`，副手约束携带对应臂展与已复制的目标语义点，武器特效提示携带已复制的轨迹或命中点；缺少语义点只关闭依赖它的约束或特效，不影响基础阶段与 Warp。
+- 编译计划使用最多 `64` 项的 LRU 风格有界缓存。完整身份包含 Clip 哈希、Profile ID、角色哈希、角色高度、左右臂展、规范化定义、实际引用的道具身份/五点数据和确定性诊断；相同值输入复用同一冻结计划，Clip、Profile、体型或道具几何变化都会产生不同计划键，避免把某个体型的可达性结果串给另一个体型。
+- `sampleBipedPetMotionAdaptation` 是无播放状态的纯数值采样器。阶段边界使用固定上限 `120ms` 的 `smoothstep` 淡入淡出，极短阶段自动缩短到半段时长；输出保留 requested 与 resolved 两种时间，并给出当前阶段、约束权重和活动特效提示，因此暂停重复帧、回拖、24/30/60FPS、loop 与 ping-pong 都由同一解析时间得到确定结果。
+- `BipedPetQuaternionClip` 新增递归冻结的 `adaptationDefinition`。编译器从 `yk-pets/biped-motion-adaptation/v1` 安全读取并合并中文 warning；异常 Proxy 或损坏字段只关闭增强。有效适配参与 Clip 哈希；空适配维持旧资产历史哈希，不会因为新增兼容字段使全部旧 Clip 身份失效。
+- `sampleBipedPetMotion` 新增可选第三参数 `{ adaptationPlan }`，仅在调用方提供与当前角色/道具匹配的已编译计划时返回 `adaptation`。原有两参数调用不创建计划、不改变返回行为；blocked Clip 继续返回安全空姿态。
+- TDD 首轮在原有 `232` 项全部通过的同时稳定得到三个“计划编译入口不存在”失败；Clip 接入轮又稳定得到两个 `adaptationDefinition` 缺失失败。完成实现后 `corepack pnpm --filter @yk-pets/pet-core test` 为 `237/237`，`corepack pnpm --filter @yk-pets/pet-core typecheck` 与 `git diff --check` 均 exit 0。机器状态新增 `bipedPetMotionAdaptationPlanComplete=true`；下一批为复杂双足副手持械约束与动作控制器挂点。

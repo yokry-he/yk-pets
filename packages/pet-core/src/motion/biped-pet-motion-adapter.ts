@@ -10,6 +10,14 @@ import { normalizeMotionAsset, type StudioMotionAssetV2 } from './motion-asset'
 import { normalizeMotionDurationMs, resolveMotionTime, type ResolvedMotionTime, type StudioMotionLoopMode } from './motion-time'
 import { IDENTITY_MOTION_QUATERNION, motionEulerToQuaternion, slerpMotionQuaternion, type MotionQuaternion } from './quaternion-motion'
 import {
+  BIPED_PET_MOTION_ADAPTATION_NAMESPACE,
+  normalizeBipedPetMotionAdaptation,
+  sampleBipedPetMotionAdaptation,
+  type BipedPetMotionAdaptationDefinition,
+  type CompiledBipedPetMotionAdaptationPlan,
+  type SampledBipedPetMotionAdaptation,
+} from './biped-pet-motion-adaptation'
+import {
   normalizeBipedPetRootMotion,
   type BipedPetRootMotionDefinition,
 } from './biped-pet-root-motion'
@@ -66,6 +74,7 @@ export interface BipedPetQuaternionClip {
   status: 'ready' | 'blocked'
   hash: string
   rootMotion: BipedPetRootMotionDefinition
+  adaptationDefinition: BipedPetMotionAdaptationDefinition
   boneTracks: readonly BipedPetBoneQuaternionTrack[]
   rootPositionTrack: readonly BipedPetRootPositionKeyframe[]
   contacts: readonly BipedPetMotionContactCandidate[]
@@ -103,6 +112,11 @@ export interface SampledBipedPetMotion {
   rootPosition: RigVector3
   activeContacts: readonly string[]
   contactStates: readonly SampledBipedPetContactState[]
+  adaptation?: SampledBipedPetMotionAdaptation
+}
+
+export interface BipedPetMotionSampleOptions {
+  readonly adaptationPlan?: CompiledBipedPetMotionAdaptationPlan
 }
 
 export interface SampledBipedPetContactState {
@@ -325,6 +339,35 @@ function readBipedMotionExtensionSource(asset: StudioMotionAssetV2): {
   }
 }
 
+function readBipedMotionAdaptation(asset: StudioMotionAssetV2): {
+  definition: BipedPetMotionAdaptationDefinition
+  diagnostics: BipedPetMotionDiagnostic[]
+} {
+  let input: unknown
+  try {
+    const extensions = asset.extensions
+    if (extensions !== undefined && Object.hasOwn(extensions, BIPED_PET_MOTION_ADAPTATION_NAMESPACE)) {
+      input = Reflect.get(extensions, BIPED_PET_MOTION_ADAPTATION_NAMESPACE)
+    }
+  }
+  catch {
+    const fallback = normalizeBipedPetMotionAdaptation(undefined, asset.durationMs)
+    return {
+      definition: fallback.value,
+      diagnostics: [{
+        id: 'motion-adaptation-extension-access-failed',
+        severity: 'warning',
+        message: '双足萌宠动作适配扩展无法安全读取，已关闭增强。',
+      }],
+    }
+  }
+  const normalized = normalizeBipedPetMotionAdaptation(input, asset.durationMs)
+  return {
+    definition: normalized.value,
+    diagnostics: normalized.diagnostics.map(item => ({ ...item })),
+  }
+}
+
 function readExtensionField(
   source: Record<PropertyKey, unknown>,
   field: 'rootMotion' | 'contacts' | 'events',
@@ -517,9 +560,26 @@ function sameQuaternion(left: MotionQuaternion, right: MotionQuaternion) {
   ) > 1 - 1e-12
 }
 
+function hasMotionAdaptation(definition: BipedPetMotionAdaptationDefinition): boolean {
+  return Boolean(
+    definition.phases.length
+    || definition.warpWindows.length
+    || definition.constraints.length
+    || definition.effectCues.length,
+  )
+}
+
+function quaternionClipHashValue<T extends { adaptationDefinition: BipedPetMotionAdaptationDefinition }>(value: T): unknown {
+  if (hasMotionAdaptation(value.adaptationDefinition)) return value
+  // 空适配是旧资产的兼容默认值；不把新增空字段写入哈希，避免无意改变历史 Clip 身份。
+  const { adaptationDefinition: _emptyAdaptation, ...legacyValue } = value
+  return legacyValue
+}
+
 function blockedMotionClip(
   asset: StudioMotionAssetV2,
   profile: CharacterRigProfile,
+  adaptationDefinition: BipedPetMotionAdaptationDefinition,
   diagnostics: readonly BipedPetMotionDiagnostic[],
 ): BipedPetQuaternionClip {
   const value = {
@@ -531,13 +591,14 @@ function blockedMotionClip(
     loopMode: asset.loopMode,
     status: 'blocked' as const,
     rootMotion: canonicalInPlaceRootMotion(asset.durationMs),
+    adaptationDefinition,
     boneTracks: [],
     rootPositionTrack: [],
     contacts: [],
     events: [],
     diagnostics: diagnostics.map(item => ({ ...item })),
   }
-  return { ...value, hash: motionHash({ ...value, profileId: profile.id }) }
+  return { ...value, hash: motionHash(quaternionClipHashValue({ ...value, profileId: profile.id })) }
 }
 
 /** 将完整语义动作资产编译为当前真实骨骼集合可消费的确定性 Quaternion Clip。 */
@@ -555,6 +616,8 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
   const rootMotion = readRootMotionDefinition(asset, extension.source)
   diagnostics.push(...rootMotion.diagnostics)
   const compiledRootMotion = freezeRootMotionDefinition(rootMotion.value, asset.durationMs)
+  const adaptation = readBipedMotionAdaptation(asset)
+  diagnostics.push(...adaptation.diagnostics)
   const profileDiagnostics = validateRigProfile(profile)
   if (profile.id !== 'biped-pet/v1' || profileDiagnostics.length) {
     diagnostics.push(...profileDiagnostics.map((message, index): BipedPetMotionDiagnostic => ({
@@ -562,7 +625,7 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
       severity: 'error',
       message: `双足萌宠动作 Profile 无法安全编译：${message}`,
     })))
-    return blockedMotionClip(asset, profile, diagnostics)
+    return blockedMotionClip(asset, profile, adaptation.definition, diagnostics)
   }
 
   const times = [...new Set([0, asset.durationMs, ...asset.tracks.flatMap(track => track.keyframes.map(keyframe => keyframe.timeMs))])]
@@ -594,7 +657,7 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
     }
   }
   if (diagnostics.some(item => item.severity === 'error')) {
-    return blockedMotionClip(asset, profile, diagnostics)
+    return blockedMotionClip(asset, profile, adaptation.definition, diagnostics)
   }
 
   const value = {
@@ -606,13 +669,14 @@ export function compileBipedPetMotion(input: unknown, target: BipedPetMotionComp
     loopMode: asset.loopMode,
     status: 'ready' as const,
     rootMotion: compiledRootMotion,
+    adaptationDefinition: adaptation.definition,
     boneTracks: [...boneKeyframes].map(([boneId, keyframes]) => ({ boneId, keyframes })),
     rootPositionTrack,
     contacts: metadata.contacts,
     events: metadata.events,
     diagnostics,
   }
-  return { ...value, hash: motionHash(value) }
+  return { ...value, hash: motionHash(quaternionClipHashValue(value)) }
 }
 
 function sampleVectorTrack(track: readonly BipedPetRootPositionKeyframe[], timeMs: number): RigVector3 {
@@ -698,7 +762,11 @@ function rootMotionForSample(clip: BipedPetQuaternionClip): BipedPetRootMotionDe
 }
 
 /** 在任意时间采样 Clip；blocked 输入始终返回可直接忽略的空姿态。 */
-export function sampleBipedPetMotion(clip: BipedPetQuaternionClip, timeMs: number): SampledBipedPetMotion {
+export function sampleBipedPetMotion(
+  clip: BipedPetQuaternionClip,
+  timeMs: number,
+  options: BipedPetMotionSampleOptions = {},
+): SampledBipedPetMotion {
   const resolved = resolveMotionTime(timeMs, clip.durationMs, clip.loopMode)
   const identity = {
     sourceMotionId: clip.sourceMotionId,
@@ -713,11 +781,15 @@ export function sampleBipedPetMotion(clip: BipedPetQuaternionClip, timeMs: numbe
   }
   if (clip.status !== 'ready') return { ...identity, bones: [], rootPosition: [0, 0, 0], activeContacts: [], contactStates: [] }
   const contactStates = sampleContactStates(clip.contacts, resolved.resolvedTimeMs)
+  const adaptation = options.adaptationPlan
+    ? sampleBipedPetMotionAdaptation(options.adaptationPlan, resolved.requestedTimeMs, resolved.resolvedTimeMs)
+    : undefined
   return {
     ...identity,
     bones: clip.boneTracks.map(track => ({ boneId: track.boneId, rotation: sampleBoneTrack(track, resolved.resolvedTimeMs) })),
     rootPosition: sampleVectorTrack(clip.rootPositionTrack, resolved.resolvedTimeMs),
     activeContacts: contactStates.filter(contact => contact.weight > 0).map(contact => contact.contactId),
     contactStates,
+    ...(adaptation ? { adaptation } : {}),
   }
 }
