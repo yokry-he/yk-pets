@@ -115,6 +115,7 @@
     "hybridIkLegacyHistoryMigrationComplete": true,
     "bipedPetHybridRootMotionVfxDesignComplete": true,
     "bipedPetHybridRootMotionVfxPlanComplete": true,
+    "bipedPetMotionAdaptationContractComplete": true,
     "bipedPetProductionQuadrupedProfileComplete": false,
     "bipedPetProductionMechProfileComplete": false,
     "bipedPetHighDetailTopologyComplete": false,
@@ -252,7 +253,8 @@
     "biped-pet-root-motion-three-runtime",
     "biped-pet-motion-vfx-pool",
     "biped-pet-root-motion-vfx-renderer-settings",
-    "biped-pet-root-motion-vfx-phase-delivery"
+    "biped-pet-root-motion-vfx-phase-delivery",
+    "biped-pet-motion-adaptation-contract"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

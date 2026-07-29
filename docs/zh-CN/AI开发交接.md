@@ -465,3 +465,11 @@
 - 阶段自动交付门禁固定为根目录 `typecheck`、`test`、Playground 生产构建、文档门禁、AI 交接门禁、`git diff --check`，以及基于 `agent/yk-pets-rebrand-v0610` 与当前 HEAD 的模拟 Pull Request 历史门禁。真实结果必须来自本次 fresh 命令输出；结构态 AI 检查不能冒充 PR 历史检查，浏览器 pending 也不能被自动结果替代。
 - 模拟历史门禁在收口时复现出 4 个早期 Root Motion 数值修复提交只更新交接、漏更 `.ai/project-state.json`。本次没有使用通配放行：门禁和机器状态逐项锁定 `ad6ffeb7a5797cfb4df70b7b53e6b21b17d1c77e`、`b1975536849713b131220b3530521cf8b0f423ef`、`2ef7f4055667cd13635343e13570039abeba35d8`、`b9b75560cc592417ce58af38efbe0b43f0c793cb`，缺失类型只能是 `project-state`，且只有同时更新机器状态与双语交接的已推送收口 `a52c2381da4b0ec8b474dcfb32d5eb32b1d16f89` 位于当前历史时才生效。事件 base 也必须精确等于 `agent/yk-pets-rebrand-v0610`。
 - 2026-07-29 在窄屏修复和双视口复验之后重新 fresh 执行完整自动验证：根 `typecheck`、根 `test`、Playground build、文档、结构态 AI、diff 和上述真实 PR 事件门禁全部 exit 0；`pet-core` 220/220、Local Agent 2/2。构建保留既有 Nuxt sourcemap、VueUse `PURE` 注释位置和超过 500 kB chunk 警告，没有把警告隐瞒为“纯净输出”，也没有把它们误报成失败。
+
+## 46. 高级编舞动作适配领域契约批次
+
+- 新增版本化命名空间 `yk-pets/biped-motion-adaptation/v1`。框架无关定义明确区分表演阶段、Motion/Pose Warp、主副手约束和武器特效提示；当前阶段只声明数据所有权与安全边界，尚未把这些数据编入 Quaternion Clip，也未接入 Three renderer。
+- 四类输入预算分别固定为阶段 `16`、Warp `32`、约束 `16`、特效提示 `32`。阶段时间限制在规范化动作时长内，强度、Warp 距离/转角、约束权重、特效阈值/寿命均钳制到有限安全范围；全部身份按 Unicode code point 排序，重复 ID 保留首个合法项。
+- Warp、约束和特效必须引用预算内实际保留的阶段。`weapon-trail` 固定使用两个不同语义点，`impact-sparks` 与 `impact-ring` 固定使用一个语义点；引用缺失、点数量错误或未知枚举只丢弃对应增强，不影响原动作关键帧。
+- 顶层对象、四类数组、单项字段与特效点数组均隔离 Proxy/getter 异常。输出定义、嵌套条目、语义点数组和诊断全部递归冻结；单次诊断最多 `128` 项且使用有界中文 warning，不向调用方抛出损坏持久化数据。
+- TDD 首轮确认公共入口缺失时新增合法用例单独失败、原有 `220` 项继续通过；第二轮确认重复/排序、引用、Proxy 和预算四组用例先失败。完成实现后 `corepack pnpm --filter @yk-pets/pet-core test` 为 `225/225`，`corepack pnpm --filter @yk-pets/pet-core typecheck` 与 `git diff --check` 均 exit 0。机器状态新增 `bipedPetMotionAdaptationContractComplete=true`；下一批为道具动作 Rig 语义点契约。
