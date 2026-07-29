@@ -498,3 +498,12 @@
 - 动作控制器新增受控 `beforeLegIk` hook，严格位于 `Balance → 第一次 updateMatrixWorld` 之后、腿部 IK 之前。相同 Clip、requested time 和权重的暂停重复帧继续冻结完整显示姿态，因此不会重复求解副手；hook 的任意抛出值不被吞掉，交给 renderer 的同步故障边界统一 reset/重建。
 - 腕部承担少量握持朝向预对齐，手掌承担剩余朝向；位置求解、腕掌朝向共享有界累计角修正。执行失败会尽力回滚本帧左臂 Quaternion，`reset()` 恢复构造时姿态；`dispose()` 即使状态检查或矩阵更新抛出 `Error`、`undefined` 等任意值，也会释放单写入令牌、封存旧实例并聚合中文上下文，二次释放幂等。
 - TDD 首轮稳定得到新模块 `ERR_MODULE_NOT_FOUND`。完成后定向运行时测试覆盖柔和、运动、圆润、修长四种真实配方、可达与不可达握点、段长/道具矩阵所有权、重复暂停帧、重复控制器、释放后重建以及故障注入；`corepack pnpm run test:studio-complex-biped-root-motion-runtime`、Playground 类型检查、静态顺序/所有权门禁与 `git diff --check` 均通过。机器状态新增 `bipedPetSecondaryGripRuntimeComplete=true`；下一批为确定性武器轨迹与命中特效。
+
+## 50. 确定性持械轨迹与命中特效批次
+
+- `sampleBipedPetWeaponVfxSignals` 只读取相邻请求帧中已经转换到 renderer/VFX 共同父级坐标系的道具语义点。轨迹按全局请求时间每 `40ms` 取样并线性插值真实 `trailStart/trailEnd`；命中火花和冲击环只在 `impactPoint` 真实向下穿越地面且速度严格超过提示阈值时发出。信号身份包含 Clip、提示、穿越时间和序号，位置与时间做稳定数值规范，因此 24/30/60FPS 得到相同身份、时间和坐标。
+- 首帧、暂停同帧、回拖、Clip 切换、blocked、非有限坐标、异常 Proxy 和无法安全离散的巨大时间都返回冻结空信号；单帧最多处理 `32` 个提示并输出 `64` 个信号，巨大帧间隔不会形成无界循环。输出信号和嵌套点数组递归冻结，不与输入共享可变引用。
+- 新增 `createComplexBipedWeaponVfxController`，只消费动作请求时间，不读取 `Date.now/performance.now`，不创建 RAF。轨迹段、命中火花、冲击环固定池容量分别为 `24/32/8`，总计 `64`；轨迹与冲击环复用 Mesh/Geometry，火花使用单个 `InstancedMesh`，每次命中最多激活 `16` 粒火花。池满按最老激活序公平复用，近期信号账本固定 `512` 项并额外检查活动槽，暂停重复信号不会再次分配。
+- 每帧只根据 `requestedTimeMs` 计算衰减、轨迹姿态、火花抛散和冲击环扩张；回拖和 `reset()` 清空活动槽及去重账本但保留所有 Three/GPU 资源。每种效果独立初始化，单类 Geometry/Material/挂载失败只将该类列为 unavailable；默认资源和工厂 provisional 资源都按对象身份管理，跨类共享时不会重复释放。
+- `dispose()` 在释放前先用 `disposing` 封存同步重入，再对活动槽、唯一 Geometry、唯一 Material、自有子节点和父级逐项尽力清理。任意资源抛出 `Error`、`undefined` 等值都会进入中文聚合且不阻断后续资源，旧实例最终封存、父级解绑、二次释放幂等。
+- TDD 信号轮先在原有 `237` 项保持通过时得到两个公共入口缺失失败；对象池轮稳定得到 `ERR_MODULE_NOT_FOUND: complex-biped-weapon-vfx.ts`。完成后 pet-core 为 `240/240`，定向 Three 运行时测试、Playground 类型检查、40ms/24-30-60FPS/池容量/故障释放静态门禁与 `git diff --check` 均通过。机器状态新增 `bipedPetWeaponMotionVfxComplete=true`；下一批为道具句柄与 renderer 生命周期接线。

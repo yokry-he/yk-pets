@@ -84,6 +84,36 @@ type MotionAdaptationSampler = (
   activeEffectCueIds: readonly string[]
 }
 
+type WeaponVfxFrame = {
+  clipHash: string
+  requestedTimeMs: number
+  status: 'ready' | 'blocked'
+  groundY: number
+  pointsByCueId: Readonly<Record<string, readonly (readonly [number, number, number])[]>>
+}
+
+type WeaponVfxCue = {
+  id: string
+  kind: 'weapon-trail' | 'impact-sparks' | 'impact-ring'
+  threshold: number
+  lifetimeMs: number
+  points: readonly unknown[]
+}
+
+type WeaponVfxSignalSampler = (
+  previousFrame: WeaponVfxFrame | undefined,
+  currentFrame: WeaponVfxFrame,
+  activeCues: readonly WeaponVfxCue[],
+) => readonly {
+  id: string
+  cueId: string
+  kind: WeaponVfxCue['kind']
+  requestedTimeMs: number
+  strength: number
+  lifetimeMs: number
+  points: readonly (readonly [number, number, number])[]
+}[]
+
 function compileMotionAdaptationPlan(input: Parameters<MotionAdaptationPlanCompiler>[0]) {
   const compiler = Reflect.get(petCore, 'compileBipedPetMotionAdaptationPlan')
   assert.equal(typeof compiler, 'function', 'compileBipedPetMotionAdaptationPlan 应从 pet-core 公共入口导出')
@@ -98,6 +128,16 @@ function sampleMotionAdaptation(
   const sampler = Reflect.get(petCore, 'sampleBipedPetMotionAdaptation')
   assert.equal(typeof sampler, 'function', 'sampleBipedPetMotionAdaptation 应从 pet-core 公共入口导出')
   return (sampler as MotionAdaptationSampler)(plan, requestedTimeMs, resolvedTimeMs)
+}
+
+function sampleWeaponVfxSignals(
+  previousFrame: WeaponVfxFrame | undefined,
+  currentFrame: WeaponVfxFrame,
+  activeCues: readonly WeaponVfxCue[],
+) {
+  const sampler = Reflect.get(petCore, 'sampleBipedPetWeaponVfxSignals')
+  assert.equal(typeof sampler, 'function', 'sampleBipedPetWeaponVfxSignals 应从 pet-core 公共入口导出')
+  return (sampler as WeaponVfxSignalSampler)(previousFrame, currentFrame, activeCues)
 }
 
 function completeStaffRig(axisLength = 1.6) {
@@ -400,4 +440,94 @@ test('适配采样使用 120ms smoothstep 淡变且暂停、回拖和帧率无�
   assert.deepEqual(frameSamples[0], frameSamples[1])
   assert.deepEqual(frameSamples[1], frameSamples[2])
   assert.deepEqual(sampleMotionAdaptation(plan, 90, 90).activePhaseIds, [])
+})
+
+test('持械特效只由真实端点速度和向下穿越地面生成确定信号', () => {
+  const cues: WeaponVfxCue[] = [
+    { id: 'trail', kind: 'weapon-trail', threshold: .25, lifetimeMs: 240, points: [{}, {}] },
+    { id: 'sparks', kind: 'impact-sparks', threshold: .25, lifetimeMs: 360, points: [{}] },
+    { id: 'ring', kind: 'impact-ring', threshold: .25, lifetimeMs: 480, points: [{}] },
+  ]
+  const previous: WeaponVfxFrame = {
+    clipHash: 'staff-combo', requestedTimeMs: 0, status: 'ready', groundY: 0,
+    pointsByCueId: {
+      trail: [[0, .5, 0], [1, .5, 0]],
+      sparks: [[1, .4, 0]],
+      ring: [[1, .4, 0]],
+    },
+  }
+  const current: WeaponVfxFrame = {
+    clipHash: 'staff-combo', requestedTimeMs: 40, status: 'ready', groundY: 0,
+    pointsByCueId: {
+      trail: [[.4, .5, 0], [1.4, .5, 0]],
+      sparks: [[1, 0, 0]],
+      ring: [[1, 0, 0]],
+    },
+  }
+
+  const first = sampleWeaponVfxSignals(previous, current, cues)
+  assert.deepEqual(first.map(item => item.kind), ['weapon-trail', 'impact-sparks', 'impact-ring'])
+  assert.ok(first.every(item => item.id.includes('staff-combo') && item.strength > 0 && item.strength <= 1))
+  assert.deepEqual(sampleWeaponVfxSignals(current, current, cues), [])
+  assert.deepEqual(sampleWeaponVfxSignals(current, previous, cues), [])
+  assert.deepEqual(sampleWeaponVfxSignals(undefined, current, cues), [])
+  assert.deepEqual(sampleWeaponVfxSignals(previous, { ...current, status: 'blocked' }, cues), [])
+  assert.ok(Object.isFrozen(first) && first.every(item => Object.isFrozen(item) && Object.isFrozen(item.points)))
+})
+
+test('持械轨迹固定 40ms 采样且在 24/30/60FPS 下产生相同身份和位置', () => {
+  const cues: WeaponVfxCue[] = [
+    { id: 'trail', kind: 'weapon-trail', threshold: .25, lifetimeMs: 240, points: [{}, {}] },
+    { id: 'impact', kind: 'impact-ring', threshold: .25, lifetimeMs: 480, points: [{}] },
+  ]
+  const frameAt = (requestedTimeMs: number): WeaponVfxFrame => ({
+    clipHash: 'deterministic-staff', requestedTimeMs, status: 'ready', groundY: 0,
+    pointsByCueId: {
+      trail: [[requestedTimeMs / 100, .5, 0], [1 + requestedTimeMs / 100, .5, 0]],
+      impact: [[1, .4 - requestedTimeMs / 1000, 0]],
+    },
+  })
+  const sampleFps = (fps: number) => {
+    const signals: ReturnType<typeof sampleWeaponVfxSignals>[number][] = []
+    let previous = frameAt(0)
+    for (let index = 1; index <= fps; index += 1) {
+      const current = frameAt(index === fps ? 1000 : index * 1000 / fps)
+      signals.push(...sampleWeaponVfxSignals(previous, current, cues))
+      previous = current
+    }
+    return signals.map(signal => ({ id: signal.id, kind: signal.kind, time: signal.requestedTimeMs, points: signal.points }))
+  }
+
+  assert.deepEqual(sampleFps(24), sampleFps(30))
+  assert.deepEqual(sampleFps(30), sampleFps(60))
+})
+
+test('持械特效采样对异常 Proxy、非有限坐标和不可安全离散的巨大时间保持有界', () => {
+  const cue: WeaponVfxCue = { id: 'trail', kind: 'weapon-trail', threshold: .25, lifetimeMs: 240, points: [{}, {}] }
+  const valid: WeaponVfxFrame = {
+    clipHash: 'bounded-staff', requestedTimeMs: 40, status: 'ready', groundY: 0,
+    pointsByCueId: { trail: [[0, 0, 0], [1, 0, 0]] },
+  }
+  const throwing = new Proxy([], { get() { throw new Error('测试注入：持械提示访问失败') } })
+  const throwingCue = new Proxy({}, { get() { throw new Error('测试注入：持械提示字段失败') } })
+  assert.deepEqual(sampleWeaponVfxSignals({ ...valid, requestedTimeMs: 0 }, valid, throwing as never), [])
+  assert.deepEqual(sampleWeaponVfxSignals({ ...valid, requestedTimeMs: 0 }, valid, [throwingCue] as never), [])
+  assert.deepEqual(sampleWeaponVfxSignals(
+    { ...valid, requestedTimeMs: 0 },
+    { ...valid, pointsByCueId: { trail: [[Number.NaN, 0, 0], [1, 0, 0]] } },
+    [cue],
+  ), [])
+  assert.deepEqual(sampleWeaponVfxSignals(
+    {
+      ...valid,
+      requestedTimeMs: Number.MAX_SAFE_INTEGER * 80,
+      pointsByCueId: { trail: [[0, 0, 0], [1, 0, 0]] },
+    },
+    {
+      ...valid,
+      requestedTimeMs: Number.MAX_SAFE_INTEGER * 80 + 128,
+      pointsByCueId: { trail: [[1, 0, 0], [2, 0, 0]] },
+    },
+    [cue],
+  ), [])
 })

@@ -119,6 +119,28 @@ export interface SampledBipedPetMotionAdaptation {
   readonly activeEffectCueIds: readonly string[]
 }
 
+export type BipedPetWeaponVfxKind = 'weapon-trail' | 'impact-sparks' | 'impact-ring'
+export type BipedPetWeaponVfxPoint = readonly [number, number, number]
+
+export interface BipedPetWeaponVfxFrame {
+  readonly clipHash: string
+  readonly requestedTimeMs: number
+  readonly status: 'ready' | 'blocked'
+  readonly groundY: number
+  /** 每项坐标均位于 renderer 与特效对象共同父级的局部坐标系。 */
+  readonly pointsByCueId: Readonly<Record<string, readonly BipedPetWeaponVfxPoint[]>>
+}
+
+export interface BipedPetWeaponVfxSignal {
+  readonly id: string
+  readonly cueId: string
+  readonly kind: BipedPetWeaponVfxKind
+  readonly requestedTimeMs: number
+  readonly strength: number
+  readonly lifetimeMs: number
+  readonly points: readonly BipedPetWeaponVfxPoint[]
+}
+
 export const MAX_BIPED_PET_MOTION_ADAPTATION_PHASES = 16
 export const MAX_BIPED_PET_MOTION_ADAPTATION_WARP_WINDOWS = 32
 export const MAX_BIPED_PET_MOTION_ADAPTATION_CONSTRAINTS = 16
@@ -132,6 +154,8 @@ const MAX_EFFECT_LIFETIME_MS = 2000
 const MOTION_ADAPTATION_FADE_MS = 120
 const MAX_COMPILED_PLAN_CACHE_ENTRIES = 64
 const MAX_CHARACTER_DIMENSION = 1000
+const WEAPON_TRAIL_SAMPLE_INTERVAL_MS = 40
+const MAX_WEAPON_VFX_SIGNALS_PER_FRAME = 64
 const PHASE_ROLES = new Set<BipedPetMotionPhaseRole>(['prepare', 'spin', 'handoff', 'sweep', 'takeoff', 'impact', 'recover'])
 const WARP_TARGETS = new Set<BipedPetMotionWarpTarget>(['stage-forward'])
 const CONSTRAINT_KINDS = new Set<BipedPetMotionConstraintKind>(['secondary-grip'])
@@ -871,4 +895,214 @@ export function sampleBipedPetMotionAdaptation(
     constraintWeights: Object.freeze(constraintWeights),
     activeEffectCueIds: Object.freeze(activeEffectCueIds),
   })
+}
+
+interface SafeWeaponVfxFrame {
+  clipHash: string
+  requestedTimeMs: number
+  status: 'ready' | 'blocked'
+  groundY: number
+  pointsByCueId: Record<PropertyKey, unknown>
+}
+
+interface SafeWeaponVfxCue {
+  id: string
+  kind: BipedPetWeaponVfxKind
+  threshold: number
+  lifetimeMs: number
+}
+
+function safeWeaponVfxFrame(input: unknown): SafeWeaponVfxFrame | undefined {
+  try {
+    const source = safeRecord(input)
+    if (!source) return undefined
+    const clipHash = Reflect.get(source, 'clipHash')
+    const requestedTimeMs = Reflect.get(source, 'requestedTimeMs')
+    const status = Reflect.get(source, 'status')
+    const groundY = Reflect.get(source, 'groundY')
+    const pointsByCueId = safeRecord(Reflect.get(source, 'pointsByCueId'))
+    let clipHashCodePoints = 0
+    if (typeof clipHash === 'string') {
+      for (const _character of clipHash) {
+        clipHashCodePoints += 1
+        if (clipHashCodePoints > MAX_IDENTIFIER_CODE_POINTS) break
+      }
+    }
+    if (typeof clipHash !== 'string' || !clipHash || clipHashCodePoints > MAX_IDENTIFIER_CODE_POINTS
+      || typeof requestedTimeMs !== 'number' || !Number.isFinite(requestedTimeMs) || requestedTimeMs < 0
+      || (status !== 'ready' && status !== 'blocked')
+      || typeof groundY !== 'number' || !Number.isFinite(groundY)
+      || !pointsByCueId) return undefined
+    return { clipHash, requestedTimeMs, status, groundY, pointsByCueId }
+  }
+  catch {
+    return undefined
+  }
+}
+
+function safeWeaponVfxPoints(
+  frame: SafeWeaponVfxFrame,
+  cueId: string,
+  expectedLength: number,
+): BipedPetWeaponVfxPoint[] | undefined {
+  try {
+    const candidate = Reflect.get(frame.pointsByCueId, cueId)
+    if (!Array.isArray(candidate) || Reflect.get(candidate, 'length') !== expectedLength) return undefined
+    const result: BipedPetWeaponVfxPoint[] = []
+    for (let pointIndex = 0; pointIndex < expectedLength; pointIndex += 1) {
+      const point = Reflect.get(candidate, pointIndex)
+      if (!Array.isArray(point) || Reflect.get(point, 'length') !== 3) return undefined
+      const values = [Reflect.get(point, 0), Reflect.get(point, 1), Reflect.get(point, 2)]
+      if (!values.every(value => typeof value === 'number' && Number.isFinite(value))) return undefined
+      result.push(values as [number, number, number])
+    }
+    return result
+  }
+  catch {
+    return undefined
+  }
+}
+
+function safeWeaponVfxCue(input: unknown): SafeWeaponVfxCue | undefined {
+  try {
+    const source = safeRecord(input)
+    if (!source) return undefined
+    const id = Reflect.get(source, 'id')
+    const kind = Reflect.get(source, 'kind')
+    const threshold = Reflect.get(source, 'threshold')
+    const lifetimeMs = Reflect.get(source, 'lifetimeMs')
+    if (typeof id !== 'string' || !id || !EFFECT_KINDS.has(kind as BipedPetWeaponVfxKind)
+      || typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < 0
+      || typeof lifetimeMs !== 'number' || !Number.isFinite(lifetimeMs) || lifetimeMs <= 0) return undefined
+    return { id, kind: kind as BipedPetWeaponVfxKind, threshold, lifetimeMs }
+  }
+  catch {
+    return undefined
+  }
+}
+
+function roundedWeaponVfxNumber(value: number): number {
+  const rounded = Math.round(value * 1e9) / 1e9
+  return Object.is(rounded, -0) ? 0 : rounded
+}
+
+function interpolatedWeaponVfxPoint(
+  previous: BipedPetWeaponVfxPoint,
+  current: BipedPetWeaponVfxPoint,
+  progress: number,
+): BipedPetWeaponVfxPoint {
+  return Object.freeze(previous.map((value, index) => roundedWeaponVfxNumber(
+    value + (current[index]! - value) * progress,
+  ))) as unknown as BipedPetWeaponVfxPoint
+}
+
+function weaponVfxPointDistance(left: BipedPetWeaponVfxPoint, right: BipedPetWeaponVfxPoint): number {
+  return Math.hypot(right[0] - left[0], right[1] - left[1], right[2] - left[2])
+}
+
+function freezeWeaponVfxSignal(
+  clipHash: string,
+  cue: SafeWeaponVfxCue,
+  requestedTimeMs: number,
+  sequence: number,
+  strength: number,
+  points: readonly BipedPetWeaponVfxPoint[],
+): BipedPetWeaponVfxSignal {
+  const safeTime = roundedWeaponVfxNumber(requestedTimeMs)
+  return Object.freeze({
+    id: `${clipHash}:${cue.id}:${safeTime}:${sequence}`,
+    cueId: cue.id,
+    kind: cue.kind,
+    requestedTimeMs: safeTime,
+    strength: clamp(strength, Number.MIN_VALUE, 1),
+    lifetimeMs: cue.lifetimeMs,
+    points: Object.freeze(points),
+  })
+}
+
+/**
+ * 由相邻请求帧的真实道具语义点生成确定性轨迹与命中信号；首次帧、暂停、回拖、Clip 切换和 blocked 均不补发事件。
+ */
+export function sampleBipedPetWeaponVfxSignals(
+  previousFrame: BipedPetWeaponVfxFrame | undefined,
+  currentFrame: BipedPetWeaponVfxFrame,
+  activeCues: readonly CompiledBipedPetMotionEffectCue[],
+): readonly BipedPetWeaponVfxSignal[] {
+  const previous = safeWeaponVfxFrame(previousFrame)
+  const current = safeWeaponVfxFrame(currentFrame)
+  if (!previous || !current || previous.status !== 'ready' || current.status !== 'ready'
+    || previous.clipHash !== current.clipHash || current.requestedTimeMs <= previous.requestedTimeMs) return Object.freeze([])
+  const elapsedMs = current.requestedTimeMs - previous.requestedTimeMs
+  if (!Number.isFinite(elapsedMs) || !(elapsedMs > 0)) return Object.freeze([])
+
+  const signals: BipedPetWeaponVfxSignal[] = []
+  let cueCount = 0
+  try {
+    const length = Reflect.get(activeCues, 'length')
+    cueCount = Math.min(
+      Number.isSafeInteger(length) && length >= 0 ? length : 0,
+      MAX_BIPED_PET_MOTION_ADAPTATION_EFFECT_CUES,
+    )
+  }
+  catch {
+    return Object.freeze([])
+  }
+  for (let cueIndex = 0; cueIndex < cueCount && signals.length < MAX_WEAPON_VFX_SIGNALS_PER_FRAME; cueIndex += 1) {
+    let cue: SafeWeaponVfxCue | undefined
+    try {
+      cue = safeWeaponVfxCue(Reflect.get(activeCues, cueIndex))
+    }
+    catch {
+      continue
+    }
+    if (!cue) continue
+    const expectedPointCount = cue.kind === 'weapon-trail' ? 2 : 1
+    const previousPoints = safeWeaponVfxPoints(previous, cue.id, expectedPointCount)
+    const currentPoints = safeWeaponVfxPoints(current, cue.id, expectedPointCount)
+    if (!previousPoints || !currentPoints) continue
+
+    if (cue.kind === 'weapon-trail') {
+      const maximumSpeed = Math.max(...previousPoints.map((point, index) => (
+        weaponVfxPointDistance(point, currentPoints[index]!) * 1000 / elapsedMs
+      )))
+      if (!Number.isFinite(maximumSpeed) || !(maximumSpeed > cue.threshold)) continue
+      const firstCrossing = Math.floor(previous.requestedTimeMs / WEAPON_TRAIL_SAMPLE_INTERVAL_MS) + 1
+      const lastCrossing = Math.floor(current.requestedTimeMs / WEAPON_TRAIL_SAMPLE_INTERVAL_MS)
+      if (!Number.isSafeInteger(firstCrossing) || !Number.isSafeInteger(lastCrossing)) continue
+      const boundedFirstCrossing = Math.max(
+        firstCrossing,
+        lastCrossing - (MAX_WEAPON_VFX_SIGNALS_PER_FRAME - signals.length) + 1,
+      )
+      for (let crossing = boundedFirstCrossing; crossing <= lastCrossing; crossing += 1) {
+        const crossingTimeMs = crossing * WEAPON_TRAIL_SAMPLE_INTERVAL_MS
+        const progress = (crossingTimeMs - previous.requestedTimeMs) / elapsedMs
+        const points = previousPoints.map((point, index) => interpolatedWeaponVfxPoint(point, currentPoints[index]!, progress))
+        signals.push(freezeWeaponVfxSignal(
+          current.clipHash,
+          cue,
+          crossingTimeMs,
+          crossing,
+          maximumSpeed / Math.max(cue.threshold, 1),
+          points,
+        ))
+      }
+      continue
+    }
+
+    const previousPoint = previousPoints[0]!
+    const currentPoint = currentPoints[0]!
+    const downwardSpeed = (previousPoint[1] - currentPoint[1]) * 1000 / elapsedMs
+    if (!(previousPoint[1] > current.groundY && currentPoint[1] <= current.groundY)
+      || !Number.isFinite(downwardSpeed) || !(downwardSpeed > cue.threshold)) continue
+    const crossingProgress = (previousPoint[1] - current.groundY) / (previousPoint[1] - currentPoint[1])
+    signals.push(freezeWeaponVfxSignal(
+      current.clipHash,
+      cue,
+      previous.requestedTimeMs + elapsedMs * crossingProgress,
+      0,
+      downwardSpeed / Math.max(cue.threshold, 1),
+      [interpolatedWeaponVfxPoint(previousPoint, currentPoint, crossingProgress)],
+    ))
+  }
+  return Object.freeze(signals)
 }

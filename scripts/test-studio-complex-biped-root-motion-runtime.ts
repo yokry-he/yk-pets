@@ -24,6 +24,7 @@ import { createComplexBipedIkController } from '../apps/playground/app/three/app
 import { createComplexBipedMotionController } from '../apps/playground/app/three/apply-complex-biped-motion.ts'
 import { createComplexBipedWeaponConstraintController } from '../apps/playground/app/three/apply-complex-biped-weapon-constraint.ts'
 import { createComplexBipedMotionVfxController } from '../apps/playground/app/three/complex-biped-motion-vfx.ts'
+import { createComplexBipedWeaponVfxController } from '../apps/playground/app/three/complex-biped-weapon-vfx.ts'
 
 const walkAsset = BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-walk')
 const jumpAsset = BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-jump')
@@ -1889,6 +1890,107 @@ for (const malformed of ['direct-symbol', 'symbol-message', 'throwing-message-ge
   assert.equal(vfx.object.parent, null)
   for (const count of calls.values()) assert.equal(count, 1)
   vfx.dispose()
+}
+
+// 持械特效使用 24/32/8 固定池，重复信号不重分配且池满只能公平复用已有槽位。 / Weapon VFX uses fixed 24/32/8 pools; duplicate signals do not reallocate and saturation fairly reuses existing slots.
+{
+  const vfx = createComplexBipedWeaponVfxController()
+  const snapshot = vfx.snapshot()
+  assert.deepEqual(snapshot.poolCapacityByKind, { 'weapon-trail': 24, 'impact-sparks': 32, 'impact-ring': 8 })
+  assert.equal(snapshot.poolCapacityTotal, 64)
+  assert.equal(vfx.object.type, 'Group')
+  assert.equal(vfx.object.getObjectByName('复杂双足持械特效-命中火花')?.isInstancedMesh, true)
+  const signals = [
+    { id: 'trail-40', cueId: 'trail', kind: 'weapon-trail' as const, requestedTimeMs: 40, strength: .8, lifetimeMs: 240, points: [[0, 1, 0], [1, 1, 0]] as const },
+    { id: 'sparks-40', cueId: 'sparks', kind: 'impact-sparks' as const, requestedTimeMs: 40, strength: .8, lifetimeMs: 360, points: [[1, 0, 0]] as const },
+    { id: 'ring-40', cueId: 'ring', kind: 'impact-ring' as const, requestedTimeMs: 40, strength: .8, lifetimeMs: 480, points: [[1, 0, 0]] as const },
+  ]
+  vfx.apply(signals, { requestedTimeMs: 40, characterHeight: 4 })
+  const first = vfx.snapshot()
+  assert.equal(first.activeByKind['weapon-trail'], 1)
+  assert.ok(first.activeByKind['impact-sparks'] >= 1 && first.activeByKind['impact-sparks'] <= 16)
+  assert.equal(first.activeByKind['impact-ring'], 1)
+  vfx.apply(signals, { requestedTimeMs: 40, characterHeight: 4 })
+  assert.deepEqual(vfx.snapshot().activeByKind, first.activeByKind)
+
+  const saturated = Array.from({ length: 96 }, (_, index) => ({
+    id: `trail-${80 + index * 40}`,
+    cueId: 'trail',
+    kind: 'weapon-trail' as const,
+    requestedTimeMs: 80 + index * 40,
+    strength: 1,
+    lifetimeMs: 2000,
+    points: [[index / 10, 1, 0], [index / 10 + 1, 1, 0]] as const,
+  }))
+  for (const signal of saturated) vfx.apply([signal], { requestedTimeMs: signal.requestedTimeMs, characterHeight: 4 })
+  assert.equal(vfx.snapshot().activeByKind['weapon-trail'], 24)
+  assert.ok(vfx.snapshot().activeTotal <= 64)
+  vfx.dispose()
+}
+
+// 回拖与 reset 清活动态但保留固定 Three 池；单类初始化失败不能阻断其余效果。 / Rewind and reset clear activity while retaining pools, and one class failing to initialize cannot block the others.
+{
+  const vfx = createComplexBipedWeaponVfxController({
+    createGeometry(kind, createDefault) {
+      if (kind === 'impact-sparks') throw new Error('测试注入：火花几何失败')
+      return createDefault()
+    },
+  })
+  assert.deepEqual(vfx.snapshot().unavailableKinds, ['impact-sparks'])
+  assert.doesNotThrow(() => vfx.apply(new Proxy([], { get() { throw new Error('测试注入：信号数组失败') } }) as never, {
+    requestedTimeMs: 0,
+    characterHeight: 4,
+  }))
+  assert.doesNotThrow(() => vfx.apply([], new Proxy({} as never, { get() { throw new Error('测试注入：帧访问失败') } })))
+  const childCount = vfx.object.children.length
+  const ring = { id: 'ring-400', cueId: 'ring', kind: 'impact-ring' as const, requestedTimeMs: 400, strength: 1, lifetimeMs: 480, points: [[0, 0, 0]] as const }
+  vfx.apply([ring], { requestedTimeMs: 400, characterHeight: 4 })
+  assert.equal(vfx.snapshot().activeByKind['impact-ring'], 1)
+  vfx.apply([], { requestedTimeMs: 200, characterHeight: 4 })
+  assert.equal(vfx.snapshot().activeTotal, 0)
+  vfx.apply([ring], { requestedTimeMs: 400, characterHeight: 4 })
+  assert.equal(vfx.snapshot().activeByKind['impact-ring'], 1)
+  vfx.reset()
+  assert.equal(vfx.snapshot().activeTotal, 0)
+  assert.equal(vfx.object.children.length, childCount)
+  vfx.dispose()
+}
+
+// dispose 必须先封存，再在任意 GPU 资源抛错时继续释放其余资源并解绑父级。 / Dispose seals first, then continues releasing remaining GPU resources and detaches the group after an arbitrary resource failure.
+{
+  const vfx = createComplexBipedWeaponVfxController()
+  const parent = vfx.object.clone(false)
+  parent.add(vfx.object)
+  const resources = new Set<{ dispose(): void }>()
+  vfx.object.traverse((child) => {
+    if (!('geometry' in child) || !('material' in child)) return
+    const mesh = child as { geometry?: { dispose(): void }, material?: { dispose(): void } | { dispose(): void }[] }
+    if (mesh.geometry) resources.add(mesh.geometry)
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const material of materials) if (material) resources.add(material)
+  })
+  assert.equal(resources.size, 6)
+  const calls = new Map([...resources].map(resource => [resource, 0]))
+  const failing = [...resources][0]!
+  for (const resource of resources) {
+    const dispose = resource.dispose.bind(resource)
+    resource.dispose = () => {
+      calls.set(resource, calls.get(resource)! + 1)
+      dispose()
+      if (resource === failing) throw undefined
+    }
+  }
+  assert.throws(
+    () => vfx.dispose(),
+    error => error instanceof Error
+      && error.message.includes('复杂双足持械特效资源释放失败')
+      && error.message.includes('undefined'),
+  )
+  assert.equal(parent.children.length, 0)
+  assert.equal(vfx.snapshot().disposed, true)
+  for (const count of calls.values()) assert.equal(count, 1)
+  vfx.dispose()
+  for (const count of calls.values()) assert.equal(count, 1)
 }
 
 console.log('studio complex biped Root Motion runtime tests passed')
