@@ -79,7 +79,7 @@ function numberFrom(event: Event) {
       </div>
       <label v-if="showTime" class="time-control">
         <span>预览时间</span>
-        <input :value="Math.round(timeMs)" type="number" min="0" :max="maxTimeMs" step="1" @change="emit('time', numberFrom($event))">
+        <input :value="Math.round(timeMs)" type="number" min="0" :max="maxTimeMs" step="1" @input="emit('time', numberFrom($event))">
         <i>ms</i>
       </label>
     </div>

@@ -19,6 +19,7 @@ const checks = [
   ['控制栏按固定视角与预览变换分组', toolbar.includes('固定视角') && toolbar.includes('预览变换') && toolbar.includes('自由旋转')],
   ['控制栏提供背景、缩放、三轴和复位', toolbar.includes('背景') && toolbar.includes('type="range"') && toolbar.includes("['x', 'y', 'z']") && toolbar.includes('复位')],
   ['动作时间使用可选控制栏扩展', toolbar.includes('showTime') && motion.includes(':show-time="true"')],
+  ['动作时间输入实时驱动播放指针', toolbar.includes("@input=\"emit('time', numberFrom($event))\"") && !toolbar.includes("@change=\"emit('time', numberFrom($event))\"")],
   ['三个工坊都复用共享控制栏', workspaces.every(source => source.includes('StudioPreviewToolbar'))],
   ['三个工坊都把缩放传入正式预览', workspaces.every(source => source.includes(':preview-scale="previewScale"'))],
   ['共享预览状态负责缩放边界', orientation.includes('const previewScale = ref') && orientation.includes('function updatePreviewScale')],
