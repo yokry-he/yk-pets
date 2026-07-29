@@ -13,6 +13,7 @@ import {
   deriveStudioPropRig,
   normalizeBipedPetRootMotion,
   sampleBipedPetMotion,
+  sampleBipedPetWeaponVfxSignals,
   type BipedPetRootMotionDefinition,
   type BipedPetBodyStyle,
   type CompiledCharacterModel,
@@ -969,6 +970,77 @@ for (const [timeMs, constraintId] of [[3800, 'staff-handoff-grip'], [6100, 'staf
   const residual = leftHandWorld.distanceTo(targetWorld)
   assert.ok(report && report.appliedWeight >= .8, `${timeMs}ms 副手约束权重不足：${JSON.stringify({ report, debugPositions, armReach })}`)
   assert.ok(residual <= readCharacterHeight(runtime) * .04, `${timeMs}ms 副手没有贴住副握点：residual=${residual}, report=${JSON.stringify(report)}`)
+  controller.dispose()
+  weapon.dispose()
+  staffObject.removeFromParent()
+  runtime.dispose()
+}
+
+// 下劈不能只声明 cue；连续播放中的真实长棍 impactPoint 必须保持足够向下速度，并同时生成火花与冲击环。
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compileBipedPetMotion(staffMotion, { boneIds: compilation.bones.map(item => item.id) })
+  const staffObject = runtime.sockets['hand.right']!.mount.clone(false)
+  staffObject.position.set(-.32, 0, 0)
+  runtime.sockets['hand.right']!.mount.add(staffObject)
+  runtime.object.updateMatrixWorld(true)
+  const characterHeight = readCharacterHeight(runtime)
+  const groundY = runtime.object.position.y + runtime.object.geometry.boundingBox!.min.y
+  const armReach = readArmSegmentLengths(runtime).reduce((sum, value) => sum + value, 0)
+  const adaptationPlan = compileBipedPetMotionAdaptationPlan({
+    definition: clip.adaptationDefinition,
+    clipHash: clip.hash,
+    profileId: compilation.profileId,
+    characterHash: compilation.hash,
+    characterHeight,
+    armReach: { left: armReach, right: armReach },
+    propRigs: { 'nebula-staff-main': staffRig },
+  })
+  const weapon = createComplexBipedWeaponConstraintController(runtime, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation, {
+    beforeLegIk(context) {
+      const activeConstraint = adaptationPlan.constraints
+        .map(constraint => ({ constraint, weight: context.sample.adaptation?.constraintWeights[constraint.id] ?? 0 }))
+        .sort((left, right) => right.weight - left.weight)[0]
+      if (!activeConstraint || activeConstraint.weight <= 0) return
+      runtime.object.updateMatrixWorld(true)
+      weapon.apply({
+        requestedTimeMs: context.sample.requestedTimeMs,
+        weight: context.weight,
+        adaptation: context.sample.adaptation,
+        propHandle: {
+          instanceId: 'nebula-staff-main',
+          object: staffObject,
+          primaryGrip: staffRig.primaryGrip,
+          constraint: activeConstraint.constraint,
+        },
+      })
+    },
+  })
+  let previousFrame: Parameters<typeof sampleBipedPetWeaponVfxSignals>[0]
+  const signals: ReturnType<typeof sampleBipedPetWeaponVfxSignals>[number][] = []
+  const impactHeights: Array<[number, number]> = []
+  for (let timeMs = 9000; timeMs <= 10100; timeMs += 40) {
+    const sample = sampleBipedPetMotion(clip, timeMs, { adaptationPlan })
+    controller.apply(sample, 1)
+    runtime.object.updateMatrixWorld(true)
+    const activeCues = adaptationPlan.effectCues.filter(cue => sample.adaptation?.activeEffectCueIds.includes(cue.id))
+    const currentFrame = {
+      clipHash: clip.hash,
+      requestedTimeMs: timeMs,
+      status: 'ready' as const,
+      groundY,
+      pointsByCueId: Object.fromEntries(activeCues.map(cue => [cue.id, cue.points.map(point => (
+        runtime.object.position.clone().set(...point.position).applyMatrix4(staffObject.matrixWorld).toArray() as [number, number, number]
+      ))])),
+    }
+    const impactPoint = currentFrame.pointsByCueId['staff-impact-sparks']?.[0]
+    if (impactPoint) impactHeights.push([timeMs, impactPoint[1]])
+    signals.push(...sampleBipedPetWeaponVfxSignals(previousFrame, currentFrame, activeCues))
+    previousFrame = currentFrame
+  }
+  const signalKinds = new Set(signals.map(signal => signal.kind))
+  assert.ok(signalKinds.has('impact-sparks') && signalKinds.has('impact-ring'), JSON.stringify({ groundY, impactHeights, signalKinds: [...signalKinds] }))
   controller.dispose()
   weapon.dispose()
   staffObject.removeFromParent()

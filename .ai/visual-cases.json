@@ -556,6 +556,32 @@
         "pending: Safari/Firefox 与不同 GPU/WebGL 驱动的渲染、资源释放、最终像素和性能验收未执行，Chromium 双视口结果不能替代该边界",
         "pending: 高细节拓扑、正式关节体积保持、四足与机甲 Profile 以及高级动作适配仍未完成，当前证据只覆盖低细节双足萌宠站内 runtime"
       ]
+    },
+    {
+      "id": "biped-pet-nebula-staff-adaptation",
+      "route": "/studio/motion",
+      "setup": {
+        "modelMode": "complex",
+        "template": "星云棍术组合",
+        "checkpointsMs": [450, 2100, 3800, 6100, 8500, 9700, 11200],
+        "viewports": [[1440, 900], [760, 900]]
+      },
+      "automatedChecks": [
+        "corepack pnpm typecheck",
+        "corepack pnpm test",
+        "corepack pnpm build:playground",
+        "node scripts/check-documentation.mjs",
+        "node scripts/check-ai-handoff.mjs",
+        "git diff --check",
+        "pull-request-history-event-simulation"
+      ],
+      "manualChecks": [
+        "passed-2026-07-29-chromium-1440: Chromium 1440×900 下新复制“星云棍术组合”无需额外配置即可播放；450/2100/3800/6100/8500/9700/11200ms 七个检查点覆盖准备、棍花、换手、横扫、腾空、下劈与收势，主手保持握棍，副手在三段声明阶段加入，支撑、腾空和恢复姿态连续，棍花/横扫轨迹可见，9700ms 明确可见青白冲击环与黄色火花；播放推进、暂停冻结、停止归零、9700→2100ms 回拖无旧特效残留；简单/复杂互斥、canvas=1、无横向溢出，干净标签页 console error=0、hydration mismatch=0",
+        "passed-2026-07-29-chromium-760: Chromium 760×900 下 scrollWidth === clientWidth，编辑器工具栏正常换行，自动适配摘要和技术信息按单列展示；播放/暂停/停止与简单/复杂切换可操作，浮动按钮未遮挡主要操作，canvas=1，新复制动作仍无需手工 Rig、蒙皮或特效配置",
+        "pending: Safari/Firefox 与不同 GPU/WebGL 驱动的资源释放、渲染一致性、性能和最终像素尚未人工验收，Chromium 双视口证据不能替代该边界",
+        "pending: 高细节拓扑、正式关节体积保持和最终蒙皮质量尚未完成；本次只证明低细节程序化双足模型的站内运行时链路",
+        "pending: 舞蹈、组合拳、体操、冲刺等完整高级动作库以及四足/机甲动作适配仍未完成；星云棍术纵向样板不能冒充全部体型和动作均已交付"
+      ]
     }
   ]
 }

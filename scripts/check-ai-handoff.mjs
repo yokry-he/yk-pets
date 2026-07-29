@@ -173,6 +173,15 @@ if (state) {
     'bipedPetMotionVfxRuntimeComplete',
     'bipedPetRootMotionVfxPhaseDeliveryComplete',
   ]
+  const completedAdvancedChoreographyFlags = [
+    'bipedPetMotionAdaptationContractComplete',
+    'bipedPetPropRigContractComplete',
+    'bipedPetMotionAdaptationPlanComplete',
+    'bipedPetSecondaryGripRuntimeComplete',
+    'bipedPetWeaponMotionVfxComplete',
+    'bipedPetWeaponRuntimeWiringComplete',
+    'bipedPetNebulaStaffAdaptationComplete',
+  ]
   const incompleteBipedPetBoundaries = [
     'bipedPetProductionQuadrupedProfileComplete',
     'bipedPetProductionMechProfileComplete',
@@ -181,21 +190,24 @@ if (state) {
   ]
   for (const key of completedHybridIkFlags) expect(state.architecture?.[key] === true, `双足萌宠混合 IK 完成状态缺失 / Missing completed hybrid-IK state: ${key}`)
   for (const key of completedRootMotionVfxFlags) expect(state.architecture?.[key] === true, `双足萌宠 Root Motion/VFX 交付状态缺失 / Missing completed biped-pet Root Motion/VFX state: ${key}`)
+  for (const key of completedAdvancedChoreographyFlags) expect(state.architecture?.[key] === true, `双足萌宠高级编舞动作适配状态缺失 / Missing completed advanced-choreography state: ${key}`)
   for (const key of incompleteBipedPetBoundaries) expect(state.architecture?.[key] === false, `双足萌宠未完成边界错误 / Incorrect incomplete biped-pet boundary: ${key}`)
   expect(state.architecture?.hybridIkLegacyHistoryMigrationComplete === true, '混合 IK 历史门禁迁移必须标记完成 / Hybrid-IK history-gate migration must be complete')
   // 内建正反夹具用于防止后续把已交付能力改回 false，或把明确边界误改为 true。
   const positiveBipedPetDeliveryFixture = Object.fromEntries([
     ...completedHybridIkFlags.map(key => [key, true]),
     ...completedRootMotionVfxFlags.map(key => [key, true]),
+    ...completedAdvancedChoreographyFlags.map(key => [key, true]),
     ...incompleteBipedPetBoundaries.map(key => [key, false]),
   ])
-  const missingDeliveryFixture = { ...positiveBipedPetDeliveryFixture, bipedPetRootMotionComplete: false }
+  const missingDeliveryFixture = { ...positiveBipedPetDeliveryFixture, bipedPetSecondaryGripRuntimeComplete: false }
   const overclaimedBoundaryFixture = { ...positiveBipedPetDeliveryFixture, crossBrowserGpuManualAcceptanceComplete: true }
   const matchesBipedPetDeliveryBoundary = fixture => completedHybridIkFlags.every(key => fixture[key] === true)
     && completedRootMotionVfxFlags.every(key => fixture[key] === true)
+    && completedAdvancedChoreographyFlags.every(key => fixture[key] === true)
     && incompleteBipedPetBoundaries.every(key => fixture[key] === false)
-  expect(matchesBipedPetDeliveryBoundary(positiveBipedPetDeliveryFixture), '双足萌宠 Root Motion/VFX 交付正向状态夹具必须通过 / Positive biped-pet Root Motion/VFX delivery fixture must pass')
-  expect(!matchesBipedPetDeliveryBoundary(missingDeliveryFixture), '缺失 Root Motion/VFX 交付状态的负向夹具必须失败 / Missing Root Motion/VFX delivery fixture must fail')
+  expect(matchesBipedPetDeliveryBoundary(positiveBipedPetDeliveryFixture), '双足萌宠高级动作适配交付正向状态夹具必须通过 / Positive advanced motion-adaptation delivery fixture must pass')
+  expect(!matchesBipedPetDeliveryBoundary(missingDeliveryFixture), '缺失副手持械运行时状态的负向夹具必须失败 / Missing secondary-grip runtime fixture must fail')
   expect(!matchesBipedPetDeliveryBoundary(overclaimedBoundaryFixture), '越界标记跨浏览器 GPU 验收完成的负向夹具必须失败 / Overclaimed cross-browser GPU fixture must fail')
   expect(state.mandatoryDevelopmentPolicy?.updateAiPackageForEveryFeatureCommit === true, '必须启用每个功能提交更新 AI 包 / Per-feature-commit AI update policy must be enabled')
   const expectedLegacyExceptions = [...legacyHistoryMigrationExceptions].map(([commit, item]) => ({
@@ -247,6 +259,7 @@ if (state) {
   expect(state.architecture?.bipedPetRootMotionBeginnerSettingsComplete === true, '必须标记 Root Motion 新手设置完成 / Root Motion beginner settings must be complete')
   expect((state.completed || []).includes('biped-pet-root-motion-vfx-renderer-settings'), '必须记录 Root Motion/VFX renderer 与设置批次 / Root Motion/VFX renderer and settings batch must be recorded')
   expect((state.completed || []).includes('biped-pet-root-motion-vfx-phase-delivery'), '必须记录 Root Motion/VFX 阶段交付 / Root Motion/VFX phase delivery must be recorded')
+  for (const key of ['biped-pet-motion-adaptation-contract', 'biped-pet-prop-rig-contract', 'biped-pet-motion-adaptation-plan', 'biped-pet-secondary-grip-runtime', 'biped-pet-weapon-motion-vfx', 'biped-pet-weapon-runtime-wiring', 'biped-pet-nebula-staff-adaptation']) expect((state.completed || []).includes(key), `必须记录高级编舞动作适配交付项 / Advanced motion-adaptation delivery item must be recorded: ${key}`)
   for (const key of ['biped-pet-hybrid-ik-profile-contract', 'biped-pet-analytic-two-bone-ik', 'biped-pet-constrained-fabrik', 'biped-pet-runtime-ik', 'biped-pet-foot-lock', 'biped-pet-hybrid-ik-phase-delivery']) expect((state.completed || []).includes(key), `必须标记混合 IK 交付项完成 / Hybrid-IK delivery item must be complete: ${key}`)
   expect((state.completed || []).includes('hybrid-ik-legacy-history-migration'), '必须标记混合 IK 历史门禁迁移完成 / Hybrid-IK history-gate migration must be complete')
   expect((state.notCompleted || []).includes('true-3d-raycast-gizmo-manipulation'), '必须保留真实 3D Gizmo 未完成边界 / True 3D gizmo boundary must remain incomplete')
@@ -255,8 +268,8 @@ if (state) {
   for (const key of ['semantic-motion-root-motion', 'motion-driven-deterministic-vfx', 'biped-pet-root-motion', 'biped-pet-motion-vfx']) expect(!(state.notCompleted || []).includes(key), `已完成的 Root Motion/VFX 项不得继续列为未完成 / Completed Root Motion/VFX item must not remain incomplete: ${key}`)
   for (const key of ['biped-pet-runtime-ik', 'biped-pet-foot-lock']) expect(!(state.notCompleted || []).includes(key), `已完成的混合 IK 交付项不得继续列为未完成 / Completed hybrid-IK item must not remain incomplete: ${key}`)
   expect(!(state.notCompleted || []).includes('biped-pet-quaternion-motion-compiler'), 'Quaternion 动作编译器已完成，不得继续列为未完成 / Completed Quaternion motion compiler must not remain incomplete')
-  expect(state.nextPhase === 'biped-pet-advanced-choreography-warping-and-cross-browser-acceptance', '下一阶段必须是高级编舞、动作适配与跨浏览器验收 / Next phase must be advanced choreography, motion warping, and cross-browser acceptance')
-  const rootMotionVfxDeliveryCoverage = [
+  expect(state.nextPhase === 'biped-pet-motion-library-and-cross-browser-acceptance', '下一阶段必须是高级动作库扩展与跨浏览器验收 / Next phase must be advanced motion-library expansion and cross-browser acceptance')
+  const advancedChoreographyDeliveryCoverage = [
     'corepack pnpm typecheck',
     'corepack pnpm test',
     'corepack pnpm build:playground',
@@ -265,9 +278,17 @@ if (state) {
     'git diff --check',
     'pull-request-history-event-simulation',
   ]
-  expect(state.latestCompletedBatch?.id === 'biped-pet-root-motion-vfx-phase-delivery', '最新批次必须是 Root Motion/VFX 阶段交付 / Latest batch must be the Root Motion/VFX phase delivery')
-  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(rootMotionVfxDeliveryCoverage), 'Root Motion/VFX 阶段 automatedCoverage 必须且只能列出真实验证项 / Root Motion/VFX phase automatedCoverage must contain only actual validation')
+  expect(state.latestCompletedBatch?.id === 'biped-pet-nebula-staff-adaptation-phase-delivery', '最新批次必须是星云棍术高级动作适配阶段交付 / Latest batch must be the Nebula Staff motion-adaptation phase delivery')
+  expect(JSON.stringify(state.latestCompletedBatch?.automatedCoverage) === JSON.stringify(advancedChoreographyDeliveryCoverage), '高级动作适配阶段 automatedCoverage 必须且只能列出真实验证项 / Advanced motion-adaptation automatedCoverage must contain only actual validation')
   expect(state.latestCompletedBatch?.rendererModified === true && state.latestCompletedBatch?.visualCasesModified === true, '本阶段必须如实声明 renderer 与视觉案例均已修改 / This phase must report both renderer and visual-case changes')
+  expect(state.latestCompletedBatch?.adaptationStageCount === 7 && state.latestCompletedBatch?.secondaryGripStageCount === 3, '星云棍术必须保留七阶段与三段双手约束 / Nebula Staff must retain seven phases and three secondary-grip stages')
+  expect(state.latestCompletedBatch?.weaponEffectCueCount === 5 && state.latestCompletedBatch?.motionDurationMs === 12000, '星云棍术必须保留十二秒时长与五个武器特效提示 / Nebula Staff must retain 12 seconds and five weapon effect cues')
+  expect(state.latestCompletedBatch?.motionTrackCount === 17 && state.latestCompletedBatch?.motionKeyframeCount === 239, '星云棍术必须锁定 17 条轨道与 239 个关键帧 / Nebula Staff must retain 17 tracks and 239 keyframes')
+  expect(state.latestCompletedBatch?.impactTriggerProgress === 0.45
+    && state.latestCompletedBatch?.impactTriggerTimeMs === 9660
+    && JSON.stringify(state.latestCompletedBatch?.impactSignalKinds) === JSON.stringify(['impact-sparks', 'impact-ring']),
+  '星云棍术必须锁定真实向下轨迹约束下的确定命中时刻与信号 / Nebula Staff must retain its deterministic impact timing and downward-trajectory signal kinds')
+  expect(state.latestCompletedBatch?.freshCopyZeroConfigurationPlayback === true, '新复制星云棍术必须无需额外配置即可播放 / A fresh Nebula Staff copy must play without extra configuration')
   const browserCoverage = state.latestCompletedBatch?.browserCoverage || []
   const chromiumCoverageComplete = JSON.stringify(browserCoverage) === JSON.stringify(['chromium-1440x900', 'chromium-760x900'])
   expect(browserCoverage.length === 0 || chromiumCoverageComplete, '浏览器覆盖只能为空或精确记录两个 Chromium 视口 / Browser coverage must be empty or record exactly both Chromium viewports')
@@ -474,6 +495,7 @@ if (visualCases) {
   const semanticMotionCase = visualCases.cases.find(item => item.id === 'biped-pet-semantic-motion-phase1')
   const hybridIkCase = visualCases.cases.find(item => item.id === 'biped-pet-hybrid-ik-foot-lock')
   const rootMotionVfxCase = visualCases.cases.find(item => item.id === 'biped-pet-root-motion-motion-vfx')
+  const nebulaStaffCase = visualCases.cases.find(item => item.id === 'biped-pet-nebula-staff-adaptation')
   expect(Boolean(phaseOneCase), '缺少双足萌宠第一阶段人工验收案例 / Missing biped-pet Phase 1 manual acceptance case')
   expect(JSON.stringify(phaseOneCase?.setup?.viewports) === JSON.stringify([[1440, 900], [760, 900]]), '第一阶段人工案例必须覆盖 1440×900 与 760×900 / Phase 1 manual case must cover 1440×900 and 760×900')
   expect(['soft', 'athletic', 'round', 'slender'].every(style => phaseOneCase?.setup?.bodyStyles?.includes(style)), '第一阶段人工案例必须覆盖四个体型模板 / Phase 1 manual case must cover four body styles')
@@ -509,6 +531,29 @@ if (visualCases) {
   else expect(desktopEvidence.startsWith('pending:') && narrowEvidence.startsWith('pending:'), '尚无 Chromium 覆盖时两个视口必须保持 pending / Both viewports must remain pending without Chromium coverage')
   expect(rootMotionVfxManualChecks.some(check => check.startsWith('pending:') && check.includes('Safari/Firefox') && check.includes('GPU/WebGL')), 'Root Motion/VFX 案例必须保留跨浏览器 GPU/WebGL 边界 / Root Motion/VFX case must retain the cross-browser GPU/WebGL boundary')
   expect(rootMotionVfxManualChecks.some(check => check.startsWith('pending:') && check.includes('高细节拓扑')), 'Root Motion/VFX 案例必须保留高细节拓扑边界 / Root Motion/VFX case must retain the high-detail-topology boundary')
+  const nebulaStaffManualChecks = nebulaStaffCase?.manualChecks || []
+  const nebulaStaffAutomatedChecks = [
+    'corepack pnpm typecheck',
+    'corepack pnpm test',
+    'corepack pnpm build:playground',
+    'node scripts/check-documentation.mjs',
+    'node scripts/check-ai-handoff.mjs',
+    'git diff --check',
+    'pull-request-history-event-simulation',
+  ]
+  expect(Boolean(nebulaStaffCase), '缺少星云棍术高级动作适配视觉案例 / Missing Nebula Staff advanced motion-adaptation visual case')
+  expect(nebulaStaffCase?.setup?.modelMode === 'complex'
+    && nebulaStaffCase?.setup?.template === '星云棍术组合'
+    && JSON.stringify(nebulaStaffCase?.setup?.viewports) === JSON.stringify([[1440, 900], [760, 900]])
+    && JSON.stringify(nebulaStaffCase?.setup?.checkpointsMs) === JSON.stringify([450, 2100, 3800, 6100, 8500, 9700, 11200]),
+  '星云棍术案例必须锁定复杂模式、模板、两个视口和七个检查点 / Nebula Staff case must lock the complex mode, template, both viewports, and seven checkpoints')
+  expect(JSON.stringify(nebulaStaffCase?.automatedChecks) === JSON.stringify(nebulaStaffAutomatedChecks), '星云棍术自动验证必须与阶段门禁一致 / Nebula Staff automated checks must match the phase gate')
+  expect(nebulaStaffManualChecks.some(check => check.startsWith('passed-') && check.includes('Chromium 1440×900'))
+    && nebulaStaffManualChecks.some(check => check.startsWith('passed-') && check.includes('Chromium 760×900')),
+  '星云棍术案例必须记录两个 Chromium 视口的已验证据 / Nebula Staff case must record passed evidence for both Chromium viewports')
+  expect(nebulaStaffManualChecks.some(check => check.startsWith('pending:') && check.includes('Safari/Firefox') && check.includes('GPU/WebGL')), '星云棍术案例必须保留跨浏览器 GPU/WebGL 边界 / Nebula Staff case must retain the cross-browser GPU/WebGL boundary')
+  expect(nebulaStaffManualChecks.some(check => check.startsWith('pending:') && check.includes('高细节拓扑')), '星云棍术案例必须保留高细节拓扑边界 / Nebula Staff case must retain the high-detail-topology boundary')
+  expect(nebulaStaffManualChecks.some(check => check.startsWith('pending:') && check.includes('舞蹈') && check.includes('体操')), '星云棍术样板不得冒充完整高级动作库 / The Nebula Staff sample must not claim the full advanced motion library')
 }
 
 const sessionStart = safeRead('.ai/session-start.md')
@@ -540,6 +585,7 @@ expect(handoffZh.includes('双足萌宠混合RootMotion与运动特效实施计�
 expect(handoffZh.includes('Three Root Motion、重心与 IK 协同批次') && handoffEn.includes('Three Root Motion, balance, and IK coordination'), '中英文交接必须同步 Three Root Motion 协同批次 / Handoffs must synchronize the Three Root Motion coordination batch')
 expect(handoffZh.includes('同一场景的有界运动 VFX 对象池批次') && handoffEn.includes('Bounded same-scene motion-VFX pool'), '中英文交接必须同步有界 Three 运动特效对象池 / Handoffs must synchronize the bounded Three motion-VFX pool')
 expect(handoffZh.includes('Root Motion 与运动特效阶段交付') && handoffEn.includes('Root Motion and motion-VFX phase delivery'), '中英文交接必须同步 Root Motion 与运动特效阶段交付 / Handoffs must synchronize the Root Motion and motion-VFX phase delivery')
+expect(handoffZh.includes('星云棍术高级动作适配阶段交付') && handoffEn.includes('Nebula Staff advanced motion-adaptation phase delivery'), '中英文交接必须同步星云棍术高级动作适配阶段 / Handoffs must synchronize the Nebula Staff advanced motion-adaptation phase')
 expect(motionVfxRuntime.includes('new InstancedMesh')
   && motionVfxRuntime.includes('MAX_BURST_INSTANCES = 16')
   && motionVfxRuntime.includes('MAX_LIFETIME_MS = 1200')

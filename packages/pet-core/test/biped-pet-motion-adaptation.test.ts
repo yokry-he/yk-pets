@@ -42,6 +42,7 @@ type MotionAdaptationNormalizer = (input: unknown, durationMs: number) => {
       pointIds: readonly string[]
       threshold: number
       lifetimeMs: number
+      triggerProgress?: number
     }[]
   }
   diagnostics: readonly { id: string; severity: 'warning'; message: string }[]
@@ -68,7 +69,7 @@ type MotionAdaptationPlanCompiler = (input: {
   phases: readonly { id: string; startMs: number; endMs: number; intensity: number; fadeMs: number }[]
   warpWindows: readonly { id: string; maxDistanceWorld: number; maxTurnRadians: number }[]
   constraints: readonly { id: string; armReachWorld: number; targetPoint: { position: readonly number[] } }[]
-  effectCues: readonly { id: string; points: readonly { position: readonly number[] }[] }[]
+  effectCues: readonly { id: string; points: readonly { position: readonly number[] }[]; triggerTimeMs?: number }[]
   diagnostics: readonly { id: string; severity: 'warning'; message: string }[]
 }
 
@@ -97,6 +98,7 @@ type WeaponVfxCue = {
   kind: 'weapon-trail' | 'impact-sparks' | 'impact-ring'
   threshold: number
   lifetimeMs: number
+  triggerTimeMs?: number
   points: readonly unknown[]
 }
 
@@ -250,7 +252,7 @@ test('跨数组引用和特效语义点数量必须完整', () => {
       { id: 'missing-grip-phase', kind: 'secondary-grip', phaseId: 'missing', limbId: 'arm.left', propInstanceId: 'staff', pointId: 'secondaryGrip', weight: 1 },
     ],
     effectCues: [
-      { id: 'valid-impact', kind: 'impact-ring', phaseId: 'impact', propInstanceId: 'staff', pointIds: ['impactPoint'], threshold: 3, lifetimeMs: 9000 },
+      { id: 'valid-impact', kind: 'impact-ring', phaseId: 'impact', propInstanceId: 'staff', pointIds: ['impactPoint'], threshold: 3, lifetimeMs: 9000, triggerProgress: 2 },
       { id: 'bad-trail-points', kind: 'weapon-trail', phaseId: 'impact', propInstanceId: 'staff', pointIds: ['trailEnd'], threshold: .2, lifetimeMs: 240 },
       { id: 'missing-effect-phase', kind: 'impact-sparks', phaseId: 'missing', propInstanceId: 'staff', pointIds: ['impactPoint'], threshold: .3, lifetimeMs: 200 },
     ],
@@ -264,6 +266,7 @@ test('跨数组引用和特效语义点数量必须完整', () => {
   assert.deepEqual(result.value.effectCues.map(item => item.id), ['valid-impact'])
   assert.equal(result.value.effectCues[0]?.threshold, 1)
   assert.equal(result.value.effectCues[0]?.lifetimeMs, 2000)
+  assert.equal(result.value.effectCues[0]?.triggerProgress, 1)
   assert.ok(result.diagnostics.some(item => item.id.includes('phase-missing')))
   assert.ok(result.diagnostics.some(item => item.id.includes('point-count-invalid')))
 })
@@ -473,6 +476,29 @@ test('持械特效只由真实端点速度和向下穿越地面生成确定信�
   assert.deepEqual(sampleWeaponVfxSignals(undefined, current, cues), [])
   assert.deepEqual(sampleWeaponVfxSignals(previous, { ...current, status: 'blocked' }, cues), [])
   assert.ok(Object.isFrozen(first) && first.every(item => Object.isFrozen(item) && Object.isFrozen(item.points)))
+})
+
+test('显式命中时刻在端点未触地时仍按真实轨迹位置产生一次确定信号', () => {
+  const cues: WeaponVfxCue[] = [
+    { id: 'timed-sparks', kind: 'impact-sparks', threshold: .25, lifetimeMs: 360, triggerTimeMs: 20, points: [{}] },
+    { id: 'timed-ring', kind: 'impact-ring', threshold: .25, lifetimeMs: 480, triggerTimeMs: 20, points: [{}] },
+  ]
+  const previous: WeaponVfxFrame = {
+    clipHash: 'timed-impact', requestedTimeMs: 0, status: 'ready', groundY: 0,
+    pointsByCueId: { 'timed-sparks': [[1, 2, 0]], 'timed-ring': [[1, 2, 0]] },
+  }
+  const current: WeaponVfxFrame = {
+    clipHash: 'timed-impact', requestedTimeMs: 40, status: 'ready', groundY: 0,
+    pointsByCueId: { 'timed-sparks': [[1, 1, 0]], 'timed-ring': [[1, 1, 0]] },
+  }
+
+  const signals = sampleWeaponVfxSignals(previous, current, cues)
+  assert.deepEqual(signals.map(signal => signal.kind), ['impact-sparks', 'impact-ring'])
+  assert.deepEqual(signals.map(signal => signal.requestedTimeMs), [20, 20])
+  assert.deepEqual(signals.map(signal => signal.points[0]), [[1, 1.5, 0], [1, 1.5, 0]])
+  assert.deepEqual(sampleWeaponVfxSignals(undefined, current, cues), [])
+  assert.deepEqual(sampleWeaponVfxSignals(previous, { ...current, pointsByCueId: { 'timed-sparks': [[1, 3, 0]], 'timed-ring': [[1, 3, 0]] } }, cues), [])
+  assert.deepEqual(sampleWeaponVfxSignals(current, { ...current, requestedTimeMs: 80 }, cues), [])
 })
 
 test('持械轨迹固定 40ms 采样且在 24/30/60FPS 下产生相同身份和位置', () => {

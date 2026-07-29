@@ -55,6 +55,8 @@ export interface BipedPetMotionEffectCue {
   readonly pointIds: readonly string[]
   readonly threshold: number
   readonly lifetimeMs: number
+  /** 可选的阶段内命中时刻；真实碰撞不可达时仍按当时的武器端点发出一次确定信号。 */
+  readonly triggerProgress?: number
 }
 
 export interface BipedPetMotionAdaptationDefinition {
@@ -100,6 +102,7 @@ export interface CompiledBipedPetMotionConstraint extends BipedPetMotionConstrai
 
 export interface CompiledBipedPetMotionEffectCue extends BipedPetMotionEffectCue {
   readonly points: readonly StudioPropRigPoint[]
+  readonly triggerTimeMs?: number
 }
 
 export interface CompiledBipedPetMotionAdaptationPlan {
@@ -504,7 +507,7 @@ function normalizeEffectCues(
       warning(diagnostics, `${prefix}-invalid`, `动作适配特效 ${index} 不是对象，已丢弃。`)
       continue
     }
-    const fields = readFields(record, ['id', 'kind', 'phaseId', 'propInstanceId', 'pointIds', 'threshold', 'lifetimeMs'], prefix, diagnostics)
+    const fields = readFields(record, ['id', 'kind', 'phaseId', 'propInstanceId', 'pointIds', 'threshold', 'lifetimeMs', 'triggerProgress'], prefix, diagnostics)
     if (!fields) continue
     const id = normalizeIdentifier(fields.id, prefix, 'id', diagnostics)
     const phaseId = normalizeIdentifier(fields.phaseId, prefix, 'phase-id', diagnostics)
@@ -535,8 +538,20 @@ function normalizeEffectCues(
     if (threshold !== fields.threshold || lifetimeMs !== fields.lifetimeMs) {
       warning(diagnostics, `${prefix}-limits-clamped`, `动作适配特效 ${id} 的阈值或寿命已钳制到安全范围。`)
     }
+    let triggerProgress: number | undefined
+    if (fields.triggerProgress !== undefined) {
+      if (typeof fields.triggerProgress !== 'number' || !Number.isFinite(fields.triggerProgress)) {
+        warning(diagnostics, `${prefix}-trigger-invalid`, `动作适配特效 ${id} 的命中时刻无效，已改用真实端点穿越。`)
+      }
+      else {
+        triggerProgress = clamp(fields.triggerProgress, 0, 1)
+        if (triggerProgress !== fields.triggerProgress) {
+          warning(diagnostics, `${prefix}-trigger-clamped`, `动作适配特效 ${id} 的命中时刻已钳制到阶段范围。`)
+        }
+      }
+    }
     seenIds.add(id)
-    effectCues.push({ id, kind, phaseId, propInstanceId, pointIds, threshold, lifetimeMs })
+    effectCues.push({ id, kind, phaseId, propInstanceId, pointIds, threshold, lifetimeMs, ...(triggerProgress !== undefined ? { triggerProgress } : {}) })
   }
 
   effectCues.sort((left, right) => compareCodePoints(left.id, right.id))
@@ -815,10 +830,15 @@ export function compileBipedPetMotionAdaptationPlan(
       )
       return []
     }
+    const phase = phases.find(item => item.id === cue.phaseId)!
+    const triggerTimeMs = cue.triggerProgress === undefined
+      ? undefined
+      : phase.startMs + (phase.endMs - phase.startMs) * cue.triggerProgress
     return [Object.freeze({
       ...cue,
       pointIds: Object.freeze([...cue.pointIds]),
       points: Object.freeze(points.map(point => freezeCompiledPoint(point!))),
+      ...(triggerTimeMs !== undefined ? { triggerTimeMs } : {}),
     })]
   })
   const identity = stablePlanIdentity({
@@ -910,6 +930,7 @@ interface SafeWeaponVfxCue {
   kind: BipedPetWeaponVfxKind
   threshold: number
   lifetimeMs: number
+  triggerTimeMs?: number
 }
 
 function safeWeaponVfxFrame(input: unknown): SafeWeaponVfxFrame | undefined {
@@ -971,10 +992,12 @@ function safeWeaponVfxCue(input: unknown): SafeWeaponVfxCue | undefined {
     const kind = Reflect.get(source, 'kind')
     const threshold = Reflect.get(source, 'threshold')
     const lifetimeMs = Reflect.get(source, 'lifetimeMs')
+    const triggerTimeMs = Reflect.get(source, 'triggerTimeMs')
     if (typeof id !== 'string' || !id || !EFFECT_KINDS.has(kind as BipedPetWeaponVfxKind)
       || typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < 0
-      || typeof lifetimeMs !== 'number' || !Number.isFinite(lifetimeMs) || lifetimeMs <= 0) return undefined
-    return { id, kind: kind as BipedPetWeaponVfxKind, threshold, lifetimeMs }
+      || typeof lifetimeMs !== 'number' || !Number.isFinite(lifetimeMs) || lifetimeMs <= 0
+      || (triggerTimeMs !== undefined && (typeof triggerTimeMs !== 'number' || !Number.isFinite(triggerTimeMs) || triggerTimeMs < 0))) return undefined
+    return { id, kind: kind as BipedPetWeaponVfxKind, threshold, lifetimeMs, ...(triggerTimeMs !== undefined ? { triggerTimeMs } : {}) }
   }
   catch {
     return undefined
@@ -1092,13 +1115,22 @@ export function sampleBipedPetWeaponVfxSignals(
     const previousPoint = previousPoints[0]!
     const currentPoint = currentPoints[0]!
     const downwardSpeed = (previousPoint[1] - currentPoint[1]) * 1000 / elapsedMs
-    if (!(previousPoint[1] > current.groundY && currentPoint[1] <= current.groundY)
-      || !Number.isFinite(downwardSpeed) || !(downwardSpeed > cue.threshold)) continue
-    const crossingProgress = (previousPoint[1] - current.groundY) / (previousPoint[1] - currentPoint[1])
+    if (!Number.isFinite(downwardSpeed) || !(downwardSpeed > cue.threshold)) continue
+    const crossesGround = previousPoint[1] > current.groundY && currentPoint[1] <= current.groundY
+    const crossesAuthoredTrigger = cue.triggerTimeMs !== undefined
+      && previous.requestedTimeMs < cue.triggerTimeMs
+      && cue.triggerTimeMs <= current.requestedTimeMs
+    if (!crossesGround && !crossesAuthoredTrigger) continue
+    const crossingProgress = crossesGround
+      ? (previousPoint[1] - current.groundY) / (previousPoint[1] - currentPoint[1])
+      : (cue.triggerTimeMs! - previous.requestedTimeMs) / elapsedMs
+    const signalTimeMs = crossesGround
+      ? previous.requestedTimeMs + elapsedMs * crossingProgress
+      : cue.triggerTimeMs!
     signals.push(freezeWeaponVfxSignal(
       current.clipHash,
       cue,
-      previous.requestedTimeMs + elapsedMs * crossingProgress,
+      signalTimeMs,
       0,
       downwardSpeed / Math.max(cue.threshold, 1),
       [interpolatedWeaponVfxPoint(previousPoint, currentPoint, crossingProgress)],

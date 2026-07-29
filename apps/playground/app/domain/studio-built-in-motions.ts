@@ -213,8 +213,8 @@ const nebulaStaffAdaptation: BipedPetMotionAdaptationDefinition = {
     { id: 'staff-spin-trail', kind: 'weapon-trail', phaseId: 'staff-02-spin', propInstanceId: 'nebula-staff-main', pointIds: ['trailStart', 'trailEnd'], threshold: .28, lifetimeMs: 260 },
     { id: 'staff-sweep-trail', kind: 'weapon-trail', phaseId: 'staff-04-sweep', propInstanceId: 'nebula-staff-main', pointIds: ['trailStart', 'trailEnd'], threshold: .22, lifetimeMs: 300 },
     { id: 'staff-takeoff-trail', kind: 'weapon-trail', phaseId: 'staff-05-takeoff', propInstanceId: 'nebula-staff-main', pointIds: ['trailStart', 'trailEnd'], threshold: .3, lifetimeMs: 280 },
-    { id: 'staff-impact-sparks', kind: 'impact-sparks', phaseId: 'staff-06-impact', propInstanceId: 'nebula-staff-main', pointIds: ['impactPoint'], threshold: .16, lifetimeMs: 620 },
-    { id: 'staff-impact-ring', kind: 'impact-ring', phaseId: 'staff-06-impact', propInstanceId: 'nebula-staff-main', pointIds: ['impactPoint'], threshold: .16, lifetimeMs: 760 },
+    { id: 'staff-impact-sparks', kind: 'impact-sparks', phaseId: 'staff-06-impact', propInstanceId: 'nebula-staff-main', pointIds: ['impactPoint'], threshold: .16, lifetimeMs: 620, triggerProgress: .45 },
+    { id: 'staff-impact-ring', kind: 'impact-ring', phaseId: 'staff-06-impact', propInstanceId: 'nebula-staff-main', pointIds: ['impactPoint'], threshold: .16, lifetimeMs: 760, triggerProgress: .45 },
   ],
 }
 
@@ -250,9 +250,10 @@ const nebulaStaffSpin = motion({
     track('head.rotation.y', [[0, 0], [900, .35], [2100, -.55], [3200, .65], [4300, -.75], [5400, .8], [6500, -.9], [7600, .85], [8700, -.65], [9300, .6], [9800, -.7], [10800, .25], [12000, 0]]),
     track('frontPaw.left.rotation.x', [[0, 0], [900, -.5], [2100, .9], [3200, -.85], [4300, .95], [5400, -1], [6500, .8], [7600, -.9], [8700, 1.1], [9300, -.65], [9800, -1.2], [10800, -.35], [12000, 0]]),
     // 双手阶段由主手把长棍带到身体中线，副手 IK 才能在不拉伸骨骼的前提下抓住 secondaryGrip。
-    track('frontPaw.right.rotation.x', [[0, 0], [900, .75], [2100, -.95], [3200, 1], [3800, 1], [4200, 1], [4300, .5], [4400, 0], [5400, 0], [6100, 0], [6500, 0], [7400, 0], [7600, 0], [8700, -.85], [9300, 0], [9700, 0], [9800, 0], [10000, 0], [10100, 0], [10800, .45], [12000, 0]]),
+    track('frontPaw.right.rotation.x', [[0, 0], [900, .75], [2100, -.95], [3200, 1], [3800, 1], [4200, 1], [4300, .5], [4400, 0], [5400, 0], [6100, 0], [6500, 0], [7400, 0], [7600, 0], [8700, -.85], [9300, 1], [9700, 3], [9800, 3], [10000, 3], [10100, 3], [10800, .45], [12000, 0]]),
+    track('frontPaw.right.rotation.y', [[0, 0], [9200, 0], [9300, 0], [9700, -3], [9800, -3], [10000, -3], [10100, -3], [10800, -.8], [12000, 0]]),
     track('frontPaw.left.rotation.z', [[0, 0], [900, -.8], [2100, -.2], [3200, .65], [4300, -.75], [5400, .7], [6500, -.9], [7600, .8], [8700, -.55], [9300, -1.2], [9800, -.4], [10800, -.8], [12000, 0]]),
-    track('frontPaw.right.rotation.z', [[0, 0], [900, .8], [2100, .25], [3200, -3], [3800, -3], [4200, -3], [4300, -3], [4400, -3], [5400, -3], [6100, 3], [6500, 2], [7400, -3], [7600, -3], [8700, .6], [9300, -2], [9700, 2], [9800, 2], [10000, 2], [10100, 2], [10800, .85], [12000, 0]]),
+    track('frontPaw.right.rotation.z', [[0, 0], [900, .8], [2100, .25], [3200, -3], [3800, -3], [4200, -3], [4300, -3], [4400, -3], [5400, -3], [6100, 3], [6500, 2], [7400, -3], [7600, -3], [8700, .6], [9300, 2], [9700, 2], [9800, 2], [10000, 2], [10100, 2], [10800, .85], [12000, 0]]),
     track('frontPaw.right.tip.rotation.z', [[0, 0], [900, .4], [1500, 2.2], [2100, 4.4], [2700, 6.1], [3200, 4.8], [3800, 2.3], [4300, 0], [4900, -2.2], [5400, -4.5], [6000, -6.1], [6500, -3.4], [7100, 0], [7600, 3.1], [8200, 6.2], [8700, 4], [9300, 1.2], [9800, -1.8], [10800, -.5], [12000, 0]]),
     track('hindPaw.left.rotation.z', [[0, 0], [900, .35], [2100, -.2], [3200, .42], [4300, -.35], [5400, .5], [6500, -.4], [7600, .48], [8700, -.3], [9300, -.55], [9800, .45], [10800, .2], [12000, 0]]),
     track('hindPaw.right.rotation.z', [[0, 0], [900, -.35], [2100, .2], [3200, -.42], [4300, .35], [5400, -.5], [6500, .4], [7600, -.48], [8700, .3], [9300, .55], [9800, -.45], [10800, -.2], [12000, 0]]),

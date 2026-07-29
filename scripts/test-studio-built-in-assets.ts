@@ -98,6 +98,11 @@ assert.deepEqual(nebulaAdaptation.phases.map(item => [item.role, item.startMs, i
 assert.ok(nebulaAdaptation.warpWindows.length >= 4)
 assert.equal(nebulaAdaptation.constraints.length, 3)
 assert.deepEqual(new Set(nebulaAdaptation.effectCues.map(item => item.kind)), new Set(['weapon-trail', 'impact-sparks', 'impact-ring']))
+assert.deepEqual(
+  nebulaAdaptation.effectCues.filter(item => item.kind !== 'weapon-trail').map(item => item.triggerProgress),
+  [.45, .45],
+  '下劈火花与冲击环必须共享阶段内 45% 的确定命中时刻',
+)
 const phaseIds = new Set(nebulaAdaptation.phases.map(item => item.id))
 const propInstanceIds = new Set(nebulaStaffMotion.propEventTracks.map(item => item.instanceId))
 const rigPointIds = new Set(Object.keys(nebulaStaffRig.value))
@@ -116,6 +121,11 @@ const nebulaClip = compileBipedPetMotion(nebulaStaffMotion)
 assert.equal(nebulaClip.rootMotion.mode, 'travel')
 assert.equal(nebulaClip.rootMotion.verticalMode, 'ballistic')
 assert.ok(nebulaClip.rootMotion.windows.filter(item => item.kind === 'warp').length >= 4)
+assert.deepEqual(
+  nebulaClip.adaptationDefinition?.effectCues.filter(item => item.kind !== 'weapon-trail').map(item => item.triggerProgress),
+  [.45, .45],
+  '动作编译必须保留下劈确定命中时刻',
+)
 const localRootX = nebulaStaffMotion.tracks.find(item => item.channelId === 'root.position.x')
 const localRootY = nebulaStaffMotion.tracks.find(item => item.channelId === 'root.position.y')
 const localRootTurn = nebulaStaffMotion.tracks.find(item => item.channelId === 'root.rotation.y')
@@ -216,7 +226,7 @@ const expectedMotionStructure = [
   ['builtin-energetic-step', 8000, 16, 272, []],
   ['builtin-starlight-sway', 10000, 15, 255, ['builtin-glow-sticks']],
   ['builtin-horse-stance-punch', 8400, 15, 163, []],
-  ['builtin-nebula-staff-spin', 12000, 16, 230, ['builtin-nebula-staff']],
+  ['builtin-nebula-staff-spin', 12000, 17, 239, ['builtin-nebula-staff']],
   ['builtin-cartwheel', 8800, 16, 196, []],
   ['builtin-sprint-stop', 9200, 16, 222, []],
 ] as const
