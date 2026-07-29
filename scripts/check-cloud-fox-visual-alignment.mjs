@@ -9,6 +9,7 @@ const profile = read('apps/playground/app/domain/chrome-extension-cloud-fox-prof
 const shapeProfiles = read('apps/playground/app/domain/cloud-fox-shape-profile.ts')
 const surface = read('apps/playground/app/domain/cloud-fox-surface-model.ts')
 const eyeMetrics = read('apps/playground/app/domain/cloud-fox-eye-metrics.ts')
+const limbAssembly = read('apps/playground/app/domain/cloud-fox-limb-assembly.ts')
 const limbMotion = read('apps/playground/app/domain/cloud-fox-limb-motion.ts')
 const customization = read('apps/playground/app/domain/pet-part-customization.ts')
 const controls = read('apps/playground/app/domain/studio-control-registry.ts')
@@ -30,6 +31,7 @@ const phase2 = read('apps/playground/app/domain/pet-studio-phase2.ts')
 const registry = read('apps/playground/app/domain/pet-species-registry.ts')
 const patchDomain = read('apps/playground/app/domain/pet-appearance-patch.ts')
 const surfaceTest = read('scripts/test-cloud-fox-surface-model.ts')
+const limbAssemblyTest = read('scripts/test-cloud-fox-limb-assembly.ts')
 const tailEditor = read('apps/playground/app/components/studio/StudioTailEditor.vue')
 const earEditor = read('apps/playground/app/components/studio/StudioEarEditor.vue')
 const frontEditor = read('apps/playground/app/components/studio/StudioFrontPawEditor.vue')
@@ -43,6 +45,7 @@ const checks = [
   ['body and head profiles share one sampled coordinate system', shapeProfiles.includes('CloudFoxBodyProfile') && shapeProfiles.includes('CloudFoxHeadProfile') && surface.includes('sampleCloudFoxBodyFrontSurface') && surface.includes('sampleCloudFoxHeadFrontSurfaceAtLocalXY') && head.includes('resolveCloudFoxEyeSurfaceAnchor') && belly.includes('createCloudFoxBellySurfaceMesh')],
   ['eye dimensions and blink floors preserve visible styles', eyeMetrics.includes("spark: Object.freeze({ width: .42") && eyeMetrics.includes('blinkFloor: .42') && head.includes('getCloudFoxEyeBlinkFloor') && eye.includes('ExtrudeGeometry') && eye.includes('sparkOutlineGeometry')],
   ['surface alignment is numerically tested across bodies and heads', surfaceTest.includes('maximumOffsetError') && surfaceTest.includes('eye separation remains visible') && surfaceTest.includes('CLOUD_FOX_BODY_SHAPES') && surfaceTest.includes('CLOUD_FOX_HEAD_SHAPES')],
+  ['shoulders and feet use continuous limb assembly chains', limbAssembly.includes('createFrontPawConnectionAssembly') && limbAssembly.includes('createHindPawChainAssembly') && limbAssemblyTest.includes('肩部连接段必须进入肩球内部') && body.includes('frontConnection(side).quaternion') && body.includes(':position="hindAnklePosition"') && body.includes(':position="hindFootPositionFromAnkle"')],
   ['complete front and hind limb motion remains separated from geometry', limbMotion.includes('createCloudFoxFrontPawPose') && limbMotion.includes('createCloudFoxHindPawPose') && body.includes('createCloudFoxFrontPawPose') && body.includes('createCloudFoxHindPawPose')],
   ['production camera values remain exact', production.includes('vec3(0, 0.42, 8.8)') && production.includes('vec3(0, 0.08, 9.7)') && production.includes('vec3(0, 0.72, 10.8)')],
   ['production light values remain exact', production.includes(':intensity="1.35"') && production.includes(':intensity="3.8"') && production.includes('secretMode ? 7 : 3.6') && production.includes('secretMode ? 6 : 2.8')],

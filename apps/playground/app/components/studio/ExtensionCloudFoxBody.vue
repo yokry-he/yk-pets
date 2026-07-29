@@ -6,13 +6,14 @@
 <script setup lang="ts">
 import { useLoop } from '@tresjs/core'
 import type { EvaluatedCloudFoxPose } from '@yk-pets/pet-core'
-import { CanvasTexture, DoubleSide, Euler, Vector3 } from 'three'
+import { CanvasTexture, DoubleSide, Euler, Quaternion, Vector3 } from 'three'
 import type { Group } from 'three'
 import ExtensionCloudFoxBodyShape from './ExtensionCloudFoxBodyShape.vue'
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '~/domain/chrome-extension-cloud-fox-profile'
 import { createExtensionCloudFoxMotionFrame } from '~/domain/chrome-extension-cloud-fox-motion-runtime'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import { getCloudFoxBodyProfile } from '~/domain/cloud-fox-shape-profile'
+import { createFrontPawConnectionAssembly, createHindPawChainAssembly } from '~/domain/cloud-fox-limb-assembly'
 import { createCloudFoxFrontPawPose, createCloudFoxHindPawPose } from '~/domain/cloud-fox-limb-motion'
 import {
   normalizeCustomizableAppearance,
@@ -25,6 +26,7 @@ import { customPoseScale, customPoseValue } from '~/domain/custom-motion-pose'
 
 const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe; behavior: ExtensionCloudFoxMotionId; motionKey: number; customPose?: EvaluatedCloudFoxPose | null }>()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
+const upAxis = new Vector3(0, 1, 0)
 const vector = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
 const rotation = (value: readonly number[]) => new Euler(value[0] || 0, value[1] || 0, value[2] || 0)
 const damp = (current: number, target: number, speed: number, delta: number) => current + (target - current) * Math.min(1, 1 - Math.exp(-speed * delta))
@@ -81,6 +83,26 @@ function pawPosition(side: number) {
     classicPawZ.value - frontPaw.value.embedDepth * props.appearance.proportions.limbThickness + frontPaw.value.forwardOffset + offset[2],
   ])
 }
+const frontConnections = computed(() => {
+  const createConnection = (side: -1 | 1) => {
+    const shoulderCenter = pawPosition(side)
+    const assembly = createFrontPawConnectionAssembly({
+      bodyCenter: scheme.model.body.position,
+      bodyRadii: [bodyHalfWidth.value, bodyHalfHeight.value, bodyHalfDepth.value],
+      shoulderCenter: [shoulderCenter.x, shoulderCenter.y, shoulderCenter.z],
+      shoulderRadius: shoulderRadius.value,
+    })
+    return {
+      ...assembly,
+      position: vector(assembly.localCenter),
+      quaternion: new Quaternion().setFromUnitVectors(upAxis, vector(assembly.direction)),
+    }
+  }
+  return { left: createConnection(-1), right: createConnection(1) }
+})
+function frontConnection(side: number) {
+  return side < 0 ? frontConnections.value.left : frontConnections.value.right
+}
 
 const hindProfile = computed(() => HIND_STYLE_PROFILE[hindPaw.value.style])
 const hindLegHeight = computed(() => scheme.model.hindPaw.leg[2] * props.appearance.proportions.limbLength * hindPaw.value.legLengthScale * hindProfile.value.length)
@@ -92,7 +114,14 @@ const hindFootScale = computed(() => vector([
   scheme.model.hindPaw.tipScale[1] * props.appearance.proportions.pawScale * hindPaw.value.pawScaleY * hindProfile.value.pawScale[1],
   scheme.model.hindPaw.tipScale[2] * props.appearance.proportions.pawScale * hindPaw.value.pawScaleZ * hindProfile.value.pawScale[2],
 ]))
-const hindFootY = computed(() => scheme.model.hindPaw.tipPosition[1] - (hindLegHeight.value - scheme.model.hindPaw.leg[2]) * .5 - hindPaw.value.heelDrop)
+const hindChain = computed(() => createHindPawChainAssembly({
+  legLength: hindLegHeight.value,
+  baseLegLength: scheme.model.hindPaw.leg[2],
+  footBasePosition: scheme.model.hindPaw.tipPosition,
+  heelDrop: hindPaw.value.heelDrop,
+}))
+const hindAnklePosition = computed(() => vector(hindChain.value.anklePosition))
+const hindFootPositionFromAnkle = computed(() => vector(hindChain.value.footPositionFromAnkle))
 function hindIndependentOffset(side: number) {
   if (hindPaw.value.mirror) return [0, 0, 0] as const
   return side < 0
@@ -192,6 +221,10 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
   <ExtensionCloudFoxBodyShape :appearance="appearance" />
 
   <TresGroup v-for="side in [-1, 1]" :key="`fp${side}`" :position="pawPosition(side)">
+    <TresMesh :position="frontConnection(side).position" :quaternion="frontConnection(side).quaternion" cast-shadow>
+      <TresCylinderGeometry :args="[frontConnection(side).radius * .96, frontConnection(side).radius, frontConnection(side).length, 24]" />
+      <TresMeshStandardMaterial :color="colors.body" :roughness=".3" />
+    </TresMesh>
     <TresMesh :scale="vector([1.12, 1.02, .94])" cast-shadow><TresSphereGeometry :args="[shoulderRadius, 28, 28]" /><TresMeshStandardMaterial :color="colors.body" :roughness=".3" /></TresMesh>
     <TresGroup :ref="node => setPawMotionRef(node, side)">
       <TresMesh :position="vector([0, forearmCenterY, 0])" cast-shadow><TresCylinderGeometry :args="[rootRadius, wristRadius, forearmHeight, 24]" /><TresMeshStandardMaterial :color="colors.limbs" :roughness="frontPaw.style === 'mechanical' ? .18 : .26" :metalness="frontPaw.style === 'mechanical' ? .28 : .04" /></TresMesh>
@@ -209,23 +242,27 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
       <TresMeshStandardMaterial :color="colors.body" :roughness="hindPaw.style === 'mechanical' ? .2 : .32" :metalness="hindPaw.style === 'mechanical' ? .32 : .03" />
     </TresMesh>
     <TresGroup :ref="node => setHindRef(node, side)">
-      <TresMesh :rotation="hindLegRotation(side)" cast-shadow>
-        <TresCylinderGeometry :args="[hindRootRadius, hindAnkleRadius, hindLegHeight, 24]" />
-        <TresMeshStandardMaterial :color="colors.limbs" :roughness="hindPaw.style === 'mechanical' ? .18 : .3" :metalness="hindPaw.style === 'mechanical' ? .34 : .03" />
-      </TresMesh>
-      <TresMesh v-if="hindPaw.style === 'mechanical'" :position="vector([0, hindFootY + hindAnkleRadius * .6, 0])" cast-shadow>
-        <TresSphereGeometry :args="[hindAnkleRadius * 1.18, 20, 20]" />
-        <TresMeshStandardMaterial :color="colors.body" :roughness=".2" :metalness=".38" />
-      </TresMesh>
-      <TresGroup :position="vector([0, hindFootY, scheme.model.hindPaw.tipPosition[2]])" :rotation="hindFootRotation(side)">
-        <TresMesh :scale="hindFootScale" cast-shadow>
-          <TresSphereGeometry :args="[scheme.model.hindPaw.tipRadius, 28, 28]" />
-          <TresMeshStandardMaterial :color="colors.paws" :roughness="hindPaw.style === 'mechanical' ? .2 : .3" :metalness="hindPaw.style === 'mechanical' ? .28 : .02" />
+      <TresGroup :rotation="hindLegRotation(side)">
+        <TresMesh cast-shadow>
+          <TresCylinderGeometry :args="[hindRootRadius, hindAnkleRadius, hindLegHeight, 24]" />
+          <TresMeshStandardMaterial :color="colors.limbs" :roughness="hindPaw.style === 'mechanical' ? .18 : .3" :metalness="hindPaw.style === 'mechanical' ? .34 : .03" />
         </TresMesh>
-        <TresMesh v-if="hindPaw.style === 'boot'" :position="vector([0, -.025, scheme.model.hindPaw.tipRadius * .62])" :scale="vector([.82, .48, .72])" cast-shadow>
-          <TresSphereGeometry :args="[scheme.model.hindPaw.tipRadius, 20, 20]" />
-          <TresMeshStandardMaterial :color="colors.paws" :roughness=".28" />
-        </TresMesh>
+        <TresGroup :position="hindAnklePosition">
+          <TresMesh cast-shadow>
+            <TresSphereGeometry :args="[hindAnkleRadius * (hindPaw.style === 'mechanical' ? 1.18 : 1.08), 20, 20]" />
+            <TresMeshStandardMaterial :color="hindPaw.style === 'mechanical' ? colors.body : colors.limbs" :roughness="hindPaw.style === 'mechanical' ? .2 : .3" :metalness="hindPaw.style === 'mechanical' ? .38 : .03" />
+          </TresMesh>
+          <TresGroup :position="hindFootPositionFromAnkle" :rotation="hindFootRotation(side)">
+            <TresMesh :scale="hindFootScale" cast-shadow>
+              <TresSphereGeometry :args="[scheme.model.hindPaw.tipRadius, 28, 28]" />
+              <TresMeshStandardMaterial :color="colors.paws" :roughness="hindPaw.style === 'mechanical' ? .2 : .3" :metalness="hindPaw.style === 'mechanical' ? .28 : .02" />
+            </TresMesh>
+            <TresMesh v-if="hindPaw.style === 'boot'" :position="vector([0, -.025, scheme.model.hindPaw.tipRadius * .62])" :scale="vector([.82, .48, .72])" cast-shadow>
+              <TresSphereGeometry :args="[scheme.model.hindPaw.tipRadius, 20, 20]" />
+              <TresMeshStandardMaterial :color="colors.paws" :roughness=".28" />
+            </TresMesh>
+          </TresGroup>
+        </TresGroup>
       </TresGroup>
     </TresGroup>
   </TresGroup>
