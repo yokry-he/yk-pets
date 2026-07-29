@@ -118,6 +118,7 @@
     "bipedPetMotionAdaptationContractComplete": true,
     "bipedPetPropRigContractComplete": true,
     "bipedPetMotionAdaptationPlanComplete": true,
+    "bipedPetSecondaryGripRuntimeComplete": true,
     "bipedPetProductionQuadrupedProfileComplete": false,
     "bipedPetProductionMechProfileComplete": false,
     "bipedPetHighDetailTopologyComplete": false,
@@ -258,7 +259,8 @@
     "biped-pet-root-motion-vfx-phase-delivery",
     "biped-pet-motion-adaptation-contract",
     "biped-pet-prop-rig-contract",
-    "biped-pet-motion-adaptation-plan"
+    "biped-pet-motion-adaptation-plan",
+    "biped-pet-secondary-grip-runtime"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

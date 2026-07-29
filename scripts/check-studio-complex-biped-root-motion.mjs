@@ -95,6 +95,8 @@ const isDescendantOf = (element, ancestorNode) => {
 const partsParentLookup = new Map()
 
 const rendererSource = read('apps/playground/app/components/studio/ComplexBipedPetRenderer.vue')
+const motionControllerSource = read('apps/playground/app/three/apply-complex-biped-motion.ts')
+const weaponConstraintSource = read('apps/playground/app/three/apply-complex-biped-weapon-constraint.ts')
 const settings = read('apps/playground/app/components/studio/StudioRootMotionSettings.vue')
 const motionPageSource = read('apps/playground/app/pages/studio/motion.vue')
 const canvasSource = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
@@ -137,6 +139,17 @@ expect(/vfxController\?\.dispose\(\)[\s\S]{0,260}controller\?\.dispose\(\)[\s\S]
 expect(/String\(error\s+instanceof\s+Error\s*\?\s*error\.message\s*:\s*error\)/.test(renderer) && /catch\s*\{\s*return\s+'未知错误'/.test(renderer), '释放诊断必须安全字符串化任意抛出值 / Cleanup diagnostics must safely stringify arbitrary thrown values')
 expect(/watch\(\(\)\s*=>\s*\[props\.motionTimeMs,\s*props\.motionWeight\][\s\S]{0,100}syncMotionFrame/.test(renderer) && /function\s+syncMotionFrame\([\s\S]{0,180}applyMotion/.test(renderer), '时间变化只能经安全边界采样动作，不得重建控制器 / Time changes must only sample motion through the safe boundary without rebuilding controllers')
 expect(elementsNamed(rendererParts, 'TresCanvas').length === 0 && callsNamed(rendererParts, 'requestAnimationFrame').length === 0 && !rendererParts.identifiers.some(identifier => identifier.text === 'Skeleton'), '复杂 renderer 不得创建 Canvas、RAF 或 Skeleton / Complex renderer must not create Canvas, RAF, or Skeleton')
+
+const balanceIndex = motionControllerSource.indexOf('balanceController?.apply')
+const firstMatrixIndex = motionControllerSource.indexOf('runtime.object.updateMatrixWorld(true)', balanceIndex)
+const weaponHookIndex = motionControllerSource.indexOf('options.beforeLegIk?.', firstMatrixIndex)
+const legIkIndex = motionControllerSource.indexOf('ikController?.apply', weaponHookIndex)
+expect(balanceIndex >= 0 && firstMatrixIndex > balanceIndex && weaponHookIndex > firstMatrixIndex && legIkIndex > weaponHookIndex, '持械 hook 必须固定在 Balance 与首次世界矩阵更新后、腿 IK 前 / Weapon hook must run after Balance and the first world-matrix update but before leg IK')
+expect(/freezesDisplayPose[\s\S]{0,700}return Object\.freeze/.test(motionControllerSource) && motionControllerSource.indexOf('freezesDisplayPose') < motionControllerSource.indexOf('options.beforeLegIk?.'), '重复暂停帧必须在持械 hook 前冻结 / Duplicate paused frames must freeze before the weapon hook')
+expect(/ownerByRuntime\s*=\s*new WeakMap/.test(weaponConstraintSource) && /同一运行时只能创建一个持械约束控制器/.test(weaponConstraintSource), '副手持械控制器必须拥有 runtime 单写入令牌 / Secondary-grip controller must own a single-writer runtime token')
+expect(weaponConstraintSource.includes('solveAnalyticTwoBoneIk') && weaponConstraintSource.includes('solveConstrainedFabrik') && weaponConstraintSource.includes('clampTargetAlongWeaponAxis'), '持械控制器必须提供解析式主路径、FABRIK 降级与武器轴钳制 / Weapon controller must provide analytic solving, FABRIK fallback, and weapon-axis clamping')
+expect(!/handle\.object\.(?:position|quaternion|rotation|scale|matrix)\s*(?:=|\.|\[)/u.test(weaponConstraintSource), '持械控制器不得写主手拥有的道具变换 / Weapon controller must not write the primary-owned prop transform')
+expect(!/\.position\.(?:set|copy|add|sub|multiply)/u.test(weaponConstraintSource.replace(/handle\.object[\s\S]*?applyMatrix4\(object\.matrixWorld\)/u, '')), '持械控制器不得改写手臂骨骼局部 position / Weapon controller must not mutate arm-bone local positions')
 
 expect(elementsNamed(canvasParts, 'TresCanvas').length === 1, 'Studio 画布必须只保留一个 TresCanvas / Studio preview must retain exactly one TresCanvas')
 expect(callsNamed(proceduralParts, 'createComplexBipedMotionController').length === 0 && callsNamed(proceduralParts, 'createComplexBipedMotionVfxController').length === 0, 'ProceduralPet 不得创建复杂控制器 / ProceduralPet must not create complex controllers')

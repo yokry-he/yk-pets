@@ -26,6 +26,17 @@ export interface ComplexBipedMotionController {
   dispose(): void
 }
 
+export interface ComplexBipedMotionBeforeLegIkContext {
+  readonly sample: SampledBipedPetMotion
+  readonly weight: number
+  readonly rootMotionFrame: ComplexBipedRootMotionFrame
+}
+
+export interface ComplexBipedMotionControllerOptions {
+  /** 在 Balance 和首次世界矩阵更新之后、腿部 IK 之前运行；异常由 renderer 同步边界统一处理。 */
+  readonly beforeLegIk?: (context: ComplexBipedMotionBeforeLegIkContext) => void
+}
+
 const clampWeight = (value: number | undefined) => Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 1))
 const ZERO_FOOT_RESIDUAL = Object.freeze([0, 0, 0]) as readonly [number, number, number]
 const EMPTY_IK_REPORT: ComplexBipedIkFrameReport = Object.freeze({
@@ -50,7 +61,11 @@ const attemptCleanup = (failures: string[], label: string, cleanup: () => void) 
   catch (error) { failures.push(`${label}：${thrownDetail(error)}`) }
 }
 
-export function createComplexBipedMotionController(runtime: ComplexBipedPetObject, compilation?: CompiledCharacterModel): ComplexBipedMotionController {
+export function createComplexBipedMotionController(
+  runtime: ComplexBipedPetObject,
+  compilation?: CompiledCharacterModel,
+  options: ComplexBipedMotionControllerOptions = {},
+): ComplexBipedMotionController {
   const bindRotations = new Map([...runtime.bonesById].map(([boneId, bone]) => [boneId, bone.quaternion.clone()]))
   const root = runtime.bonesById.get('root')
   if (!root) throw new Error('复杂双足萌宠动作控制器缺少 root 骨骼。')
@@ -129,6 +144,7 @@ export function createComplexBipedMotionController(runtime: ComplexBipedPetObjec
       const rootMotionFrame = rootMotionController.apply(sample, weight, consumedFootResidual)
       balanceController?.apply(sample, weight, rootMotionFrame.rootMotion)
       runtime.object.updateMatrixWorld(true)
+      options.beforeLegIk?.(Object.freeze({ sample, weight, rootMotionFrame }))
       const ikReport = ikController?.apply(
         sample,
         weight,

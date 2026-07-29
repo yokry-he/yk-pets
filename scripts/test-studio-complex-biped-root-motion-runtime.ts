@@ -5,12 +5,14 @@
 
 import assert from 'node:assert/strict'
 import {
+  applyBipedPetBodyStyle,
   compileBipedPetCharacter,
   compileBipedPetMotion,
   createBipedPetModelRecipe,
   normalizeBipedPetRootMotion,
   sampleBipedPetMotion,
   type BipedPetRootMotionDefinition,
+  type BipedPetBodyStyle,
   type CompiledCharacterModel,
   type SampledBipedPetMotion,
 } from '../packages/pet-core/src/index.ts'
@@ -20,6 +22,7 @@ import { createComplexBipedRootMotionController } from '../apps/playground/app/t
 import { createComplexBipedBalanceController } from '../apps/playground/app/three/apply-complex-biped-balance.ts'
 import { createComplexBipedIkController } from '../apps/playground/app/three/apply-complex-biped-ik.ts'
 import { createComplexBipedMotionController } from '../apps/playground/app/three/apply-complex-biped-motion.ts'
+import { createComplexBipedWeaponConstraintController } from '../apps/playground/app/three/apply-complex-biped-weapon-constraint.ts'
 import { createComplexBipedMotionVfxController } from '../apps/playground/app/three/complex-biped-motion-vfx.ts'
 
 const walkAsset = BASIC_BIPED_STUDIO_MOTIONS.find(item => item.id === 'builtin-biped-walk')
@@ -31,6 +34,14 @@ assert.ok(waveAsset)
 
 function createRuntime(scale = 1) {
   const recipe = createBipedPetModelRecipe(scale)
+  const compilation = compileBipedPetCharacter(recipe)
+  assert.equal(compilation.status, 'ready')
+  const runtime = createComplexBipedPetObject(compilation, recipe.material)
+  return { compilation, runtime }
+}
+
+function createStyledRuntime(bodyStyle: BipedPetBodyStyle) {
+  const recipe = applyBipedPetBodyStyle(createBipedPetModelRecipe(1), bodyStyle)
   const compilation = compileBipedPetCharacter(recipe)
   assert.equal(compilation.status, 'ready')
   const runtime = createComplexBipedPetObject(compilation, recipe.material)
@@ -58,6 +69,17 @@ function readCharacterHeight(runtime: ReturnType<typeof createRuntime>['runtime'
   const box = runtime.object.geometry.boundingBox
   assert.ok(box)
   return box.max.y - box.min.y
+}
+
+const LEFT_ARM_CHAIN = ['upper-arm.left', 'elbow.left', 'forearm.left', 'wrist.left', 'hand.left'] as const
+
+function readArmSegmentLengths(runtime: ReturnType<typeof createRuntime>['runtime']) {
+  runtime.object.updateMatrixWorld(true)
+  const scratch = runtime.object.position.clone()
+  const next = runtime.object.position.clone()
+  return LEFT_ARM_CHAIN.slice(1).map((boneId, index) => runtime.bonesById.get(LEFT_ARM_CHAIN[index]!)!
+    .getWorldPosition(scratch)
+    .distanceTo(runtime.bonesById.get(boneId)!.getWorldPosition(next)))
 }
 
 function snapshotDisplayPose(runtime: ReturnType<typeof createRuntime>['runtime']) {
@@ -810,6 +832,206 @@ for (const invalidState of [
   fkController.dispose()
   withIk.runtime.dispose()
   fkOnly.runtime.dispose()
+}
+
+// 持械 hook 在 Balance 与第一次世界矩阵更新后、腿 IK 前执行；副手收敛不能改写主手道具或拉伸手臂。 / The weapon hook runs after Balance and the first world-matrix update but before leg IK; the secondary hand cannot rewrite the primary-owned prop or stretch the arm.
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compile(walkAsset, compilation)
+  const sample = sampleBipedPetMotion(clip, 320)
+  const propObject = runtime.sockets['hand.right']!.mount.clone(false)
+  propObject.name = '测试星云长棍'
+  runtime.sockets['hand.right']!.mount.add(propObject)
+  const bindLengths = readArmSegmentLengths(runtime)
+  const weapon = createComplexBipedWeaponConstraintController(runtime, compilation)
+  let hookCalls = 0
+  let report: ReturnType<typeof weapon.apply> | undefined
+  let targetLocal: readonly [number, number, number] | undefined
+  const controller = createComplexBipedMotionController(runtime, compilation, {
+    beforeLegIk(context) {
+      hookCalls += 1
+      runtime.object.updateMatrixWorld(true)
+      const upperArmWorld = runtime.bonesById.get('upper-arm.left')!.getWorldPosition(runtime.object.position.clone())
+      const leftHandWorld = runtime.bonesById.get('hand.left')!.getWorldPosition(runtime.object.position.clone())
+      const targetWorld = upperArmWorld.clone().lerp(leftHandWorld, .72)
+      targetWorld.z += readCharacterHeight(runtime) * .025
+      targetLocal ??= propObject.worldToLocal(targetWorld.clone()).toArray() as [number, number, number]
+      const point = (position: readonly [number, number, number]) => ({ position, rotation: [0, 0, 0, 1] as [number, number, number, number] })
+      const primaryMatrix = [...propObject.matrixWorld.elements]
+      report = weapon.apply({
+        requestedTimeMs: context.sample.requestedTimeMs,
+        weight: context.weight,
+        adaptation: {
+          requestedTimeMs: context.sample.requestedTimeMs,
+          resolvedTimeMs: context.sample.resolvedTimeMs,
+          activePhaseIds: ['sweep'],
+          constraintWeights: { 'left-grip': 1 },
+          activeEffectCueIds: [],
+        },
+        propHandle: {
+          instanceId: 'nebula-staff-main',
+          object: propObject,
+          primaryGrip: point([0, 0, 0]),
+          constraint: {
+            id: 'left-grip', kind: 'secondary-grip', phaseId: 'sweep', limbId: 'arm.left',
+            propInstanceId: 'nebula-staff-main', pointId: 'secondaryGrip', weight: 1,
+            armReachWorld: bindLengths.reduce((sum, value) => sum + value, 0),
+            targetPoint: point(targetLocal),
+          },
+        },
+      })
+      runtime.object.updateMatrixWorld(true)
+      assert.deepEqual(propObject.matrixWorld.elements, primaryMatrix)
+    },
+  })
+
+  controller.apply(sample, 1)
+  assert.ok(report)
+  assert.equal(report.status, 'solved', JSON.stringify(report))
+  runtime.object.updateMatrixWorld(true)
+  const targetWorld = runtime.object.position.clone().set(...targetLocal!).applyMatrix4(propObject.matrixWorld)
+  const leftHandWorld = runtime.sockets['hand.left']!.mount.getWorldPosition(runtime.object.position.clone())
+  assert.ok(leftHandWorld.distanceTo(targetWorld) <= readCharacterHeight(runtime) * .02)
+  vectorNear(readArmSegmentLengths(runtime), bindLengths, 1e-8)
+  controller.apply(sample, 1)
+  assert.equal(hookCalls, 1, '重复暂停帧不得重跑持械 hook')
+  controller.reset()
+  weapon.reset()
+  controller.dispose()
+  weapon.dispose()
+  propObject.removeFromParent()
+  runtime.dispose()
+}
+
+// 四种内置双足体型都使用各自真实臂长求解，不共享某个体型的副手目标或伸展结果。 / Every built-in biped body style solves from its own real arm length rather than reusing another style's target or reach.
+for (const bodyStyle of ['soft', 'athletic', 'round', 'slender'] as const) {
+  const { compilation, runtime } = createStyledRuntime(bodyStyle)
+  const weapon = createComplexBipedWeaponConstraintController(runtime, compilation)
+  const propObject = runtime.sockets['hand.right']!.mount.clone(false)
+  runtime.sockets['hand.right']!.mount.add(propObject)
+  runtime.object.updateMatrixWorld(true)
+  const upperArmWorld = runtime.bonesById.get('upper-arm.left')!.getWorldPosition(runtime.object.position.clone())
+  const handWorld = runtime.bonesById.get('hand.left')!.getWorldPosition(runtime.object.position.clone())
+  const targetWorld = upperArmWorld.clone().lerp(handWorld, .7)
+  targetWorld.z += readCharacterHeight(runtime) * .02
+  const targetLocal = propObject.worldToLocal(targetWorld.clone()).toArray() as [number, number, number]
+  const point = (position: readonly [number, number, number]) => ({ position, rotation: [0, 0, 0, 1] as [number, number, number, number] })
+  const bindLengths = readArmSegmentLengths(runtime)
+  const propMatrix = [...propObject.matrixWorld.elements]
+  const report = weapon.apply({
+    requestedTimeMs: 5200,
+    weight: 1,
+    adaptation: {
+      requestedTimeMs: 5200,
+      resolvedTimeMs: 5200,
+      activePhaseIds: ['sweep'],
+      constraintWeights: { 'left-grip': 1 },
+      activeEffectCueIds: [],
+    },
+    propHandle: {
+      instanceId: `nebula-staff-${bodyStyle}`,
+      object: propObject,
+      primaryGrip: point([0, 0, 0]),
+      constraint: {
+        id: 'left-grip', kind: 'secondary-grip', phaseId: 'sweep', limbId: 'arm.left',
+        propInstanceId: `nebula-staff-${bodyStyle}`, pointId: 'secondaryGrip', weight: 1,
+        armReachWorld: bindLengths.reduce((sum, value) => sum + value, 0),
+        targetPoint: point(targetLocal),
+      },
+    },
+  })
+  runtime.object.updateMatrixWorld(true)
+  const solvedHandWorld = runtime.bonesById.get('hand.left')!.getWorldPosition(runtime.object.position.clone())
+  assert.equal(report.status, 'solved', `${bodyStyle}: ${JSON.stringify(report)}`)
+  assert.ok(solvedHandWorld.distanceTo(targetWorld) <= readCharacterHeight(runtime) * .02, `${bodyStyle} 副手残差超限`)
+  vectorNear(readArmSegmentLengths(runtime), bindLengths, 1e-8)
+  assert.deepEqual(propObject.matrixWorld.elements, propMatrix)
+  weapon.dispose()
+  propObject.removeFromParent()
+  runtime.dispose()
+}
+
+// 不可达副握点沿武器轴钳制并降低实际权重；同一 runtime 仍只能有一个副手约束写入者。 / An unreachable secondary grip is clamped along the weapon axis with reduced influence, while each runtime retains one secondary-grip writer.
+{
+  const { compilation, runtime } = createRuntime()
+  const weapon = createComplexBipedWeaponConstraintController(runtime, compilation)
+  assert.throws(() => createComplexBipedWeaponConstraintController(runtime, compilation), /同一运行时.*持械约束.*控制器/)
+  const propObject = runtime.sockets['hand.right']!.mount.clone(false)
+  runtime.sockets['hand.right']!.mount.add(propObject)
+  runtime.object.updateMatrixWorld(true)
+  const point = (position: readonly [number, number, number]) => ({ position, rotation: [0, 0, 0, 1] as [number, number, number, number] })
+  const primaryMatrix = [...propObject.matrixWorld.elements]
+  const report = weapon.apply({
+    requestedTimeMs: 5200,
+    weight: 1,
+    adaptation: {
+      requestedTimeMs: 5200,
+      resolvedTimeMs: 5200,
+      activePhaseIds: ['sweep'],
+      constraintWeights: { 'left-grip': 1 },
+      activeEffectCueIds: [],
+    },
+    propHandle: {
+      instanceId: 'nebula-staff-main',
+      object: propObject,
+      primaryGrip: point([0, 0, 0]),
+      constraint: {
+        id: 'left-grip', kind: 'secondary-grip', phaseId: 'sweep', limbId: 'arm.left',
+        propInstanceId: 'nebula-staff-main', pointId: 'secondaryGrip', weight: 1,
+        armReachWorld: .7,
+        targetPoint: point([-20, 0, 0]),
+      },
+    },
+  })
+  runtime.object.updateMatrixWorld(true)
+  assert.equal(report.status, 'degraded')
+  assert.ok(report.appliedWeight < report.requestedWeight)
+  assert.ok(Number.isFinite(report.residualWorld) && report.residualWorld > 0)
+  assert.deepEqual(propObject.matrixWorld.elements, primaryMatrix)
+  assert.ok(LEFT_ARM_CHAIN.every(id => runtime.bonesById.get(id)!.quaternion.toArray().every(Number.isFinite)))
+  weapon.dispose()
+  const replacement = createComplexBipedWeaponConstraintController(runtime, compilation)
+  replacement.dispose()
+  propObject.removeFromParent()
+  runtime.dispose()
+}
+
+// 持械控制器释放即使矩阵更新抛错或直接 throw undefined，也必须封存旧实例并释放单写入令牌。 / Weapon-controller disposal seals the old instance and releases ownership even when matrix updates throw an Error or undefined.
+for (const thrownValue of [new Error('测试注入：持械矩阵释放失败'), undefined] as const) {
+  const { compilation, runtime } = createRuntime()
+  const weapon = createComplexBipedWeaponConstraintController(runtime, compilation)
+  const updateMatrixWorld = runtime.object.updateMatrixWorld
+  runtime.object.updateMatrixWorld = () => { throw thrownValue }
+  assert.throws(
+    () => weapon.dispose(),
+    error => error instanceof Error
+      && error.message.includes('复杂双足持械约束控制器释放失败')
+      && error.message.includes(thrownValue instanceof Error ? '持械矩阵释放失败' : 'undefined'),
+  )
+  runtime.object.updateMatrixWorld = updateMatrixWorld
+  weapon.dispose()
+  assert.throws(() => weapon.apply({ requestedTimeMs: 0, weight: 0 }), /已释放/)
+  const replacement = createComplexBipedWeaponConstraintController(runtime, compilation)
+  replacement.dispose()
+  runtime.dispose()
+}
+
+// hook 错误保留原始抛出值并交给 renderer 同步边界；动作控制器不能吞掉或在暂停帧重放。 / Hook failures preserve their original thrown value for the renderer boundary and are never swallowed or replayed on paused frames.
+{
+  const { compilation, runtime } = createRuntime()
+  const clip = compile(walkAsset, compilation)
+  const controller = createComplexBipedMotionController(runtime, compilation, {
+    beforeLegIk() { throw undefined },
+  })
+  let didThrow = false
+  try { controller.apply(sampleBipedPetMotion(clip, 320), 1) }
+  catch (error) {
+    didThrow = true
+    assert.equal(error, undefined)
+  }
+  assert.equal(didThrow, true)
+  controller.dispose()
+  runtime.dispose()
 }
 
 // blocked Root Motion 不能阻塞 FK/IK；外层控制器释放幂等且释放后拒绝 apply。 / Blocked Root Motion cannot block FK/IK; outer disposal is idempotent and rejects later apply.

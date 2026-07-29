@@ -490,3 +490,11 @@
 - `BipedPetQuaternionClip` 新增递归冻结的 `adaptationDefinition`。编译器从 `yk-pets/biped-motion-adaptation/v1` 安全读取并合并中文 warning；异常 Proxy 或损坏字段只关闭增强。有效适配参与 Clip 哈希；空适配维持旧资产历史哈希，不会因为新增兼容字段使全部旧 Clip 身份失效。
 - `sampleBipedPetMotion` 新增可选第三参数 `{ adaptationPlan }`，仅在调用方提供与当前角色/道具匹配的已编译计划时返回 `adaptation`。原有两参数调用不创建计划、不改变返回行为；blocked Clip 继续返回安全空姿态。
 - TDD 首轮在原有 `232` 项全部通过的同时稳定得到三个“计划编译入口不存在”失败；Clip 接入轮又稳定得到两个 `adaptationDefinition` 缺失失败。完成实现后 `corepack pnpm --filter @yk-pets/pet-core test` 为 `237/237`，`corepack pnpm --filter @yk-pets/pet-core typecheck` 与 `git diff --check` 均 exit 0。机器状态新增 `bipedPetMotionAdaptationPlanComplete=true`；下一批为复杂双足副手持械约束与动作控制器挂点。
+
+## 49. 复杂双足副手持械约束批次
+
+- 新增 `createComplexBipedWeaponConstraintController`。当前 `biped-pet/v1` 使用固定左臂链 `upper-arm.left → elbow.left → forearm.left → wrist.left → hand.left`：标准连续链走解析 Two Bone IK，异常但可编译的链走受约束 FABRIK，缺骨或编译失败安全返回 `blocked`。同一复杂角色 runtime 通过 `WeakMap` 令牌只允许一个副手写入者，释放后才允许重建。
+- 主手 Socket 与道具对象继续拥有道具世界变换，持械控制器只读取道具矩阵、主握点和副握点；它只写左臂骨骼 Quaternion，不写道具、右臂或任何骨骼 position。不可达副握点先沿主握点到副握点的武器轴钳制到臂展球，再按实际距离降低权重并返回 `degraded`，不会拉伸手臂或把主手从道具上扯开。
+- 动作控制器新增受控 `beforeLegIk` hook，严格位于 `Balance → 第一次 updateMatrixWorld` 之后、腿部 IK 之前。相同 Clip、requested time 和权重的暂停重复帧继续冻结完整显示姿态，因此不会重复求解副手；hook 的任意抛出值不被吞掉，交给 renderer 的同步故障边界统一 reset/重建。
+- 腕部承担少量握持朝向预对齐，手掌承担剩余朝向；位置求解、腕掌朝向共享有界累计角修正。执行失败会尽力回滚本帧左臂 Quaternion，`reset()` 恢复构造时姿态；`dispose()` 即使状态检查或矩阵更新抛出 `Error`、`undefined` 等任意值，也会释放单写入令牌、封存旧实例并聚合中文上下文，二次释放幂等。
+- TDD 首轮稳定得到新模块 `ERR_MODULE_NOT_FOUND`。完成后定向运行时测试覆盖柔和、运动、圆润、修长四种真实配方、可达与不可达握点、段长/道具矩阵所有权、重复暂停帧、重复控制器、释放后重建以及故障注入；`corepack pnpm run test:studio-complex-biped-root-motion-runtime`、Playground 类型检查、静态顺序/所有权门禁与 `git diff --check` 均通过。机器状态新增 `bipedPetSecondaryGripRuntimeComplete=true`；下一批为确定性武器轨迹与命中特效。
