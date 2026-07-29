@@ -4,9 +4,10 @@
   Provides motion drafts, playhead, keyframe editing, semantic pose authoring, and custom-motion preview through the sole production Cloud Fox renderer.
 -->
 <script setup lang="ts">
-import { evaluateMotionPropEvents, evaluateNormalizedMotionAsset, normalizeBipedPetRootMotion, type MotionInterpolation } from '@yk-pets/pet-core'
+import { deriveStudioPropRig, evaluateMotionPropEvents, evaluateNormalizedMotionAsset, normalizeBipedPetMotionAdaptation, normalizeBipedPetRootMotion, type MotionInterpolation } from '@yk-pets/pet-core'
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
 import StudioMotionAdvancedTools from '~/components/studio/StudioMotionAdvancedTools.vue'
+import StudioMotionAdaptationSummary from '~/components/studio/StudioMotionAdaptationSummary.vue'
 import StudioMotionDirectPad from '~/components/studio/StudioMotionDirectPad.vue'
 import StudioMotionPoseEditor from '~/components/studio/StudioMotionPoseEditor.vue'
 import StudioMotionTransformEditor from '~/components/studio/StudioMotionTransformEditor.vue'
@@ -42,7 +43,29 @@ const rootMotion = computed(() => {
   const namespace = draft.value.extensions?.['yk-pets/biped-motion/v1'] as { rootMotion?: unknown } | undefined
   return normalizeBipedPetRootMotion(namespace?.rootMotion, draft.value.durationMs).value
 })
+const motionAdaptation = computed(() => {
+  if (!draft.value) return null
+  const extensions = draft.value.extensions
+  if (!extensions || !Object.hasOwn(extensions, 'yk-pets/biped-motion-adaptation/v1')) return null
+  return normalizeBipedPetMotionAdaptation(extensions['yk-pets/biped-motion-adaptation/v1'], draft.value.durationMs).value
+})
 const allPropAssets = computed(() => [...BUILT_IN_STUDIO_PROPS, ...assets.props])
+const adaptationStatus = computed<'ready' | 'compatible' | 'limited' | 'inactive'>(() => {
+  const adaptation = motionAdaptation.value
+  if (!adaptation || adaptation.phases.length === 0) return 'inactive'
+  if (session.modelMode !== 'complex') return 'compatible'
+  if (!complexRecipe.value) return 'limited'
+  const assetById = new Map(allPropAssets.value.map(item => [item.id, item]))
+  const rigByInstanceId = new Map(draft.value?.propEventTracks.flatMap((track) => {
+    const asset = assetById.get(track.propId)
+    return asset ? [[track.instanceId, deriveStudioPropRig(asset).value] as const] : []
+  }))
+  const constraintsReady = adaptation.constraints.every(item => Boolean(rigByInstanceId.get(item.propInstanceId)?.[item.pointId as 'secondaryGrip']))
+  const effectsReady = adaptation.effectCues.every(item => item.pointIds.every(pointId => (
+    Boolean(rigByInstanceId.get(item.propInstanceId)?.[pointId as 'trailStart' | 'trailEnd' | 'impactPoint'])
+  )))
+  return constraintsReady && effectsReady ? 'ready' : 'limited'
+})
 const availableProps = computed(() => allPropAssets.value.filter(item => draft.value?.propIds.includes(item.id)))
 const evaluatedPose = computed(() => {
   if (!draft.value) return null
@@ -310,6 +333,13 @@ onBeforeUnmount(() => {
             :model-mode="session.modelMode"
             @update="editor.updateRootMotionSettings"
             @restore="editor.restoreRootMotionRecommendations"
+          />
+          <StudioMotionAdaptationSummary
+            :motion="draft"
+            :model-mode="session.modelMode"
+            :runtime-status="adaptationStatus"
+            :can-restore="editor.canRestoreMotionAdaptation"
+            @restore="editor.restoreMotionAdaptationRecommendations"
           />
           <details class="technical-info"><summary>技术信息</summary><code>{{ draft.rigId }}</code><code>{{ draft.id }}</code></details>
         </section>

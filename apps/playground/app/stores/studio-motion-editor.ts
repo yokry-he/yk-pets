@@ -15,6 +15,7 @@ import {
   nudgeMotionControls,
   nudgeMotionControlValue,
   normalizeMotionAsset,
+  normalizeBipedPetMotionAdaptation,
   normalizeBipedPetRootMotion,
   readMotionControlValue,
   resetMotionControlValue,
@@ -47,6 +48,7 @@ import {
   type MotionPropMountId,
   type StudioMotionAssetV2,
   type BipedPetMotionVfxTag,
+  type BipedPetMotionAdaptationDefinition,
   type BipedPetRootMotionDefinition,
   type BipedPetRootMotionMode,
 } from '@yk-pets/pet-core'
@@ -91,6 +93,7 @@ interface MotionEditorState {
 
 const DEFAULT_CHANNEL: CloudFoxRigChannelId = 'root.position.y'
 const BIPED_MOTION_EXTENSION_KEY = 'yk-pets/biped-motion/v1'
+const BIPED_MOTION_ADAPTATION_EXTENSION_KEY = 'yk-pets/biped-motion-adaptation/v1'
 const DEFAULT_TRAVEL_DISTANCE = .42
 const serialize = (asset: StudioMotionAssetV2 | null) => asset ? JSON.stringify(asset) : ''
 const parse = (value: string) => value ? normalizeMotionAsset(JSON.parse(value)).asset : null
@@ -116,6 +119,59 @@ function rootMotionSource(asset: StudioMotionAssetV2 | null | undefined): unknow
 function bipedMotionNamespace(asset: StudioMotionAssetV2 | null | undefined): Record<string, unknown> | undefined {
   try { return record(record(asset?.extensions)?.[BIPED_MOTION_EXTENSION_KEY]) }
   catch { return undefined }
+}
+
+function motionAdaptationSource(asset: StudioMotionAssetV2 | null | undefined): unknown {
+  try { return record(asset?.extensions)?.[BIPED_MOTION_ADAPTATION_EXTENSION_KEY] }
+  catch { return undefined }
+}
+
+function hasAuthoredMotionAdaptation(asset: StudioMotionAssetV2 | null | undefined): boolean {
+  try {
+    const extensions = record(asset?.extensions)
+    return Boolean(extensions && Object.hasOwn(extensions, BIPED_MOTION_ADAPTATION_EXTENSION_KEY))
+  }
+  catch { return false }
+}
+
+function normalizedMotionAdaptation(asset: StudioMotionAssetV2): BipedPetMotionAdaptationDefinition {
+  return normalizeBipedPetMotionAdaptation(motionAdaptationSource(asset), asset.durationMs).value
+}
+
+function scaleMotionAdaptationRecommendation(
+  adaptation: BipedPetMotionAdaptationDefinition,
+  sourceDurationMs: number,
+  targetDurationMs: number,
+): BipedPetMotionAdaptationDefinition {
+  const durationScale = targetDurationMs / sourceDurationMs
+  return normalizeBipedPetMotionAdaptation({
+    ...adaptation,
+    phases: adaptation.phases.map(phase => ({
+      ...phase,
+      startMs: Math.round(phase.startMs * durationScale),
+      endMs: Math.round(phase.endMs * durationScale),
+    })),
+    warpWindows: adaptation.warpWindows.map(window => ({ ...window })),
+    constraints: adaptation.constraints.map(constraint => ({ ...constraint })),
+    effectCues: adaptation.effectCues.map(cue => ({ ...cue, pointIds: [...cue.pointIds] })),
+  }, targetDurationMs).value
+}
+
+function adaptationRecommendationFor(asset: StudioMotionAssetV2, baseline: string): BipedPetMotionAdaptationDefinition | undefined {
+  const baselineAsset = parse(baseline)
+  // 打开时的草稿是用户当前动作的权威推荐来源；只有它缺少适配时才读取显式模板来源。 / The opening baseline is authoritative; explicit template provenance is consulted only when it lacks adaptation.
+  if (baselineAsset && hasAuthoredMotionAdaptation(baselineAsset)) {
+    return scaleMotionAdaptationRecommendation(
+      normalizedMotionAdaptation(baselineAsset),
+      baselineAsset.durationMs,
+      asset.durationMs,
+    )
+  }
+  const declaredSourceId = bipedMotionNamespace(asset)?.sourceMotionId ?? bipedMotionNamespace(baselineAsset)?.sourceMotionId
+  if (typeof declaredSourceId !== 'string' || !declaredSourceId) return undefined
+  const source = BUILT_IN_STUDIO_MOTIONS.find(item => item.id === declaredSourceId)
+  if (!source || !hasAuthoredMotionAdaptation(source)) return undefined
+  return scaleMotionAdaptationRecommendation(normalizedMotionAdaptation(source), source.durationMs, asset.durationMs)
 }
 
 function hasAuthoredRootMotion(asset: StudioMotionAssetV2 | null | undefined): boolean {
@@ -194,6 +250,12 @@ function writeRootMotion(asset: StudioMotionAssetV2, rootMotion: BipedPetRootMot
   return normalizeMotionAsset({ ...asset, extensions, updatedAt: Date.now() }).asset
 }
 
+function writeMotionAdaptation(asset: StudioMotionAssetV2, adaptation: BipedPetMotionAdaptationDefinition): StudioMotionAssetV2 {
+  const extensions = { ...(record(asset.extensions) ?? {}) }
+  extensions[BIPED_MOTION_ADAPTATION_EXTENSION_KEY] = adaptation
+  return normalizeMotionAsset({ ...asset, extensions, updatedAt: Date.now() }).asset
+}
+
 export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
   state: (): MotionEditorState => ({
     motionId: '',
@@ -235,6 +297,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     canUndo: state => state.undoStack.length > 0,
     canRedo: state => state.redoStack.length > 0,
     selectedKeyframeCount: state => state.selectedKeyframeIds.length,
+    canRestoreMotionAdaptation: state => Boolean(state.draft && adaptationRecommendationFor(state.draft, state.baseline)),
   },
   actions: {
     open(asset: StudioMotionAssetV2) {
@@ -671,6 +734,14 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       const recommended = recommendationFor(this.draft, this.baseline)
       if (JSON.stringify(current) === JSON.stringify(recommended)) return
       this.mutate(asset => writeRootMotion(asset, recommended))
+    },
+    restoreMotionAdaptationRecommendations() {
+      if (!this.draft) return
+      const recommended = adaptationRecommendationFor(this.draft, this.baseline)
+      if (!recommended) return
+      const current = hasAuthoredMotionAdaptation(this.draft) ? normalizedMotionAdaptation(this.draft) : undefined
+      if (current && JSON.stringify(current) === JSON.stringify(recommended)) return
+      this.mutate(asset => writeMotionAdaptation(asset, recommended))
     },
     markSaved(asset: StudioMotionAssetV2) {
       this.draft = duplicateMotionAssetForDraft(asset)

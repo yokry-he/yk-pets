@@ -100,6 +100,7 @@ const weaponConstraintSource = read('apps/playground/app/three/apply-complex-bip
 const weaponVfxSource = read('apps/playground/app/three/complex-biped-weapon-vfx.ts')
 const motionAdaptationSource = read('packages/pet-core/src/motion/biped-pet-motion-adaptation.ts')
 const settings = read('apps/playground/app/components/studio/StudioRootMotionSettings.vue')
+const adaptationSummarySource = read('apps/playground/app/components/studio/StudioMotionAdaptationSummary.vue')
 const motionPageSource = read('apps/playground/app/pages/studio/motion.vue')
 const canvasSource = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const proceduralSource = read('apps/playground/app/components/studio/ProceduralPet.vue')
@@ -110,6 +111,7 @@ const assetStore = read('apps/playground/app/stores/studio-assets.ts')
 const packageJson = JSON.parse(read('package.json') || '{}')
 const rendererParts = sfcParts(rendererSource, 'ComplexBipedPetRenderer.vue')
 const settingsParts = sfcParts(settings, 'StudioRootMotionSettings.vue')
+const adaptationSummaryParts = sfcParts(adaptationSummarySource, 'StudioMotionAdaptationSummary.vue')
 const motionPageParts = sfcParts(motionPageSource, 'motion.vue')
 const canvasParts = sfcParts(canvasSource, 'CloudFoxStudioCanvas.vue')
 const proceduralParts = sfcParts(proceduralSource, 'ProceduralPet.vue')
@@ -119,7 +121,7 @@ const commentOnlyProbe = sfcParts(`<script setup lang="ts">/* vfxController.appl
 const stringOnlyProbe = sfcParts(`<script setup lang="ts">void 'vfxController.apply(frame.vfxSignals, motionVfxFrame)'</script><template>{{ '<primitive v-if="motionVfxObject" :object="motionVfxObject" :dispose="false" />' }}</template>`, 'StringOnlyProbe.vue')
 const renderer = rendererParts.combined
 const motionPage = motionPageParts.combined
-for (const parts of [rendererParts, settingsParts, motionPageParts, canvasParts, proceduralParts, propInstanceParts, propInstancesParts]) {
+for (const parts of [rendererParts, settingsParts, adaptationSummaryParts, motionPageParts, canvasParts, proceduralParts, propInstanceParts, propInstancesParts]) {
   for (const element of parts.templateElements) if (element.parent) partsParentLookup.set(element.node, element.parent)
 }
 expect(callsNamed(commentOnlyProbe, 'vfxController.apply').length === 0 && elementsNamed(commentOnlyProbe, 'primitive').length === 0, 'SFC 门禁必须忽略 JS 与 HTML 注释中的伪实现 / SFC gate must ignore fake implementations inside JS and HTML comments')
@@ -205,6 +207,23 @@ expect(/container-type:inline-size/.test(settingsParts.styles) && /@container\s+
 const narrowViewportRule = maxWidthMediaRules(settingsParts.styles).find(rule => rule.maxWidth >= 760 && rule.maxWidth <= 780 && hasSingleColumnRootMotionGrids(rule.body))
 expect(Boolean(narrowViewportRule), '760px 窄视口下移动方式与预计结果必须切为单列 / Movement modes and summaries must become one column at the 760px narrow viewport')
 expect(/root-motion-mode-button\{[^}]*font-size:12px/.test(settings) && /root-motion-settings-guidance\{[^}]*font-size:11px/.test(settings) && /root-motion-summary-label\{[^}]*font-size:10px/.test(settings), '正文与控制字号必须保持可读的 10–12px 下限 / Body and control copy must preserve a readable 10–12px floor')
+
+const adaptationSummaryElement = elementsNamed(motionPageParts, 'StudioMotionAdaptationSummary').find(element => (
+  directive(element, 'bind', 'motion', 'draft')
+  && directive(element, 'bind', 'model-mode', 'session.modelMode')
+  && directive(element, 'bind', 'runtime-status', 'adaptationStatus')
+  && directive(element, 'bind', 'can-restore', 'editor.canRestoreMotionAdaptation')
+  && directive(element, 'on', 'restore', 'editor.restoreMotionAdaptationRecommendations')
+))
+expect(Boolean(adaptationSummaryElement) && /propertyTab\s*===\s*'basic'/.test(motionPage), '新手动作适配摘要必须接入基础属性页并调用 Store 单入口 / Beginner adaptation summary must use the basic tab and the single Store action')
+for (const label of ['动作自动优化', '预计移动', '预计转向', '双手阶段', '动作特效', '重新自动优化', '技术信息']) {
+  expect(adaptationSummaryParts.template.includes(label), `动作适配摘要缺少文案 / Adaptation summary missing copy: ${label}`)
+}
+expect(elementsNamed(adaptationSummaryParts, 'details').length === 1 && elementsNamed(adaptationSummaryParts, 'summary').length === 1, '适配技术信息必须使用原生 details/summary / Adaptation technical details must use native details/summary')
+expect(elementsNamed(adaptationSummaryParts, 'button').some(element => directive(element, 'bind', 'disabled', '!canRestore') && directive(element, 'bind', 'aria-describedby')), '重新优化按钮必须提供禁用态和说明关联 / Re-optimization must expose a disabled state and descriptive relationship')
+expect(/adaptation-summary-restore-button:focus-visible/.test(adaptationSummaryParts.styles), '重新优化按钮必须提供稳定键盘焦点 / Re-optimization must expose a stable keyboard focus style')
+expect(/@media\s*\(max-width:\s*780px\)[\s\S]*\.adaptation-summary-grid\{[^}]*grid-template-columns:\s*minmax\(0,1fr\)/.test(adaptationSummaryParts.styles), '动作适配摘要必须在 780px 以下切为单列 / Adaptation summary must become one column below 780px')
+expect(/restoreMotionAdaptationRecommendations\s*\(\)/.test(store) && /baselineAsset\s*&&\s*hasAuthoredMotionAdaptation\(baselineAsset\)/.test(store) && /sourceMotionId/.test(store), 'Store 必须优先 baseline 并只用显式来源恢复动作适配 / Store must prefer baseline and use only explicit provenance for adaptation restoration')
 
 expect(packageJson.scripts?.['check:studio-complex-biped-root-motion'] === 'node scripts/check-studio-complex-biped-root-motion.mjs', 'package.json 必须注册 Root Motion Studio 门禁 / package.json must register the Root Motion Studio gate')
 expect(String(packageJson.scripts?.typecheck || '').includes('check:studio-complex-biped-root-motion'), '总 typecheck 必须串入 Root Motion Studio 门禁 / Aggregate typecheck must include the Root Motion Studio gate')

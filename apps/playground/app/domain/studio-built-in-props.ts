@@ -7,9 +7,11 @@ import {
   createDefaultPropAnchors,
   createDefaultPropComponent,
   createStudioPropAsset,
+  STUDIO_PROP_RIG_NAMESPACE,
   type StudioPropAssetV2,
   type StudioPropComponent,
   type StudioPropPrimitive,
+  type StudioPropRigDefinition,
 } from '@yk-pets/pet-core'
 
 type ComponentPatch = Partial<Omit<StudioPropComponent, 'transform' | 'material' | 'geometry'>> & {
@@ -29,12 +31,24 @@ function component(id: string, primitive: StudioPropPrimitive, patch: ComponentP
   }
 }
 
-function prop(input: Pick<StudioPropAssetV2, 'id' | 'nameZh' | 'nameEn' | 'kind' | 'defaultAnchor'> & { components: StudioPropComponent[] }) {
+function prop(input: Pick<StudioPropAssetV2, 'id' | 'nameZh' | 'nameEn' | 'kind' | 'defaultAnchor'> & {
+  components: StudioPropComponent[]
+  extensions?: Record<string, unknown>
+}) {
   return createStudioPropAsset({ ...input, anchors: createDefaultPropAnchors(), createdAt: 1, updatedAt: 1 })
+}
+
+const nebulaStaffRig: StudioPropRigDefinition = {
+  primaryGrip: { position: [.32, 0, 0], rotation: [0, 0, 0, 1] },
+  secondaryGrip: { position: [-.58, 0, 0], rotation: [0, 0, 0, 1] },
+  trailStart: { position: [-1.65, 0, 0], rotation: [0, 0, 0, 1] },
+  trailEnd: { position: [1.65, 0, 0], rotation: [0, 0, 0, 1] },
+  impactPoint: { position: [1.65, 0, 0], rotation: [0, 0, 0, 1] },
 }
 
 const nebulaStaff = prop({
   id: 'builtin-nebula-staff', nameZh: '星云长棍', nameEn: 'Nebula Staff', kind: 'composite', defaultAnchor: 'right-front-paw',
+  extensions: { [STUDIO_PROP_RIG_NAMESPACE]: nebulaStaffRig },
   components: [
     component('staff-shaft', 'cylinder', { name: '棍身', transform: { rotation: [0, 0, Math.PI / 2], scale: [.12, 2.2, .12] }, material: { color: '#533c86', glowColor: '#9b7cff', glow: .35 }, geometry: { radius: .12, height: 1.2 } }),
     component('staff-left', 'crystal', { name: '左星晶', transform: { position: [-1.35, 0, 0], rotation: [0, 0, Math.PI / 2], scale: [.42, .7, .42] }, material: { color: '#74f4ff', glowColor: '#74f4ff', glow: 1.5 } }),

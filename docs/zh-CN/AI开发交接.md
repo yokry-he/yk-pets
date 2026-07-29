@@ -515,3 +515,12 @@
 - 每个角色 runtime 只创建一个副手持械约束控制器和一个持械 VFX 控制器。帧顺序固定为 `动作/FK → Root Motion → Balance → 世界矩阵 → 副手约束 → 腿 IK → 最终矩阵 → 原运动 VFX → 武器 VFX`；副手约束由动作控制器的 `beforeLegIk` hook 注入，武器语义点在最终姿态后转换到角色与 VFX 的共同父级坐标系。
 - 武器帧使用两组预分配容器交替保存当前帧与前帧，逐帧不创建 Map、Canvas、RAF 或 Skeleton。暂停、回拖、Clip 切换、无动作、blocked 和停止权重会同时清动作、两类 VFX、持械约束及轨迹历史；运行时释放顺序固定为持械 VFX → 原运动 VFX → 持械约束 → 动作控制器 → 角色 runtime，单项失败不阻断后续清理。
 - TDD 首轮确认句柄导出和 renderer 生命周期门禁缺失；完成后定向运行时测试覆盖真实挂点、重复 Group、未挂载 Group、陈旧释放与外部移除，静态 AST 门禁覆盖真实 Vue emit/listener、唯一控制器、适配编译/采样、sibling primitive、逆序释放和单 Canvas 边界。`corepack pnpm run test:studio-complex-biped-root-motion-runtime`、Playground 类型检查、Root Motion/VFX 静态门禁与 `git diff --check` 均通过。机器状态新增 `bipedPetWeaponRuntimeWiringComplete=true`；下一批为星云长棍与十二秒棍术的内置资产和新手自动优化界面。
+
+## 52. 星云长棍与十二秒自动适配棍术批次
+
+- 内置“星云长棍”新增显式 `yk-pets/prop-rig/v1` 五点：主握点 `[0.32,0,0]`、副握点 `[-0.58,0,0]`、轨迹两端 `[-1.65,0,0]/[1.65,0,0]` 与命中点 `[1.65,0,0]`，全部使用单位 Quaternion。运行时不再依赖长轴猜测，Rig 状态固定为 `ready`。
+- “星云棍术组合”保持 `12000ms` 和原有 `16` 条语义轨道、`214` 个关键帧，新增准备、棍花、换手、横扫、腾空、下劈、收势七个按时间序号稳定排序的表演阶段，时间边界依次为 `0/900/3200/4300/7600/9300/10100/12000ms`。动作适配包含五个尺寸化 Warp、换手/横扫/下劈三段左手副握约束，以及棍花、横扫、腾空轨迹和下劈火花/冲击环。
+- 容器级 Root Motion 现在拥有 `1.15×身高` 位移、整周转向、`0.38×身高` 弹道腾空、五个 warp 窗、命中制动与收势移动；原 `root.position.x/y` 和 `root.rotation.y` 关键帧缩为重心/姿态微调，分别限制在 `0.22/0.24/0.35` 内，不再与容器争夺舞台位移、腾空和转向所有权。
+- Store 新增 `restoreMotionAdaptationRecommendations()`。它优先按打开时 baseline 的时长比例恢复阶段时间；baseline 没有适配时，只读取 `yk-pets/biped-motion/v1.sourceMotionId` 指向的内置来源，不按中英文名称猜测。写回只替换动作适配命名空间，保留关键帧、Root Motion、接触/事件、道具事件、未知扩展和明确来源，并只加入一个撤销项。
+- 基础属性页新增 `StudioMotionAdaptationSummary`：默认只展示自动适配状态、预计移动/转向、双手阶段和动作特效；阶段、空间修正窗、约束与提示数量收进原生 `details/summary`。复杂模式会实际解析道具实例及其 Rig 点后才显示就绪；简单模式明确说明设置已保存。重新优化按钮具备禁用原因、`aria-describedby`、键盘焦点和 `780px` 单列布局。
+- TDD 先稳定得到长棍 `derived !== ready`、动作适配缺失和摘要组件缺失 RED；完成后内置资产、模型/Store、静态 Root Motion/VFX 门禁与 Playground 类型检查均通过。机器状态新增 `bipedPetNebulaStaffAdaptationComplete=true` 和 `bipedPetMotionAdaptationBeginnerUiComplete=true`；下一批为 Chromium 双视口真实动作、持械与特效验收，以及阶段交付状态收口。

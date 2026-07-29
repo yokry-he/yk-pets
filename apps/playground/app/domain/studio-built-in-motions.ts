@@ -5,7 +5,9 @@
  */
 import {
   createStudioMotionAsset,
+  BIPED_PET_MOTION_ADAPTATION_NAMESPACE,
   type BipedPetRootMotionDefinition,
+  type BipedPetMotionAdaptationDefinition,
   type CloudFoxRigChannelId,
   type MotionPropEvent,
   type MotionPropEventTrack,
@@ -47,6 +49,7 @@ function propTrack(
   durationMs: number,
   mountId: 'left-front-paw' | 'right-front-paw',
   accents: readonly number[],
+  attachPosition: [number, number, number] = [0, 0, 0],
 ): MotionPropEventTrack {
   const accentEvents: MotionPropEvent[] = accents.map((progress, index) => ({
     id: `${instanceId}-accent-${index}`,
@@ -60,7 +63,7 @@ function propTrack(
     propId,
     events: [
       { id: `${instanceId}-create`, timeMs: 0, kind: 'create' },
-      { id: `${instanceId}-attach`, timeMs: 0, kind: 'attach', mountId, space: 'mount', transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] } },
+      { id: `${instanceId}-attach`, timeMs: 0, kind: 'attach', mountId, space: 'mount', transform: { position: [...attachPosition], rotation: [0, 0, 0], scale: [1, 1, 1] } },
       ...accentEvents,
       { id: `${instanceId}-destroy`, timeMs: durationMs, kind: 'destroy' },
     ],
@@ -68,9 +71,10 @@ function propTrack(
 }
 
 type BuiltInMotionExtensions = {
-  'yk-pets/biped-motion/v1': {
+  'yk-pets/biped-motion/v1'?: {
     rootMotion: BipedPetRootMotionDefinition
   }
+  'yk-pets/biped-motion-adaptation/v1'?: BipedPetMotionAdaptationDefinition
 }
 
 function motion(input: Pick<StudioMotionAssetV2, 'id' | 'nameZh' | 'nameEn' | 'durationMs' | 'loopMode'> & {
@@ -79,10 +83,12 @@ function motion(input: Pick<StudioMotionAssetV2, 'id' | 'nameZh' | 'nameEn' | 'd
   propEventTracks?: MotionPropEventTrack[]
   extensions?: BuiltInMotionExtensions
 }) {
-  const sourceRootMotion = input.extensions?.['yk-pets/biped-motion/v1'].rootMotion
+  const sourceRootMotion = input.extensions?.['yk-pets/biped-motion/v1']?.rootMotion
+  const sourceAdaptation = input.extensions?.[BIPED_PET_MOTION_ADAPTATION_NAMESPACE]
   // helper 拥有自己的版本化扩展副本，避免编译或后续模板复用共享嵌套窗口。
-  const extensions: BuiltInMotionExtensions | undefined = sourceRootMotion
+  const extensions: BuiltInMotionExtensions | undefined = sourceRootMotion || sourceAdaptation
     ? {
+        ...(sourceRootMotion ? {
         'yk-pets/biped-motion/v1': {
           rootMotion: {
             ...sourceRootMotion,
@@ -90,6 +96,15 @@ function motion(input: Pick<StudioMotionAssetV2, 'id' | 'nameZh' | 'nameEn' | 'd
             vfxTags: [...sourceRootMotion.vfxTags],
           },
         },
+        } : {}),
+        ...(sourceAdaptation ? {
+          [BIPED_PET_MOTION_ADAPTATION_NAMESPACE]: {
+            phases: sourceAdaptation.phases.map(phase => ({ ...phase })),
+            warpWindows: sourceAdaptation.warpWindows.map(window => ({ ...window })),
+            constraints: sourceAdaptation.constraints.map(constraint => ({ ...constraint })),
+            effectCues: sourceAdaptation.effectCues.map(cue => ({ ...cue, pointIds: [...cue.pointIds] })),
+          },
+        } : {}),
       }
     : undefined
   return createStudioMotionAsset({
@@ -172,14 +187,64 @@ const horseStancePunch = motion({
 })
 
 const staffSpinDuration = 12000
+const nebulaStaffAdaptation: BipedPetMotionAdaptationDefinition = {
+  phases: [
+    { id: 'staff-01-prepare', role: 'prepare', startMs: 0, endMs: 900, intensity: .72 },
+    { id: 'staff-02-spin', role: 'spin', startMs: 900, endMs: 3200, intensity: 1 },
+    { id: 'staff-03-handoff', role: 'handoff', startMs: 3200, endMs: 4300, intensity: .88 },
+    { id: 'staff-04-sweep', role: 'sweep', startMs: 4300, endMs: 7600, intensity: 1 },
+    { id: 'staff-05-takeoff', role: 'takeoff', startMs: 7600, endMs: 9300, intensity: .94 },
+    { id: 'staff-06-impact', role: 'impact', startMs: 9300, endMs: 10100, intensity: 1 },
+    { id: 'staff-07-recover', role: 'recover', startMs: 10100, endMs: 12000, intensity: .68 },
+  ],
+  warpWindows: [
+    { id: 'staff-spin-arc', phaseId: 'staff-02-spin', target: 'stage-forward', translation: true, rotation: true, maxDistance: .26, maxTurnRadians: Math.PI * .8 },
+    { id: 'staff-handoff-step', phaseId: 'staff-03-handoff', target: 'stage-forward', translation: true, rotation: true, maxDistance: .18, maxTurnRadians: Math.PI * .35 },
+    { id: 'staff-sweep-drive', phaseId: 'staff-04-sweep', target: 'stage-forward', translation: true, rotation: true, maxDistance: .42, maxTurnRadians: Math.PI * 1.25 },
+    { id: 'staff-takeoff-arc', phaseId: 'staff-05-takeoff', target: 'stage-forward', translation: true, rotation: true, maxDistance: .34, maxTurnRadians: Math.PI * .65 },
+    { id: 'staff-recover-step', phaseId: 'staff-07-recover', target: 'stage-forward', translation: true, rotation: false, maxDistance: .12, maxTurnRadians: 0 },
+  ],
+  constraints: [
+    { id: 'staff-handoff-grip', kind: 'secondary-grip', phaseId: 'staff-03-handoff', limbId: 'arm.left', propInstanceId: 'nebula-staff-main', pointId: 'secondaryGrip', weight: .82 },
+    { id: 'staff-sweep-grip', kind: 'secondary-grip', phaseId: 'staff-04-sweep', limbId: 'arm.left', propInstanceId: 'nebula-staff-main', pointId: 'secondaryGrip', weight: 1 },
+    { id: 'staff-impact-grip', kind: 'secondary-grip', phaseId: 'staff-06-impact', limbId: 'arm.left', propInstanceId: 'nebula-staff-main', pointId: 'secondaryGrip', weight: 1 },
+  ],
+  effectCues: [
+    { id: 'staff-spin-trail', kind: 'weapon-trail', phaseId: 'staff-02-spin', propInstanceId: 'nebula-staff-main', pointIds: ['trailStart', 'trailEnd'], threshold: .28, lifetimeMs: 260 },
+    { id: 'staff-sweep-trail', kind: 'weapon-trail', phaseId: 'staff-04-sweep', propInstanceId: 'nebula-staff-main', pointIds: ['trailStart', 'trailEnd'], threshold: .22, lifetimeMs: 300 },
+    { id: 'staff-takeoff-trail', kind: 'weapon-trail', phaseId: 'staff-05-takeoff', propInstanceId: 'nebula-staff-main', pointIds: ['trailStart', 'trailEnd'], threshold: .3, lifetimeMs: 280 },
+    { id: 'staff-impact-sparks', kind: 'impact-sparks', phaseId: 'staff-06-impact', propInstanceId: 'nebula-staff-main', pointIds: ['impactPoint'], threshold: .16, lifetimeMs: 620 },
+    { id: 'staff-impact-ring', kind: 'impact-ring', phaseId: 'staff-06-impact', propInstanceId: 'nebula-staff-main', pointIds: ['impactPoint'], threshold: .16, lifetimeMs: 760 },
+  ],
+}
+
 const nebulaStaffSpin = motion({
   id: 'builtin-nebula-staff-spin', nameZh: '星云棍术组合', nameEn: 'Nebula Staff Combination', durationMs: staffSpinDuration, loopMode: 'once',
   propIds: ['builtin-nebula-staff'],
-  propEventTracks: [propTrack('builtin-nebula-staff', 'nebula-staff-main', staffSpinDuration, 'right-front-paw', [.19, .43, .66, .82])],
+  // 长棍原点位于几何中心，挂载时反向抵消 primaryGrip，确保右手 Socket 真正落在主握点。
+  propEventTracks: [propTrack('builtin-nebula-staff', 'nebula-staff-main', staffSpinDuration, 'right-front-paw', [.19, .43, .66, .82], [-.32, 0, 0])],
+  extensions: {
+    'yk-pets/biped-motion/v1': {
+      rootMotion: {
+        mode: 'travel', distance: 1.15, turnRadians: Math.PI * 2, verticalMode: 'ballistic', jumpHeight: .38,
+        windows: [
+          { id: 'staff-spin-arc', kind: 'warp', startMs: 900, endMs: 3200, weight: .62 },
+          { id: 'staff-handoff-step', kind: 'warp', startMs: 3200, endMs: 4300, weight: .34 },
+          { id: 'staff-sweep-drive', kind: 'warp', startMs: 4300, endMs: 7600, weight: 1 },
+          { id: 'staff-takeoff-arc', kind: 'warp', startMs: 7600, endMs: 9300, weight: .58 },
+          { id: 'staff-airborne', kind: 'ballistic', startMs: 7600, endMs: 10100, weight: 1 },
+          { id: 'staff-impact-brake', kind: 'brake', startMs: 9300, endMs: 10100, weight: .9 },
+          { id: 'staff-recover-step', kind: 'travel', startMs: 10100, endMs: 12000, weight: .22 },
+        ],
+        vfxTags: ['brake-sparks', 'landing-dust', 'landing-ring', 'speed-trail'],
+      },
+    },
+    [BIPED_PET_MOTION_ADAPTATION_NAMESPACE]: nebulaStaffAdaptation,
+  },
   tracks: [
-    track('root.position.x', [[0, 0], [900, -.25], [2100, -.4], [3200, -.1], [4300, .35], [5400, .15], [6500, -.3], [7600, .1], [8700, .55], [9800, .2], [10800, 0], [12000, 0]]),
-    track('root.position.y', [[0, 0], [900, -.12], [2100, .12], [3200, 0], [4300, .18], [5400, -.1], [6500, .22], [7600, 0], [8700, .55], [9300, .95], [9800, -.18], [10800, .08], [12000, 0]]),
-    track('root.rotation.y', [[0, 0], [900, -.25], [2100, .35], [3200, 1.1], [4300, 2.1], [5400, 2.7], [6500, 3.4], [7600, 4.6], [8700, 5.5], [9300, 6.05], [9800, 6.28], [10800, 6.28], [12000, 6.28]]),
+    track('root.position.x', [[0, 0], [900, -.12], [2100, -.2], [3200, -.08], [4300, .18], [5400, .1], [6500, -.16], [7600, .08], [8700, .2], [9800, .08], [10800, 0], [12000, 0]]),
+    track('root.position.y', [[0, 0], [900, -.12], [2100, .08], [3200, 0], [4300, .14], [5400, -.1], [6500, .18], [7600, -.04], [8700, .12], [9300, .18], [9800, -.2], [10800, .08], [12000, 0]]),
+    track('root.rotation.y', [[0, 0], [900, -.12], [2100, .16], [3200, -.2], [4300, .24], [5400, -.26], [6500, .28], [7600, -.3], [8700, .24], [9300, -.18], [9800, .2], [10800, .08], [12000, 0]]),
     track('body.rotation.z', [[0, 0], [900, -.18], [2100, .24], [3200, -.3], [4300, .32], [5400, -.35], [6500, .38], [7600, -.4], [8700, .28], [9300, -.22], [9800, .35], [10800, -.12], [12000, 0]]),
     track('body.rotation.y', [[0, 0], [900, .25], [2100, -.45], [3200, .55], [4300, -.65], [5400, .75], [6500, -.85], [7600, .9], [8700, -.7], [9300, .55], [9800, -.6], [10800, .2], [12000, 0]]),
     track('head.rotation.y', [[0, 0], [900, .35], [2100, -.55], [3200, .65], [4300, -.75], [5400, .8], [6500, -.9], [7600, .85], [8700, -.65], [9300, .6], [9800, -.7], [10800, .25], [12000, 0]]),

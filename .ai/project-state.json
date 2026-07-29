@@ -121,6 +121,8 @@
     "bipedPetSecondaryGripRuntimeComplete": true,
     "bipedPetWeaponMotionVfxComplete": true,
     "bipedPetWeaponRuntimeWiringComplete": true,
+    "bipedPetNebulaStaffAdaptationComplete": true,
+    "bipedPetMotionAdaptationBeginnerUiComplete": true,
     "bipedPetProductionQuadrupedProfileComplete": false,
     "bipedPetProductionMechProfileComplete": false,
     "bipedPetHighDetailTopologyComplete": false,
@@ -264,7 +266,9 @@
     "biped-pet-motion-adaptation-plan",
     "biped-pet-secondary-grip-runtime",
     "biped-pet-weapon-motion-vfx",
-    "biped-pet-weapon-runtime-wiring"
+    "biped-pet-weapon-runtime-wiring",
+    "biped-pet-nebula-staff-adaptation",
+    "biped-pet-motion-adaptation-beginner-ui"
   ],
   "notCompleted": [
     "browser-screenshot-baselines",

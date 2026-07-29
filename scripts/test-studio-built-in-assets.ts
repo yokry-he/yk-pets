@@ -6,8 +6,10 @@
 import assert from 'node:assert/strict'
 import {
   compileBipedPetMotion,
+  deriveStudioPropRig,
   deriveBipedPetMotionVfxSignals,
   isCloudFoxRigChannelId,
+  normalizeBipedPetMotionAdaptation,
   normalizeMotionAsset,
   normalizePropAsset,
   sampleBipedPetMotion,
@@ -29,6 +31,18 @@ for (const prop of BUILT_IN_STUDIO_PROPS) {
   assert.ok(result.asset.components.length >= 2)
   assert.ok(result.asset.components.length <= 48)
 }
+
+const nebulaStaff = BUILT_IN_STUDIO_PROPS.find(item => item.id === 'builtin-nebula-staff')
+assert.ok(nebulaStaff)
+const nebulaStaffRig = deriveStudioPropRig(nebulaStaff)
+assert.equal(nebulaStaffRig.status, 'ready')
+assert.deepEqual(nebulaStaffRig.value, {
+  primaryGrip: { position: [.32, 0, 0], rotation: [0, 0, 0, 1] },
+  secondaryGrip: { position: [-.58, 0, 0], rotation: [0, 0, 0, 1] },
+  trailStart: { position: [-1.65, 0, 0], rotation: [0, 0, 0, 1] },
+  trailEnd: { position: [1.65, 0, 0], rotation: [0, 0, 0, 1] },
+  impactPoint: { position: [1.65, 0, 0], rotation: [0, 0, 0, 1] },
+})
 
 const basicMotionIds = new Set(BASIC_BIPED_STUDIO_MOTIONS.map(item => item.id))
 for (const motion of BUILT_IN_STUDIO_MOTIONS) {
@@ -58,6 +72,57 @@ for (const motion of BUILT_IN_STUDIO_MOTIONS) {
     }
   }
 }
+
+const nebulaStaffMotion = BUILT_IN_STUDIO_MOTIONS.find(item => item.id === 'builtin-nebula-staff-spin')
+assert.ok(nebulaStaffMotion)
+const nebulaStaffAttach = nebulaStaffMotion.propEventTracks
+  .flatMap(item => item.events)
+  .find(item => item.kind === 'attach' && item.id === 'nebula-staff-main-attach')
+assert.ok(nebulaStaffAttach && nebulaStaffAttach.kind === 'attach')
+assert.deepEqual(
+  nebulaStaffAttach.transform?.position,
+  [-.32, 0, 0],
+  '星云长棍挂载偏移必须抵消主握点，使右手 Socket 与 primaryGrip 对齐',
+)
+const rawNebulaAdaptation = nebulaStaffMotion.extensions?.['yk-pets/biped-motion-adaptation/v1']
+const nebulaAdaptation = normalizeBipedPetMotionAdaptation(rawNebulaAdaptation, nebulaStaffMotion.durationMs).value
+assert.deepEqual(nebulaAdaptation.phases.map(item => [item.role, item.startMs, item.endMs]), [
+  ['prepare', 0, 900],
+  ['spin', 900, 3200],
+  ['handoff', 3200, 4300],
+  ['sweep', 4300, 7600],
+  ['takeoff', 7600, 9300],
+  ['impact', 9300, 10100],
+  ['recover', 10100, 12000],
+])
+assert.ok(nebulaAdaptation.warpWindows.length >= 4)
+assert.equal(nebulaAdaptation.constraints.length, 3)
+assert.deepEqual(new Set(nebulaAdaptation.effectCues.map(item => item.kind)), new Set(['weapon-trail', 'impact-sparks', 'impact-ring']))
+const phaseIds = new Set(nebulaAdaptation.phases.map(item => item.id))
+const propInstanceIds = new Set(nebulaStaffMotion.propEventTracks.map(item => item.instanceId))
+const rigPointIds = new Set(Object.keys(nebulaStaffRig.value))
+for (const window of nebulaAdaptation.warpWindows) assert.ok(phaseIds.has(window.phaseId), `Warp ${window.id} 必须引用真实阶段`)
+for (const constraint of nebulaAdaptation.constraints) {
+  assert.ok(phaseIds.has(constraint.phaseId), `约束 ${constraint.id} 必须引用真实阶段`)
+  assert.ok(propInstanceIds.has(constraint.propInstanceId), `约束 ${constraint.id} 必须引用真实道具实例`)
+  assert.ok(rigPointIds.has(constraint.pointId), `约束 ${constraint.id} 必须引用真实 Rig 点`)
+}
+for (const cue of nebulaAdaptation.effectCues) {
+  assert.ok(phaseIds.has(cue.phaseId), `特效 ${cue.id} 必须引用真实阶段`)
+  assert.ok(propInstanceIds.has(cue.propInstanceId), `特效 ${cue.id} 必须引用真实道具实例`)
+  assert.ok(cue.pointIds.every(pointId => rigPointIds.has(pointId)), `特效 ${cue.id} 必须引用真实 Rig 点`)
+}
+const nebulaClip = compileBipedPetMotion(nebulaStaffMotion)
+assert.equal(nebulaClip.rootMotion.mode, 'travel')
+assert.equal(nebulaClip.rootMotion.verticalMode, 'ballistic')
+assert.ok(nebulaClip.rootMotion.windows.filter(item => item.kind === 'warp').length >= 4)
+const localRootX = nebulaStaffMotion.tracks.find(item => item.channelId === 'root.position.x')
+const localRootY = nebulaStaffMotion.tracks.find(item => item.channelId === 'root.position.y')
+const localRootTurn = nebulaStaffMotion.tracks.find(item => item.channelId === 'root.rotation.y')
+assert.ok(localRootX && localRootY && localRootTurn)
+assert.ok(localRootX.keyframes.every(item => Math.abs(item.value) <= .22), '局部 Root X 只能保留重心微调，舞台位移必须交给 Root Motion')
+assert.ok(localRootY.keyframes.every(item => Math.abs(item.value) <= .24), '局部 Root Y 只能保留蹲起微调，腾空必须交给 ballistic Root Motion')
+assert.ok(localRootTurn.keyframes.every(item => Math.abs(item.value) <= .35), '局部 Root Yaw 只能保留姿态微调，舞台转向必须交给 Root Motion')
 
 const expectedBasicMotions = [
   ['builtin-biped-idle', 3600, 'loop'],
@@ -163,7 +228,7 @@ assert.deepEqual(BUILT_IN_STUDIO_MOTIONS.map(motion => [
   motion.propIds,
 ]), expectedMotionStructure, '补充移动语义不能改变已有动作时长、轨道或道具依赖')
 for (const motion of BUILT_IN_STUDIO_MOTIONS) {
-  if (motion.id === 'builtin-biped-walk' || motion.id === 'builtin-biped-jump' || motion.id === 'builtin-sprint-stop') continue
+  if (motion.id === 'builtin-biped-walk' || motion.id === 'builtin-biped-jump' || motion.id === 'builtin-nebula-staff-spin' || motion.id === 'builtin-sprint-stop') continue
   assert.equal(compileBipedPetMotion(motion).rootMotion.mode, 'in-place', `${motion.id} 必须保持旧版原地兼容语义`)
 }
 

@@ -16,7 +16,8 @@ import {
 import { useStudioModelVariantsStore } from '../apps/playground/app/stores/studio-model-variants'
 import { useStudioMotionEditorStore } from '../apps/playground/app/stores/studio-motion-editor'
 import { createBasicBipedStudioMotion } from '../apps/playground/app/domain/studio-basic-biped-motions'
-import { compileBipedPetCharacter, createBipedPetModelRecipe, normalizeMotionAsset, type BipedPetRootMotionDefinition } from '../packages/pet-core/src/index.ts'
+import { BUILT_IN_STUDIO_MOTIONS } from '../apps/playground/app/domain/studio-built-in-motions'
+import { compileBipedPetCharacter, createBipedPetModelRecipe, normalizeBipedPetMotionAdaptation, normalizeMotionAsset, type BipedPetRootMotionDefinition } from '../packages/pet-core/src/index.ts'
 
 const initial = createStudioPetModelVariants('zeph', 100)
 assert.equal(initial.simple.status, 'ready')
@@ -318,6 +319,83 @@ for (const [id, nameZh, nameEn] of [
   assert.equal(restoredCustom.turnRadians, .25)
   assert.deepEqual(restoredCustom.windows.map(window => window.id), ['user-travel'])
 }
+
+const staffTemplate = BUILT_IN_STUDIO_MOTIONS.find(item => item.id === 'builtin-nebula-staff-spin')!
+const staffAdaptation = structuredClone(staffTemplate.extensions?.['yk-pets/biped-motion-adaptation/v1']) as {
+  phases: Array<{ id: string, intensity: number }>
+}
+assert.ok(staffAdaptation)
+
+// 重新优化优先恢复打开时 baseline，只替换适配命名空间并形成一个撤销项。 / Re-optimization prefers the opening baseline, replaces only adaptation, and creates one undo item.
+setActivePinia(createPinia())
+const adaptationEditor = useStudioMotionEditorStore()
+const baselineAdaptation = structuredClone(staffAdaptation)
+baselineAdaptation.phases[0]!.intensity = .61
+const normalizedBaselineAdaptation = normalizeBipedPetMotionAdaptation(baselineAdaptation, staffTemplate.durationMs).value
+const adaptationDraft = normalizeMotionAsset({
+  ...structuredClone(staffTemplate),
+  id: 'custom-staff-baseline',
+  extensions: {
+    ...structuredClone(staffTemplate.extensions),
+    'yk-pets/biped-motion/v1': {
+      ...(staffTemplate.extensions?.['yk-pets/biped-motion/v1'] as Record<string, unknown>),
+      sourceMotionId: staffTemplate.id,
+      customAuthoringHint: { keep: true },
+    },
+    'yk-pets/biped-motion-adaptation/v1': baselineAdaptation,
+    'third-party/retained': { enabled: true },
+  },
+}).asset
+adaptationEditor.open(adaptationDraft)
+const editedAdaptation = structuredClone(baselineAdaptation)
+editedAdaptation.phases[0]!.intensity = .13
+adaptationEditor.draft!.extensions!['yk-pets/biped-motion-adaptation/v1'] = editedAdaptation
+const tracksBeforeAdaptationRestore = JSON.parse(JSON.stringify(adaptationEditor.draft!.tracks))
+const propEventsBeforeAdaptationRestore = JSON.parse(JSON.stringify(adaptationEditor.draft!.propEventTracks))
+const rootNamespaceBeforeAdaptationRestore = JSON.parse(JSON.stringify(adaptationEditor.draft!.extensions!['yk-pets/biped-motion/v1']))
+adaptationEditor.restoreMotionAdaptationRecommendations()
+assert.deepEqual(adaptationEditor.draft?.extensions?.['yk-pets/biped-motion-adaptation/v1'], normalizedBaselineAdaptation)
+assert.deepEqual(adaptationEditor.draft?.tracks, tracksBeforeAdaptationRestore)
+assert.deepEqual(adaptationEditor.draft?.propEventTracks, propEventsBeforeAdaptationRestore)
+assert.deepEqual(adaptationEditor.draft?.extensions?.['yk-pets/biped-motion/v1'], rootNamespaceBeforeAdaptationRestore)
+assert.deepEqual(adaptationEditor.draft?.extensions?.['third-party/retained'], { enabled: true })
+assert.equal(adaptationEditor.undoStack.length, 1)
+adaptationEditor.undo()
+assert.deepEqual(adaptationEditor.draft?.extensions?.['yk-pets/biped-motion-adaptation/v1'], editedAdaptation)
+
+// baseline 无适配时只信显式 sourceMotionId；中英文同名不能猜测模板来源。 / Without baseline adaptation, only explicit provenance is trusted; bilingual names never infer a template.
+setActivePinia(createPinia())
+const sourcedAdaptationEditor = useStudioMotionEditorStore()
+const sourceExtensions = structuredClone(staffTemplate.extensions)!
+delete sourceExtensions['yk-pets/biped-motion-adaptation/v1']
+sourceExtensions['yk-pets/biped-motion/v1'] = {
+  ...(sourceExtensions['yk-pets/biped-motion/v1'] as Record<string, unknown>),
+  sourceMotionId: staffTemplate.id,
+}
+sourcedAdaptationEditor.open(normalizeMotionAsset({
+  ...structuredClone(staffTemplate),
+  id: 'custom-staff-sourced',
+  extensions: sourceExtensions,
+}).asset)
+sourcedAdaptationEditor.restoreMotionAdaptationRecommendations()
+assert.deepEqual(sourcedAdaptationEditor.draft?.extensions?.['yk-pets/biped-motion-adaptation/v1'], normalizeBipedPetMotionAdaptation(staffAdaptation, staffTemplate.durationMs).value)
+assert.equal(sourcedAdaptationEditor.undoStack.length, 1)
+
+setActivePinia(createPinia())
+const nameCollisionAdaptationEditor = useStudioMotionEditorStore()
+const nameCollisionExtensions = structuredClone(staffTemplate.extensions)!
+delete nameCollisionExtensions['yk-pets/biped-motion-adaptation/v1']
+delete (nameCollisionExtensions['yk-pets/biped-motion/v1'] as Record<string, unknown>).sourceMotionId
+nameCollisionAdaptationEditor.open(normalizeMotionAsset({
+  ...structuredClone(staffTemplate),
+  id: 'custom-staff-name-collision',
+  nameZh: staffTemplate.nameZh,
+  nameEn: staffTemplate.nameEn,
+  extensions: nameCollisionExtensions,
+}).asset)
+nameCollisionAdaptationEditor.restoreMotionAdaptationRecommendations()
+assert.equal(nameCollisionAdaptationEditor.draft?.extensions?.['yk-pets/biped-motion-adaptation/v1'], undefined)
+assert.equal(nameCollisionAdaptationEditor.undoStack.length, 0)
 
 setActivePinia(createPinia())
 const complexStore = useStudioModelVariantsStore()
