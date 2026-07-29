@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from '../apps/playground/app/domain/chrome-extension-cloud-fox-profile'
 import { createExtensionClassicAppearance } from '../apps/playground/app/domain/extension-cloud-fox-default'
 import { applyPetAppearanceLocalPatch } from '../apps/playground/app/domain/pet-appearance-patch'
 import { normalizeCustomizableAppearance } from '../apps/playground/app/domain/pet-part-customization'
@@ -6,6 +7,62 @@ import { normalizeMultiSpeciesAppearance } from '../apps/playground/app/domain/p
 
 const rawOriginal = createExtensionClassicAppearance()
 const original = normalizeCustomizableAppearance(rawOriginal)
+assert.deepEqual(rawOriginal.proportions, {
+  ...rawOriginal.proportions,
+  bodyWidth: .85,
+  bodyHeight: .77,
+  bodyDepth: 1,
+  headScale: 1.24,
+  tailLength: 1.36,
+  tailWidth: .9,
+})
+assert.deepEqual(
+  {
+    rootHeight: rawOriginal.frontPawDesign.rootHeight,
+    embedDepth: rawOriginal.frontPawDesign.embedDepth,
+    forwardOffset: rawOriginal.frontPawDesign.forwardOffset,
+    lateralOffset: rawOriginal.frontPawDesign.lateralOffset,
+    shoulderScale: rawOriginal.frontPawDesign.shoulderScale,
+    outwardAngle: rawOriginal.frontPawDesign.outwardAngle,
+    forwardAngle: rawOriginal.frontPawDesign.forwardAngle,
+  },
+  { rootHeight: .1, embedDepth: .25, forwardOffset: -.13, lateralOffset: .28, shoulderScale: 1.62, outwardAngle: .55, forwardAngle: .1 },
+)
+assert.deepEqual(
+  {
+    rootOffsetX: rawOriginal.tailDesign.rootOffsetX,
+    rootOffsetY: rawOriginal.tailDesign.rootOffsetY,
+    rootOffsetZ: rawOriginal.tailDesign.rootOffsetZ,
+    rootExtensionLength: rawOriginal.tailDesign.rootExtensionLength,
+    rootExtensionWidth: rawOriginal.tailDesign.rootExtensionWidth,
+    lateralOffset: rawOriginal.tailDesign.lateralOffset,
+    direction: rawOriginal.tailDesign.direction,
+    segments: rawOriginal.tailDesign.segments,
+  },
+  {
+    rootOffsetX: 0,
+    rootOffsetY: -.21,
+    rootOffsetZ: .09,
+    rootExtensionLength: .12,
+    rootExtensionWidth: .15,
+    lateralOffset: -.03,
+    direction: 'left',
+    segments: [
+      { length: .7, width: .16, offsetX: .01, offsetY: 0, offsetZ: 0, rotationX: 0, rotationY: -.061592653589793, rotationZ: -.081592653589793 },
+      { length: .58, width: .16, offsetX: 0, offsetY: 0, offsetZ: 0, rotationX: 0, rotationY: 0, rotationZ: .1 },
+      { length: .52, width: .16, offsetX: 0, offsetY: 0, offsetZ: 0, rotationX: 0, rotationY: 0, rotationZ: .16 },
+    ],
+  },
+)
+assert.equal(rawOriginal.parts.headShape, 'classic-round')
+assert.equal(rawOriginal.parts.eyes, 'round')
+assert.equal(rawOriginal.parts.mouth, 'smile')
+assert.equal(rawOriginal.proportions.limbLength, 1)
+assert.equal(rawOriginal.proportions.limbThickness, 1)
+assert.equal(rawOriginal.proportions.pawScale, 1)
+assert.equal(rawOriginal.frontPawDesign.wristScale, 1)
+assert.equal(rawOriginal.frontPawDesign.palmScale, 1)
+assert.equal(rawOriginal.tailDesign.tipGlow.color, EXTENSION_CLASSIC_CLOUD_FOX_SCHEME.palette.tailTip)
 for (const [rawPetId, normalizedPetId] of [[' My Pet ', 'my-pet'], ['M@y P!et', 'm-y-p-et'], ['   ', 'zeph']] as const) {
   const normalized = normalizeCustomizableAppearance({
     ...rawOriginal,

@@ -1,17 +1,18 @@
 /**
  * 文件职责 / File responsibility
- * 将 Chrome 扩展经典云狐视觉方案映射为 Studio 外观配方与场景配方，并锁定经典椭圆肚皮与最初前爪挂点。
- * Maps the production Chrome extension Cloud Fox scheme into Studio recipes while locking the classic ellipse belly and original front-paw anchors.
+ * 将 Chrome 扩展经典云狐视觉方案映射为 Studio 外观与场景，并应用用户确认的默认头身、肩臂和尾巴形体。
+ * Maps the production Chrome extension Cloud Fox scheme into Studio recipes with the user-approved default body, shoulder-arm, and tail silhouette.
  */
 import { EXTENSION_CLASSIC_CLOUD_FOX_SCHEME } from './chrome-extension-cloud-fox-profile'
-import { normalizeMultiSpeciesAppearance, type MultiSpeciesAppearanceRecipe } from './pet-species-registry'
+import { normalizeCustomizableAppearance } from './pet-part-customization'
+import type { MultiSpeciesAppearanceRecipe } from './pet-species-registry'
 import type { PetSceneRecipe } from './pet-scene'
 
 export const EXTENSION_CLASSIC_VISUAL_SCHEME_ID = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME.id
 
 export function createExtensionClassicAppearance(): MultiSpeciesAppearanceRecipe {
   const palette = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME.palette
-  return normalizeMultiSpeciesAppearance({
+  return normalizeCustomizableAppearance({
     schemaVersion: 2,
     speciesId: 'cloud-fox',
     identity: { petId: 'zeph', nameZh: '云灵', nameEn: 'Zeph', monogram: 'Z' },
@@ -20,8 +21,8 @@ export function createExtensionClassicAppearance(): MultiSpeciesAppearanceRecipe
       antenna: 'twin', antennaRod: 'tapered', antennaTip: 'orb',
     },
     proportions: {
-      bodyScale: 1, bodyWidth: 1, bodyHeight: 1, bodyDepth: 1, headScale: 1, limbLength: 1, limbThickness: 1, limbSpacing: 1,
-      pawScale: 1, earScale: 1, eyeScale: 1, eyeSpacing: 1, tailLength: 1, tailWidth: 1, antennaScale: 1,
+      bodyScale: 1, bodyWidth: .85, bodyHeight: .77, bodyDepth: 1, headScale: 1.24, limbLength: 1, limbThickness: 1, limbSpacing: 1,
+      pawScale: 1, earScale: 1, eyeScale: 1, eyeSpacing: 1, tailLength: 1.36, tailWidth: .9, antennaScale: 1,
     },
     palette: {
       coat: palette.coat, coatShadow: palette.coatShadow, coatWarm: palette.coatWarm, innerEar: palette.primaryGlow, eye: palette.eye,
@@ -35,8 +36,8 @@ export function createExtensionClassicAppearance(): MultiSpeciesAppearanceRecipe
     bellyPatchDesign: { mode: 'custom', visible: true, style: 'oval', width: 1, height: 1, offsetY: 0 },
     chestDisplay: { mode: 'energy-core' },
     frontPawDesign: {
-      style: 'soft', rootHeight: 0, embedDepth: .06, forwardOffset: .06, outwardAngle: .06, forwardAngle: 0,
-      shoulderScale: 1, wristScale: 1, palmScale: 1,
+      style: 'soft', rootHeight: .1, embedDepth: .25, forwardOffset: -.13, outwardAngle: .55, forwardAngle: .1,
+      lateralOffset: .28, shoulderScale: 1.62, wristScale: 1, palmScale: 1,
     },
     glow: { mode: 'emotion', tailEnabled: true, antennaEnabled: true, intensity: 1.65, pulseSpeed: 1 },
     symbols: {
@@ -44,11 +45,11 @@ export function createExtensionClassicAppearance(): MultiSpeciesAppearanceRecipe
       back: { enabled: false, text: 'YK', color: palette.primaryGlow, scale: 1, rotation: 0, glowIntensity: 1.6, offsetX: 0, offsetY: .18, offsetZ: .02 },
     },
     tailDesign: {
-      rootOffsetX: 0, rootOffsetY: 0, rootOffsetZ: 0, rootExtensionLength: .38, rootExtensionWidth: .24, lateralOffset: -.58,
+      rootOffsetX: 0, rootOffsetY: -.21, rootOffsetZ: .09, rootExtensionLength: .12, rootExtensionWidth: .15, lateralOffset: -.03,
       direction: 'left', tipGlow: { enabled: true, color: palette.tailTip, intensity: 1.65, auraScale: 1.55 },
       segments: [
-        { length: .58, width: .27, offsetX: 0, offsetY: 0, offsetZ: 0, rotationX: .03, rotationY: .08, rotationZ: -.08 },
-        { length: .58, width: .22, offsetX: 0, offsetY: 0, offsetZ: 0, rotationX: 0, rotationY: 0, rotationZ: .1 },
+        { length: .7, width: .16, offsetX: .01, offsetY: 0, offsetZ: 0, rotationX: 0, rotationY: -.061592653589793, rotationZ: -.081592653589793 },
+        { length: .58, width: .16, offsetX: 0, offsetY: 0, offsetZ: 0, rotationX: 0, rotationY: 0, rotationZ: .1 },
         { length: .52, width: .16, offsetX: 0, offsetY: 0, offsetZ: 0, rotationX: 0, rotationY: 0, rotationZ: .16 },
       ],
     },

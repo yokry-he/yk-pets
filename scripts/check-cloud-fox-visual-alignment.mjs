@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const profile = read('apps/playground/app/domain/chrome-extension-cloud-fox-profile.ts')
+const defaultAppearance = read('apps/playground/app/domain/extension-cloud-fox-default.ts')
 const shapeProfiles = read('apps/playground/app/domain/cloud-fox-shape-profile.ts')
 const surface = read('apps/playground/app/domain/cloud-fox-surface-model.ts')
 const eyeMetrics = read('apps/playground/app/domain/cloud-fox-eye-metrics.ts')
@@ -40,6 +41,7 @@ const unifiedSource = configured.includes("from 'yk-pets-unified-cloud-fox'") &&
 const exactTokens = ['0.94, 1.12, 0.82','0, -0.32, 0','0, 0.92, 0.06','1.02, 0.88, 0.9','0.31, 0.08, 0.77','0.56, 0.65, -0.04','0.5, -0.04, 0.82','0.48, -1.08, 0.22','-0.58, -0.48, -0.34']
 const checks = [
   ['production model profile retains exact values', exactTokens.every(token => profile.includes(token))],
+  ['approved manual proportions remain the classic default', defaultAppearance.includes('normalizeCustomizableAppearance') && defaultAppearance.includes('bodyScale: 1, bodyWidth: .85, bodyHeight: .77, bodyDepth: 1, headScale: 1.24') && defaultAppearance.includes('tailLength: 1.36, tailWidth: .9') && defaultAppearance.includes("headShape: 'classic-round'") && defaultAppearance.includes("eyes: 'round'") && defaultAppearance.includes("mouth: 'smile'") && defaultAppearance.includes("style: 'soft', rootHeight: .1, embedDepth: .25, forwardOffset: -.13, outwardAngle: .55, forwardAngle: .1") && defaultAppearance.includes('lateralOffset: .28, shoulderScale: 1.62') && defaultAppearance.includes('rootOffsetX: 0, rootOffsetY: -.21, rootOffsetZ: .09, rootExtensionLength: .12, rootExtensionWidth: .15, lateralOffset: -.03')],
   ['extension uses the exact Studio composition component', unifiedSource && core.includes('EXTENSION_CLASSIC_CLOUD_FOX_SCHEME')],
   ['complete normalized torso production head and continuous tail remain', headIntent.includes('ExtensionCloudFoxHead') && body.includes('<ExtensionCloudFoxBodyShape') && body.includes('frontPawDesign') && body.includes('hindPawDesign') && bodyShape.includes('normalized unit envelope') && bodyShape.includes('RoundedBoxGeometry(2, 2, 2') && head.includes('<ExtensionCloudFoxHeadShape') && headShape.includes('scheme.model.head.scale') && headShape.includes('RoundedBoxGeometry(2, 2, 2') && tail.includes('TresTubeGeometry') && tail.includes('tipGlow.enabled')],
   ['body and head profiles share one sampled coordinate system', shapeProfiles.includes('CloudFoxBodyProfile') && shapeProfiles.includes('CloudFoxHeadProfile') && surface.includes('sampleCloudFoxBodyFrontSurface') && surface.includes('sampleCloudFoxHeadFrontSurfaceAtLocalXY') && head.includes('resolveCloudFoxEyeSurfaceAnchor') && belly.includes('createCloudFoxBellySurfaceMesh')],
