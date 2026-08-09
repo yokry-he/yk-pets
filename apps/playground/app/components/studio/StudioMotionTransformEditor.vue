@@ -21,6 +21,12 @@ import {
 } from '@yk-pets/pet-core'
 import { useStudioMotionEditorStore } from '~/stores/studio-motion-editor'
 
+const props = withDefaults(defineProps<{
+  guided?: boolean
+}>(), {
+  guided: false,
+})
+
 const editor = useStudioMotionEditorStore()
 const scopeOptions: readonly { id: MotionAuthoringScope; label: string; hint: string }[] = [
   { id: 'current-frame', label: '当前帧', hint: '在播放指针处写入或更新关键帧' },
@@ -37,6 +43,10 @@ const selectedPart = computed(() => getMotionBodyPart(editor.selectedBodyPartId)
 const availableModes = computed(() => getMotionBodyPartModes(editor.selectedBodyPartId))
 const controls = computed(() => getMotionBodyPartControls(editor.selectedBodyPartId, editor.transformMode))
 const symmetryAvailable = computed(() => Boolean(selectedPart.value.symmetryPartnerId))
+
+watch(() => props.guided, (guided) => {
+  if (guided) editor.setAuthoringScope('current-frame')
+}, { immediate: true })
 
 watch([() => editor.selectedBodyPartId, () => editor.transformMode], () => {
   if (editor.authoringScope === 'entire-motion' && editor.transformMode === 'semantic') editor.setAuthoringScope('current-frame')
@@ -100,11 +110,11 @@ function unitLabel(control: MotionControlDefinition) {
 <template>
   <section class="transform-editor">
     <header class="section-header">
-      <div><small>直接操控</small><h3>身体部件与变换</h3></div>
-      <button class="key-button" :disabled="!editor.draft" title="在当前时间写入所选控制（K）" @click="editor.keySelectedControl">K 定格</button>
+      <div><small>{{ guided ? '当前阶段' : '直接操控' }}</small><h3>{{ guided ? '身体姿势' : '身体部件与变换' }}</h3></div>
+      <button v-if="!guided" class="key-button" :disabled="!editor.draft" title="在当前时间写入所选控制（K）" @click="editor.keySelectedControl">K 定格</button>
     </header>
 
-    <div class="scope-tabs">
+    <div v-if="!guided" class="scope-tabs">
       <button
         v-for="scope in scopeOptions"
         :key="scope.id"
@@ -114,8 +124,8 @@ function unitLabel(control: MotionControlDefinition) {
         @click="editor.setAuthoringScope(scope.id)"
       >{{ scope.label }}</button>
     </div>
-    <p class="scope-hint">{{ scopeOptions.find(item => item.id === editor.authoringScope)?.hint }}</p>
-    <p v-if="editor.authoringScope === 'selected-keyframes' && !editor.selectedKeyframeIds.length" class="warning">请先在时间轴选择一个或多个关键帧。</p>
+    <p v-if="!guided" class="scope-hint">{{ scopeOptions.find(item => item.id === editor.authoringScope)?.hint }}</p>
+    <p v-if="!guided && editor.authoringScope === 'selected-keyframes' && !editor.selectedKeyframeIds.length" class="warning">请先在时间轴选择一个或多个关键帧。</p>
 
     <div class="part-tree" aria-label="动作身体部件树">
       <button
@@ -164,11 +174,11 @@ function unitLabel(control: MotionControlDefinition) {
     </div>
     <p v-else class="empty">当前部件没有此类控制。可切换移动、旋转、缩放或语义模式。</p>
 
-    <div class="authoring-toggles">
+    <div v-if="!guided" class="authoring-toggles">
       <label><input v-model="editor.autoKey" type="checkbox"> 自动关键帧</label>
       <label><input v-model="editor.snapToFrames" type="checkbox"> FPS 吸附</label>
     </div>
-    <small class="footer-hint">数值始终是相对于外观配方的动作偏移；整段动作使用独立加成修正层。</small>
+    <small class="footer-hint">{{ guided ? '只会修改当前阶段；过渡、平衡和脚底接触由系统自动补全。' : '数值始终是相对于外观配方的动作偏移；整段动作使用独立加成修正层。' }}</small>
   </section>
 </template>
 
