@@ -618,6 +618,7 @@ h1,h2,h3,p{margin:0}
 }
 @media(max-width:780px){
   .motion-workspace{grid-template-columns:minmax(0,1fr)}
+  .asset-panel{max-height:300px}
   .editor-area{grid-template-rows:auto 620px}
   .editor-area.guided-flow-mode{grid-template-rows:auto auto 620px}
   .editor-area.advanced-mode{grid-template-rows:auto 620px 350px}

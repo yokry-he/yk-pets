@@ -61,6 +61,6 @@ const emit = defineEmits<{
 .intent-card strong{font-size:11px}
 .intent-card small{overflow:hidden;color:#7d87a6;font-size:8px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:1040px){.intent-grid{grid-template-columns:repeat(3,minmax(116px,1fr))}}
-@media(max-width:680px){.intent-heading{align-items:start;flex-direction:column}.intent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.intent-card:last-child{grid-column:1/-1}}
+@media(max-width:780px){.intent-heading{align-items:start;flex-direction:column}.intent-grid{grid-template-columns:minmax(0,1fr)}.intent-card:last-child{grid-column:auto}}
 @media(prefers-reduced-motion:reduce){.intent-card{transition:none}}
 </style>
