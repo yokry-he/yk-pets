@@ -1,10 +1,12 @@
 /*
  * 文件职责 / File responsibility
- * 管理共享 Studio 资产库中的版本化动作与道具元数据，并迁移旧本地动作后持久化到 v2 存储。
- * Manages versioned motion and prop metadata in the shared Studio asset library, migrating legacy local motions into v2 storage.
+ * 管理共享 Studio 资产库中的版本化动作与道具元数据，并迁移旧本地动作后持久化到当前存储。
+ * Manages versioned motion and prop metadata in the shared Studio asset library, migrating legacy local motions into current storage.
  */
 import {
   addPropComponent,
+  compileSimpleMotionRecipe,
+  createSimpleMotionRecipe,
   createStudioMotionAsset,
   createStudioPropAsset,
   duplicatePropComponent,
@@ -13,8 +15,10 @@ import {
   normalizePropAsset,
   removePropComponent,
   setPropLocalModel,
+  SIMPLE_MOTION_INTENTS,
   updatePropAnchor,
   updatePropComponent,
+  type SimpleMotionIntent,
 } from '@yk-pets/pet-core'
 import { defineStore } from 'pinia'
 import { getBuiltInStudioMotion } from '~/domain/studio-built-in-motions'
@@ -89,6 +93,22 @@ export const useStudioAssetStore = defineStore('studio-assets', {
         createdAt: now,
         updatedAt: now,
       })
+      this.motions.unshift(motion)
+      this.persist()
+      return motion
+    },
+    createMotionFromIntent(intent: SimpleMotionIntent, authoringAppearanceId = 'active-appearance') {
+      const now = Date.now()
+      const definition = SIMPLE_MOTION_INTENTS.find(item => item.id === intent) ?? SIMPLE_MOTION_INTENTS.at(-1)!
+      const seed = createStudioMotionAsset({
+        id: createStudioAssetId('motion'),
+        nameZh: definition.defaultNameZh,
+        nameEn: definition.defaultNameEn,
+        authoringAppearanceId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      const motion = compileSimpleMotionRecipe(seed, createSimpleMotionRecipe(definition.id), { now }).asset
       this.motions.unshift(motion)
       this.persist()
       return motion

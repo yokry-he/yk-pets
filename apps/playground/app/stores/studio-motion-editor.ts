@@ -7,6 +7,7 @@ import {
   addMotionLayer,
   applyMotionPosePreset,
   assignTrackToLayer,
+  compileSimpleMotionRecipe,
   copyMotionKeyframes,
   duplicateMotionAssetForDraft,
   insertMotionPropEvent,
@@ -15,9 +16,11 @@ import {
   nudgeMotionControls,
   nudgeMotionControlValue,
   normalizeMotionAsset,
+  normalizeSimpleMotionRecipe,
   normalizeBipedPetMotionAdaptation,
   normalizeBipedPetRootMotion,
   readMotionControlValue,
+  readSimpleMotionRecipe,
   resetMotionControlValue,
   setMotionControlValue,
   pasteMotionKeyframes,
@@ -28,6 +31,8 @@ import {
   setMotionKeyframeInterpolation,
   setMotionKeyframeTangents,
   solveTwoBoneIk2D,
+  SIMPLE_MOTION_CORRECTION_LAYER_ID,
+  SIMPLE_MOTION_STAGE_LIMIT,
   getMotionBodyPartControls,
   getMotionBodyPartModes,
   getMotionControl,
@@ -40,6 +45,10 @@ import {
   type MotionBodyPartId,
   type MotionControlId,
   type MotionTransformMode,
+  type SimpleMotionEffect,
+  type SimpleMotionRecipeV1,
+  type SimpleMotionStage,
+  type SimpleMotionTransition,
   type MotionInterruptionPolicy,
   type MotionInterpolation,
   type MotionLayerMode,
@@ -89,6 +98,9 @@ interface MotionEditorState {
   selectedControlId: MotionControlId
   symmetryEnabled: boolean
   controlGestureBaseline: string
+  selectedStageId: string
+  authoringMode: 'guided' | 'advanced'
+  saveState: 'saved' | 'saving' | 'failed'
 }
 
 const DEFAULT_CHANNEL: CloudFoxRigChannelId = 'root.position.y'
@@ -97,6 +109,15 @@ const BIPED_MOTION_ADAPTATION_EXTENSION_KEY = 'yk-pets/biped-motion-adaptation/v
 const DEFAULT_TRAVEL_DISTANCE = .42
 const serialize = (asset: StudioMotionAssetV2 | null) => asset ? JSON.stringify(asset) : ''
 const parse = (value: string) => value ? normalizeMotionAsset(JSON.parse(value)).asset : null
+
+function simpleStageStart(recipe: SimpleMotionRecipeV1, stageId: string): number {
+  let cursor = 0
+  for (const stage of recipe.stages) {
+    if (stage.id === stageId) return cursor
+    cursor += stage.durationMs
+  }
+  return 0
+}
 
 type RootMotionSettingsPatch = {
   mode?: BipedPetRootMotionMode
@@ -291,6 +312,9 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     selectedControlId: 'root.translate.y',
     symmetryEnabled: false,
     controlGestureBaseline: '',
+    selectedStageId: '',
+    authoringMode: 'guided',
+    saveState: 'saved',
   }),
   getters: {
     isDirty: state => Boolean(state.draft) && serialize(state.draft) !== state.baseline,
@@ -298,6 +322,11 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     canRedo: state => state.redoStack.length > 0,
     selectedKeyframeCount: state => state.selectedKeyframeIds.length,
     canRestoreMotionAdaptation: state => Boolean(state.draft && adaptationRecommendationFor(state.draft, state.baseline)),
+    simpleRecipe: state => state.draft ? readSimpleMotionRecipe(state.draft) : undefined,
+    selectedSimpleStage: (state): SimpleMotionStage | undefined => {
+      const recipe = state.draft ? readSimpleMotionRecipe(state.draft) : undefined
+      return recipe?.stages.find(stage => stage.id === state.selectedStageId)
+    },
   },
   actions: {
     open(asset: StudioMotionAssetV2) {
@@ -320,8 +349,13 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.interruptionPending = false
       this.playbackDirection = 1
       this.controlGestureBaseline = ''
+      const recipe = readSimpleMotionRecipe(this.draft)
+      this.selectedStageId = recipe?.stages[0]?.id || ''
+      this.authoringMode = recipe ? 'guided' : 'advanced'
+      this.saveState = 'saved'
     },
     replaceFromSaved(asset: StudioMotionAssetV2) {
+      const previousStageId = this.selectedStageId
       this.motionId = asset.id
       this.draft = duplicateMotionAssetForDraft(asset)
       this.baseline = serialize(this.draft)
@@ -338,6 +372,12 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.interruptionPending = false
       this.playbackDirection = 1
       this.controlGestureBaseline = ''
+      const recipe = readSimpleMotionRecipe(this.draft)
+      this.selectedStageId = recipe?.stages.some(stage => stage.id === previousStageId)
+        ? previousStageId
+        : recipe?.stages[0]?.id || ''
+      if (!recipe) this.authoringMode = 'advanced'
+      this.saveState = 'saved'
     },
     close() {
       this.motionId = ''
@@ -356,6 +396,9 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.interruptionPending = false
       this.playbackDirection = 1
       this.controlGestureBaseline = ''
+      this.selectedStageId = ''
+      this.authoringMode = 'guided'
+      this.saveState = 'saved'
     },
     snapshot() {
       if (!this.draft) return
@@ -370,6 +413,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.selectedKeyframeIds = selectedKeyframeIds ?? this.selectedKeyframeIds
       this.lastDiagnostics = normalized.diagnostics.map(item => `${item.code}:${item.path}`)
       this.playheadTimeMs = Math.min(this.playheadTimeMs, normalized.asset.durationMs)
+      this.syncSimpleAuthoringState()
     },
     mutate(mutator: (asset: StudioMotionAssetV2) => StudioMotionAssetV2, selectedKeyframeIds?: string[]) {
       if (!this.draft) return
@@ -383,6 +427,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.draft = parse(previous)
       this.selectedKeyframeIds = []
       this.playing = false
+      this.syncSimpleAuthoringState()
     },
     redo() {
       const next = this.redoStack.pop()
@@ -391,6 +436,121 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.draft = parse(next)
       this.selectedKeyframeIds = []
       this.playing = false
+      this.syncSimpleAuthoringState()
+    },
+    syncSimpleAuthoringState() {
+      const recipe = this.draft ? readSimpleMotionRecipe(this.draft) : undefined
+      if (!recipe) {
+        this.selectedStageId = ''
+        this.authoringMode = 'advanced'
+        return
+      }
+      if (!recipe.stages.some(stage => stage.id === this.selectedStageId)) {
+        this.selectedStageId = recipe.stages[0]?.id || ''
+      }
+    },
+    setSaveState(state: MotionEditorState['saveState']) {
+      this.saveState = state
+    },
+    setAuthoringMode(mode: MotionEditorState['authoringMode']) {
+      if (mode === 'guided' && (!this.draft || !readSimpleMotionRecipe(this.draft))) return
+      this.authoringMode = mode
+      this.activeLayerId = mode === 'guided'
+        ? 'base'
+        : this.draft?.layers.some(layer => layer.id === SIMPLE_MOTION_CORRECTION_LAYER_ID)
+          ? SIMPLE_MOTION_CORRECTION_LAYER_ID
+          : 'base'
+    },
+    selectSimpleStage(stageId: string) {
+      if (!this.draft) return false
+      const recipe = readSimpleMotionRecipe(this.draft)
+      if (!recipe?.stages.some(stage => stage.id === stageId)) return false
+      this.selectedStageId = stageId
+      this.playing = false
+      this.setPlayhead(simpleStageStart(recipe, stageId), false)
+      return true
+    },
+    updateSimpleRecipe(mutator: (recipe: SimpleMotionRecipeV1) => SimpleMotionRecipeV1) {
+      if (!this.draft) return false
+      const current = readSimpleMotionRecipe(this.draft)
+      if (!current) return false
+      const nextInput = mutator(structuredClone(current))
+      const nextRecipe = normalizeSimpleMotionRecipe(nextInput).value
+      const compiled = compileSimpleMotionRecipe(this.draft, nextRecipe, { now: Date.now() })
+      this.snapshot()
+      this.apply(compiled.asset)
+      this.selectedStageId = nextRecipe.stages.some(stage => stage.id === this.selectedStageId)
+        ? this.selectedStageId
+        : nextRecipe.stages[0]?.id || ''
+      return true
+    },
+    updateSimpleStage(stageId: string, patch: Partial<Omit<SimpleMotionStage, 'id'>>) {
+      return this.updateSimpleRecipe(recipe => ({
+        ...recipe,
+        stages: recipe.stages.map(stage => stage.id === stageId
+          ? {
+              ...stage,
+              ...patch,
+              pose: patch.pose ? { ...patch.pose } : stage.pose,
+              effects: patch.effects ? [...patch.effects] : stage.effects,
+            }
+          : stage),
+      }))
+    },
+    duplicateSimpleStage(stageId: string) {
+      const recipe = this.draft ? readSimpleMotionRecipe(this.draft) : undefined
+      const sourceIndex = recipe?.stages.findIndex(stage => stage.id === stageId) ?? -1
+      if (!recipe || sourceIndex < 0 || recipe.stages.length >= SIMPLE_MOTION_STAGE_LIMIT) return false
+      const source = recipe.stages[sourceIndex]!
+      const duplicateId = `stage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+      const updated = this.updateSimpleRecipe(current => {
+        const stages = [...current.stages]
+        stages.splice(sourceIndex + 1, 0, {
+          ...source,
+          id: duplicateId,
+          labelZh: `${source.labelZh} 副本`,
+          pose: { ...source.pose },
+          effects: [...source.effects],
+        })
+        return { ...current, stages }
+      })
+      if (updated) this.selectSimpleStage(duplicateId)
+      return updated
+    },
+    moveSimpleStage(stageId: string, offset: -1 | 1) {
+      const recipe = this.draft ? readSimpleMotionRecipe(this.draft) : undefined
+      const sourceIndex = recipe?.stages.findIndex(stage => stage.id === stageId) ?? -1
+      const targetIndex = sourceIndex + offset
+      if (!recipe || sourceIndex < 0 || targetIndex < 0 || targetIndex >= recipe.stages.length) return false
+      const updated = this.updateSimpleRecipe(current => {
+        const stages = [...current.stages]
+        const [stage] = stages.splice(sourceIndex, 1)
+        if (stage) stages.splice(targetIndex, 0, stage)
+        return { ...current, stages }
+      })
+      if (updated) this.selectSimpleStage(stageId)
+      return updated
+    },
+    removeSimpleStage(stageId: string) {
+      const recipe = this.draft ? readSimpleMotionRecipe(this.draft) : undefined
+      const sourceIndex = recipe?.stages.findIndex(stage => stage.id === stageId) ?? -1
+      if (!recipe || sourceIndex < 0 || recipe.stages.length <= 2) return false
+      const nextStageId = recipe.stages[sourceIndex + 1]?.id || recipe.stages[sourceIndex - 1]?.id || ''
+      const updated = this.updateSimpleRecipe(current => ({
+        ...current,
+        stages: current.stages.filter(stage => stage.id !== stageId),
+      }))
+      if (updated && nextStageId) this.selectSimpleStage(nextStageId)
+      return updated
+    },
+    updateSelectedSimpleStage(patch: Partial<Omit<SimpleMotionStage, 'id'>>) {
+      return this.selectedStageId ? this.updateSimpleStage(this.selectedStageId, patch) : false
+    },
+    setSelectedSimpleStageEffects(effects: SimpleMotionEffect[]) {
+      return this.updateSelectedSimpleStage({ effects })
+    },
+    setSelectedSimpleStageTransition(transition: SimpleMotionTransition) {
+      return this.updateSelectedSimpleStage({ transition })
     },
     setSelectedChannel(channelId: CloudFoxRigChannelId) {
       this.selectedChannelId = channelId
@@ -538,6 +698,13 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     },
     writeControlValue(controlId: MotionControlId, value: number) {
       if (!this.draft || (this.authoringScope === 'selected-keyframes' && !this.selectedKeyframeIds.length)) return
+      if (this.authoringMode === 'guided' && this.selectedStageId) {
+        const stage = readSimpleMotionRecipe(this.draft)?.stages.find(item => item.id === this.selectedStageId)
+        if (!stage) return
+        this.updateSimpleStage(stage.id, { pose: { ...stage.pose, [controlId]: value } })
+        this.selectControl(controlId)
+        return
+      }
       this.snapshot()
       const result = setMotionControlValue(this.draft, controlId, value, this.controlOptions())
       this.apply(result.asset, result.selectedKeyframeIds)
@@ -545,6 +712,13 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     },
     nudgeControl(controlId: MotionControlId, delta: number) {
       if (!this.draft || (this.authoringScope === 'selected-keyframes' && !this.selectedKeyframeIds.length)) return
+      if (this.authoringMode === 'guided' && this.selectedStageId) {
+        const stage = readSimpleMotionRecipe(this.draft)?.stages.find(item => item.id === this.selectedStageId)
+        if (!stage) return
+        this.updateSimpleStage(stage.id, { pose: { ...stage.pose, [controlId]: (stage.pose[controlId] ?? 0) + delta } })
+        this.selectControl(controlId)
+        return
+      }
       this.snapshot()
       const result = nudgeMotionControlValue(this.draft, controlId, delta, this.controlOptions())
       this.apply(result.asset, result.selectedKeyframeIds)
@@ -553,6 +727,14 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     resetControl(controlId?: MotionControlId) {
       const targetControlId = controlId ?? this.selectedControlId
       if (!this.draft || (this.authoringScope === 'selected-keyframes' && !this.selectedKeyframeIds.length)) return
+      if (this.authoringMode === 'guided' && this.selectedStageId) {
+        const stage = readSimpleMotionRecipe(this.draft)?.stages.find(item => item.id === this.selectedStageId)
+        if (!stage) return
+        const pose = { ...stage.pose }
+        delete pose[targetControlId]
+        this.updateSimpleStage(stage.id, { pose })
+        return
+      }
       this.snapshot()
       const result = resetMotionControlValue(this.draft, targetControlId, this.controlOptions())
       this.apply(result.asset, result.selectedKeyframeIds)
@@ -573,6 +755,19 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       if (!this.draft || !this.controlGestureBaseline) return
       const baseline = parse(this.controlGestureBaseline)
       if (!baseline) return
+      if (this.authoringMode === 'guided' && this.selectedStageId) {
+        const recipe = readSimpleMotionRecipe(baseline)
+        const stage = recipe?.stages.find(item => item.id === this.selectedStageId)
+        if (!recipe || !stage) return
+        const pose = { ...stage.pose }
+        for (const edit of edits) pose[edit.controlId] = (pose[edit.controlId] ?? 0) + edit.delta
+        const nextRecipe = {
+          ...recipe,
+          stages: recipe.stages.map(item => item.id === stage.id ? { ...item, pose } : item),
+        }
+        this.apply(compileSimpleMotionRecipe(baseline, nextRecipe, { now: Date.now() }).asset)
+        return
+      }
       const result = nudgeMotionControls(baseline, edits, this.controlOptions())
       this.apply(result.asset, result.selectedKeyframeIds)
     },
@@ -586,6 +781,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.draft = parse(this.controlGestureBaseline)
       this.undoStack.pop()
       this.controlGestureBaseline = ''
+      this.syncSimpleAuthoringState()
     },
 
     writeChannelValue(value: number, interpolation: MotionInterpolation = 'linear') {
@@ -746,8 +942,8 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     markSaved(asset: StudioMotionAssetV2) {
       this.draft = duplicateMotionAssetForDraft(asset)
       this.baseline = serialize(this.draft)
-      this.undoStack = []
-      this.redoStack = []
+      this.saveState = 'saved'
+      this.syncSimpleAuthoringState()
     },
   },
 })
