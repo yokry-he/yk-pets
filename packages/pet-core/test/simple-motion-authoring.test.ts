@@ -7,7 +7,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   SIMPLE_MOTION_AUTHORING_EXTENSION_KEY,
+  SIMPLE_MOTION_CORRECTION_LAYER_ID,
   SIMPLE_MOTION_INTENTS,
+  compileSimpleMotionRecipe,
+  createStudioMotionAsset,
   createSimpleMotionRecipe,
   normalizeSimpleMotionRecipe,
 } from '../src/index.ts'
@@ -52,4 +55,51 @@ test('超额阶段和总时长都会收敛到固定预算', () => {
 
 test('扩展命名空保持稳定', () => {
   assert.equal(SIMPLE_MOTION_AUTHORING_EXTENSION_KEY, 'yk-pets/simple-motion-authoring/v1')
+})
+
+test('阶段配方确定性编译为正式动作', () => {
+  const recipe = createSimpleMotionRecipe('martial-arts')
+  const asset = createStudioMotionAsset({ id: 'motion-1', nameZh: '功夫', nameEn: 'Martial Arts', createdAt: 1, updatedAt: 1 })
+  const first = compileSimpleMotionRecipe(asset, recipe, { now: 2 })
+  const second = compileSimpleMotionRecipe(asset, recipe, { now: 2 })
+  assert.deepEqual(first, second)
+  assert.ok(first.asset.tracks.some(track => track.layerId === 'base' && track.keyframes.length > 1))
+  assert.equal(first.asset.extensions?.[SIMPLE_MOTION_AUTHORING_EXTENSION_KEY] !== undefined, true)
+  assert.equal(first.stages.length, recipe.stages.length)
+  assert.equal(first.stages.at(-1)?.endMs, first.asset.durationMs)
+  assert.ok(first.asset.tracks.flatMap(track => track.keyframes).every(keyframe => keyframe.id.startsWith('simple-')))
+})
+
+test('重新编译保留用户修正层', () => {
+  const source = createStudioMotionAsset({
+    id: 'motion-2',
+    nameZh: '舞蹈',
+    nameEn: 'Dance',
+    createdAt: 1,
+    updatedAt: 1,
+    layers: [
+      { id: 'base', name: 'Base', mode: 'override', weight: 1, enabled: true, priority: 0 },
+      { id: SIMPLE_MOTION_CORRECTION_LAYER_ID, name: '手动修正', mode: 'additive', weight: 1, enabled: true, priority: 1 },
+    ],
+    tracks: [{
+      id: 'manual-head',
+      channelId: 'head.rotation.z',
+      layerId: SIMPLE_MOTION_CORRECTION_LAYER_ID,
+      muted: false,
+      keyframes: [{ id: 'manual-key', timeMs: 100, value: .2, interpolation: 'smooth' }],
+    }],
+  })
+  const compiled = compileSimpleMotionRecipe(source, createSimpleMotionRecipe('dance'), { now: 2 }).asset
+  assert.ok(compiled.tracks.some(track => track.keyframes.some(key => key.id === 'manual-key')))
+  assert.ok(compiled.layers.some(layer => layer.id === SIMPLE_MOTION_CORRECTION_LAYER_ID && layer.mode === 'additive'))
+})
+
+test('运动意图会编译接触、落地特效和弹道 Root Motion', () => {
+  const source = createStudioMotionAsset({ id: 'motion-3', nameZh: '运动', nameEn: 'Sports', createdAt: 1, updatedAt: 1 })
+  const compiled = compileSimpleMotionRecipe(source, createSimpleMotionRecipe('sports'), { now: 2 }).asset
+  const runtime = compiled.extensions?.['yk-pets/biped-motion/v1'] as { contacts?: unknown[]; rootMotion?: { verticalMode?: string; vfxTags?: string[] } }
+  assert.ok((runtime.contacts?.length || 0) >= 2)
+  assert.equal(runtime.rootMotion?.verticalMode, 'ballistic')
+  assert.ok(runtime.rootMotion?.vfxTags?.includes('landing-ring'))
+  assert.ok(runtime.rootMotion?.vfxTags?.includes('landing-dust'))
 })
