@@ -1,15 +1,27 @@
 <!--
   文件职责 / File responsibility
-  提供动作草稿、播放指针、关键帧编辑、语义姿态写入和唯一正式云狐渲染器的自定义动作预览。
-  Provides motion drafts, playhead, keyframe editing, semantic pose authoring, and custom-motion preview through the sole production Cloud Fox renderer.
+  提供“动作意图→阶段调整→直接播放”的新手流程，并在高级编辑中保留原有专业能力。
+  Provides an intent-to-stage beginner flow while preserving the existing professional tools in advanced editing.
 -->
 <script setup lang="ts">
-import { deriveStudioPropRig, evaluateMotionPropEvents, evaluateNormalizedMotionAsset, normalizeBipedPetMotionAdaptation, normalizeBipedPetRootMotion, type MotionInterpolation } from '@yk-pets/pet-core'
+import {
+  deriveStudioPropRig,
+  evaluateMotionPropEvents,
+  evaluateNormalizedMotionAsset,
+  normalizeBipedPetMotionAdaptation,
+  normalizeBipedPetRootMotion,
+  readSimpleMotionRecipe,
+  type MotionInterpolation,
+  type SimpleMotionIntent,
+} from '@yk-pets/pet-core'
 import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
 import StudioMotionAdvancedTools from '~/components/studio/StudioMotionAdvancedTools.vue'
 import StudioMotionAdaptationSummary from '~/components/studio/StudioMotionAdaptationSummary.vue'
 import StudioMotionDirectPad from '~/components/studio/StudioMotionDirectPad.vue'
+import StudioMotionIntentPicker from '~/components/studio/StudioMotionIntentPicker.vue'
 import StudioMotionPoseEditor from '~/components/studio/StudioMotionPoseEditor.vue'
+import StudioMotionStageBar from '~/components/studio/StudioMotionStageBar.vue'
+import StudioMotionStageInspector from '~/components/studio/StudioMotionStageInspector.vue'
 import StudioMotionTransformEditor from '~/components/studio/StudioMotionTransformEditor.vue'
 import StudioMotionTimeline from '~/components/studio/StudioMotionTimeline.vue'
 import StudioMotionPropEvents from '~/components/studio/StudioMotionPropEvents.vue'
@@ -38,6 +50,8 @@ const currentPetId = computed(() => appearance.recipe.identity.petId.trim() || s
 const complexRecipe = computed(() => modelVariants.byPetId[currentPetId.value]?.complex.recipe)
 const saved = computed(() => assets.motions.find(item => item.id === session.selectedMotionId))
 const draft = computed(() => editor.draft)
+const simpleRecipe = computed(() => draft.value ? readSimpleMotionRecipe(draft.value) : undefined)
+const guidedEditing = computed(() => !showIntentPicker.value && Boolean(simpleRecipe.value) && editor.authoringMode === 'guided')
 const rootMotion = computed(() => {
   if (!draft.value) return null
   const namespace = draft.value.extensions?.['yk-pets/biped-motion/v1'] as { rootMotion?: unknown } | undefined
@@ -89,6 +103,7 @@ const evaluatedProps = computed(() => draft.value ? evaluateMotionPropEvents(dra
 const status = ref('')
 const pendingMotionId = ref('')
 const propertyTab = ref<PropertyTab>('pose')
+const showIntentPicker = ref(false)
 const previewPosition = [0, .32, 0] as const
 const {
   previewScale,
@@ -113,23 +128,67 @@ const propertyTabs = computed<Array<{ id: PropertyTab; label: string; badge?: nu
   { id: 'props', label: '道具', badge: propEventCount.value },
 ])
 let raf = 0
+let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 
-function saveCurrent(message = '动作已保存') {
+const saveStateLabel = computed(() => {
+  if (editor.saveState === 'saving') return '正在保存…'
+  if (editor.saveState === 'failed') return '保存失败 · 点击重试'
+  return '已保存'
+})
+
+function saveCurrent(message = '') {
   if (!draft.value) return
   const savedAsset = assets.replaceMotion(draft.value)
-  if (savedAsset) editor.markSaved(savedAsset)
+  if (!savedAsset) throw new Error('当前动作无法写回资产库。')
+  editor.markSaved(savedAsset)
   status.value = message
+}
+function scheduleAutoSave() {
+  if (!editor.isDirty) return
+  editor.setSaveState('saving')
+  clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(() => {
+    try {
+      saveCurrent()
+      editor.setSaveState('saved')
+    }
+    catch {
+      editor.setSaveState('failed')
+    }
+  }, 500)
+}
+function flushAutoSave() {
+  clearTimeout(autoSaveTimer)
+  autoSaveTimer = undefined
+  if (!editor.isDirty) return true
+  try {
+    saveCurrent()
+    editor.setSaveState('saved')
+    return true
+  }
+  catch {
+    editor.setSaveState('failed')
+    return false
+  }
+}
+function retrySave() {
+  if (editor.isDirty || editor.saveState === 'failed') scheduleAutoSave()
 }
 function switchMotionNow(id: string) {
   pendingMotionId.value = ''
+  showIntentPicker.value = false
   session.selectMotion(id)
   const asset = assets.motions.find(item => item.id === id)
   if (asset) editor.open(asset)
   navigateTo({ path: '/studio/motion', query: { motion: id } }, { replace: true })
 }
 function selectMotion(id: string) {
+  showIntentPicker.value = false
   if (id === editor.motionId) return
-  if (editor.isDirty) saveCurrent('已自动保存上一动作')
+  if (!flushAutoSave()) {
+    status.value = '保存失败，已留在当前动作，请重试'
+    return
+  }
   if (editor.requestPlaybackInterruption()) switchMotionNow(id)
   else {
     pendingMotionId.value = id
@@ -137,18 +196,33 @@ function selectMotion(id: string) {
   }
 }
 function createMotion() {
-  if (editor.isDirty) saveCurrent('已自动保存上一动作')
-  const motion = assets.createMotion({ authoringAppearanceId: session.selectedAppearanceId })
-  if (editor.requestPlaybackInterruption()) switchMotionNow(motion.id)
-  else pendingMotionId.value = motion.id
+  showIntentPicker.value = true
+}
+function createFromIntent(intent: SimpleMotionIntent) {
+  if (!flushAutoSave()) {
+    status.value = '保存失败，当前动作仍保留，请重试后再创建'
+    return
+  }
+  editor.stopPlayback()
+  const motion = assets.createMotionFromIntent(intent, session.selectedAppearanceId || 'active-appearance')
+  switchMotionNow(motion.id)
+  status.value = `已创建“${motion.nameZh}”，选择阶段即可调整`
 }
 function useBasicMotionTemplate(templateId: string) {
-  if (editor.isDirty) saveCurrent('已自动保存上一动作')
+  if (!flushAutoSave()) {
+    status.value = '保存失败，当前动作仍保留，请重试后再使用模板'
+    return
+  }
   const motion = assets.copyBuiltInMotion(templateId)
   if (!motion) return
   editor.stopPlayback()
   switchMotionNow(motion.id)
   status.value = `已创建“${motion.nameZh}”，可直接播放或继续调整`
+}
+function toggleAuthoringMode() {
+  if (!simpleRecipe.value) return
+  editor.setAuthoringMode(guidedEditing.value ? 'advanced' : 'guided')
+  propertyTab.value = 'pose'
 }
 function patchName(field: 'nameZh' | 'nameEn', event: Event) {
   editor.updateMetadata({ [field]: (event.target as HTMLInputElement).value })
@@ -180,7 +254,7 @@ function keyboard(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null
   if (target?.matches('input,select,textarea')) return
   const modifier = event.metaKey || event.ctrlKey
-  if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); saveCurrent() }
+  if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); flushAutoSave() }
   else if (modifier && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? editor.redo() : editor.undo() }
   else if (modifier && event.key.toLowerCase() === 'c') editor.copySelected()
   else if (modifier && event.key.toLowerCase() === 'v') editor.pasteAtPlayhead()
@@ -201,12 +275,14 @@ function keyboard(event: KeyboardEvent) {
 }
 
 watch(saved, asset => { if (asset) editor.open(asset); else editor.close() }, { immediate: true })
+watch(() => draft.value?.updatedAt, scheduleAutoSave)
 watch(() => route.query.prop, propId => {
   if (!draft.value || typeof propId !== 'string' || !assets.props.some(item => item.id === propId) || draft.value.propIds.includes(propId)) return
   editor.updateMetadata({ propIds: [...draft.value.propIds, propId] })
 })
 onMounted(() => {
   appearance.hydrate(); assets.hydrate(); session.hydrate(); modelVariants.hydrate()
+  showIntentPicker.value = assets.motions.length === 0
   const requested = typeof route.query.motion === 'string' ? route.query.motion : ''
   if (requested && assets.motions.some(item => item.id === requested)) session.selectMotion(requested)
   else if (session.selectedMotionId && !assets.motions.some(item => item.id === session.selectedMotionId)) session.selectMotion('')
@@ -217,16 +293,16 @@ onMounted(() => {
   window.addEventListener('keydown', keyboard)
 })
 onBeforeUnmount(() => {
+  flushAutoSave()
   cancelAnimationFrame(raf)
   window.removeEventListener('keydown', keyboard)
-  if (editor.isDirty) saveCurrent('离开前已自动保存')
 })
 </script>
 
 <template>
   <section class="motion-workspace">
     <aside class="asset-panel">
-      <header><div><small>动作资产</small><h1>动作工坊</h1></div><button @click="createMotion">新建动作</button></header>
+      <header><div><small>动作资产</small><h1>动作工坊</h1></div><button type="button" @click="createMotion">新建动作</button></header>
       <p>动作资产使用语义 Rig；时间轴只保存相对于外观的姿态偏移，不修改外观配方。</p>
       <section class="basic-motion-templates" aria-labelledby="basic-motion-template-title">
         <header>
@@ -249,25 +325,39 @@ onBeforeUnmount(() => {
       <button v-for="motion in assets.motions" :key="motion.id" class="asset-item" :class="{ active: motion.id === session.selectedMotionId }" @click="selectMotion(motion.id)">
         <strong>{{ motion.nameZh }}</strong><small>{{ motion.durationMs }} 毫秒 · {{ motion.displayFps }} 帧/秒</small>
       </button>
-      <div v-if="!assets.motions.length" class="empty">尚无自定义动作。创建后即可写入语义关键帧。</div>
+      <div v-if="!assets.motions.length" class="empty">尚无动作。选择一个动作意图，系统会自动生成可播放的完整动作。</div>
     </aside>
 
-    <div class="editor-area">
+    <div class="editor-area" :class="{ 'advanced-mode': !showIntentPicker && editor.authoringMode === 'advanced', 'guided-flow-mode': showIntentPicker || guidedEditing }">
       <header class="editor-header">
-        <div><small>动作编辑器</small><h2>{{ draft?.nameZh || '请选择或创建动作' }}</h2><span>{{ editor.isDirty ? '未保存草稿' : '已保存' }} · 撤销 {{ editor.undoStack.length }} / 重做 {{ editor.redoStack.length }}</span></div>
+        <div><small>{{ guidedEditing ? '阶段动作编辑器' : '动作编辑器' }}</small><h2>{{ draft?.nameZh || '请选择或创建动作' }}</h2><span>{{ guidedEditing ? '选择阶段并调整姿势、节奏和效果' : `撤销 ${editor.undoStack.length} / 重做 ${editor.redoStack.length}` }}</span></div>
         <div class="header-actions">
           <button :disabled="!editor.canUndo" @click="editor.undo">撤销</button><button :disabled="!editor.canRedo" @click="editor.redo">重做</button>
           <button :class="{ active: editor.playing }" @click="editor.togglePlayback()">{{ editor.playing ? '暂停' : '播放' }}</button><button @click="editor.stopPlayback">停止</button>
-          <button class="save" :disabled="!draft || !editor.isDirty" @click="saveCurrent()">保存</button>
+          <button v-if="simpleRecipe && !showIntentPicker" class="mode-button" type="button" @click="toggleAuthoringMode">{{ guidedEditing ? '高级编辑' : '返回简易编辑' }}</button>
+          <button class="save-state" :class="`state-${editor.saveState}`" :disabled="!draft || editor.saveState === 'saving' || (editor.saveState !== 'failed' && !editor.isDirty)" @click="retrySave">{{ saveStateLabel }}</button>
         </div>
       </header>
+      <StudioMotionIntentPicker v-if="showIntentPicker" class="intent-flow" @select="createFromIntent" />
+      <StudioMotionStageBar
+        v-else-if="simpleRecipe && guidedEditing"
+        class="stage-flow"
+        :recipe="simpleRecipe"
+        :selected-stage-id="editor.selectedStageId"
+        :playhead-time-ms="editor.playheadTimeMs"
+        @select="editor.selectSimpleStage"
+        @duplicate="editor.duplicateSimpleStage"
+        @move="editor.moveSimpleStage"
+        @remove="editor.removeSimpleStage"
+        @playhead="editor.setPlayhead($event, false)"
+      />
       <div class="preview-shell">
         <StudioPreviewToolbar
           :view="session.previewView"
           :background="session.previewBackground"
           :scale="previewScale"
           :rotation="previewRotation"
-          :show-time="true"
+          :show-time="editor.authoringMode === 'advanced'"
           :time-ms="editor.playheadTimeMs"
           :max-time-ms="draft?.durationMs || 0"
           @view="setView"
@@ -295,7 +385,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <StudioMotionTimeline
-        v-if="draft"
+        v-if="draft && editor.authoringMode === 'advanced'"
         :asset="draft"
         :playhead-time-ms="editor.playheadTimeMs"
         :selected-keyframe-ids="editor.selectedKeyframeIds"
@@ -304,12 +394,18 @@ onBeforeUnmount(() => {
         @select-many="editor.selectKeyframes"
         @move-selected="editor.moveSelected"
       />
-      <div v-else class="empty timeline-empty">创建动作后显示时间轴。</div>
+      <div v-else-if="!draft && !showIntentPicker" class="empty timeline-empty">新建动作后即可开始编辑。</div>
     </div>
 
-    <aside class="property-panel">
-      <header><small>属性面板</small><h2>动作属性</h2></header>
-      <nav v-if="draft" class="property-tabs" role="tablist" aria-label="动作属性分类">
+    <aside class="property-panel" :class="{ 'guided-panel': guidedEditing }">
+      <header><small>{{ showIntentPicker ? '新建动作' : guidedEditing ? '当前阶段' : '属性面板' }}</small><h2>{{ showIntentPicker ? '选择动作意图' : guidedEditing ? '阶段属性' : '动作属性' }}</h2></header>
+      <StudioMotionStageInspector
+        v-if="guidedEditing && editor.selectedSimpleStage"
+        class="guided-inspector"
+        :stage="editor.selectedSimpleStage"
+        @update="editor.updateSelectedSimpleStage"
+      />
+      <nav v-else-if="draft && !showIntentPicker" class="property-tabs" role="tablist" aria-label="动作属性分类">
         <button
           v-for="item in propertyTabs"
           :key="item.id"
@@ -322,7 +418,7 @@ onBeforeUnmount(() => {
           {{ item.label }}<span v-if="item.badge">{{ item.badge }}</span>
         </button>
       </nav>
-      <div v-if="draft" class="property-tab-body">
+      <div v-if="draft && !guidedEditing && !showIntentPicker" class="property-tab-body">
         <section v-if="propertyTab === 'basic'" class="property-section">
           <label>中文名称<input :value="draft.nameZh" @change="patchName('nameZh',$event)"></label>
           <label>英文名称<input :value="draft.nameEn" @change="patchName('nameEn',$event)"></label>
@@ -387,7 +483,8 @@ onBeforeUnmount(() => {
           <p v-if="evaluatedProps.diagnostics.length" class="diagnostics">道具事件：{{ evaluatedProps.diagnostics.slice(-2).map(item => item.code).join(' · ') }}</p>
         </section>
       </div>
-      <div v-else class="empty">创建动作后可编辑完整时间轴和姿态。</div>
+      <div v-else-if="showIntentPicker" class="empty">先从中间选择动作类型。系统会自动创建阶段、过渡和基础特效。</div>
+      <div v-else-if="!guidedEditing" class="empty">创建动作后可编辑阶段姿势；专业时间轴可从高级编辑进入。</div>
       <small v-if="status" class="status">{{ status }}</small>
     </aside>
   </section>
@@ -449,15 +546,21 @@ h1,h2,h3,p{margin:0}
 .asset-item.active{border-color:#52e0d066;background:#52e0d010}
 .asset-item small{font:400 8px/1.3 system-ui;color:#7883a3}
 .basic-motion-templates{display:grid;gap:7px;padding:8px;border:1px solid #52e0d02b;border-radius:11px;background:#52e0d008}.basic-motion-templates>header{display:block}.basic-motion-templates>header>div{display:grid;gap:3px}.basic-motion-templates>header strong{color:#dffffa;font-size:10px}.basic-motion-templates>header small{font:400 8px/1.35 system-ui;color:#7f8fa7;letter-spacing:0}.basic-motion-template-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.basic-motion-template{display:grid;gap:3px;min-width:0;padding:7px;text-align:left}.basic-motion-template strong{overflow:hidden;font-size:9px;text-overflow:ellipsis;white-space:nowrap}.basic-motion-template small{font:400 7px/1.3 system-ui;color:#7883a3}.basic-motion-template:focus-visible{outline:2px solid #72dfd1;outline-offset:2px}
-.editor-area{display:grid;grid-template-rows:auto minmax(380px,1fr) minmax(300px,.8fr);overflow:hidden}
+.editor-area{display:grid;grid-template-rows:auto minmax(380px,1fr);overflow:hidden}
+.editor-area.guided-flow-mode{grid-template-rows:auto auto minmax(380px,1fr)}
+.editor-area.advanced-mode{grid-template-rows:auto minmax(380px,1fr) minmax(300px,.8fr)}
 .editor-header{padding:10px 12px;border-bottom:1px solid #ffffff13}
 .editor-header>div:first-child{display:grid;gap:3px;min-width:0}
 .editor-header span{color:#76809e;font-size:8px}
 .header-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px}
 .header-actions button{min-height:30px;padding:0 8px}
 .header-actions button.active{border-color:#ff5f8677;background:#ff5f8618}
-.header-actions .save{border-color:#52e0d066;background:#52e0d018}
+.header-actions .mode-button{border-color:#7066ff66;color:#e5e1ff;background:#7066ff16}
+.header-actions .save-state{border-color:#52e0d044;color:#bffbf3;background:#52e0d00d}
+.header-actions .save-state.state-saving{color:#ffe0a3;border-color:#ffcb6b44;background:#ffcb6b0d}
+.header-actions .save-state.state-failed{color:#ff9eb1;border-color:#ff6f8f55;background:#ff6f8f0d}
 .header-actions button:disabled{opacity:.35}
+.intent-flow,.stage-flow{margin:8px 9px 0}
 .preview-shell{display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px;min-width:0;min-height:0;padding:9px;overflow:hidden}.preview-stage{position:relative;min-width:0;min-height:0}.preview-stage :deep(.studio-canvas){min-height:100%}
 .preview-rotate-surface{
   position:absolute;
@@ -486,6 +589,8 @@ h1,h2,h3,p{margin:0}
   backdrop-filter:blur(12px);
 }
 .property-panel header{margin-bottom:2px}
+.property-panel.guided-panel{grid-template-rows:auto minmax(0,1fr) auto}
+.guided-inspector{min-height:0;overflow-x:hidden;overflow-y:auto;padding-right:2px;overscroll-behavior:contain;scrollbar-gutter:stable}
 .property-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px;border:1px solid #ffffff12;border-radius:10px;background:#090d18}
 .property-tabs button{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;min-height:31px;padding:0 5px;border:1px solid transparent;border-radius:7px;color:#8993b2;background:transparent;font-size:9px;cursor:pointer}
 .property-tabs button:hover{color:#dbe2f8;background:#ffffff06}.property-tabs button.active{border-color:#52e0d055;color:#dffffa;background:#52e0d012}.property-tabs span{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;color:#cffff8;background:#52e0d01f;font:700 7px/1 ui-monospace,monospace}
@@ -513,7 +618,9 @@ h1,h2,h3,p{margin:0}
 }
 @media(max-width:780px){
   .motion-workspace{grid-template-columns:minmax(0,1fr)}
-  .editor-area{grid-template-rows:auto 620px 350px}
+  .editor-area{grid-template-rows:auto 620px}
+  .editor-area.guided-flow-mode{grid-template-rows:auto auto 620px}
+  .editor-area.advanced-mode{grid-template-rows:auto 620px 350px}
   .metadata-grid{grid-template-columns:minmax(0,1fr)}
   .property-panel{height:620px;max-height:620px}
   .preview-rotate-surface span{display:none}
