@@ -209,6 +209,7 @@ onMounted(() => {
   appearance.hydrate(); assets.hydrate(); session.hydrate(); modelVariants.hydrate()
   const requested = typeof route.query.motion === 'string' ? route.query.motion : ''
   if (requested && assets.motions.some(item => item.id === requested)) session.selectMotion(requested)
+  else if (session.selectedMotionId && !assets.motions.some(item => item.id === session.selectedMotionId)) session.selectMotion('')
   else if (!session.selectedMotionId && assets.motions[0]) session.selectMotion(assets.motions[0].id)
   const asset = assets.motions.find(item => item.id === session.selectedMotionId)
   if (asset) editor.open(asset)

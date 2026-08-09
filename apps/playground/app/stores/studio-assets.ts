@@ -10,9 +10,7 @@ import {
   duplicatePropComponent,
   normalizeDisplayFps,
   normalizeMotionAsset,
-  normalizeMotionAssetCollection,
   normalizePropAsset,
-  normalizePropAssetCollection,
   removePropComponent,
   setPropLocalModel,
   updatePropAnchor,
@@ -22,9 +20,11 @@ import { defineStore } from 'pinia'
 import { getBuiltInStudioMotion } from '~/domain/studio-built-in-motions'
 import { getBuiltInStudioProp } from '~/domain/studio-built-in-props'
 import {
-  STUDIO_ASSET_LEGACY_STORAGE_KEY,
   STUDIO_ASSET_STORAGE_KEY,
+  STUDIO_ASSET_V1_STORAGE_KEY,
+  STUDIO_ASSET_V2_STORAGE_KEY,
   createStudioAssetId,
+  normalizeStudioAssetHydration,
   type StudioMotionAssetMetadata,
   type StudioMotionLoopMode,
   type StudioPropAssetMetadata,
@@ -50,12 +50,19 @@ export const useStudioAssetStore = defineStore('studio-assets', {
       if (!import.meta.client || this.hydrated) return
       try {
         const current = localStorage.getItem(STUDIO_ASSET_STORAGE_KEY)
-        const legacy = current ? null : localStorage.getItem(STUDIO_ASSET_LEGACY_STORAGE_KEY)
+        const legacyV2 = current ? null : localStorage.getItem(STUDIO_ASSET_V2_STORAGE_KEY)
+        const legacyV1 = current || legacyV2 ? null : localStorage.getItem(STUDIO_ASSET_V1_STORAGE_KEY)
+        const legacy = legacyV2 || legacyV1
         const stored = JSON.parse(current || legacy || '{}') as Partial<StudioAssetState>
-        this.motions = normalizeMotionAssetCollection(stored.motions)
-        this.props = normalizePropAssetCollection(stored.props)
+        const normalized = normalizeStudioAssetHydration(stored, { resetLegacyMotions: Boolean(legacy) })
+        this.motions = normalized.motions
+        this.props = normalized.props
         this.hydrated = true
-        if (!current && legacy) this.persist()
+        if (!current && legacy) {
+          this.persist()
+          localStorage.removeItem(STUDIO_ASSET_V2_STORAGE_KEY)
+          localStorage.removeItem(STUDIO_ASSET_V1_STORAGE_KEY)
+        }
       }
       catch {
         this.motions = []

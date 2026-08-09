@@ -3,7 +3,12 @@
  * 定义统一 Studio 壳的工作区、共享会话上下文、版本化动作资产和道具元数据契约。
  * Defines workspace navigation, shared session context, versioned motion assets, and prop metadata contracts for the unified Studio shell.
  */
-import type { StudioMotionAssetV2, StudioPropAssetV2 } from '@yk-pets/pet-core'
+import {
+  normalizeMotionAssetCollection,
+  normalizePropAssetCollection,
+  type StudioMotionAssetV2,
+  type StudioPropAssetV2,
+} from '@yk-pets/pet-core'
 export type { StudioMotionLoopMode, StudioPropKind, StudioPropPrimitive, StudioPropAnchorId } from '@yk-pets/pet-core'
 
 export type StudioWorkspaceId = 'appearance' | 'motion' | 'props' | 'library'
@@ -28,8 +33,23 @@ export const STUDIO_WORKSPACES: readonly StudioWorkspaceDefinition[] = Object.fr
 
 export const STUDIO_SESSION_STORAGE_KEY = 'yk-pets:studio:session:v1'
 export const STUDIO_MODEL_VARIANTS_STORAGE_KEY = 'yk-pets:studio:model-variants:v1'
-export const STUDIO_ASSET_STORAGE_KEY = 'yk-pets:studio:assets:v2'
-export const STUDIO_ASSET_LEGACY_STORAGE_KEY = 'yk-pets:studio:assets:v1'
+export const STUDIO_ASSET_STORAGE_KEY = 'yk-pets:studio:assets:v3'
+export const STUDIO_ASSET_V2_STORAGE_KEY = 'yk-pets:studio:assets:v2'
+export const STUDIO_ASSET_V1_STORAGE_KEY = 'yk-pets:studio:assets:v1'
+
+export interface StudioAssetHydrationOptions {
+  resetLegacyMotions?: boolean
+}
+
+export function normalizeStudioAssetHydration(input: unknown, options: StudioAssetHydrationOptions = {}) {
+  const source = input && typeof input === 'object' && !Array.isArray(input)
+    ? input as { motions?: unknown, props?: unknown }
+    : {}
+  return {
+    motions: options.resetLegacyMotions ? [] : normalizeMotionAssetCollection(source.motions),
+    props: normalizePropAssetCollection(source.props),
+  }
+}
 
 export function createStudioAssetId(prefix: 'motion' | 'prop') {
   const random = Math.random().toString(36).slice(2, 8)

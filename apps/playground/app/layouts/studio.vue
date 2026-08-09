@@ -26,6 +26,7 @@ const motionPath = computed(() => session.selectedMotionId ? `/studio/motion?mot
 const propPath = computed(() => session.selectedPropId ? `/studio/props?prop=${encodeURIComponent(session.selectedPropId)}` : '/studio/props')
 const currentPetId = computed(() => appearance.recipe.identity.petId.trim() || session.selectedAppearanceId || 'active-appearance')
 const currentModelVariants = computed(() => modelVariants.byPetId[currentPetId.value] || createStudioPetModelVariants(currentPetId.value))
+const modelModeSwitchVisible = false
 const showModelNotice = ref(true)
 watch(workspace, next => { if (session.hydrated) session.setWorkspace(next) }, { immediate: true })
 watch(() => session.modelMode, mode => { if (mode === 'complex') showModelNotice.value = true })
@@ -56,7 +57,7 @@ onMounted(() => {
         <NuxtLink v-for="item in STUDIO_WORKSPACES" :key="item.id" :to="item.path" :class="{ active: workspace === item.id }"><strong>{{ item.label }}</strong><small>{{ item.description }}</small></NuxtLink>
       </nav>
       <ClientOnly>
-        <StudioModelModeSwitch class="shell-model-mode" :model-value="session.modelMode" :complex-status="currentModelVariants.complex.status" :complex-completion="currentModelVariants.complex.completion" @update:model-value="selectModelMode" />
+        <StudioModelModeSwitch v-if="modelModeSwitchVisible" class="shell-model-mode" :model-value="session.modelMode" :complex-status="currentModelVariants.complex.status" :complex-completion="currentModelVariants.complex.completion" @update:model-value="selectModelMode" />
       </ClientOnly>
       <div class="shell-context" aria-label="当前 Studio 上下文">
         <NuxtLink to="/studio/appearance" title="编辑当前外观"><small>宠物 · {{ session.selectedAppearanceId }}</small><strong>{{ appearance.recipe.identity.nameZh }} / {{ appearance.recipe.identity.nameEn }}</strong></NuxtLink>

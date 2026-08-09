@@ -28,6 +28,7 @@ const canvasTemplate = canvasTemplateContentStart > 0 && canvasTemplateEnd > can
 
 const checks = [
   ['全局切换器具有简单和复杂模式', modeSwitch.includes('简单模型') && modeSwitch.includes('复杂模型')],
+  ['模型模式切换入口通过关闭的显示门禁临时隐藏', layout.includes('const modelModeSwitchVisible = false') && /<StudioModelModeSwitch\b[^>]*v-if="modelModeSwitchVisible"/.test(layout)],
   ['切换器提供 pressed 状态和分组名称', modeSwitch.includes('aria-pressed') && modeSwitch.includes('role="group"') && modeSwitch.includes('模型模式')],
   ['切换器只声明模型真实状态', ['未创建', '草稿', '就绪', '需修复'].every(label => modeSwitch.includes(label))],
   ['布局装配全局模型模式切换器', layout.includes('StudioModelModeSwitch') && layout.includes('modelMode')],

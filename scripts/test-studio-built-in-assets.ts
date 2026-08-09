@@ -18,11 +18,28 @@ import {
 import { BASIC_BIPED_STUDIO_MOTIONS, createBasicBipedStudioMotion } from '../apps/playground/app/domain/studio-basic-biped-motions.ts'
 import { BUILT_IN_STUDIO_MOTIONS } from '../apps/playground/app/domain/studio-built-in-motions.ts'
 import { BUILT_IN_STUDIO_PROPS } from '../apps/playground/app/domain/studio-built-in-props.ts'
+import { normalizeStudioAssetHydration } from '../apps/playground/app/domain/studio-workspace.ts'
 
 assert.equal(BUILT_IN_STUDIO_PROPS.length, 6)
 assert.equal(BUILT_IN_STUDIO_MOTIONS.length, 11)
 assert.equal(new Set(BUILT_IN_STUDIO_PROPS.map(item => item.id)).size, BUILT_IN_STUDIO_PROPS.length)
 assert.equal(new Set(BUILT_IN_STUDIO_MOTIONS.map(item => item.id)).size, BUILT_IN_STUDIO_MOTIONS.length)
+
+const legacyMotionReset = normalizeStudioAssetHydration({
+  motions: [BUILT_IN_STUDIO_MOTIONS[0]],
+  props: [BUILT_IN_STUDIO_PROPS[0]],
+}, { resetLegacyMotions: true })
+assert.deepEqual(legacyMotionReset.motions, [])
+assert.equal(legacyMotionReset.props.length, 1)
+assert.equal(legacyMotionReset.props[0]?.id, BUILT_IN_STUDIO_PROPS[0]?.id)
+
+const currentAssetHydration = normalizeStudioAssetHydration({
+  motions: [BUILT_IN_STUDIO_MOTIONS[0]],
+  props: [BUILT_IN_STUDIO_PROPS[0]],
+}, { resetLegacyMotions: false })
+assert.equal(currentAssetHydration.motions.length, 1)
+assert.equal(currentAssetHydration.motions[0]?.id, BUILT_IN_STUDIO_MOTIONS[0]?.id)
+assert.equal(currentAssetHydration.props.length, 1)
 
 const propIds = new Set(BUILT_IN_STUDIO_PROPS.map(item => item.id))
 for (const prop of BUILT_IN_STUDIO_PROPS) {
