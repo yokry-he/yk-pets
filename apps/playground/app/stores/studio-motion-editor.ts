@@ -76,6 +76,7 @@ interface DirectManipulationSession {
   baselinePose: Readonly<Partial<Record<MotionControlId, number>>>
   status: 'ready' | 'clamped' | 'blocked'
   diagnostics: readonly string[]
+  latestChanged: boolean
 }
 
 interface MotionEditorState {
@@ -137,6 +138,7 @@ function createDirectManipulationSession(overrides: Partial<DirectManipulationSe
     baselinePose: Object.freeze({}),
     status: 'ready',
     diagnostics: Object.freeze([]),
+    latestChanged: false,
     ...overrides,
   }
 }
@@ -863,12 +865,20 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       const capability = getDirectMotionCapability(this.selectedBodyPartId)
       if (!stage || !capability?.modes.includes(this.directManipulationMode)) return false
       if (!this.beginControlGesture()) return false
+      const baseline = parse(this.controlGestureBaseline)
+      const baselineStage = baseline
+        ? readSimpleMotionRecipe(baseline)?.stages.find(item => item.id === this.selectedStageId)
+        : undefined
+      if (!baselineStage) {
+        this.cancelControlGesture()
+        return false
+      }
       this.directManipulation = createDirectManipulationSession({
         active: true,
         pointerId,
         startX: x,
         startY: y,
-        baselinePose: Object.freeze({ ...stage.pose }),
+        baselinePose: Object.freeze({ ...baselineStage.pose }),
       })
       return true
     },
@@ -881,39 +891,32 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     ) {
       const session = this.directManipulation
       if (!session.active || session.pointerId !== pointerId || !this.draft || !this.controlGestureBaseline) return false
-      const recipe = readSimpleMotionRecipe(this.draft)
-      const stage = recipe?.stages.find(item => item.id === this.selectedStageId)
-      if (!recipe || !stage) return false
+      const baseline = parse(this.controlGestureBaseline)
+      const baselineRecipe = baseline ? readSimpleMotionRecipe(baseline) : undefined
+      const baselineStage = baselineRecipe?.stages.find(item => item.id === this.selectedStageId)
+      if (!baseline || !baselineRecipe || !baselineStage) return false
       const result = solveDirectMotionDrag({
         partId: this.selectedBodyPartId,
         mode: this.directManipulationMode,
         delta: { x: x - session.startX, y: y - session.startY, depth },
         viewport,
         pose: session.baselinePose,
-        intensity: stage.intensity,
+        intensity: baselineStage.intensity,
       })
       const diagnostics = result.status === 'clamped'
         ? [...result.diagnostics, '直接拖拽已限制在安全范围。']
         : [...result.diagnostics]
+      const latestChanged = result.status !== 'blocked' && result.changed
       this.directManipulation = {
         ...session,
         status: result.status,
         diagnostics: Object.freeze(diagnostics),
+        latestChanged,
       }
-      if (result.status === 'blocked') return false
-      if (!result.changed) {
-        // 返回拖拽原点时直接恢复事务基线，不重新编译，也不留下虚假的最终变化。 / Returning to the drag origin restores the transaction baseline without recompiling or leaving a false final change.
-        if (serialize(this.draft) !== this.controlGestureBaseline) {
-          this.draft = parse(this.controlGestureBaseline)
-          this.syncSimpleAuthoringState()
-        }
-        return false
-      }
-      const baseline = parse(this.controlGestureBaseline)
-      if (!baseline) return false
+      if (!latestChanged) return false
       const nextRecipe: SimpleMotionRecipeV1 = {
-        ...recipe,
-        stages: recipe.stages.map(item => item.id === stage.id
+        ...baselineRecipe,
+        stages: baselineRecipe.stages.map(item => item.id === baselineStage.id
           ? { ...item, pose: { ...result.pose } }
           : item),
       }
@@ -922,8 +925,10 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     },
     commitDirectManipulation(pointerId: number) {
       if (!this.directManipulation.active || this.directManipulation.pointerId !== pointerId) return false
+      const latestChanged = this.directManipulation.latestChanged
       this.directManipulation = { ...this.directManipulation, active: false, pointerId: null }
-      this.endControlGesture()
+      if (latestChanged) this.endControlGesture()
+      else this.cancelControlGesture()
       return true
     },
     cancelDirectManipulation() {

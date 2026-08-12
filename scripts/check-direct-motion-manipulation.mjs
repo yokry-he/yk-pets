@@ -18,6 +18,12 @@ const actionBody = (name, nextName) => {
 }
 
 const preview = actionBody('previewDirectManipulation', 'commitDirectManipulation')
+const commit = actionBody('commitDirectManipulation', 'cancelDirectManipulation')
+const selectBodyPart = actionBody('selectBodyPart', 'setAuthoringScope')
+const setDirectManipulationMode = actionBody('setDirectManipulationMode', 'beginDirectManipulation')
+const unchangedGuardIndex = preview.indexOf('if (!latestChanged) return false')
+const compileIndex = preview.indexOf('compileSimpleMotionRecipe')
+const beforeUnchangedGuard = unchangedGuardIndex >= 0 ? preview.slice(0, unchangedGuardIndex) : preview
 const switchingActions = [
   actionBody('open', 'replaceFromSaved'),
   actionBody('replaceFromSaved', 'close'),
@@ -26,11 +32,16 @@ const switchingActions = [
   actionBody('redo', 'syncSimpleAuthoringState'),
   actionBody('setAuthoringMode', 'selectSimpleStage'),
   actionBody('selectSimpleStage', 'updateSimpleRecipe'),
+  actionBody('selectBodyPart', 'setAuthoringScope'),
   actionBody('setDirectManipulationMode', 'beginDirectManipulation'),
 ]
 
 const checks = [
-  ['core exposes direct drag solving', core.includes('export function solveDirectMotionDrag')],
+  ['core exposes capabilities drag solving and pose cards', hasAll(core, [
+    'export function getDirectMotionCapability',
+    'export function solveDirectMotionDrag',
+    'export function applyDirectMotionPoseCard',
+  ])],
   ['Store exposes direct manipulation state and commands', hasAll(store, [
     'directManipulationMode:',
     'directManipulation:',
@@ -41,10 +52,29 @@ const checks = [
     'applyDirectPoseCard',
     'setDirectManipulationMode',
     'resetSelectedDirectPart',
+    'baselinePose:',
+    'latestChanged:',
   ])],
   ['Store direct session reuses the control gesture transaction baseline', preview.includes('controlGestureBaseline') && store.includes('this.beginControlGesture()') && store.includes('this.endControlGesture()')],
-  ['preview passes the selected stage intensity explicitly', preview.includes('intensity: stage.intensity')],
-  ['preview skips compiling and applying unchanged or blocked results', preview.includes('!result.changed') && preview.includes("result.status === 'blocked'") && preview.indexOf('!result.changed') < preview.indexOf('compileSimpleMotionRecipe')],
+  ['preview reads recipe stage and intensity only from the baseline asset', hasAll(preview, [
+    'const baseline = parse(this.controlGestureBaseline)',
+    'readSimpleMotionRecipe(baseline)',
+    'pose: session.baselinePose',
+    'intensity: baselineStage.intensity',
+  ]) && !preview.includes('readSimpleMotionRecipe(this.draft)')],
+  ['preview leaves the draft untouched when the latest solve is unchanged or blocked', unchangedGuardIndex >= 0
+    && preview.includes("const latestChanged = result.status !== 'blocked' && result.changed")
+    && compileIndex > unchangedGuardIndex
+    && !beforeUnchangedGuard.includes('this.apply(')
+    && !beforeUnchangedGuard.includes('this.draft =')],
+  ['commit restores the baseline for an unchanged final solve and ends changed transactions', hasAll(commit, [
+    'latestChanged',
+    'this.cancelControlGesture()',
+    'this.endControlGesture()',
+  ])],
+  ['part and direct mode changes cancel the active session before changing selection',
+    selectBodyPart.indexOf('this.cancelDirectManipulation()') < selectBodyPart.indexOf('this.selectedBodyPartId = partId')
+    && setDirectManipulationMode.indexOf('this.cancelDirectManipulation()') < setDirectManipulationMode.indexOf('getDirectMotionCapability')],
   ['stage action and mode switches cancel active direct sessions', switchingActions.every(source => source.includes('this.cancelDirectManipulation()'))],
 ]
 
