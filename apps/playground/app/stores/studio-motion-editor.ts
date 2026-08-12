@@ -5,6 +5,7 @@
  */
 import {
   addMotionLayer,
+  applyDirectMotionPoseCard,
   applyMotionPosePreset,
   assignTrackToLayer,
   compileSimpleMotionRecipe,
@@ -36,6 +37,8 @@ import {
   getMotionBodyPartControls,
   getMotionBodyPartModes,
   getMotionControl,
+  getDirectMotionCapability,
+  solveDirectMotionDrag,
   updateMotionLayer,
   writeMotionChannelValue,
   type CloudFoxRigChannelId,
@@ -45,6 +48,7 @@ import {
   type MotionBodyPartId,
   type MotionControlId,
   type MotionTransformMode,
+  type DirectMotionMode,
   type SimpleMotionEffect,
   type SimpleMotionRecipeV1,
   type SimpleMotionStage,
@@ -63,6 +67,16 @@ import {
 } from '@yk-pets/pet-core'
 import { defineStore } from 'pinia'
 import { BUILT_IN_STUDIO_MOTIONS } from '../domain/studio-built-in-motions'
+
+interface DirectManipulationSession {
+  active: boolean
+  pointerId: number | null
+  startX: number
+  startY: number
+  baselinePose: Readonly<Partial<Record<MotionControlId, number>>>
+  status: 'ready' | 'clamped' | 'blocked'
+  diagnostics: readonly string[]
+}
 
 interface MotionEditorState {
   motionId: string
@@ -95,6 +109,10 @@ interface MotionEditorState {
   selectedBodyPartId: MotionBodyPartId
   authoringScope: MotionAuthoringScope
   transformMode: MotionTransformMode
+  directManipulationMode: DirectMotionMode
+  directManipulation: DirectManipulationSession
+  exactParametersExpanded: boolean
+  partInspectorOpen: boolean
   selectedControlId: MotionControlId
   symmetryEnabled: boolean
   controlGestureBaseline: string
@@ -109,6 +127,19 @@ const BIPED_MOTION_ADAPTATION_EXTENSION_KEY = 'yk-pets/biped-motion-adaptation/v
 const DEFAULT_TRAVEL_DISTANCE = .42
 const serialize = (asset: StudioMotionAssetV2 | null) => asset ? JSON.stringify(asset) : ''
 const parse = (value: string) => value ? normalizeMotionAsset(JSON.parse(value)).asset : null
+
+function createDirectManipulationSession(overrides: Partial<DirectManipulationSession> = {}): DirectManipulationSession {
+  return {
+    active: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    baselinePose: Object.freeze({}),
+    status: 'ready',
+    diagnostics: Object.freeze([]),
+    ...overrides,
+  }
+}
 
 function simpleStageStart(recipe: SimpleMotionRecipeV1, stageId: string): number {
   let cursor = 0
@@ -309,6 +340,10 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     selectedBodyPartId: 'root',
     authoringScope: 'current-frame',
     transformMode: 'translate',
+    directManipulationMode: 'translate',
+    directManipulation: createDirectManipulationSession(),
+    exactParametersExpanded: false,
+    partInspectorOpen: false,
     selectedControlId: 'root.translate.y',
     symmetryEnabled: false,
     controlGestureBaseline: '',
@@ -330,6 +365,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
   },
   actions: {
     open(asset: StudioMotionAssetV2) {
+      this.cancelDirectManipulation()
       if (this.motionId === asset.id && this.draft) return
       this.motionId = asset.id
       this.draft = duplicateMotionAssetForDraft(asset)
@@ -355,6 +391,8 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.saveState = 'saved'
     },
     replaceFromSaved(asset: StudioMotionAssetV2) {
+      // 必须先恢复旧草稿的手势基线，避免替换后把旧资产覆盖到新动作。 / Restore the old gesture baseline before replacing the draft so it cannot overwrite the new motion.
+      this.cancelDirectManipulation()
       const previousStageId = this.selectedStageId
       this.motionId = asset.id
       this.draft = duplicateMotionAssetForDraft(asset)
@@ -380,6 +418,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.saveState = 'saved'
     },
     close() {
+      this.cancelDirectManipulation()
       this.motionId = ''
       this.draft = null
       this.baseline = ''
@@ -421,6 +460,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.apply(mutator(this.draft), selectedKeyframeIds)
     },
     undo() {
+      this.cancelDirectManipulation()
       const previous = this.undoStack.pop()
       if (!previous || !this.draft) return
       this.redoStack.push(serialize(this.draft))
@@ -430,6 +470,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.syncSimpleAuthoringState()
     },
     redo() {
+      this.cancelDirectManipulation()
       const next = this.redoStack.pop()
       if (!next || !this.draft) return
       this.undoStack.push(serialize(this.draft))
@@ -453,6 +494,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.saveState = state
     },
     setAuthoringMode(mode: MotionEditorState['authoringMode']) {
+      this.cancelDirectManipulation()
       if (mode === 'guided' && (!this.draft || !readSimpleMotionRecipe(this.draft))) return
       this.authoringMode = mode
       this.activeLayerId = mode === 'guided'
@@ -462,6 +504,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
           : 'base'
     },
     selectSimpleStage(stageId: string) {
+      this.cancelDirectManipulation()
       if (!this.draft) return false
       const recipe = readSimpleMotionRecipe(this.draft)
       if (!recipe?.stages.some(stage => stage.id === stageId)) return false
@@ -661,7 +704,22 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       return false
     },
     selectBodyPart(partId: MotionBodyPartId) {
+      this.cancelDirectManipulation()
       this.selectedBodyPartId = partId
+      const capability = getDirectMotionCapability(partId)
+      if (capability) {
+        const mode = capability.modes.includes(this.directManipulationMode)
+          ? this.directManipulationMode
+          : capability.modes.includes('translate')
+            ? 'translate'
+            : capability.modes.includes('rotate')
+              ? 'rotate'
+              : undefined
+        if (mode) {
+          this.directManipulationMode = mode
+          this.transformMode = mode
+        }
+      }
       const modes = getMotionBodyPartModes(partId)
       if (!modes.includes(this.transformMode)) this.transformMode = modes[0] || 'rotate'
       const first = getMotionBodyPartControls(partId, this.transformMode)[0]
@@ -671,12 +729,14 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.authoringScope = scope
     },
     setTransformMode(mode: MotionTransformMode) {
+      this.cancelDirectManipulation()
       const controls = getMotionBodyPartControls(this.selectedBodyPartId, mode)
       if (!controls.length) return
       this.transformMode = mode
       this.selectControl(controls[0]!.id as MotionControlId)
     },
     selectControl(controlId: MotionControlId) {
+      this.cancelDirectManipulation()
       const definition = getMotionControl(controlId)
       this.selectedControlId = controlId
       this.selectedBodyPartId = definition.partId
@@ -747,9 +807,10 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.apply(result.asset, result.selectedKeyframeIds)
     },
     beginControlGesture() {
-      if (!this.draft || this.controlGestureBaseline) return
+      if (!this.draft || this.controlGestureBaseline) return false
       this.controlGestureBaseline = serialize(this.draft)
       this.snapshot()
+      return true
     },
     previewControlGesture(edits: readonly { controlId: MotionControlId; delta: number }[]) {
       if (!this.draft || !this.controlGestureBaseline) return
@@ -782,6 +843,122 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.undoStack.pop()
       this.controlGestureBaseline = ''
       this.syncSimpleAuthoringState()
+    },
+
+    setDirectManipulationMode(mode: DirectMotionMode) {
+      this.cancelDirectManipulation()
+      const capability = getDirectMotionCapability(this.selectedBodyPartId)
+      if (!capability?.modes.includes(mode)) return false
+      this.directManipulationMode = mode
+      // 旧控件继续消费 transformMode；简单直接操控本身只接受 translate/rotate。 / Legacy controls keep consuming transformMode while simple direct manipulation only accepts translate/rotate.
+      this.transformMode = mode
+      const first = getMotionBodyPartControls(this.selectedBodyPartId, mode)[0]
+      if (first) this.selectControl(first.id as MotionControlId)
+      return true
+    },
+    beginDirectManipulation(pointerId: number, x: number, y: number) {
+      if (this.authoringMode !== 'guided' || !this.draft || !this.selectedStageId || this.directManipulation.active) return false
+      const recipe = readSimpleMotionRecipe(this.draft)
+      const stage = recipe?.stages.find(item => item.id === this.selectedStageId)
+      const capability = getDirectMotionCapability(this.selectedBodyPartId)
+      if (!stage || !capability?.modes.includes(this.directManipulationMode)) return false
+      if (!this.beginControlGesture()) return false
+      this.directManipulation = createDirectManipulationSession({
+        active: true,
+        pointerId,
+        startX: x,
+        startY: y,
+        baselinePose: Object.freeze({ ...stage.pose }),
+      })
+      return true
+    },
+    previewDirectManipulation(
+      pointerId: number,
+      x: number,
+      y: number,
+      viewport: Readonly<{ width: number, height: number }>,
+      depth = 0,
+    ) {
+      const session = this.directManipulation
+      if (!session.active || session.pointerId !== pointerId || !this.draft || !this.controlGestureBaseline) return false
+      const recipe = readSimpleMotionRecipe(this.draft)
+      const stage = recipe?.stages.find(item => item.id === this.selectedStageId)
+      if (!recipe || !stage) return false
+      const result = solveDirectMotionDrag({
+        partId: this.selectedBodyPartId,
+        mode: this.directManipulationMode,
+        delta: { x: x - session.startX, y: y - session.startY, depth },
+        viewport,
+        pose: session.baselinePose,
+        intensity: stage.intensity,
+      })
+      const diagnostics = result.status === 'clamped'
+        ? [...result.diagnostics, '直接拖拽已限制在安全范围。']
+        : [...result.diagnostics]
+      this.directManipulation = {
+        ...session,
+        status: result.status,
+        diagnostics: Object.freeze(diagnostics),
+      }
+      if (result.status === 'blocked') return false
+      if (!result.changed) {
+        // 返回拖拽原点时直接恢复事务基线，不重新编译，也不留下虚假的最终变化。 / Returning to the drag origin restores the transaction baseline without recompiling or leaving a false final change.
+        if (serialize(this.draft) !== this.controlGestureBaseline) {
+          this.draft = parse(this.controlGestureBaseline)
+          this.syncSimpleAuthoringState()
+        }
+        return false
+      }
+      const baseline = parse(this.controlGestureBaseline)
+      if (!baseline) return false
+      const nextRecipe: SimpleMotionRecipeV1 = {
+        ...recipe,
+        stages: recipe.stages.map(item => item.id === stage.id
+          ? { ...item, pose: { ...result.pose } }
+          : item),
+      }
+      this.apply(compileSimpleMotionRecipe(baseline, nextRecipe, { now: Date.now() }).asset)
+      return true
+    },
+    commitDirectManipulation(pointerId: number) {
+      if (!this.directManipulation.active || this.directManipulation.pointerId !== pointerId) return false
+      this.directManipulation = { ...this.directManipulation, active: false, pointerId: null }
+      this.endControlGesture()
+      return true
+    },
+    cancelDirectManipulation() {
+      const wasActive = this.directManipulation.active
+      if (wasActive) this.cancelControlGesture()
+      this.directManipulation = createDirectManipulationSession()
+      return wasActive
+    },
+    applyDirectPoseCard(cardId: string) {
+      this.cancelDirectManipulation()
+      if (this.authoringMode !== 'guided' || !this.draft || !this.selectedStageId) return false
+      const stage = readSimpleMotionRecipe(this.draft)?.stages.find(item => item.id === this.selectedStageId)
+      if (!stage) return false
+      const result = applyDirectMotionPoseCard(stage.pose, cardId)
+      this.directManipulation = createDirectManipulationSession({
+        status: result.status,
+        diagnostics: Object.freeze([...result.diagnostics]),
+      })
+      if (result.status === 'blocked' || !result.changed) return false
+      return this.updateSimpleStage(stage.id, { pose: { ...result.pose } })
+    },
+    resetSelectedDirectPart() {
+      this.cancelDirectManipulation()
+      if (this.authoringMode !== 'guided' || !this.draft || !this.selectedStageId) return false
+      const capability = getDirectMotionCapability(this.selectedBodyPartId)
+      const stage = readSimpleMotionRecipe(this.draft)?.stages.find(item => item.id === this.selectedStageId)
+      if (!capability || !stage) return false
+      const pose = { ...stage.pose }
+      let changed = false
+      for (const controlId of capability.controlIds) {
+        if (!Object.hasOwn(pose, controlId)) continue
+        delete pose[controlId]
+        changed = true
+      }
+      return changed ? this.updateSimpleStage(stage.id, { pose }) : false
     },
 
     writeChannelValue(value: number, interpolation: MotionInterpolation = 'linear') {
