@@ -19,22 +19,32 @@ const actionBody = (name, nextName) => {
 
 const preview = actionBody('previewDirectManipulation', 'commitDirectManipulation')
 const commit = actionBody('commitDirectManipulation', 'cancelDirectManipulation')
-const selectBodyPart = actionBody('selectBodyPart', 'setAuthoringScope')
-const setDirectManipulationMode = actionBody('setDirectManipulationMode', 'beginDirectManipulation')
 const unchangedGuardIndex = preview.indexOf('if (!latestChanged) return false')
 const compileIndex = preview.indexOf('compileSimpleMotionRecipe')
+const nextRecipeIndex = preview.indexOf('const nextRecipe: SimpleMotionRecipeV1')
 const beforeUnchangedGuard = unchangedGuardIndex >= 0 ? preview.slice(0, unchangedGuardIndex) : preview
+const commitUsesLatestSolve = /if\s*\(latestChanged\)\s*this\.endControlGesture\(\)\s*else\s*this\.cancelControlGesture\(\)/.test(commit)
 const switchingActions = [
-  actionBody('open', 'replaceFromSaved'),
-  actionBody('replaceFromSaved', 'close'),
-  actionBody('close', 'snapshot'),
-  actionBody('undo', 'redo'),
-  actionBody('redo', 'syncSimpleAuthoringState'),
-  actionBody('setAuthoringMode', 'selectSimpleStage'),
-  actionBody('selectSimpleStage', 'updateSimpleRecipe'),
-  actionBody('selectBodyPart', 'setAuthoringScope'),
-  actionBody('setDirectManipulationMode', 'beginDirectManipulation'),
-]
+  ['open', 'replaceFromSaved', 'this.motionId = asset.id'],
+  ['replaceFromSaved', 'close', 'this.motionId = asset.id'],
+  ['close', 'snapshot', "this.motionId = ''"],
+  ['undo', 'redo', 'const previous = this.undoStack.pop()'],
+  ['redo', 'syncSimpleAuthoringState', 'const next = this.redoStack.pop()'],
+  ['setAuthoringMode', 'selectSimpleStage', 'this.authoringMode = mode'],
+  ['selectSimpleStage', 'updateSimpleRecipe', 'this.selectedStageId = stageId'],
+  ['selectBodyPart', 'setAuthoringScope', 'this.selectedBodyPartId = partId'],
+  ['setTransformMode', 'selectControl', 'this.transformMode = mode'],
+  ['selectControl', 'controlOptions', 'this.selectedControlId = controlId'],
+  ['setDirectManipulationMode', 'beginDirectManipulation', 'this.directManipulationMode = mode'],
+].map(([name, nextName, firstStateWrite]) => {
+  const source = actionBody(name, nextName)
+  return {
+    name,
+    source,
+    cancelIndex: source.indexOf('this.cancelDirectManipulation()'),
+    firstStateWriteIndex: source.indexOf(firstStateWrite),
+  }
+})
 
 const checks = [
   ['core exposes capabilities drag solving and pose cards', hasAll(core, [
@@ -67,15 +77,18 @@ const checks = [
     && compileIndex > unchangedGuardIndex
     && !beforeUnchangedGuard.includes('this.apply(')
     && !beforeUnchangedGuard.includes('this.draft =')],
-  ['commit restores the baseline for an unchanged final solve and ends changed transactions', hasAll(commit, [
-    'latestChanged',
-    'this.cancelControlGesture()',
-    'this.endControlGesture()',
-  ])],
-  ['part and direct mode changes cancel the active session before changing selection',
-    selectBodyPart.indexOf('this.cancelDirectManipulation()') < selectBodyPart.indexOf('this.selectedBodyPartId = partId')
-    && setDirectManipulationMode.indexOf('this.cancelDirectManipulation()') < setDirectManipulationMode.indexOf('getDirectMotionCapability')],
-  ['stage action and mode switches cancel active direct sessions', switchingActions.every(source => source.includes('this.cancelDirectManipulation()'))],
+  ['preview derives and compiles only the selected baseline recipe stage', nextRecipeIndex > unchangedGuardIndex
+    && hasAll(preview.slice(nextRecipeIndex), [
+      '...baselineRecipe,',
+      'stages: baselineRecipe.stages.map',
+      'compileSimpleMotionRecipe(baseline, nextRecipe',
+    ])],
+  ['commit ends only a changed latest solve and otherwise restores the baseline', commitUsesLatestSolve],
+  ['all stage action control and mode switches cancel before their first state write', switchingActions.every(action =>
+    action.source
+    && action.cancelIndex >= 0
+    && action.firstStateWriteIndex >= 0
+    && action.cancelIndex < action.firstStateWriteIndex)],
 ]
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
