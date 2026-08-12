@@ -12,7 +12,9 @@ import {
   compileSimpleMotionRecipe,
   createStudioMotionAsset,
   createSimpleMotionRecipe,
+  getCloudFoxRigChannel,
   normalizeSimpleMotionRecipe,
+  readSimpleMotionRecipe,
 } from '../src/index.ts'
 
 test('五类意图都会生成可编译的阶段配方', () => {
@@ -44,6 +46,45 @@ test('损坏配方会被修复且不突变输入', () => {
   assert.equal(Object.hasOwn(result.value.stages[0]?.pose || {}, 'unknown'), false)
   assert.equal(Object.hasOwn(result.value.stages[0]?.pose || {}, 'head.rotate.x'), false)
   assert.ok(result.diagnostics.length > 0)
+})
+
+test('阶段力度先规范化再收紧已有姿势且保持幂等稀疏', () => {
+  const channel = getCloudFoxRigChannel('frontPaw.left.rotation.z')
+  const input = createSimpleMotionRecipe('custom')
+  input.stages[0] = {
+    ...input.stages[0]!,
+    intensity: 1.5,
+    pose: {
+      'front-paw-left.rotate.z': channel.minimum,
+      'front-paw-right.rotate.z': channel.maximum,
+    },
+  }
+  const strong = normalizeSimpleMotionRecipe(input).value
+  const strongStage = strong.stages[0]!
+
+  assert.equal(strongStage.pose['front-paw-left.rotate.z'], channel.minimum / 1.5)
+  assert.equal(strongStage.pose['front-paw-right.rotate.z'], channel.maximum / 1.5)
+  assert.equal(Object.hasOwn(strongStage.pose, 'head.rotate.x'), false, '不得把缺失控制物化为 0')
+  assert.deepEqual(normalizeSimpleMotionRecipe(strong).value, strong, '重复规范化必须幂等')
+
+  const soft = normalizeSimpleMotionRecipe({
+    ...strong,
+    stages: strong.stages.map((stage, index) => index === 0 ? { ...stage, intensity: .5 } : stage),
+  }).value.stages[0]!
+  assert.equal(soft.pose['front-paw-left.rotate.z'], channel.minimum / 1.5, '降低力度不能反向放大旧姿势')
+})
+
+test('旧资产读取会按保存的阶段力度规范已有姿势', () => {
+  const recipe = createSimpleMotionRecipe('custom')
+  recipe.stages[0] = { ...recipe.stages[0]!, intensity: 1.5, pose: { 'head.rotate.x': Math.PI } }
+  const asset = createStudioMotionAsset({
+    id: 'legacy-intensity',
+    nameZh: '旧动作',
+    nameEn: 'Legacy motion',
+    extensions: { [SIMPLE_MOTION_AUTHORING_EXTENSION_KEY]: recipe },
+  })
+
+  assert.equal(readSimpleMotionRecipe(asset)?.stages[0]?.pose['head.rotate.x'], Math.PI / 1.5)
 })
 
 test('超额阶段和总时长都会收敛到固定预算', () => {

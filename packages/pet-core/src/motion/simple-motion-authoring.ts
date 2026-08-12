@@ -3,10 +3,9 @@
  * 定义面向新手的阶段式动作配方、五类意图蓝图与有界归一化。
  * Defines beginner-facing staged-motion recipes, five intent blueprints, and bounded normalization.
  */
-import { getCloudFoxRigChannel } from './cloud-fox-rig'
 import {
   MOTION_CONTROLS,
-  getMotionControl,
+  getIntensityAdjustedMotionControlRange,
   type MotionControlId,
 } from './motion-controls'
 import type { StudioMotionAssetV2 } from './motion-asset'
@@ -195,7 +194,7 @@ function normalizeAutomaticFeatures(value: unknown): SimpleMotionAutomaticFeatur
   }
 }
 
-function normalizePose(value: unknown, path: string, diagnostics: SimpleMotionDiagnostic[]): SimpleMotionStage['pose'] {
+function normalizePose(value: unknown, path: string, diagnostics: SimpleMotionDiagnostic[], intensity: number): SimpleMotionStage['pose'] {
   const source = record(value)
   if (!source) return {}
   const pose: Partial<Record<MotionControlId, number>> = {}
@@ -208,10 +207,7 @@ function normalizePose(value: unknown, path: string, diagnostics: SimpleMotionDi
       diagnostics.push({ code: 'control-value-repaired', path: `${path}.${id}`, message: '非有限姿势数值已忽略。' })
       continue
     }
-    const control = getMotionControl(id as MotionControlId)
-    const channels = control.channelIds.map(getCloudFoxRigChannel)
-    const minimum = Math.max(...channels.map(channel => channel.minimum))
-    const maximum = Math.min(...channels.map(channel => channel.maximum))
+    const [minimum, maximum] = getIntensityAdjustedMotionControlRange(id as MotionControlId, intensity)
     pose[id as MotionControlId] = clamp(rawValue, minimum, maximum)
   }
   return pose
@@ -239,19 +235,26 @@ function normalizeStages(value: unknown, fallback: SimpleMotionStage[], diagnost
     const rawDuration = finite(raw.durationMs, fallbackStage.durationMs)
     const durationMs = Math.round(clamp(rawDuration, SIMPLE_MOTION_STAGE_MIN_DURATION_MS, SIMPLE_MOTION_STAGE_MAX_DURATION_MS))
     if (durationMs !== rawDuration) diagnostics.push({ code: 'stage-duration-clamped', path: `stages[${index}].durationMs`, message: '阶段时长已修复到安全范围。' })
+    const intensity = clamp(finite(raw.intensity, fallbackStage.intensity), 0, SIMPLE_MOTION_STAGE_MAX_INTENSITY)
     return {
       id,
       labelZh: text(raw.labelZh, fallbackStage.labelZh || `阶段 ${index + 1}`),
       durationMs,
       transition: typeof raw.transition === 'string' && TRANSITIONS.has(raw.transition as SimpleMotionTransition) ? raw.transition as SimpleMotionTransition : fallbackStage.transition,
-      intensity: clamp(finite(raw.intensity, fallbackStage.intensity), 0, SIMPLE_MOTION_STAGE_MAX_INTENSITY),
-      pose: normalizePose(raw.pose ?? fallbackStage.pose, `stages[${index}].pose`, diagnostics),
+      intensity,
+      pose: normalizePose(raw.pose ?? fallbackStage.pose, `stages[${index}].pose`, diagnostics, intensity),
       effects: normalizeEffects(raw.effects ?? fallbackStage.effects),
     }
   })
   while (stages.length < 2) {
     const fallbackStage = fallback[stages.length] ?? stage(`stage-${stages.length + 1}`, stages.length ? '结束' : '起始', 800)
-    stages.push({ ...fallbackStage, pose: { ...fallbackStage.pose }, effects: [...fallbackStage.effects] })
+    const intensity = clamp(finite(fallbackStage.intensity, 1), 0, SIMPLE_MOTION_STAGE_MAX_INTENSITY)
+    stages.push({
+      ...fallbackStage,
+      intensity,
+      pose: normalizePose(fallbackStage.pose, `stages[${stages.length}].pose`, diagnostics, intensity),
+      effects: [...fallbackStage.effects],
+    })
     diagnostics.push({ code: 'recipe-repaired', path: 'stages', message: '阶段数不足，已补齐起始与结束阶段。' })
   }
   const totalDuration = stages.reduce((sum, item) => sum + item.durationMs, 0)

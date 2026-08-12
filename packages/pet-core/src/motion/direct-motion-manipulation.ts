@@ -5,6 +5,7 @@
  */
 import {
   getMotionControl,
+  getIntensityAdjustedMotionControlRange,
   getMotionBodyPart,
   getMotionBodyPartControls,
   isMotionControlId,
@@ -12,7 +13,6 @@ import {
   type MotionControlDefinition,
   type MotionControlId,
 } from './motion-controls'
-import { getCloudFoxRigChannel } from './cloud-fox-rig'
 import {
   SIMPLE_MOTION_STAGE_MAX_INTENSITY,
   type SimpleMotionIntent,
@@ -507,19 +507,7 @@ export function getDirectMotionRawControlRange(controlId: MotionControlId, inten
   if (!Number.isFinite(intensity) || intensity <= 0 || intensity > SIMPLE_MOTION_STAGE_MAX_INTENSITY) {
     return Object.freeze([0, 0] as const)
   }
-  const channels = getMotionControl(controlId).channelIds.map(getCloudFoxRigChannel)
-  const rawMinimum = Math.max(...channels.map(channel => channel.minimum))
-  const rawMaximum = Math.min(...channels.map(channel => channel.maximum))
-  return Object.freeze([
-    Math.max(rawMinimum, finiteSaturation(rawMinimum / intensity)),
-    Math.min(rawMaximum, finiteSaturation(rawMaximum / intensity)),
-  ] as const)
-}
-
-function finiteSaturation(value: number): number {
-  if (Number.isFinite(value)) return value
-  if (Number.isNaN(value)) return 0
-  return Math.sign(value) * Number.MAX_VALUE
+  return getIntensityAdjustedMotionControlRange(controlId, intensity)
 }
 
 function saturatingAdd(left: number, right: number): readonly [number, boolean] {

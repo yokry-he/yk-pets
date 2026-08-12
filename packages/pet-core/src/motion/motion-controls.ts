@@ -211,6 +211,26 @@ export function getMotionControl(id: MotionControlId | string): MotionControlDef
   return definition
 }
 
+/**
+ * 返回阶段原始控制值在给定力度下的安全范围。最终编译会把姿势乘以力度，因此范围取
+ * Rig 原始边界与 `Rig 边界 / 力度` 的交集；低力度不会反向放宽既有姿势。
+ */
+export function getIntensityAdjustedMotionControlRange(
+  controlId: MotionControlId,
+  intensity = 1,
+): readonly [number, number] {
+  if (!Number.isFinite(intensity) || intensity <= 0) return Object.freeze([0, 0] as const)
+  const channels = getMotionControl(controlId).channelIds.map(getCloudFoxRigChannel)
+  const rawMinimum = Math.max(...channels.map(channel => channel.minimum))
+  const rawMaximum = Math.min(...channels.map(channel => channel.maximum))
+  const adjustedMinimum = rawMinimum / intensity
+  const adjustedMaximum = rawMaximum / intensity
+  return Object.freeze([
+    Math.max(rawMinimum, Number.isFinite(adjustedMinimum) ? adjustedMinimum : rawMinimum),
+    Math.min(rawMaximum, Number.isFinite(adjustedMaximum) ? adjustedMaximum : rawMaximum),
+  ] as const)
+}
+
 export function toMotionControlDisplayValue(value: number, unit: MotionControlDisplayUnit): number {
   return unit === 'degree' ? value * 180 / Math.PI : value
 }

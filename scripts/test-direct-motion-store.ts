@@ -191,6 +191,20 @@ test('普通写入、步进和复位统一使用力度范围与对称语义', ()
   assert.deepEqual(editor.undoStack, [], '力度为零时禁用写入且不生成空撤销')
 })
 
+test('提高阶段力度会同步收紧已保存的双侧姿势', () => {
+  const editor = createEditor()
+  editor.selectBodyPart('front-paw-left')
+  editor.symmetryEnabled = true
+  editor.writeControlValue('front-paw-left.rotate.z', -Math.PI)
+  assert.equal(pose(editor)['front-paw-left.rotate.z'], -Math.PI)
+  assert.equal(pose(editor)['front-paw-right.rotate.z'], Math.PI)
+
+  editor.updateSelectedSimpleStage({ intensity: 1.5 })
+  assert.equal(pose(editor)['front-paw-left.rotate.z'], -Math.PI / 1.5)
+  assert.equal(pose(editor)['front-paw-right.rotate.z'], Math.PI / 1.5)
+  assert.equal(Object.hasOwn(pose(editor), 'head.rotate.x'), false)
+})
+
 test('姿势卡和部位复位遵循同一对称写入边界', () => {
   const editor = createEditor()
   editor.selectBodyPart('front-paw-left')
