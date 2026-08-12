@@ -27,6 +27,9 @@ const alignedCloudFox = read('apps/playground/app/components/studio/ExtensionAli
 const cloudFoxBody = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue')
 const cloudFoxHead = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
 const cloudFoxTail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue')
+const motionPage = read('apps/playground/app/pages/studio/motion.vue')
+const studioLayout = read('apps/playground/app/layouts/studio.vue')
+const projectStatus = read('docs/zh-CN/项目状态.md')
 
 const hasAll = (source, tokens) => tokens.every(token => source.includes(token))
 const actionBody = (name, nextName) => {
@@ -361,6 +364,55 @@ const checks = [
   ]) && !exactControl.includes('.draft =')],
   ['阶段属性不再呈现旧引导变换树且仍保留节奏和效果', !stageInspector.includes('<StudioMotionTransformEditor guided')
     && hasAll(stageInspector, ['节奏', '效果', 'updateDuration', 'toggleEffect'])],
+  ['动作页面把能力部位、真实画布锚点与同一直接操控覆盖层连通', hasAll(motionPage, [
+    'MOTION_BODY_PARTS',
+    'getDirectMotionCapability',
+    'const editableMotionParts = computed',
+    ':editable-parts="guidedEditing ? editableMotionParts : []"',
+    '@part-anchors="updatePartAnchors"',
+    '<StudioMotionDirectManipulator',
+    ':anchors="partAnchors"',
+    ':editable-parts="editableMotionParts"',
+  ])],
+  ['简单模式固定属性面板组合部位与阶段设置且旧直接板保持隐藏', hasAll(motionPage, [
+    '<StudioMotionPartInspector',
+    '阶段节奏与效果',
+    '<StudioMotionStageInspector',
+  ]) && !motionPage.includes('<StudioMotionDirectPad')],
+  ['简单复杂模型切换入口保持显示门禁关闭', studioLayout.includes('const modelModeSwitchVisible = false')
+    && /<StudioModelModeSwitch\b[^>]*v-if="modelModeSwitchVisible"/.test(studioLayout)
+    && studioLayout.includes("if (!modelModeSwitchVisible) session.setModelMode('simple')")],
+  ['页面视角拖动避让部位手势且生命周期切换取消临时编辑', hasAll(motionPage, [
+    'function beginCanvasRotation(event: PointerEvent)',
+    'editor.directManipulation.active',
+    ".closest('.studio-motion-direct-manipulator')",
+    '@pointerdown="beginCanvasRotation"',
+    'editor.cancelDirectManipulation()',
+  ])],
+  ['窄屏参数抽屉提供触发器、遮罩、Escape、焦点恢复、焦点约束与滚动锁', hasAll(motionPage, [
+    'class="guided-inspector-trigger"',
+    ':aria-expanded="editor.partInspectorOpen"',
+    'aria-controls="guided-part-inspector"',
+    'class="guided-drawer-backdrop"',
+    ":role=\"narrowViewport && guidedEditing ? 'dialog' : undefined\"",
+    ":aria-modal=\"narrowViewport && guidedEditing ? 'true' : undefined\"",
+    'function closePartInspector',
+    'function trapPartInspectorFocus',
+    "document.documentElement.style.setProperty('overflow', 'hidden', 'important')",
+    'partInspectorTrigger.value?.focus',
+    ':global(body:has(.guided-panel--open) .studio-entry)',
+  ]) && /@media\(max-width:780px\)[\s\S]*\.property-panel\.guided-panel/.test(motionPage)],
+  ['现代工作台保持唯一 Canvas 且滚轮缩放未重新绑定', (motionPage.match(/<CloudFoxStudioCanvas\b/g) || []).length === 1
+    && !motionPage.includes('@wheel')
+    && !motionPage.includes('wheelPreview')],
+  ['中文项目状态记录现代直接操控能力与首期边界', hasAll(projectStatus, [
+    '简单模式现代化直接动作操控',
+    '语义部位',
+    '移动与旋转',
+    '快速姿势',
+    '单次拖拽事务',
+    '不等同于真实动作捕捉或人体动力学',
+  ])],
 ]
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)

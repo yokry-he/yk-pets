@@ -82,7 +82,7 @@ function onKeydown(event: KeyboardEvent) {
 
 function onWindowPointerDown(event: PointerEvent) {
   if (!gestureActive || event.target === inputElement.value) return
-  // 捕获阶段先提交数值输入，确保随后在 3D 热点开始的拖拽能取得新的手势基线。
+  // 捕获阶段先提交数值输入，确保随后在 3D 热点开始的拖拽能取得新的手势基线。 / Commit the numeric input during capture so a following 3D hotspot drag receives the new gesture baseline.
   commitGesture()
 }
 

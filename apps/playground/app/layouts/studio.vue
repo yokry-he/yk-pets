@@ -43,6 +43,8 @@ onMounted(() => {
   assets.hydrate()
   modelVariants.hydrate()
   session.hydrate()
+  // 隐藏模式入口期间统一回到简单模型，避免历史复杂模式偏好让用户停留在无法切换的状态。 / Force the simple model while the switch is hidden so a persisted complex preference cannot trap the user.
+  if (!modelModeSwitchVisible) session.setModelMode('simple')
   session.setWorkspace(workspace.value)
   modelVariants.ensurePet(currentPetId.value)
   if (session.modelMode === 'complex') modelVariants.ensureComplexDraft(currentPetId.value)

@@ -124,11 +124,18 @@ function hasClientOnlyLayoutHydration(source) {
   const mountedStart = sourceScript.indexOf('onMounted(() =>')
   const mountedBody = sourceScript.match(/onMounted\(\(\)\s*=>\s*\{([\s\S]*?)\n\}\)/)?.[1] || ''
   const hydrationCalls = ['appearance.hydrate()', 'assets.hydrate()', 'modelVariants.hydrate()', 'session.hydrate()']
+  const sessionHydrateAt = mountedBody.indexOf('session.hydrate()')
+  const forceSimpleAt = mountedBody.indexOf("if (!modelModeSwitchVisible) session.setModelMode('simple')")
+  const workspaceAt = mountedBody.indexOf('session.setWorkspace(workspace.value)')
+  const ensurePetAt = mountedBody.indexOf('modelVariants.ensurePet')
   return mountedStart >= 0
     && hydrationCalls.every(call => mountedBody.includes(call))
     && hydrationCalls.every(call => sourceScript.indexOf(call) > mountedStart)
     && /watch\(workspace,\s*next\s*=>\s*\{\s*if\s*\(session\.hydrated\)\s*session\.setWorkspace\(next\)\s*\},\s*\{\s*immediate:\s*true\s*\}\)/.test(sourceScript)
-    && /session\.hydrate\(\)\s*\n\s*session\.setWorkspace\(workspace\.value\)\s*\n\s*modelVariants\.ensurePet/.test(mountedBody)
+    && sessionHydrateAt >= 0
+    && sessionHydrateAt < forceSimpleAt
+    && forceSimpleAt < workspaceAt
+    && workspaceAt < ensurePetAt
 }
 
 const checks = [

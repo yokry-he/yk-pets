@@ -5,20 +5,25 @@
 -->
 <script setup lang="ts">
 import {
+  MOTION_BODY_PARTS,
   deriveStudioPropRig,
   evaluateMotionPropEvents,
   evaluateNormalizedMotionAsset,
+  getDirectMotionCapability,
+  getMotionBodyPart,
   normalizeBipedPetMotionAdaptation,
   normalizeBipedPetRootMotion,
   readSimpleMotionRecipe,
+  type MotionBodyPartId,
   type MotionInterpolation,
   type SimpleMotionIntent,
 } from '@yk-pets/pet-core'
-import CloudFoxStudioCanvas from '~/components/studio/CloudFoxStudioCanvas.vue'
+import CloudFoxStudioCanvas, { type StudioMotionPartAnchor } from '~/components/studio/CloudFoxStudioCanvas.vue'
 import StudioMotionAdvancedTools from '~/components/studio/StudioMotionAdvancedTools.vue'
 import StudioMotionAdaptationSummary from '~/components/studio/StudioMotionAdaptationSummary.vue'
-import StudioMotionDirectPad from '~/components/studio/StudioMotionDirectPad.vue'
+import StudioMotionDirectManipulator from '~/components/studio/StudioMotionDirectManipulator.vue'
 import StudioMotionIntentPicker from '~/components/studio/StudioMotionIntentPicker.vue'
+import StudioMotionPartInspector from '~/components/studio/StudioMotionPartInspector.vue'
 import StudioMotionPoseEditor from '~/components/studio/StudioMotionPoseEditor.vue'
 import StudioMotionStageBar from '~/components/studio/StudioMotionStageBar.vue'
 import StudioMotionStageInspector from '~/components/studio/StudioMotionStageInspector.vue'
@@ -104,6 +109,14 @@ const status = ref('')
 const pendingMotionId = ref('')
 const propertyTab = ref<PropertyTab>('pose')
 const showIntentPicker = ref(false)
+const partAnchors = shallowRef<readonly StudioMotionPartAnchor[]>([])
+const editableMotionParts = computed<readonly MotionBodyPartId[]>(() => MOTION_BODY_PARTS
+  .filter(part => Boolean(getDirectMotionCapability(part.id)))
+  .map(part => part.id))
+const selectedMotionPart = computed(() => getMotionBodyPart(editor.selectedBodyPartId))
+const narrowViewport = ref(false)
+const partInspectorPanel = ref<HTMLElement>()
+const partInspectorTrigger = ref<HTMLButtonElement>()
 const previewPosition = [0, .32, 0] as const
 const {
   previewScale,
@@ -119,7 +132,7 @@ const {
   movePreviewRotate,
   endPreviewRotate,
   cancelPreviewRotate,
-} = useStudioPreviewOrientation({ excludedSelector: '.direct-pad', defaultScale: .72 })
+} = useStudioPreviewOrientation({ excludedSelector: '.studio-motion-direct-manipulator', defaultScale: .72 })
 const propEventCount = computed(() => draft.value?.propEventTracks.reduce((sum, track) => sum + track.events.length, 0) || 0)
 const propertyTabs = computed<Array<{ id: PropertyTab; label: string; badge?: number }>>(() => [
   { id: 'basic', label: '基础' },
@@ -129,6 +142,9 @@ const propertyTabs = computed<Array<{ id: PropertyTab; label: string; badge?: nu
 ])
 let raf = 0
 let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
+let narrowViewportQuery: MediaQueryList | undefined
+let previousDocumentOverflow = ''
+let previousDocumentOverflowPriority = ''
 
 const saveStateLabel = computed(() => {
   if (editor.saveState === 'saving') return '正在保存…'
@@ -221,8 +237,68 @@ function useBasicMotionTemplate(templateId: string) {
 }
 function toggleAuthoringMode() {
   if (!simpleRecipe.value) return
+  editor.cancelDirectManipulation()
   editor.setAuthoringMode(guidedEditing.value ? 'advanced' : 'guided')
   propertyTab.value = 'pose'
+}
+function updatePartAnchors(anchors: readonly StudioMotionPartAnchor[]) {
+  partAnchors.value = anchors
+}
+function beginCanvasRotation(event: PointerEvent) {
+  const target = event.target
+  if (editor.directManipulation.active || (target instanceof Element && target.closest('.studio-motion-direct-manipulator'))) return
+  beginPreviewRotate(event)
+}
+function toggleMotionPlayback() {
+  editor.cancelDirectManipulation()
+  editor.togglePlayback()
+}
+function stopMotionPlayback() {
+  editor.cancelDirectManipulation()
+  editor.stopPlayback()
+}
+function focusableInspectorElements() {
+  if (!partInspectorPanel.value) return []
+  return Array.from(partInspectorPanel.value.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'))
+    .filter(element => !element.hidden && element.getClientRects().length > 0)
+}
+function openPartInspector() {
+  editor.partInspectorOpen = true
+  nextTick(() => focusableInspectorElements()[0]?.focus({ preventScroll: true }))
+}
+function closePartInspector(restoreFocus = true) {
+  editor.cancelDirectManipulation()
+  editor.partInspectorOpen = false
+  if (restoreFocus) nextTick(() => partInspectorTrigger.value?.focus({ preventScroll: true }))
+}
+function trapPartInspectorFocus(event: KeyboardEvent) {
+  if (!narrowViewport.value || !editor.partInspectorOpen) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closePartInspector()
+    return
+  }
+  if (event.key !== 'Tab') return
+  const elements = focusableInspectorElements()
+  if (!elements.length) return
+  const first = elements[0]!
+  const last = elements.at(-1)!
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  }
+  else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+function syncNarrowViewport(event: MediaQueryListEvent | MediaQueryList) {
+  narrowViewport.value = event.matches
+  if (!event.matches) closePartInspector(false)
+}
+function restoreDocumentOverflow() {
+  if (previousDocumentOverflow) document.documentElement.style.setProperty('overflow', previousDocumentOverflow, previousDocumentOverflowPriority)
+  else document.documentElement.style.removeProperty('overflow')
 }
 function patchName(field: 'nameZh' | 'nameEn', event: Event) {
   editor.updateMetadata({ [field]: (event.target as HTMLInputElement).value })
@@ -259,7 +335,7 @@ function keyboard(event: KeyboardEvent) {
   else if (modifier && event.key.toLowerCase() === 'c') editor.copySelected()
   else if (modifier && event.key.toLowerCase() === 'v') editor.pasteAtPlayhead()
   else if (event.key === 'Delete' || event.key === 'Backspace') editor.deleteSelected()
-  else if (event.code === 'Space') { event.preventDefault(); editor.togglePlayback() }
+  else if (event.code === 'Space') { event.preventDefault(); toggleMotionPlayback() }
   else if (event.key.toLowerCase() === 'w') editor.setTransformMode('translate')
   else if (event.key.toLowerCase() === 'e') editor.setTransformMode('rotate')
   else if (event.key.toLowerCase() === 'r') editor.setTransformMode('scale')
@@ -276,6 +352,21 @@ function keyboard(event: KeyboardEvent) {
 
 watch(saved, asset => { if (asset) editor.open(asset); else editor.close() }, { immediate: true })
 watch(() => draft.value?.updatedAt, scheduleAutoSave)
+watch(() => editor.partInspectorOpen, (open) => {
+  if (!import.meta.client || !narrowViewport.value) return
+  if (open) {
+    previousDocumentOverflow = document.documentElement.style.getPropertyValue('overflow')
+    previousDocumentOverflowPriority = document.documentElement.style.getPropertyPriority('overflow')
+    document.documentElement.style.setProperty('overflow', 'hidden', 'important')
+  }
+  else restoreDocumentOverflow()
+})
+watch(guidedEditing, guided => {
+  if (!guided) {
+    partAnchors.value = []
+    closePartInspector(false)
+  }
+})
 watch(() => route.query.prop, propId => {
   if (!draft.value || typeof propId !== 'string' || !assets.props.some(item => item.id === propId) || draft.value.propIds.includes(propId)) return
   editor.updateMetadata({ propIds: [...draft.value.propIds, propId] })
@@ -289,12 +380,19 @@ onMounted(() => {
   else if (!session.selectedMotionId && assets.motions[0]) session.selectMotion(assets.motions[0].id)
   const asset = assets.motions.find(item => item.id === session.selectedMotionId)
   if (asset) editor.open(asset)
+  narrowViewportQuery = window.matchMedia('(max-width: 780px)')
+  syncNarrowViewport(narrowViewportQuery)
+  narrowViewportQuery.addEventListener('change', syncNarrowViewport)
   raf = requestAnimationFrame(frame)
   window.addEventListener('keydown', keyboard)
 })
 onBeforeUnmount(() => {
+  editor.cancelDirectManipulation()
+  closePartInspector(false)
   flushAutoSave()
   cancelAnimationFrame(raf)
+  narrowViewportQuery?.removeEventListener('change', syncNarrowViewport)
+  restoreDocumentOverflow()
   window.removeEventListener('keydown', keyboard)
 })
 </script>
@@ -333,7 +431,7 @@ onBeforeUnmount(() => {
         <div><small>{{ guidedEditing ? '阶段动作编辑器' : '动作编辑器' }}</small><h2>{{ draft?.nameZh || '请选择或创建动作' }}</h2><span>{{ guidedEditing ? '选择阶段并调整姿势、节奏和效果' : `撤销 ${editor.undoStack.length} / 重做 ${editor.redoStack.length}` }}</span></div>
         <div class="header-actions">
           <button :disabled="!editor.canUndo" @click="editor.undo">撤销</button><button :disabled="!editor.canRedo" @click="editor.redo">重做</button>
-          <button :class="{ active: editor.playing }" @click="editor.togglePlayback()">{{ editor.playing ? '暂停' : '播放' }}</button><button @click="editor.stopPlayback">停止</button>
+          <button :class="{ active: editor.playing }" @click="toggleMotionPlayback">{{ editor.playing ? '暂停' : '播放' }}</button><button @click="stopMotionPlayback">停止</button>
           <button v-if="simpleRecipe && !showIntentPicker" class="mode-button" type="button" @click="toggleAuthoringMode">{{ guidedEditing ? '高级编辑' : '返回简易编辑' }}</button>
           <button class="save-state" :class="`state-${editor.saveState}`" :disabled="!draft || editor.saveState === 'saving' || (editor.saveState !== 'failed' && !editor.isDirty)" @click="retrySave">{{ saveStateLabel }}</button>
         </div>
@@ -369,19 +467,59 @@ onBeforeUnmount(() => {
         />
         <div class="preview-stage">
           <ClientOnly>
-            <CloudFoxStudioCanvas :appearance="appearance.recipe" behavior="idle" :motion-key="draft?.updatedAt || 0" :view="session.previewView" :background="session.previewBackground" focus="full" :custom-pose="evaluatedPose" :motion-asset="draft" :motion-time-ms="editor.playbackRequestedTimeMs" :motion-weight="editor.playbackWeight" :prop-instances="evaluatedProps.instances" :prop-assets="allPropAssets" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" :preview-scale="previewScale" :preview-rotation="previewRotationRadians" :preview-position="previewPosition" :model-mode="session.modelMode" :complex-pet-id="currentPetId" :complex-recipe="complexRecipe" />
+            <CloudFoxStudioCanvas
+              :appearance="appearance.recipe"
+              behavior="idle"
+              :motion-key="draft?.updatedAt || 0"
+              :view="session.previewView"
+              :background="session.previewBackground"
+              focus="full"
+              :custom-pose="evaluatedPose"
+              :motion-asset="draft"
+              :motion-time-ms="editor.playbackRequestedTimeMs"
+              :motion-weight="editor.playbackWeight"
+              :prop-instances="evaluatedProps.instances"
+              :prop-assets="allPropAssets"
+              :onion-poses="onionPoses"
+              :motion-path-points="motionPathPoints"
+              :preview-scale="previewScale"
+              :preview-rotation="previewRotationRadians"
+              :preview-position="previewPosition"
+              :model-mode="session.modelMode"
+              :complex-pet-id="currentPetId"
+              :complex-recipe="complexRecipe"
+              :editable-parts="guidedEditing ? editableMotionParts : []"
+              @part-anchors="updatePartAnchors"
+            />
           </ClientOnly>
           <!-- 按当前交互约定，画布暂不绑定 wheel；预览缩放仅由控制栏负责。 -->
           <div
             ref="previewRotateSurface"
             class="preview-rotate-surface"
             :class="{ dragging: previewDrag.active }"
-            @pointerdown="beginPreviewRotate"
+            @pointerdown="beginCanvasRotation"
             @pointermove="movePreviewRotate"
             @pointerup="endPreviewRotate"
             @pointercancel="cancelPreviewRotate"
           ><span>拖动画布自由旋转</span></div>
-          <StudioMotionDirectPad v-if="draft" />
+          <StudioMotionDirectManipulator
+            v-if="guidedEditing"
+            :anchors="partAnchors"
+            :editable-parts="editableMotionParts"
+            :disabled="editor.playing"
+          />
+          <button
+            v-if="guidedEditing"
+            ref="partInspectorTrigger"
+            type="button"
+            class="guided-inspector-trigger"
+            :aria-expanded="editor.partInspectorOpen"
+            aria-controls="guided-part-inspector"
+            @click="editor.partInspectorOpen ? closePartInspector() : openPartInspector()"
+          >
+            <span><small>当前部位</small><strong>{{ selectedMotionPart.labelZh }}</strong></span>
+            <span aria-hidden="true">调整参数 ↑</span>
+          </button>
         </div>
       </div>
       <StudioMotionTimeline
@@ -397,14 +535,39 @@ onBeforeUnmount(() => {
       <div v-else-if="!draft && !showIntentPicker" class="empty timeline-empty">新建动作后即可开始编辑。</div>
     </div>
 
-    <aside class="property-panel" :class="{ 'guided-panel': guidedEditing }">
-      <header><small>{{ showIntentPicker ? '新建动作' : guidedEditing ? '当前阶段' : '属性面板' }}</small><h2>{{ showIntentPicker ? '选择动作意图' : guidedEditing ? '阶段属性' : '动作属性' }}</h2></header>
-      <StudioMotionStageInspector
-        v-if="guidedEditing && editor.selectedSimpleStage"
-        class="guided-inspector"
-        :stage="editor.selectedSimpleStage"
-        @update="editor.updateSelectedSimpleStage"
-      />
+    <button
+      v-if="guidedEditing && editor.partInspectorOpen"
+      type="button"
+      class="guided-drawer-backdrop"
+      aria-label="关闭部位参数"
+      @click="closePartInspector()"
+    />
+    <aside
+      id="guided-part-inspector"
+      ref="partInspectorPanel"
+      class="property-panel"
+      :class="{ 'guided-panel': guidedEditing, 'guided-panel--open': guidedEditing && editor.partInspectorOpen }"
+      :role="narrowViewport && guidedEditing ? 'dialog' : undefined"
+      :aria-modal="narrowViewport && guidedEditing ? 'true' : undefined"
+      :aria-label="guidedEditing ? '部位动作参数' : undefined"
+      @keydown="trapPartInspectorFocus"
+    >
+      <header class="property-panel__heading">
+        <div><small>{{ showIntentPicker ? '新建动作' : guidedEditing ? '直接编辑' : '属性面板' }}</small><h2>{{ showIntentPicker ? '选择动作意图' : guidedEditing ? '部位动作参数' : '动作属性' }}</h2></div>
+        <button v-if="guidedEditing" type="button" class="guided-panel__close" aria-label="关闭部位参数" @click="closePartInspector()">×</button>
+      </header>
+      <div v-if="guidedEditing" class="guided-panel-content">
+        <StudioMotionPartInspector />
+        <details v-if="editor.selectedSimpleStage" class="guided-stage-settings">
+          <summary><span><strong>阶段节奏与效果</strong><small>时长、力度、衔接与特效</small></span><span aria-hidden="true">⌄</span></summary>
+          <StudioMotionStageInspector
+            class="guided-inspector"
+            :stage="editor.selectedSimpleStage"
+            @update="editor.updateSelectedSimpleStage"
+          />
+        </details>
+        <p v-else class="empty">请先选择一个阶段，再调整部位姿势、节奏与效果。</p>
+      </div>
       <nav v-else-if="draft && !showIntentPicker" class="property-tabs" role="tablist" aria-label="动作属性分类">
         <button
           v-for="item in propertyTabs"
@@ -532,6 +695,9 @@ onBeforeUnmount(() => {
   padding:12px;
   overflow:hidden;
 }
+.property-panel__heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.property-panel__heading>div{display:grid;gap:2px}
+.guided-panel__close{display:none;width:34px;height:34px;border:1px solid #ffffff1c;border-radius:10px;color:#dce4fa;background:#ffffff08;font-size:20px;cursor:pointer}
 .property-panel>*{box-sizing:border-box;min-width:0;max-width:100%}
 .property-panel :deep(*){box-sizing:border-box;min-width:0}
 .property-panel :deep(input),.property-panel :deep(select),.property-panel :deep(button),.property-panel :deep(textarea){max-width:100%}
@@ -588,9 +754,15 @@ h1,h2,h3,p{margin:0}
   pointer-events:none;
   backdrop-filter:blur(12px);
 }
+.guided-inspector-trigger{display:none}
+.guided-drawer-backdrop{display:none}
 .property-panel header{margin-bottom:2px}
 .property-panel.guided-panel{grid-template-rows:auto minmax(0,1fr) auto}
-.guided-inspector{min-height:0;overflow-x:hidden;overflow-y:auto;padding-right:2px;overscroll-behavior:contain;scrollbar-gutter:stable}
+.guided-panel-content{display:grid;align-content:start;gap:12px;min-height:0;overflow-x:hidden;overflow-y:auto;padding:2px 3px 70px 0;overscroll-behavior:contain;scrollbar-gutter:stable}
+.guided-stage-settings{border:1px solid #ffffff14;border-radius:12px;background:#ffffff03}
+.guided-stage-settings>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:46px;padding:0 11px;color:#dce4f7;list-style:none;cursor:pointer}
+.guided-stage-settings>summary::-webkit-details-marker{display:none}.guided-stage-settings>summary>span:first-child{display:grid;gap:3px}.guided-stage-settings>summary small{color:#7f8aa7;font-size:9px}.guided-stage-settings[open]>summary>span:last-child{transform:rotate(180deg)}
+.guided-inspector{min-height:0;padding:0 8px 8px}
 .property-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px;border:1px solid #ffffff12;border-radius:10px;background:#090d18}
 .property-tabs button{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;min-height:31px;padding:0 5px;border:1px solid transparent;border-radius:7px;color:#8993b2;background:transparent;font-size:9px;cursor:pointer}
 .property-tabs button:hover{color:#dbe2f8;background:#ffffff06}.property-tabs button.active{border-color:#52e0d055;color:#dffffa;background:#52e0d012}.property-tabs span{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;color:#cffff8;background:#52e0d01f;font:700 7px/1 ui-monospace,monospace}
@@ -617,13 +789,24 @@ h1,h2,h3,p{margin:0}
   .property-panel{position:static;grid-column:1/-1;height:min(620px,calc(100dvh - 24px));max-height:620px}
 }
 @media(max-width:780px){
-  .motion-workspace{grid-template-columns:minmax(0,1fr)}
+  .motion-workspace{grid-template-columns:minmax(0,1fr);padding:8px 8px 76px}
   .asset-panel{max-height:300px}
   .editor-area{grid-template-rows:auto 620px}
   .editor-area.guided-flow-mode{grid-template-rows:auto auto 620px}
   .editor-area.advanced-mode{grid-template-rows:auto 620px 350px}
   .metadata-grid{grid-template-columns:minmax(0,1fr)}
-  .property-panel{height:620px;max-height:620px}
+  .property-panel:not(.guided-panel){height:620px;max-height:620px}
+  .guided-inspector-trigger{position:absolute;z-index:24;right:12px;bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:min(260px,calc(100% - 24px));min-height:50px;padding:7px 12px;border:1px solid #66ebdb66;border-radius:14px;color:#eafffc;background:#07131eea;box-shadow:0 14px 34px #0009;backdrop-filter:blur(16px);cursor:pointer}
+  .guided-inspector-trigger>span:first-child{display:grid;gap:3px;text-align:left}.guided-inspector-trigger small{color:#72e4d7;font-size:8px}.guided-inspector-trigger strong{font-size:12px}.guided-inspector-trigger>span:last-child{color:#a9b5cc;font-size:9px}
+  .guided-inspector-trigger:focus-visible,.guided-panel__close:focus-visible{outline:2px solid #7ff3e5;outline-offset:2px}
+  .guided-drawer-backdrop{position:fixed;z-index:39;inset:0;display:block;border:0;background:#01040ab8;backdrop-filter:blur(3px);cursor:pointer}
+  .property-panel.guided-panel{position:fixed;z-index:40;top:auto;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:100%;height:min(72dvh,650px);max-height:min(72dvh,650px);padding:12px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));transform:translateY(calc(100% + 18px));visibility:hidden;border-radius:20px 20px 0 0;box-shadow:0 -22px 60px #000c;opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease,visibility .2s}
+  .property-panel.guided-panel--open{transform:translateY(0);visibility:visible;opacity:1;pointer-events:auto}
+  .guided-panel__close{display:grid;place-items:center}
+  .guided-panel-content{padding-bottom:32px;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+  .guided-stage-settings{margin-bottom:8px}
+  :global(body:has(.guided-panel--open) .studio-entry){display:none}
   .preview-rotate-surface span{display:none}
 }
+@media(prefers-reduced-motion:reduce){.property-panel.guided-panel{transition:none}}
 </style>

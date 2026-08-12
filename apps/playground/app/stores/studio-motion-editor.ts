@@ -871,7 +871,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     },
     endControlGesture() {
       if (!this.controlGestureBaseline) return
-      // 仅在最终草稿真实变化时提交一个撤销事务，取消和无变化路径因而完整保留既有历史。
+      // 仅在最终草稿真实变化时提交一个撤销事务，取消和无变化路径因而完整保留既有历史。 / Commit one undo transaction only when the final draft changed so cancellation and no-op paths preserve history.
       if (serialize(this.draft) !== this.controlGestureBaseline) {
         if (this.undoStack.at(-1) !== this.controlGestureBaseline) this.undoStack.push(this.controlGestureBaseline)
         if (this.undoStack.length > 100) this.undoStack.shift()

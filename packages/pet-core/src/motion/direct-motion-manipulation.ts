@@ -433,7 +433,7 @@ export function applyDirectMotionSymmetry(
   const capability = DIRECT_MOTION_CAPABILITIES.get(partId)
   if (!capability) return Object.freeze(mirrored)
 
-  // 所有简单模式入口都以当前部位的能力表作为唯一写入边界；旧值不参与本次编辑时保持原样。
+  // 所有简单模式入口都以当前部位的能力表作为唯一写入边界；旧值不参与本次编辑时保持原样。 / Every guided entry uses the selected capability as its sole write boundary while untouched values remain unchanged.
   for (const controlId of capability.controlIds) {
     if (!Object.hasOwn(pose, controlId) || !Number.isFinite(pose[controlId])) continue
     const [minimum, maximum] = getDirectMotionRawControlRange(controlId, intensity)

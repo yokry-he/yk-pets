@@ -36,6 +36,9 @@ const checks = [
   ['motion layer interpolation and prop event choices are localized', advancedTools.includes('>覆盖</option>') && advancedTools.includes('>叠加</option>') && poseEditor.includes("step: '阶梯'") && propEvents.includes("create: '创建'") && propEvents.includes("destroy: '销毁'")],
   ['five beginner biped templates are visible and copy through the existing asset flow', ['待机呼吸', '行走循环', '起跳与落地', '招手', '直拳组合'].every(label => basicMotions.includes(label)) && motionPage.includes('BASIC_BIPED_STUDIO_MOTIONS') && motionPage.includes('copyBuiltInMotion') && motionPage.includes('使用动作模板：')],
   ['Studio navigation uses Chinese descriptions instead of English subtitles', layout.includes('{{ item.description }}') && !layout.includes('{{ item.labelEn }}') && layout.includes('<span>工坊</span>')],
+  ['guided motion page uses one modern direct-edit surface instead of the legacy pad', motionPage.includes('<StudioMotionDirectManipulator') && motionPage.includes('<StudioMotionPartInspector') && !motionPage.includes('<StudioMotionDirectPad')],
+  ['simple complex switching entry remains hidden while advanced authoring stays available', layout.includes('const modelModeSwitchVisible = false') && layout.includes('v-if="modelModeSwitchVisible"') && motionPage.includes('toggleAuthoringMode') && motionPage.includes('返回简易编辑')],
+  ['narrow guided inspector is an accessible overlay drawer instead of a stacked desktop sidebar', motionPage.includes('class="guided-inspector-trigger"') && motionPage.includes('class="guided-drawer-backdrop"') && motionPage.includes(':aria-modal=') && motionPage.includes("'true' : undefined") && motionPage.includes('@media(max-width:780px)') && motionPage.includes('.property-panel.guided-panel')],
 ]
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
