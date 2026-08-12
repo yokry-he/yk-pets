@@ -10,7 +10,6 @@ import {
   evaluateMotionPropEvents,
   evaluateNormalizedMotionAsset,
   getDirectMotionCapability,
-  getMotionBodyPart,
   normalizeBipedPetMotionAdaptation,
   normalizeBipedPetRootMotion,
   readSimpleMotionRecipe,
@@ -113,10 +112,10 @@ const partAnchors = shallowRef<readonly StudioMotionPartAnchor[]>([])
 const editableMotionParts = computed<readonly MotionBodyPartId[]>(() => MOTION_BODY_PARTS
   .filter(part => Boolean(getDirectMotionCapability(part.id)))
   .map(part => part.id))
-const selectedMotionPart = computed(() => getMotionBodyPart(editor.selectedBodyPartId))
 const narrowViewport = ref(false)
 const partInspectorPanel = ref<HTMLElement>()
-const partInspectorTrigger = ref<HTMLButtonElement>()
+const partInspectorCloseButton = ref<HTMLButtonElement>()
+const compactPartInspector = ref<{ focusOpenButton: () => void }>()
 const previewPosition = [0, .32, 0] as const
 const {
   previewScale,
@@ -143,8 +142,11 @@ const propertyTabs = computed<Array<{ id: PropertyTab; label: string; badge?: nu
 let raf = 0
 let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 let narrowViewportQuery: MediaQueryList | undefined
-let previousDocumentOverflow = ''
-let previousDocumentOverflowPriority = ''
+let overflowLockActive = false
+let previousRootOverflow = ''
+let previousRootOverflowPriority = ''
+let previousBodyOverflow = ''
+let previousBodyOverflowPriority = ''
 
 const saveStateLabel = computed(() => {
   if (editor.saveState === 'saving') return '正在保存…'
@@ -264,41 +266,76 @@ function focusableInspectorElements() {
 }
 function openPartInspector() {
   editor.partInspectorOpen = true
-  nextTick(() => focusableInspectorElements()[0]?.focus({ preventScroll: true }))
+  nextTick(() => partInspectorCloseButton.value?.focus({ preventScroll: true }))
 }
 function closePartInspector(restoreFocus = true) {
-  editor.cancelDirectManipulation()
+  editor.cancelActiveControlEditing()
   editor.partInspectorOpen = false
-  if (restoreFocus) nextTick(() => partInspectorTrigger.value?.focus({ preventScroll: true }))
+  restoreDocumentOverflow()
+  if (restoreFocus) nextTick(() => compactPartInspector.value?.focusOpenButton())
 }
 function trapPartInspectorFocus(event: KeyboardEvent) {
   if (!narrowViewport.value || !editor.partInspectorOpen) return
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    closePartInspector()
-    return
-  }
   if (event.key !== 'Tab') return
   const elements = focusableInspectorElements()
   if (!elements.length) return
   const first = elements[0]!
   const last = elements.at(-1)!
-  if (event.shiftKey && document.activeElement === first) {
+  const focusInside = partInspectorPanel.value?.contains(document.activeElement) ?? false
+  if (!focusInside) {
     event.preventDefault()
-    last.focus()
+    ;(event.shiftKey ? last : first).focus({ preventScroll: true })
+  }
+  else if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus({ preventScroll: true })
   }
   else if (!event.shiftKey && document.activeElement === last) {
     event.preventDefault()
-    first.focus()
+    first.focus({ preventScroll: true })
   }
 }
+function onPartInspectorWindowKeydown(event: KeyboardEvent) {
+  if (!narrowViewport.value || !editor.partInspectorOpen) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    event.stopPropagation()
+    closePartInspector()
+    return
+  }
+  if (event.key !== 'Tab') return
+  trapPartInspectorFocus(event)
+}
 function syncNarrowViewport(event: MediaQueryListEvent | MediaQueryList) {
+  if (!event.matches) {
+    closePartInspector()
+    restoreDocumentOverflow()
+  }
   narrowViewport.value = event.matches
-  if (!event.matches) closePartInspector(false)
+}
+function restoreOverflow(element: HTMLElement, value: string, priority: string) {
+  if (value) element.style.setProperty('overflow', value, priority)
+  else element.style.removeProperty('overflow')
+}
+function lockDocumentOverflow() {
+  if (overflowLockActive) return
+  previousRootOverflow = document.documentElement.style.getPropertyValue('overflow')
+  previousRootOverflowPriority = document.documentElement.style.getPropertyPriority('overflow')
+  previousBodyOverflow = document.body.style.getPropertyValue('overflow')
+  previousBodyOverflowPriority = document.body.style.getPropertyPriority('overflow')
+  document.documentElement.style.setProperty('overflow', 'hidden', 'important')
+  document.body.style.setProperty('overflow', 'hidden', 'important')
+  overflowLockActive = true
 }
 function restoreDocumentOverflow() {
-  if (previousDocumentOverflow) document.documentElement.style.setProperty('overflow', previousDocumentOverflow, previousDocumentOverflowPriority)
-  else document.documentElement.style.removeProperty('overflow')
+  if (!import.meta.client || !overflowLockActive) return
+  restoreOverflow(document.documentElement, previousRootOverflow, previousRootOverflowPriority)
+  restoreOverflow(document.body, previousBodyOverflow, previousBodyOverflowPriority)
+  overflowLockActive = false
+  previousRootOverflow = ''
+  previousRootOverflowPriority = ''
+  previousBodyOverflow = ''
+  previousBodyOverflowPriority = ''
 }
 function patchName(field: 'nameZh' | 'nameEn', event: Event) {
   editor.updateMetadata({ [field]: (event.target as HTMLInputElement).value })
@@ -353,12 +390,8 @@ function keyboard(event: KeyboardEvent) {
 watch(saved, asset => { if (asset) editor.open(asset); else editor.close() }, { immediate: true })
 watch(() => draft.value?.updatedAt, scheduleAutoSave)
 watch(() => editor.partInspectorOpen, (open) => {
-  if (!import.meta.client || !narrowViewport.value) return
-  if (open) {
-    previousDocumentOverflow = document.documentElement.style.getPropertyValue('overflow')
-    previousDocumentOverflowPriority = document.documentElement.style.getPropertyPriority('overflow')
-    document.documentElement.style.setProperty('overflow', 'hidden', 'important')
-  }
+  if (!import.meta.client) return
+  if (open && narrowViewport.value) lockDocumentOverflow()
   else restoreDocumentOverflow()
 })
 watch(guidedEditing, guided => {
@@ -384,6 +417,7 @@ onMounted(() => {
   syncNarrowViewport(narrowViewportQuery)
   narrowViewportQuery.addEventListener('change', syncNarrowViewport)
   raf = requestAnimationFrame(frame)
+  window.addEventListener('keydown', onPartInspectorWindowKeydown, true)
   window.addEventListener('keydown', keyboard)
 })
 onBeforeUnmount(() => {
@@ -393,6 +427,7 @@ onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
   narrowViewportQuery?.removeEventListener('change', syncNarrowViewport)
   restoreDocumentOverflow()
+  window.removeEventListener('keydown', onPartInspectorWindowKeydown, true)
   window.removeEventListener('keydown', keyboard)
 })
 </script>
@@ -508,18 +543,14 @@ onBeforeUnmount(() => {
             :editable-parts="editableMotionParts"
             :disabled="editor.playing"
           />
-          <button
+          <StudioMotionPartInspector
             v-if="guidedEditing"
-            ref="partInspectorTrigger"
-            type="button"
-            class="guided-inspector-trigger"
-            :aria-expanded="editor.partInspectorOpen"
-            aria-controls="guided-part-inspector"
-            @click="editor.partInspectorOpen ? closePartInspector() : openPartInspector()"
-          >
-            <span><small>当前部位</small><strong>{{ selectedMotionPart.labelZh }}</strong></span>
-            <span aria-hidden="true">调整参数 ↑</span>
-          </button>
+            ref="compactPartInspector"
+            class="guided-mobile-inspector"
+            :compact="true"
+            :drawer-open="editor.partInspectorOpen"
+            @open="openPartInspector"
+          />
         </div>
       </div>
       <StudioMotionTimeline
@@ -550,11 +581,10 @@ onBeforeUnmount(() => {
       :role="narrowViewport && guidedEditing ? 'dialog' : undefined"
       :aria-modal="narrowViewport && guidedEditing ? 'true' : undefined"
       :aria-label="guidedEditing ? '部位动作参数' : undefined"
-      @keydown="trapPartInspectorFocus"
     >
       <header class="property-panel__heading">
         <div><small>{{ showIntentPicker ? '新建动作' : guidedEditing ? '直接编辑' : '属性面板' }}</small><h2>{{ showIntentPicker ? '选择动作意图' : guidedEditing ? '部位动作参数' : '动作属性' }}</h2></div>
-        <button v-if="guidedEditing" type="button" class="guided-panel__close" aria-label="关闭部位参数" @click="closePartInspector()">×</button>
+        <button v-if="guidedEditing" ref="partInspectorCloseButton" type="button" class="guided-panel__close" aria-label="关闭部位参数" @click="closePartInspector()">×</button>
       </header>
       <div v-if="guidedEditing" class="guided-panel-content">
         <StudioMotionPartInspector />
@@ -754,7 +784,7 @@ h1,h2,h3,p{margin:0}
   pointer-events:none;
   backdrop-filter:blur(12px);
 }
-.guided-inspector-trigger{display:none}
+.guided-mobile-inspector{display:none}
 .guided-drawer-backdrop{display:none}
 .property-panel header{margin-bottom:2px}
 .property-panel.guided-panel{grid-template-rows:auto minmax(0,1fr) auto}
@@ -796,9 +826,8 @@ h1,h2,h3,p{margin:0}
   .editor-area.advanced-mode{grid-template-rows:auto 620px 350px}
   .metadata-grid{grid-template-columns:minmax(0,1fr)}
   .property-panel:not(.guided-panel){height:620px;max-height:620px}
-  .guided-inspector-trigger{position:absolute;z-index:24;right:12px;bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:min(260px,calc(100% - 24px));min-height:50px;padding:7px 12px;border:1px solid #66ebdb66;border-radius:14px;color:#eafffc;background:#07131eea;box-shadow:0 14px 34px #0009;backdrop-filter:blur(16px);cursor:pointer}
-  .guided-inspector-trigger>span:first-child{display:grid;gap:3px;text-align:left}.guided-inspector-trigger small{color:#72e4d7;font-size:8px}.guided-inspector-trigger strong{font-size:12px}.guided-inspector-trigger>span:last-child{color:#a9b5cc;font-size:9px}
-  .guided-inspector-trigger:focus-visible,.guided-panel__close:focus-visible{outline:2px solid #7ff3e5;outline-offset:2px}
+  .guided-mobile-inspector{position:absolute;z-index:24;right:12px;bottom:12px;left:12px;display:grid;max-width:calc(100% - 24px)}
+  .guided-panel__close:focus-visible{outline:2px solid #7ff3e5;outline-offset:2px}
   .guided-drawer-backdrop{position:fixed;z-index:39;inset:0;display:block;border:0;background:#01040ab8;backdrop-filter:blur(3px);cursor:pointer}
   .property-panel.guided-panel{position:fixed;z-index:40;top:auto;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:100%;height:min(72dvh,650px);max-height:min(72dvh,650px);padding:12px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));transform:translateY(calc(100% + 18px));visibility:hidden;border-radius:20px 20px 0 0;box-shadow:0 -22px 60px #000c;opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease,visibility .2s}
   .property-panel.guided-panel--open{transform:translateY(0);visibility:visible;opacity:1;pointer-events:auto}

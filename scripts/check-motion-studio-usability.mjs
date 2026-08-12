@@ -38,7 +38,8 @@ const checks = [
   ['Studio navigation uses Chinese descriptions instead of English subtitles', layout.includes('{{ item.description }}') && !layout.includes('{{ item.labelEn }}') && layout.includes('<span>工坊</span>')],
   ['guided motion page uses one modern direct-edit surface instead of the legacy pad', motionPage.includes('<StudioMotionDirectManipulator') && motionPage.includes('<StudioMotionPartInspector') && !motionPage.includes('<StudioMotionDirectPad')],
   ['simple complex switching entry remains hidden while advanced authoring stays available', layout.includes('const modelModeSwitchVisible = false') && layout.includes('v-if="modelModeSwitchVisible"') && motionPage.includes('toggleAuthoringMode') && motionPage.includes('返回简易编辑')],
-  ['narrow guided inspector is an accessible overlay drawer instead of a stacked desktop sidebar', motionPage.includes('class="guided-inspector-trigger"') && motionPage.includes('class="guided-drawer-backdrop"') && motionPage.includes(':aria-modal=') && motionPage.includes("'true' : undefined") && motionPage.includes('@media(max-width:780px)') && motionPage.includes('.property-panel.guided-panel')],
+  ['narrow guided inspector is an accessible overlay drawer instead of a stacked desktop sidebar', motionPage.includes('class="guided-mobile-inspector"') && motionPage.includes('class="guided-drawer-backdrop"') && motionPage.includes(':aria-modal=') && motionPage.includes("'true' : undefined") && motionPage.includes('@media(max-width:780px)') && motionPage.includes('.property-panel.guided-panel')],
+  ['760px 默认摘要显示当前部位、直接模式和动态前三项常用参数', motionPage.includes('class="guided-mobile-inspector"') && motionPage.includes(':compact="true"') && motionPage.includes('@open="openPartInspector"') && motionPage.includes('@media(max-width:780px)')],
 ]
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)

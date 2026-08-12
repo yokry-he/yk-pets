@@ -15,6 +15,7 @@ import { useStudioMotionEditorStore } from '~/stores/studio-motion-editor'
 const props = defineProps<{
   parameter: DirectMotionParameter
   disabled?: boolean
+  idPrefix?: string
 }>()
 
 const editor = useStudioMotionEditorStore()
@@ -38,6 +39,7 @@ const ariaValueText = computed(() => control.value.displayUnit === 'degree'
   : control.value.displayUnit === 'distance'
     ? `${displayValue.value.toFixed(3)} 局部距离`
     : `${displayValue.value.toFixed(3)} ${unit.value}`)
+const inputId = computed(() => `${props.idPrefix ? `${props.idPrefix}-` : ''}semantic-${props.parameter.controlId}`)
 let gestureActive = false
 let gestureBaseline = 0
 
@@ -90,10 +92,10 @@ onBeforeUnmount(() => {
         <strong>{{ parameter.labelZh }}</strong>
         <small>{{ unit }}</small>
       </span>
-      <output :for="`semantic-${parameter.controlId}`">{{ Number(displayValue.toFixed(control.displayUnit === 'degree' ? 1 : 3)) }}{{ control.displayUnit === 'degree' ? '°' : '' }}</output>
+      <output :for="inputId">{{ Number(displayValue.toFixed(control.displayUnit === 'degree' ? 1 : 3)) }}{{ control.displayUnit === 'degree' ? '°' : '' }}</output>
     </span>
     <input
-      :id="`semantic-${parameter.controlId}`"
+      :id="inputId"
       :value="value"
       type="range"
       :min="range.minimum"
