@@ -810,8 +810,8 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     },
     beginControlGesture() {
       if (!this.draft || this.controlGestureBaseline) return false
+      // 开始阶段只记录草稿基线；提前改写历史会让取消或无变化手势破坏 redo 与满额 undo。
       this.controlGestureBaseline = serialize(this.draft)
-      this.snapshot()
       return true
     },
     previewControlGesture(edits: readonly { controlId: MotionControlId; delta: number }[]) {
@@ -836,13 +836,17 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     },
     endControlGesture() {
       if (!this.controlGestureBaseline) return
-      if (serialize(this.draft) === this.controlGestureBaseline) this.undoStack.pop()
+      // 仅在最终草稿真实变化时提交一个撤销事务，取消和无变化路径因而完整保留既有历史。
+      if (serialize(this.draft) !== this.controlGestureBaseline) {
+        if (this.undoStack.at(-1) !== this.controlGestureBaseline) this.undoStack.push(this.controlGestureBaseline)
+        if (this.undoStack.length > 100) this.undoStack.shift()
+        this.redoStack = []
+      }
       this.controlGestureBaseline = ''
     },
     cancelControlGesture() {
       if (!this.controlGestureBaseline) return
       this.draft = parse(this.controlGestureBaseline)
-      this.undoStack.pop()
       this.controlGestureBaseline = ''
       this.syncSimpleAuthoringState()
     },

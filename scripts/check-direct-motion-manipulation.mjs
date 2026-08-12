@@ -18,6 +18,10 @@ const actionBody = (name, nextName) => {
 }
 
 const preview = actionBody('previewDirectManipulation', 'commitDirectManipulation')
+const directBegin = actionBody('beginDirectManipulation', 'previewDirectManipulation')
+const controlBegin = actionBody('beginControlGesture', 'previewControlGesture')
+const controlEnd = actionBody('endControlGesture', 'cancelControlGesture')
+const controlCancel = actionBody('cancelControlGesture', 'setDirectManipulationMode')
 const commit = actionBody('commitDirectManipulation', 'cancelDirectManipulation')
 const unchangedGuardIndex = preview.indexOf('if (!latestChanged) return false')
 const compileIndex = preview.indexOf('compileSimpleMotionRecipe')
@@ -66,6 +70,19 @@ const checks = [
     'latestChanged:',
   ])],
   ['Store direct session reuses the control gesture transaction baseline', preview.includes('controlGestureBaseline') && store.includes('this.beginControlGesture()') && store.includes('this.endControlGesture()')],
+  ['direct session baseline pose is copied from the parsed baseline stage', directBegin.includes('baselinePose: Object.freeze({ ...baselineStage.pose })')],
+  ['gesture begin and cancel preserve undo redo history', !controlBegin.includes('this.snapshot()')
+    && !controlBegin.includes('undoStack')
+    && !controlBegin.includes('redoStack')
+    && !controlCancel.includes('undoStack')
+    && !controlCancel.includes('redoStack')],
+  ['gesture end commits only changed baselines with one bounded undo entry', hasAll(controlEnd, [
+    'serialize(this.draft) !== this.controlGestureBaseline',
+    'this.undoStack.at(-1) !== this.controlGestureBaseline',
+    'this.undoStack.push(this.controlGestureBaseline)',
+    'if (this.undoStack.length > 100) this.undoStack.shift()',
+    'this.redoStack = []',
+  ])],
   ['preview reads recipe stage and intensity only from the baseline asset', hasAll(preview, [
     'const baseline = parse(this.controlGestureBaseline)',
     'readSimpleMotionRecipe(baseline)',
