@@ -165,3 +165,76 @@ test('对称预览取消恢复双侧姿势且不改写历史', () => {
   assert.deepEqual(editor.undoStack, ['existing-undo'])
   assert.deepEqual(editor.redoStack, ['existing-redo'])
 })
+
+test('普通写入、步进和复位统一使用力度范围与对称语义', () => {
+  const editor = createEditor()
+  editor.selectBodyPart('front-paw-left')
+  editor.symmetryEnabled = true
+  editor.updateSelectedSimpleStage({ intensity: 1.5 })
+  editor.undoStack = []
+
+  editor.writeControlValue('front-paw-left.rotate.z', Number.MAX_VALUE)
+  assert.equal(pose(editor)['front-paw-left.rotate.z'], Math.PI / 1.5)
+  assert.equal(pose(editor)['front-paw-right.rotate.z'], -Math.PI / 1.5)
+  editor.nudgeControl('front-paw-left.rotate.x', .25)
+  assert.equal(pose(editor)['front-paw-left.rotate.x'], .25)
+  assert.equal(pose(editor)['front-paw-right.rotate.x'], .25)
+  editor.resetControl('front-paw-left.rotate.z')
+  assert.equal(pose(editor)['front-paw-left.rotate.z'], undefined)
+  assert.equal(pose(editor)['front-paw-right.rotate.z'], undefined)
+
+  editor.updateSelectedSimpleStage({ intensity: 0 })
+  editor.undoStack = []
+  const disabledBaseline = JSON.stringify(editor.draft)
+  editor.writeControlValue('front-paw-left.rotate.z', 1)
+  assert.equal(JSON.stringify(editor.draft), disabledBaseline)
+  assert.deepEqual(editor.undoStack, [], '力度为零时禁用写入且不生成空撤销')
+})
+
+test('姿势卡和部位复位遵循同一对称写入边界', () => {
+  const editor = createEditor()
+  editor.selectBodyPart('front-paw-left')
+  editor.symmetryEnabled = true
+
+  assert.equal(editor.applyDirectPoseCard('front-paw-left-raise-hand'), true)
+  assert.equal(pose(editor)['front-paw-left.rotate.z'], -.85)
+  assert.equal(pose(editor)['front-paw-right.rotate.z'], .85)
+  assert.equal(editor.resetSelectedDirectPart(), true)
+  assert.equal(pose(editor)['front-paw-left.rotate.z'], undefined)
+  assert.equal(pose(editor)['front-paw-right.rotate.z'], undefined)
+})
+
+test('部位切换先取消普通参数预览并可在同一轮立即开始拖拽', () => {
+  const editor = createEditor()
+  const baseline = JSON.stringify(editor.draft)
+  editor.selectBodyPart('front-paw-left')
+  assert.equal(editor.beginControlGesture(), true)
+  editor.previewControlGesture([{ controlId: 'front-paw-left.rotate.z', delta: -.5 }])
+  assert.notEqual(JSON.stringify(editor.draft), baseline)
+
+  editor.selectBodyPart('front-paw-right')
+  assert.equal(JSON.stringify(editor.draft), baseline)
+  assert.equal(editor.controlGestureBaseline, '')
+  assert.equal(editor.beginDirectManipulation(12, 100, 100), true)
+  assert.equal(editor.cancelDirectManipulation(), true)
+})
+
+test('阶段、模式和控制切换都在改写选择前取消普通参数手势', () => {
+  const scenarios: Array<(editor: ReturnType<typeof createEditor>) => unknown> = [
+    editor => editor.selectSimpleStage('custom-action'),
+    editor => editor.setAuthoringMode('advanced'),
+    editor => editor.setTransformMode('rotate'),
+    editor => editor.selectControl('body.rotate.x'),
+  ]
+
+  for (const switchSelection of scenarios) {
+    const editor = createEditor()
+    const baseline = JSON.stringify(editor.draft)
+    assert.equal(editor.beginControlGesture(), true)
+    editor.previewControlGesture([{ controlId: 'root.translate.y', delta: .1 }])
+    assert.notEqual(JSON.stringify(editor.draft), baseline)
+    switchSelection(editor)
+    assert.equal(editor.controlGestureBaseline, '')
+    assert.equal(JSON.stringify(editor.draft), baseline)
+  }
+})

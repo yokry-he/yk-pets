@@ -4,7 +4,6 @@
  * Defines simple-motion capabilities, quick pose cards, and pure drag/symmetry solvers without UI behavior.
  */
 import {
-  clampMotionControlValue,
   getMotionControl,
   getMotionBodyPart,
   getMotionBodyPartControls,
@@ -424,15 +423,38 @@ export function applyDirectMotionSymmetry(
   pose: Readonly<Partial<Record<MotionControlId, number>>>,
   partId: MotionBodyPartId,
   enabled: boolean,
+  intensity = 1,
 ): Readonly<Partial<Record<MotionControlId, number>>> {
+  if (!Number.isFinite(intensity) || intensity <= 0 || intensity > SIMPLE_MOTION_STAGE_MAX_INTENSITY) {
+    return Object.freeze({ ...baselinePose })
+  }
+
   const mirrored: Partial<Record<MotionControlId, number>> = { ...pose }
   const capability = DIRECT_MOTION_CAPABILITIES.get(partId)
-  if (!enabled || !capability?.symmetryPartnerId) return Object.freeze(mirrored)
+  if (!capability) return Object.freeze(mirrored)
+
+  // 所有简单模式入口都以当前部位的能力表作为唯一写入边界；旧值不参与本次编辑时保持原样。
+  for (const controlId of capability.controlIds) {
+    if (!Object.hasOwn(pose, controlId) || !Number.isFinite(pose[controlId])) continue
+    const [minimum, maximum] = getDirectMotionRawControlRange(controlId, intensity)
+    mirrored[controlId] = Math.max(minimum, Math.min(maximum, pose[controlId]!))
+  }
+
+  if (!enabled || !capability.symmetryPartnerId) return Object.freeze(mirrored)
 
   for (const binding of capability.symmetryBindings) {
-    const value = pose[binding.controlId]
-    if (typeof value !== 'number' || !Number.isFinite(value) || value === baselinePose[binding.controlId]) continue
-    mirrored[binding.partnerControlId] = clampMotionControlValue(binding.partnerControlId, value * binding.sign)
+    const sourceExists = Object.hasOwn(pose, binding.controlId)
+    const baselineExists = Object.hasOwn(baselinePose, binding.controlId)
+    const value = mirrored[binding.controlId]
+    const changed = sourceExists !== baselineExists || (sourceExists && value !== baselinePose[binding.controlId])
+    if (!changed) continue
+    if (!sourceExists) {
+      delete mirrored[binding.partnerControlId]
+      continue
+    }
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue
+    const [minimum, maximum] = getDirectMotionRawControlRange(binding.partnerControlId, intensity)
+    mirrored[binding.partnerControlId] = Math.max(minimum, Math.min(maximum, value * binding.sign))
   }
   return Object.freeze(mirrored)
 }
@@ -477,14 +499,21 @@ function isFiniteRead(result: SafeReadResult): result is FiniteReadResult {
   return result.ok && typeof result.value === 'number' && Number.isFinite(result.value)
 }
 
-function rawControlRange(controlId: MotionControlId, intensity = 1): readonly [number, number] {
+/**
+ * 返回阶段原始姿势值的安全范围。编译器会把姿势乘以力度，因此这里取 Rig 原始范围与
+ * `Rig 范围 / 力度` 的交集，确保编辑器预览、拖拽求解和最终编译使用同一边界。
+ */
+export function getDirectMotionRawControlRange(controlId: MotionControlId, intensity = 1): readonly [number, number] {
+  if (!Number.isFinite(intensity) || intensity <= 0 || intensity > SIMPLE_MOTION_STAGE_MAX_INTENSITY) {
+    return Object.freeze([0, 0] as const)
+  }
   const channels = getMotionControl(controlId).channelIds.map(getCloudFoxRigChannel)
   const rawMinimum = Math.max(...channels.map(channel => channel.minimum))
   const rawMaximum = Math.min(...channels.map(channel => channel.maximum))
-  return [
+  return Object.freeze([
     Math.max(rawMinimum, finiteSaturation(rawMinimum / intensity)),
     Math.min(rawMaximum, finiteSaturation(rawMaximum / intensity)),
-  ]
+  ] as const)
 }
 
 function finiteSaturation(value: number): number {
@@ -500,7 +529,7 @@ function saturatingAdd(left: number, right: number): readonly [number, boolean] 
 }
 
 function clampControlValue(controlId: MotionControlId, value: number, intensity = 1): readonly [number, boolean] {
-  const [minimum, maximum] = rawControlRange(controlId, intensity)
+  const [minimum, maximum] = getDirectMotionRawControlRange(controlId, intensity)
   const clamped = Math.max(minimum, Math.min(maximum, value))
   return [clamped, clamped !== value]
 }

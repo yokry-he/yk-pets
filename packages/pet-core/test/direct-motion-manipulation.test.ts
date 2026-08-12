@@ -14,6 +14,7 @@ import {
   DIRECT_MOTION_POSE_CARDS,
   getCloudFoxRigChannel,
   getDirectMotionCapability,
+  getDirectMotionRawControlRange,
   getMotionBodyPartControls,
   getDirectMotionPoseCards,
   isMotionControlId,
@@ -259,6 +260,43 @@ test('对称纯函数只镜像本次变化并保持正负规则和不可变输�
   assert.deepEqual(noPartner, { 'body.rotate.x': .2 })
   assert.deepEqual(next, before)
   assert.ok(Object.isFrozen(mirrored))
+})
+
+test('公开直接操控范围与阶段力度和编译结果一致', () => {
+  const channel = getCloudFoxRigChannel('frontPaw.left.rotation.z')
+  const normal = getDirectMotionRawControlRange('front-paw-left.rotate.z', 1)
+  const strong = getDirectMotionRawControlRange('front-paw-left.rotate.z', 1.5)
+  const soft = getDirectMotionRawControlRange('front-paw-left.rotate.z', .5)
+  const disabled = getDirectMotionRawControlRange('front-paw-left.rotate.z', 0)
+
+  assert.deepEqual(normal, [channel.minimum, channel.maximum])
+  assert.deepEqual(strong, [channel.minimum / 1.5, channel.maximum / 1.5])
+  assert.deepEqual(soft, [channel.minimum, channel.maximum])
+  assert.deepEqual(disabled, [0, 0])
+  assert.ok(Object.isFrozen(strong))
+})
+
+test('统一姿势写入按力度钳制、确定镜像冲突并同步删除伙伴控制', () => {
+  const baseline = {
+    'front-paw-left.rotate.x': .1,
+    'front-paw-right.rotate.x': -.2,
+    'front-paw-left.rotate.z': -.3,
+    'front-paw-right.rotate.z': .3,
+  } as const
+  const conflicted = applyDirectMotionSymmetry(baseline, {
+    ...baseline,
+    'front-paw-left.rotate.x': Number.MAX_VALUE,
+    'front-paw-right.rotate.x': -1,
+  }, 'front-paw-left', true, 1.5)
+  const removed = applyDirectMotionSymmetry(baseline, {
+    'front-paw-left.rotate.x': .1,
+    'front-paw-right.rotate.x': -.2,
+  }, 'front-paw-left', true, 1)
+
+  assert.equal(conflicted['front-paw-left.rotate.x'], Math.PI / 1.5)
+  assert.equal(conflicted['front-paw-right.rotate.x'], Math.PI / 1.5, '当前选中侧必须确定性覆盖冲突伙伴值')
+  assert.equal(removed['front-paw-left.rotate.z'], undefined)
+  assert.equal(removed['front-paw-right.rotate.z'], undefined)
 })
 
 test('直接拖拽求解稳定、无副作用且输出冻结的有限姿势', () => {

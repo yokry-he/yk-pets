@@ -5,8 +5,7 @@
 -->
 <script setup lang="ts">
 import {
-  clampMotionControlValue,
-  getCloudFoxRigChannel,
+  getDirectMotionRawControlRange,
   getMotionControl,
   toMotionControlDisplayValue,
   type DirectMotionParameter,
@@ -21,17 +20,24 @@ const props = defineProps<{
 const editor = useStudioMotionEditorStore()
 const control = computed(() => getMotionControl(props.parameter.controlId))
 const stage = computed(() => editor.selectedSimpleStage)
+const intensity = computed(() => stage.value?.intensity ?? 0)
 const value = computed(() => stage.value?.pose[props.parameter.controlId] ?? 0)
 const range = computed(() => {
-  const channels = control.value.channelIds.map(getCloudFoxRigChannel)
+  const [minimum, maximum] = getDirectMotionRawControlRange(props.parameter.controlId, intensity.value)
   return {
-    minimum: Math.max(...channels.map(channel => channel.minimum)),
-    maximum: Math.min(...channels.map(channel => channel.maximum)),
+    minimum,
+    maximum,
   }
 })
-const isDisabled = computed(() => props.disabled || !stage.value || editor.directManipulation.active)
+const rawStep = computed(() => control.value.fineStep / Math.max(1, intensity.value))
+const isDisabled = computed(() => props.disabled || !stage.value || intensity.value <= 0 || editor.directManipulation.active)
 const displayValue = computed(() => toMotionControlDisplayValue(value.value, control.value.displayUnit))
 const unit = computed(() => control.value.displayUnit === 'degree' ? '°' : control.value.displayUnit === 'distance' ? '局部距离' : control.value.displayUnit === 'normalized' ? '0–1' : '倍率')
+const ariaValueText = computed(() => control.value.displayUnit === 'degree'
+  ? `${displayValue.value.toFixed(1)} 度`
+  : control.value.displayUnit === 'distance'
+    ? `${displayValue.value.toFixed(3)} 局部距离`
+    : `${displayValue.value.toFixed(3)} ${unit.value}`)
 let gestureActive = false
 let gestureBaseline = 0
 
@@ -46,7 +52,7 @@ function previewValue(event: Event) {
   if (!beginGesture()) return
   const next = Number((event.target as HTMLInputElement).value)
   if (!Number.isFinite(next)) return
-  const safe = clampMotionControlValue(props.parameter.controlId, next)
+  const safe = Math.max(range.value.minimum, Math.min(range.value.maximum, next))
   editor.previewControlGesture([{ controlId: props.parameter.controlId, delta: safe - gestureBaseline }])
 }
 
@@ -92,9 +98,10 @@ onBeforeUnmount(() => {
       type="range"
       :min="range.minimum"
       :max="range.maximum"
-      :step="control.fineStep"
+      :step="rawStep"
       :disabled="isDisabled"
       :aria-label="parameter.labelZh"
+      :aria-valuetext="ariaValueText"
       @focus="beginGesture"
       @pointerdown="beginGesture"
       @input="previewValue"
@@ -108,5 +115,5 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.semantic-control{display:grid;gap:7px;padding:9px;border:1px solid #ffffff14;border-radius:10px;background:#080d18}.semantic-control__heading,.semantic-control__heading>span{display:flex;align-items:center;justify-content:space-between;gap:8px}.semantic-control__heading>span{min-width:0}.semantic-control strong{overflow:hidden;color:#dce3f8;font-size:9px;text-overflow:ellipsis;white-space:nowrap}.semantic-control small{flex:none;color:#697592;font-size:7px}.semantic-control output{flex:none;color:#bffbf3;font:800 9px/1 ui-monospace,monospace}.semantic-control input{width:100%;margin:0;accent-color:#52e0d0;cursor:pointer}.semantic-control input:focus-visible{outline:2px solid #7ff3e5;outline-offset:3px}.semantic-control--disabled{opacity:.48}.semantic-control--disabled input{cursor:not-allowed}
+.semantic-control{display:grid;gap:7px;padding:9px;border:1px solid #ffffff14;border-radius:10px;background:#080d18}.semantic-control__heading,.semantic-control__heading>span{display:flex;align-items:center;justify-content:space-between;gap:8px}.semantic-control__heading>span{min-width:0}.semantic-control strong{overflow:hidden;color:#dce3f8;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.semantic-control small{flex:none;color:#8a96b3;font-size:10px}.semantic-control output{flex:none;color:#bffbf3;font:800 11px/1 ui-monospace,monospace}.semantic-control input{width:100%;margin:0;accent-color:#52e0d0;cursor:pointer}.semantic-control input:focus-visible{outline:2px solid #7ff3e5;outline-offset:3px}.semantic-control--disabled{opacity:.56}.semantic-control--disabled input{cursor:not-allowed}
 </style>

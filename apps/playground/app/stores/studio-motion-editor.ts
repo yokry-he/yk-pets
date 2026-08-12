@@ -144,6 +144,18 @@ function createDirectManipulationSession(overrides: Partial<DirectManipulationSe
   }
 }
 
+/**
+ * 简单模式的所有姿势编辑共用这一写入边界，保证数值钳制、力度与显式对称元数据始终一致。
+ */
+function resolveSimpleStagePose(
+  stage: SimpleMotionStage,
+  pose: Readonly<Partial<Record<MotionControlId, number>>>,
+  partId: MotionBodyPartId,
+  symmetryEnabled: boolean,
+) {
+  return applyDirectMotionSymmetry(stage.pose, pose, partId, symmetryEnabled, stage.intensity)
+}
+
 function simpleStageStart(recipe: SimpleMotionRecipeV1, stageId: string): number {
   let cursor = 0
   for (const stage of recipe.stages) {
@@ -368,7 +380,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
   },
   actions: {
     open(asset: StudioMotionAssetV2) {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       if (this.motionId === asset.id && this.draft) return
       this.motionId = asset.id
       this.draft = duplicateMotionAssetForDraft(asset)
@@ -395,7 +407,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     },
     replaceFromSaved(asset: StudioMotionAssetV2) {
       // 必须先恢复旧草稿的手势基线，避免替换后把旧资产覆盖到新动作。 / Restore the old gesture baseline before replacing the draft so it cannot overwrite the new motion.
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       const previousStageId = this.selectedStageId
       this.motionId = asset.id
       this.draft = duplicateMotionAssetForDraft(asset)
@@ -421,7 +433,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.saveState = 'saved'
     },
     close() {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       this.motionId = ''
       this.draft = null
       this.baseline = ''
@@ -463,7 +475,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.apply(mutator(this.draft), selectedKeyframeIds)
     },
     undo() {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       const previous = this.undoStack.pop()
       if (!previous || !this.draft) return
       this.redoStack.push(serialize(this.draft))
@@ -473,7 +485,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.syncSimpleAuthoringState()
     },
     redo() {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       const next = this.redoStack.pop()
       if (!next || !this.draft) return
       this.undoStack.push(serialize(this.draft))
@@ -497,7 +509,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.saveState = state
     },
     setAuthoringMode(mode: MotionEditorState['authoringMode']) {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       if (mode === 'guided' && (!this.draft || !readSimpleMotionRecipe(this.draft))) return
       this.authoringMode = mode
       this.activeLayerId = mode === 'guided'
@@ -507,7 +519,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
           : 'base'
     },
     selectSimpleStage(stageId: string) {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       if (!this.draft) return false
       const recipe = readSimpleMotionRecipe(this.draft)
       if (!recipe?.stages.some(stage => stage.id === stageId)) return false
@@ -707,7 +719,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       return false
     },
     selectBodyPart(partId: MotionBodyPartId) {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       this.selectedBodyPartId = partId
       const capability = getDirectMotionCapability(partId)
       if (capability) {
@@ -732,14 +744,14 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.authoringScope = scope
     },
     setTransformMode(mode: MotionTransformMode) {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       const controls = getMotionBodyPartControls(this.selectedBodyPartId, mode)
       if (!controls.length) return
       this.transformMode = mode
       this.selectControl(controls[0]!.id as MotionControlId)
     },
     selectControl(controlId: MotionControlId) {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       const definition = getMotionControl(controlId)
       this.selectedControlId = controlId
       this.selectedBodyPartId = definition.partId
@@ -764,7 +776,14 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       if (this.authoringMode === 'guided' && this.selectedStageId) {
         const stage = readSimpleMotionRecipe(this.draft)?.stages.find(item => item.id === this.selectedStageId)
         if (!stage) return
-        this.updateSimpleStage(stage.id, { pose: { ...stage.pose, [controlId]: value } })
+        const pose = resolveSimpleStagePose(
+          stage,
+          { ...stage.pose, [controlId]: value },
+          getMotionControl(controlId).partId,
+          this.symmetryEnabled,
+        )
+        if (JSON.stringify(pose) === JSON.stringify(stage.pose)) return
+        this.updateSimpleStage(stage.id, { pose })
         this.selectControl(controlId)
         return
       }
@@ -778,7 +797,14 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       if (this.authoringMode === 'guided' && this.selectedStageId) {
         const stage = readSimpleMotionRecipe(this.draft)?.stages.find(item => item.id === this.selectedStageId)
         if (!stage) return
-        this.updateSimpleStage(stage.id, { pose: { ...stage.pose, [controlId]: (stage.pose[controlId] ?? 0) + delta } })
+        const pose = resolveSimpleStagePose(
+          stage,
+          { ...stage.pose, [controlId]: (stage.pose[controlId] ?? 0) + delta },
+          getMotionControl(controlId).partId,
+          this.symmetryEnabled,
+        )
+        if (JSON.stringify(pose) === JSON.stringify(stage.pose)) return
+        this.updateSimpleStage(stage.id, { pose })
         this.selectControl(controlId)
         return
       }
@@ -795,7 +821,14 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
         if (!stage) return
         const pose = { ...stage.pose }
         delete pose[targetControlId]
-        this.updateSimpleStage(stage.id, { pose })
+        const nextPose = resolveSimpleStagePose(
+          stage,
+          pose,
+          getMotionControl(targetControlId).partId,
+          this.symmetryEnabled,
+        )
+        if (JSON.stringify(nextPose) === JSON.stringify(stage.pose)) return
+        this.updateSimpleStage(stage.id, { pose: nextPose })
         return
       }
       this.snapshot()
@@ -825,12 +858,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
         if (!recipe || !stage) return
         const pose = { ...stage.pose }
         for (const edit of edits) pose[edit.controlId] = (pose[edit.controlId] ?? 0) + edit.delta
-        const symmetricPose = applyDirectMotionSymmetry(
-          stage.pose,
-          pose,
-          this.selectedBodyPartId,
-          this.symmetryEnabled,
-        )
+        const symmetricPose = resolveSimpleStagePose(stage, pose, this.selectedBodyPartId, this.symmetryEnabled)
         const nextRecipe = {
           ...recipe,
           stages: recipe.stages.map(item => item.id === stage.id ? { ...item, pose: symmetricPose } : item),
@@ -859,7 +887,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     },
 
     setDirectManipulationMode(mode: DirectMotionMode) {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       const capability = getDirectMotionCapability(this.selectedBodyPartId)
       if (!capability?.modes.includes(mode)) return false
       this.directManipulationMode = mode
@@ -925,12 +953,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
         latestChanged,
       }
       if (!latestChanged) return false
-      const symmetricPose = applyDirectMotionSymmetry(
-        session.baselinePose,
-        result.pose,
-        this.selectedBodyPartId,
-        this.symmetryEnabled,
-      )
+      const symmetricPose = resolveSimpleStagePose(baselineStage, result.pose, this.selectedBodyPartId, this.symmetryEnabled)
       const nextRecipe: SimpleMotionRecipeV1 = {
         ...baselineRecipe,
         stages: baselineRecipe.stages.map(item => item.id === baselineStage.id
@@ -954,8 +977,15 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.directManipulation = createDirectManipulationSession()
       return wasActive
     },
+    cancelActiveControlEditing() {
+      const hadControlGesture = Boolean(this.controlGestureBaseline)
+      const hadDirectManipulation = this.cancelDirectManipulation()
+      // 普通参数手势没有 direct session，也必须在任何选择或资产切换前恢复基线。
+      this.cancelControlGesture()
+      return hadControlGesture || hadDirectManipulation
+    },
     applyDirectPoseCard(cardId: string) {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       if (this.authoringMode !== 'guided' || !this.draft || !this.selectedStageId) return false
       const stage = readSimpleMotionRecipe(this.draft)?.stages.find(item => item.id === this.selectedStageId)
       if (!stage) return false
@@ -965,10 +995,11 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
         diagnostics: Object.freeze([...result.diagnostics]),
       })
       if (result.status === 'blocked' || !result.changed) return false
-      return this.updateSimpleStage(stage.id, { pose: { ...result.pose } })
+      const pose = resolveSimpleStagePose(stage, result.pose, this.selectedBodyPartId, this.symmetryEnabled)
+      return JSON.stringify(pose) !== JSON.stringify(stage.pose) && this.updateSimpleStage(stage.id, { pose })
     },
     resetSelectedDirectPart() {
-      this.cancelDirectManipulation()
+      this.cancelActiveControlEditing()
       if (this.authoringMode !== 'guided' || !this.draft || !this.selectedStageId) return false
       const capability = getDirectMotionCapability(this.selectedBodyPartId)
       const stage = readSimpleMotionRecipe(this.draft)?.stages.find(item => item.id === this.selectedStageId)
@@ -980,7 +1011,9 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
         delete pose[controlId]
         changed = true
       }
-      return changed ? this.updateSimpleStage(stage.id, { pose }) : false
+      if (!changed) return false
+      const nextPose = resolveSimpleStagePose(stage, pose, this.selectedBodyPartId, this.symmetryEnabled)
+      return JSON.stringify(nextPose) !== JSON.stringify(stage.pose) && this.updateSimpleStage(stage.id, { pose: nextPose })
     },
 
     writeChannelValue(value: number, interpolation: MotionInterpolation = 'linear') {

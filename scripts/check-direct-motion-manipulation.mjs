@@ -163,7 +163,7 @@ const switchingActions = [
   return {
     name,
     source,
-    cancelIndex: source.indexOf('this.cancelDirectManipulation()'),
+    cancelIndex: source.indexOf('this.cancelActiveControlEditing()'),
     firstStateWriteIndex: source.indexOf(firstStateWrite),
   }
 })
@@ -174,6 +174,7 @@ const checks = [
     'export function solveDirectMotionDrag',
     'export function applyDirectMotionPoseCard',
     'export function applyDirectMotionSymmetry',
+    'export function getDirectMotionRawControlRange',
     'symmetryBindings:',
   ])],
   ['Store exposes direct manipulation state and commands', hasAll(store, [
@@ -190,17 +191,9 @@ const checks = [
     'latestChanged:',
   ])],
   ['Store direct session reuses the control gesture transaction baseline', preview.includes('controlGestureBaseline') && store.includes('this.beginControlGesture()') && store.includes('this.endControlGesture()')],
-  ['参数预览和 3D 拖拽共用核心显式对称展开', hasAll(controlPreview, [
-    'applyDirectMotionSymmetry(',
-    'stage.pose,',
-    'this.selectedBodyPartId,',
-    'this.symmetryEnabled,',
-  ]) && hasAll(preview, [
-    'applyDirectMotionSymmetry(',
-    'session.baselinePose,',
-    'this.selectedBodyPartId,',
-    'this.symmetryEnabled,',
-  ])],
+  ['参数预览和 3D 拖拽共用核心显式对称展开',
+    controlPreview.includes('resolveSimpleStagePose(stage, pose, this.selectedBodyPartId, this.symmetryEnabled)')
+    && preview.includes('resolveSimpleStagePose(baselineStage, result.pose, this.selectedBodyPartId, this.symmetryEnabled)')],
   ['direct session pose follows the parsed baseline recipe stage source chain', directBaselineSourceChain],
   ['gesture begin and cancel preserve undo redo history', !controlBegin.includes('this.snapshot()')
     && !controlBegin.includes('undoStack')
@@ -341,22 +334,23 @@ const checks = [
   ]) && !partInspector.includes('.draft =')],
   ['语义滑杆从控制与 Rig 元数据推导安全范围并使用单手势事务', hasAll(semanticControl, [
     'getMotionControl',
-    'getCloudFoxRigChannel',
-    'clampMotionControlValue',
+    'getDirectMotionRawControlRange',
+    'intensity.value',
     'parameter.controlId',
-    'control.fineStep',
+    'control.value.fineStep',
     'editor.beginControlGesture()',
     'editor.previewControlGesture',
     'editor.endControlGesture()',
     'editor.cancelControlGesture()',
     '@pointercancel="cancelGesture"',
     "window.addEventListener('blur', cancelGesture)",
+    ':aria-valuetext=',
   ]) && !semanticControl.includes('editor.writeControlValue') && !semanticControl.includes('.draft =')],
   ['精确参数复用显示单位、核心范围与 Store 单手势事务并支持复位', hasAll(exactControl, [
     'toMotionControlDisplayValue',
     'fromMotionControlDisplayValue',
-    'getCloudFoxRigChannel',
-    'clampMotionControlValue',
+    'getDirectMotionRawControlRange',
+    'intensity.value',
     'editor.beginControlGesture()',
     'editor.previewControlGesture',
     'editor.endControlGesture()',

@@ -5,9 +5,8 @@
 -->
 <script setup lang="ts">
 import {
-  clampMotionControlValue,
   fromMotionControlDisplayValue,
-  getCloudFoxRigChannel,
+  getDirectMotionRawControlRange,
   toMotionControlDisplayValue,
   type MotionControlDefinition,
   type MotionControlId,
@@ -22,19 +21,19 @@ const props = defineProps<{
 const editor = useStudioMotionEditorStore()
 const controlId = computed(() => props.control.id as MotionControlId)
 const stage = computed(() => editor.selectedSimpleStage)
+const intensity = computed(() => stage.value?.intensity ?? 0)
 const rawValue = computed(() => stage.value?.pose[controlId.value] ?? 0)
 const displayValue = computed(() => toMotionControlDisplayValue(rawValue.value, props.control.displayUnit))
 const range = computed(() => {
-  const channels = props.control.channelIds.map(getCloudFoxRigChannel)
-  const minimum = Math.max(...channels.map(channel => channel.minimum))
-  const maximum = Math.min(...channels.map(channel => channel.maximum))
+  const [minimum, maximum] = getDirectMotionRawControlRange(controlId.value, intensity.value)
   return {
     minimum: toMotionControlDisplayValue(minimum, props.control.displayUnit),
     maximum: toMotionControlDisplayValue(maximum, props.control.displayUnit),
   }
 })
-const displayStep = computed(() => toMotionControlDisplayValue(props.control.fineStep, props.control.displayUnit))
-const isDisabled = computed(() => props.disabled || !stage.value || editor.directManipulation.active)
+const rawStep = computed(() => props.control.fineStep / Math.max(1, intensity.value))
+const displayStep = computed(() => toMotionControlDisplayValue(rawStep.value, props.control.displayUnit))
+const isDisabled = computed(() => props.disabled || !stage.value || intensity.value <= 0 || editor.directManipulation.active)
 const unit = computed(() => props.control.displayUnit === 'degree' ? '°' : props.control.displayUnit === 'distance' ? '局部距离' : props.control.displayUnit === 'normalized' ? '0–1' : '倍率')
 const inputElement = ref<HTMLInputElement>()
 let gestureActive = false
@@ -52,10 +51,7 @@ function previewValue(event: Event) {
   const display = Number((event.target as HTMLInputElement).value)
   if (!Number.isFinite(display)) return
   const safeDisplay = Math.max(range.value.minimum, Math.min(range.value.maximum, display))
-  const next = clampMotionControlValue(
-    controlId.value,
-    fromMotionControlDisplayValue(safeDisplay, props.control.displayUnit),
-  )
+  const next = fromMotionControlDisplayValue(safeDisplay, props.control.displayUnit)
   editor.previewControlGesture([{ controlId: controlId.value, delta: next - gestureBaseline }])
 }
 
@@ -130,5 +126,5 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.exact-control{display:grid;grid-template-columns:minmax(0,1fr) 28px minmax(66px,82px) 28px 28px;align-items:center;gap:4px;padding:6px;border:1px solid #ffffff12;border-radius:9px;background:#080c16}.exact-control label{display:grid;min-width:0;gap:2px}.exact-control strong{overflow:hidden;font-size:8px;text-overflow:ellipsis;white-space:nowrap}.exact-control small{color:#68738f;font-size:7px}.exact-control button,.exact-control input{box-sizing:border-box;height:29px;border:1px solid #ffffff1c;border-radius:7px;color:#e4e9fb;background:#060a13}.exact-control button{width:28px;padding:0;cursor:pointer}.exact-control button:disabled,.exact-control input:disabled{cursor:not-allowed;opacity:.38}.exact-control input{width:100%;padding:0 6px;font:700 9px/1 ui-monospace,monospace}.exact-control button:focus-visible,.exact-control input:focus-visible{outline:2px solid #7ff3e5;outline-offset:2px}.exact-control__reset{color:#8490ad!important}@media(max-width:420px){.exact-control{grid-template-columns:minmax(0,1fr) 28px minmax(62px,76px) 28px}.exact-control__reset{grid-column:4}}
+.exact-control{display:grid;grid-template-columns:minmax(0,1fr) 28px minmax(66px,82px) 28px 28px;align-items:center;gap:4px;padding:6px;border:1px solid #ffffff12;border-radius:9px;background:#080c16}.exact-control label{display:grid;min-width:0;gap:2px}.exact-control strong{overflow:hidden;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.exact-control small{color:#8995b2;font-size:10px}.exact-control button,.exact-control input{box-sizing:border-box;height:29px;border:1px solid #ffffff1c;border-radius:7px;color:#e4e9fb;background:#060a13}.exact-control button{width:28px;padding:0;cursor:pointer}.exact-control button:disabled,.exact-control input:disabled{cursor:not-allowed;opacity:.45}.exact-control input{width:100%;padding:0 6px;font:700 11px/1 ui-monospace,monospace}.exact-control button:focus-visible,.exact-control input:focus-visible{outline:2px solid #7ff3e5;outline-offset:2px}.exact-control__reset{color:#8490ad!important}@media(max-width:420px){.exact-control{grid-template-columns:minmax(0,1fr) 28px minmax(62px,76px) 28px}.exact-control__reset{grid-column:4}}
 </style>
