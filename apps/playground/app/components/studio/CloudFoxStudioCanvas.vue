@@ -3,6 +3,19 @@
   装配 Studio 实时预览，并用独立身体/头型 Profile 计算稳定且不随编辑分区变化的相机边界。
   Assembles Studio live preview and uses independent body/head profiles for camera bounds that remain stable across editor sections.
 -->
+<script lang="ts">
+/**
+ * 唯一 3D 画布输出的轻量语义投影；坐标相对画布左上角，不携带任何 Three.js 实例。
+ */
+export interface StudioMotionPartAnchor {
+  readonly bodyPartId: import('@yk-pets/pet-core').MotionBodyPartId
+  readonly x: number
+  readonly y: number
+  readonly depth: number
+  readonly visible: boolean
+}
+</script>
+
 <script setup lang="ts">
 import { TresCanvas } from '@tresjs/core'
 import { Euler, Vector3 } from 'three'
@@ -14,7 +27,7 @@ import { calculatePetStudioVisualBounds } from '~/domain/pet-studio-phase2'
 import { getCloudFoxBodyProfile, getCloudFoxHeadProfile } from '~/domain/cloud-fox-shape-profile'
 import { createExtensionClassicAppearance, createExtensionClassicScene, isExtensionClassicScene } from '~/domain/extension-cloud-fox-default'
 import { createDefaultPetScene, getPetScenePreset, resolveSceneContrast, type PetSceneRecipe } from '~/domain/pet-scene'
-import { normalizeBipedPetModelRecipe, type CharacterModelRecipeV1, type CompiledCharacterModel, type EvaluatedCloudFoxPose, type EvaluatedMotionPropInstance, type StudioMotionAssetV2 } from '@yk-pets/pet-core'
+import { normalizeBipedPetModelRecipe, type CharacterModelRecipeV1, type CompiledCharacterModel, type EvaluatedCloudFoxPose, type EvaluatedMotionPropInstance, type MotionBodyPartId, type StudioMotionAssetV2 } from '@yk-pets/pet-core'
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
@@ -43,6 +56,7 @@ const props = withDefaults(defineProps<{
   motionAsset?: StudioMotionAssetV2 | null
   motionTimeMs?: number
   motionWeight?: number
+  editableParts?: readonly MotionBodyPartId[]
 }>(), {
   motionKey: 0,
   focus: 'full',
@@ -57,6 +71,7 @@ const props = withDefaults(defineProps<{
 type ComplexCompilationPayload = Pick<CompiledCharacterModel, 'hash' | 'status' | 'diagnostics'>
 const emit = defineEmits<{
   'complex-compiled': [payload: ComplexCompilationPayload]
+  'part-anchors': [anchors: readonly StudioMotionPartAnchor[]]
 }>()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vec3 = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
@@ -157,10 +172,132 @@ const sceneStyle = computed(() => ({
   '--extension-nebula': scheme.scene.nebulaBackground,
   '--extension-glow': scheme.scene.glowBackground,
 }))
+
+const canvasRoot = ref<HTMLElement>()
+let canvasResizeObserver: ResizeObserver | undefined
+
+type SemanticWorldAnchor = readonly [number, number, number]
+const SEMANTIC_WORLD_ANCHORS: Readonly<Partial<Record<MotionBodyPartId, SemanticWorldAnchor>>> = Object.freeze({
+  root: [0, -.12, 0],
+  body: [0, -.28, .44],
+  head: [0, .98, .5],
+  'front-paw-left': [-.58, -.42, .72],
+  'front-paw-right': [.58, -.42, .72],
+  'hind-paw-left': [-.42, -1.23, .34],
+  'hind-paw-right': [.42, -1.23, .34],
+  'ear-left': [-.56, 1.64, .34],
+  'ear-right': [.56, 1.64, .34],
+  'tail-root': [-.72, -.42, -.3],
+  'tail-mid': [-1.14, -.1, -.34],
+  'tail-tip': [-1.55, .36, -.28],
+})
+
+function poseValue(channelId: string) {
+  const value = props.customPose?.values[channelId as keyof EvaluatedCloudFoxPose['values']]
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+/**
+ * 锚点与渲染器共享同一语义 Rig、固定视角和预览变换。这里用保守的语义关节中心投影，
+ * 避免把 Three 节点或另一条渲染循环泄漏给 DOM 交互层。
+ */
+function semanticWorldAnchor(partId: MotionBodyPartId): SemanticWorldAnchor | undefined {
+  const base = SEMANTIC_WORLD_ANCHORS[partId]
+  if (!base) return undefined
+  let [x, y, z] = base
+  const rootX = poseValue('root.position.x') * .45
+  const rootY = poseValue('root.position.y') * .45
+  const rootZ = poseValue('root.position.z') * .45
+  x += rootX
+  y += rootY
+  z += rootZ
+  if (partId !== 'root') {
+    x += poseValue('body.position.x') * .45
+    y += poseValue('body.position.y') * .45
+    z += poseValue('body.position.z') * .45
+  }
+  if (partId === 'head' || partId === 'ear-left' || partId === 'ear-right') {
+    x += poseValue('head.position.x') * .45
+    y += poseValue('head.position.y') * .45
+    z += poseValue('head.position.z') * .45
+  }
+  const limbPrefix = partId === 'front-paw-left' ? 'frontPaw.left'
+    : partId === 'front-paw-right' ? 'frontPaw.right'
+      : partId === 'hind-paw-left' ? 'hindPaw.left'
+        : partId === 'hind-paw-right' ? 'hindPaw.right'
+          : undefined
+  if (limbPrefix) {
+    x += Math.sin(poseValue(`${limbPrefix}.rotation.z`)) * .34
+    y -= Math.sin(poseValue(`${limbPrefix}.rotation.x`)) * .3
+    z += Math.sin(poseValue(`${limbPrefix}.rotation.y`)) * .3
+  }
+  const tailPrefix = partId === 'tail-root' ? 'tail.root'
+    : partId === 'tail-mid' ? 'tail.mid'
+      : partId === 'tail-tip' ? 'tail.tip'
+        : undefined
+  if (tailPrefix) {
+    x -= Math.sin(poseValue(`${tailPrefix}.rotation.z`)) * .38
+    y += Math.sin(poseValue(`${tailPrefix}.rotation.x`)) * .3
+  }
+  return [x, y, z]
+}
+
+function projectSemanticAnchor(partId: MotionBodyPartId, width: number, height: number): StudioMotionPartAnchor | undefined {
+  const world = semanticWorldAnchor(partId)
+  if (!world) return undefined
+  const yaw = CANONICAL_VIEW_YAW[props.view] + props.previewRotation[1]
+  const pitch = props.previewRotation[0]
+  const yawX = world[0] * Math.cos(yaw) + world[2] * Math.sin(yaw)
+  const yawZ = -world[0] * Math.sin(yaw) + world[2] * Math.cos(yaw)
+  const pitchedY = world[1] * Math.cos(pitch) - yawZ * Math.sin(pitch)
+  const pitchedDepth = world[1] * Math.sin(pitch) + yawZ * Math.cos(pitch)
+  const scale = clamp(props.previewScale, .25, 1.5)
+  const x = width * .5 + yawX * Math.min(width, height) * .19 * scale + props.previewPosition[0] * width * .04
+  const y = height * .51 - pitchedY * Math.min(width, height) * .19 * scale - props.previewPosition[1] * height * .04
+  const edge = 12
+  return Object.freeze({
+    bodyPartId: partId,
+    x: Number(x.toFixed(2)),
+    y: Number(y.toFixed(2)),
+    depth: Number(pitchedDepth.toFixed(4)),
+    visible: x >= edge && x <= width - edge && y >= edge && y <= height - edge,
+  })
+}
+
+function publishPartAnchors() {
+  const element = canvasRoot.value
+  if (!element || !props.editableParts?.length) {
+    emit('part-anchors', Object.freeze([]))
+    return
+  }
+  const bounds = element.getBoundingClientRect()
+  if (!(bounds.width > 0 && bounds.height > 0)) return
+  const anchors = props.editableParts
+    .map(partId => projectSemanticAnchor(partId, bounds.width, bounds.height))
+    .filter((anchor): anchor is StudioMotionPartAnchor => Boolean(anchor))
+  emit('part-anchors', Object.freeze(anchors))
+}
+
+const anchorProjectionSignal = computed(() => JSON.stringify({
+  editableParts: props.editableParts,
+  view: props.view,
+  previewScale: props.previewScale,
+  previewRotation: props.previewRotation,
+  previewPosition: props.previewPosition,
+  pose: props.customPose?.values,
+}))
+
+watch(anchorProjectionSignal, () => nextTick(publishPartAnchors), { immediate: true })
+onMounted(() => {
+  canvasResizeObserver = new ResizeObserver(publishPartAnchors)
+  if (canvasRoot.value) canvasResizeObserver.observe(canvasRoot.value)
+  publishPartAnchors()
+})
+onBeforeUnmount(() => canvasResizeObserver?.disconnect())
 </script>
 
 <template>
-  <div :class="['studio-canvas', `studio-canvas--${contrast}`, { 'studio-canvas--extension': extensionScene }]" :style="sceneStyle" :data-visual-scheme="scheme.id" :data-focus="focus" :data-model-mode="modelMode">
+  <div ref="canvasRoot" :class="['studio-canvas', `studio-canvas--${contrast}`, { 'studio-canvas--extension': extensionScene }]" :style="sceneStyle" :data-visual-scheme="scheme.id" :data-focus="focus" :data-model-mode="modelMode">
     <div v-if="!activeScene.transparent" class="scene-surface" />
     <div v-if="!activeScene.transparent" class="scene-gradient" />
     <div v-if="extensionScene" class="extension-nebula" />

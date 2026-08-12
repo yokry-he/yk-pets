@@ -4,11 +4,14 @@
  * 锁定简单动作直接操控的核心求解能力、Store 事务边界与切换清理规则。
  * Locks simple-motion direct manipulation solving, Store transaction boundaries, and session cleanup rules.
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const core = read('packages/pet-core/src/motion/direct-motion-manipulation.ts')
 const store = read('apps/playground/app/stores/studio-motion-editor.ts')
+const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
+const manipulatorPath = new URL('../apps/playground/app/components/studio/StudioMotionDirectManipulator.vue', import.meta.url)
+const manipulator = existsSync(manipulatorPath) ? readFileSync(manipulatorPath, 'utf8') : ''
 
 const hasAll = (source, tokens) => tokens.every(token => source.includes(token))
 const actionBody = (name, nextName) => {
@@ -118,6 +121,44 @@ const checks = [
     && action.cancelIndex >= 0
     && action.firstStateWriteIndex >= 0
     && action.cancelIndex < action.firstStateWriteIndex)],
+  ['唯一 Studio Canvas 暴露语义部位锚点且不泄漏 Three 对象', hasAll(canvas, [
+    'export interface StudioMotionPartAnchor',
+    'editableParts?: readonly MotionBodyPartId[]',
+    "'part-anchors': [anchors: readonly StudioMotionPartAnchor[]]",
+    "emit('part-anchors'",
+    'ResizeObserver',
+  ]) && (canvas.match(/<TresCanvas\b/g) || []).length === 1
+    && !/export interface StudioMotionPartAnchor\s*{[^}]*\b(?:Object3D|Vector3|Group|Mesh)\b[^}]*}/.test(canvas)],
+  ['直接操控覆盖层只让热点和工具接收指针并提供中文键盘语义', hasAll(manipulator, [
+    'studio-motion-direct-manipulator',
+    'tabindex="0"',
+    ':aria-label="partAriaLabel(anchor.bodyPartId)"',
+    '@keydown="onHotspotKeydown(anchor, $event)"',
+    '@pointerdown="beginPointerManipulation(anchor, $event)"',
+    '移动',
+    '旋转',
+  ]) && /\.studio-motion-direct-manipulator\s*{[^}]*pointer-events\s*:\s*none/.test(manipulator)
+    && /\.(?:direct-part-hotspot|direct-floating-tool)\s*{[^}]*pointer-events\s*:\s*auto/.test(manipulator)],
+  ['直接操控覆盖层严格通过 Store 手势 API 提交且没有第二画布或动画循环', hasAll(manipulator, [
+    'editor.selectBodyPart',
+    'editor.setDirectManipulationMode',
+    'editor.beginDirectManipulation',
+    'editor.previewDirectManipulation',
+    'editor.commitDirectManipulation',
+    'editor.cancelDirectManipulation',
+    'setPointerCapture',
+    'releasePointerCapture',
+  ]) && !manipulator.includes('<TresCanvas')
+    && !manipulator.includes('requestAnimationFrame')
+    && !manipulator.includes('.draft =')],
+  ['悬浮工具依据覆盖层尺寸钳制位置并反馈安全范围', hasAll(manipulator, [
+    'floatingToolPosition',
+    'clamp(',
+    "directManipulation.status === 'clamped'",
+    '已到安全范围',
+    '@pointercancel="cancelPointerManipulation"',
+    "event.key === 'Escape'",
+  ])],
 ]
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
