@@ -140,6 +140,7 @@ const propertyTabs = computed<Array<{ id: PropertyTab; label: string; badge?: nu
   { id: 'props', label: '道具', badge: propEventCount.value },
 ])
 let raf = 0
+let inspectorFocusFrame = 0
 let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 let narrowViewportQuery: MediaQueryList | undefined
 let overflowLockActive = false
@@ -264,11 +265,32 @@ function focusableInspectorElements() {
   return Array.from(partInspectorPanel.value.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'))
     .filter(element => !element.hidden && element.getClientRects().length > 0)
 }
+function cancelPendingInspectorFocus() {
+  if (!inspectorFocusFrame) return
+  cancelAnimationFrame(inspectorFocusFrame)
+  inspectorFocusFrame = 0
+}
+function focusPartInspectorOnFrame() {
+  inspectorFocusFrame = 0
+  if (!narrowViewport.value || !editor.partInspectorOpen) return
+  const panel = partInspectorPanel.value
+  const target = partInspectorCloseButton.value || focusableInspectorElements()[0]
+  if (!panel || !target || !panel.contains(target)) return
+  if (target.getClientRects().length) target.focus({ preventScroll: true })
+  if (!panel.contains(document.activeElement)) inspectorFocusFrame = requestAnimationFrame(focusPartInspectorOnFrame)
+}
+async function focusOpenedPartInspector() {
+  await nextTick()
+  cancelPendingInspectorFocus()
+  if (!narrowViewport.value || !editor.partInspectorOpen) return
+  inspectorFocusFrame = requestAnimationFrame(focusPartInspectorOnFrame)
+}
 function openPartInspector() {
   editor.partInspectorOpen = true
-  nextTick(() => partInspectorCloseButton.value?.focus({ preventScroll: true }))
+  void focusOpenedPartInspector()
 }
 function closePartInspector(restoreFocus = true) {
+  cancelPendingInspectorFocus()
   editor.cancelActiveControlEditing()
   editor.partInspectorOpen = false
   restoreDocumentOverflow()
@@ -829,7 +851,7 @@ h1,h2,h3,p{margin:0}
   .guided-mobile-inspector{position:absolute;z-index:24;right:12px;bottom:12px;left:12px;display:grid;max-width:calc(100% - 24px)}
   .guided-panel__close:focus-visible{outline:2px solid #7ff3e5;outline-offset:2px}
   .guided-drawer-backdrop{position:fixed;z-index:39;inset:0;display:block;border:0;background:#01040ab8;backdrop-filter:blur(3px);cursor:pointer}
-  .property-panel.guided-panel{position:fixed;z-index:40;top:auto;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:100%;height:min(72dvh,650px);max-height:min(72dvh,650px);padding:12px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));transform:translateY(calc(100% + 18px));visibility:hidden;border-radius:20px 20px 0 0;box-shadow:0 -22px 60px #000c;opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease,visibility .2s}
+  .property-panel.guided-panel{position:fixed;z-index:40;top:auto;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:100%;height:min(72dvh,650px);max-height:min(72dvh,650px);padding:12px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));transform:translateY(calc(100% + 18px));visibility:hidden;border-radius:20px 20px 0 0;box-shadow:0 -22px 60px #000c;opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
   .property-panel.guided-panel--open{transform:translateY(0);visibility:visible;opacity:1;pointer-events:auto}
   .guided-panel__close{display:grid;place-items:center}
   .guided-panel-content{padding-bottom:32px;touch-action:pan-y;-webkit-overflow-scrolling:touch}

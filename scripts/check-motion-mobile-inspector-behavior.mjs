@@ -40,11 +40,22 @@ function hasCapturedWindowKeyboard(source) {
 function hasExplicitFocusLifecycle(source) {
   const open = functionBody(source, 'openPartInspector')
   const close = functionBody(source, 'closePartInspector')
+  const focusOpened = functionBody(source, 'focusOpenedPartInspector')
+  const focusFrame = functionBody(source, 'focusPartInspectorOnFrame')
   return source.includes('ref="partInspectorCloseButton"')
-    && open.includes('nextTick')
-    && open.includes('partInspectorCloseButton.value?.focus')
+    && open.includes('focusOpenedPartInspector()')
+    && focusOpened.includes('await nextTick()')
+    && focusOpened.includes('requestAnimationFrame(focusPartInspectorOnFrame)')
+    && focusFrame.includes('partInspectorPanel.value')
+    && focusFrame.includes('panel.contains(target)')
+    && focusFrame.includes('target.getClientRects().length')
+    && focusFrame.includes('target.focus({ preventScroll: true })')
+    && focusFrame.includes('panel.contains(document.activeElement)')
+    && focusFrame.includes('requestAnimationFrame(focusPartInspectorOnFrame)')
+    && source.includes('cancelPendingInspectorFocus()')
     && close.includes('nextTick')
     && close.includes('compactPartInspector.value?.focusOpenButton()')
+    && !source.includes('visibility .2s')
 }
 
 function hasDualOverflowLifecycle(source) {
@@ -82,6 +93,8 @@ const mutations = [
   ['移除 body 滚动恢复', hasDualOverflowLifecycle(motionPage.replaceAll('document.body', 'document.documentElement'))],
   ['恢复窄屏提前返回', hasDualOverflowLifecycle(motionPage.replace("if (!import.meta.client) return", "if (!import.meta.client || !narrowViewport.value) return"))],
   ['把常用参数扩大为四项', hasCompactThreeControlSummary(partInspector.replace('visibleParameters.value.slice(0, 3)', 'visibleParameters.value.slice(0, 4)'))],
+  ['移除布局帧聚焦', hasExplicitFocusLifecycle(motionPage.replaceAll('requestAnimationFrame(focusPartInspectorOnFrame)', 'focusPartInspectorOnFrame()'))],
+  ['不再确认焦点进入 panel', hasExplicitFocusLifecycle(motionPage.replace('panel.contains(document.activeElement)', 'document.activeElement === target'))],
 ]
 
 for (const [name, survived] of mutations) checks.push([`负向变异必须失败：${name}`, !survived])
