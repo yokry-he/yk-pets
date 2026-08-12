@@ -32,6 +32,7 @@ import StudioMotionPropEvents from '~/components/studio/StudioMotionPropEvents.v
 import StudioPreviewToolbar from '~/components/studio/StudioPreviewToolbar.vue'
 import StudioRootMotionSettings from '~/components/studio/StudioRootMotionSettings.vue'
 import { useStudioPreviewOrientation } from '~/composables/useStudioPreviewOrientation'
+import { createStudioMotionAutoSaveController } from '~/utils/studio-motion-auto-save'
 import { usePetAppearanceStore } from '~/stores/pet-appearance'
 import { useStudioAssetStore } from '~/stores/studio-assets'
 import { useStudioMotionEditorStore } from '~/stores/studio-motion-editor'
@@ -141,7 +142,8 @@ const propertyTabs = computed<Array<{ id: PropertyTab; label: string; badge?: nu
 ])
 let raf = 0
 let inspectorFocusFrame = 0
-let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
+let inspectorFocusAttempts = 0
+const MAX_INSPECTOR_FOCUS_FRAMES = 3
 let narrowViewportQuery: MediaQueryList | undefined
 let overflowLockActive = false
 let previousRootOverflow = ''
@@ -162,33 +164,25 @@ function saveCurrent(message = '') {
   editor.markSaved(savedAsset)
   status.value = message
 }
+const autoSaveController = createStudioMotionAutoSaveController({
+  delayMs: 500,
+  clock: {
+    setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+    clearTimeout: timer => clearTimeout(timer),
+  },
+  isDirty: () => editor.isDirty,
+  isGestureActive: () => editor.isControlGestureActive,
+  persist: () => {
+    saveCurrent()
+    return true
+  },
+  setState: state => editor.setSaveState(state),
+})
 function scheduleAutoSave() {
-  if (!editor.isDirty) return
-  editor.setSaveState('saving')
-  clearTimeout(autoSaveTimer)
-  autoSaveTimer = setTimeout(() => {
-    try {
-      saveCurrent()
-      editor.setSaveState('saved')
-    }
-    catch {
-      editor.setSaveState('failed')
-    }
-  }, 500)
+  autoSaveController.schedule()
 }
 function flushAutoSave() {
-  clearTimeout(autoSaveTimer)
-  autoSaveTimer = undefined
-  if (!editor.isDirty) return true
-  try {
-    saveCurrent()
-    editor.setSaveState('saved')
-    return true
-  }
-  catch {
-    editor.setSaveState('failed')
-    return false
-  }
+  return autoSaveController.flush()
 }
 function retrySave() {
   if (editor.isDirty || editor.saveState === 'failed') scheduleAutoSave()
@@ -266,18 +260,21 @@ function focusableInspectorElements() {
     .filter(element => !element.hidden && element.getClientRects().length > 0)
 }
 function cancelPendingInspectorFocus() {
-  if (!inspectorFocusFrame) return
-  cancelAnimationFrame(inspectorFocusFrame)
+  if (inspectorFocusFrame) cancelAnimationFrame(inspectorFocusFrame)
   inspectorFocusFrame = 0
+  inspectorFocusAttempts = 0
 }
 function focusPartInspectorOnFrame() {
   inspectorFocusFrame = 0
   if (!narrowViewport.value || !editor.partInspectorOpen) return
+  inspectorFocusAttempts += 1
   const panel = partInspectorPanel.value
   const target = partInspectorCloseButton.value || focusableInspectorElements()[0]
   if (!panel || !target || !panel.contains(target)) return
   if (target.getClientRects().length) target.focus({ preventScroll: true })
-  if (!panel.contains(document.activeElement)) inspectorFocusFrame = requestAnimationFrame(focusPartInspectorOnFrame)
+  if (!panel.contains(document.activeElement) && inspectorFocusAttempts < MAX_INSPECTOR_FOCUS_FRAMES) {
+    inspectorFocusFrame = requestAnimationFrame(focusPartInspectorOnFrame)
+  }
 }
 async function focusOpenedPartInspector() {
   await nextTick()
@@ -386,8 +383,8 @@ function frame(now: number) {
   raf = requestAnimationFrame(frame)
 }
 function keyboard(event: KeyboardEvent) {
-  const target = event.target as HTMLElement | null
-  if (target?.matches('input,select,textarea')) return
+  const target = event.target instanceof Element ? event.target : null
+  if (target && target.closest(INTERACTIVE_KEYBOARD_SELECTOR)) return
   const modifier = event.metaKey || event.ctrlKey
   if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); flushAutoSave() }
   else if (modifier && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? editor.redo() : editor.undo() }
@@ -409,8 +406,38 @@ function keyboard(event: KeyboardEvent) {
   else if (event.key === 'ArrowRight') editor.moveSelected(1000 / (draft.value?.displayFps || 30))
 }
 
+const INTERACTIVE_KEYBOARD_SELECTOR = [
+  'input',
+  'select',
+  'textarea',
+  'button',
+  'a',
+  'summary',
+  '[contenteditable]:not([contenteditable="false"])',
+  '[role="button"]',
+  '[role="link"]',
+  '[role="checkbox"]',
+  '[role="combobox"]',
+  '[role="radio"]',
+  '[role="searchbox"]',
+  '[role="switch"]',
+  '[role="slider"]',
+  '[role="spinbutton"]',
+  '[role="tab"]',
+  '[role="textbox"]',
+  '[role="menuitem"]',
+  '[role="menuitemcheckbox"]',
+  '[role="menuitemradio"]',
+  '[role="option"]',
+  '[role="treeitem"]',
+].join(',')
+
 watch(saved, asset => { if (asset) editor.open(asset); else editor.close() }, { immediate: true })
 watch(() => draft.value?.updatedAt, scheduleAutoSave)
+watch(() => editor.controlGestureOutcome, (outcome) => {
+  if (outcome === 'active') scheduleAutoSave()
+  else if (outcome === 'committed' || outcome === 'cancelled') autoSaveController.settleGesture(outcome)
+})
 watch(() => editor.partInspectorOpen, (open) => {
   if (!import.meta.client) return
   if (open && narrowViewport.value) lockDocumentOverflow()
@@ -443,9 +470,10 @@ onMounted(() => {
   window.addEventListener('keydown', keyboard)
 })
 onBeforeUnmount(() => {
-  editor.cancelDirectManipulation()
+  const cancelledActiveEditing = editor.cancelActiveControlEditing()
   closePartInspector(false)
-  flushAutoSave()
+  if (cancelledActiveEditing) autoSaveController.dispose()
+  else flushAutoSave()
   cancelAnimationFrame(raf)
   narrowViewportQuery?.removeEventListener('change', syncNarrowViewport)
   restoreDocumentOverflow()

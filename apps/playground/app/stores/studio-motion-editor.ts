@@ -118,6 +118,7 @@ interface MotionEditorState {
   selectedControlId: MotionControlId
   symmetryEnabled: boolean
   controlGestureBaseline: string
+  controlGestureOutcome: 'idle' | 'active' | 'committed' | 'cancelled'
   selectedStageId: string
   authoringMode: 'guided' | 'advanced'
   saveState: 'saved' | 'saving' | 'failed'
@@ -362,12 +363,14 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     selectedControlId: 'root.translate.y',
     symmetryEnabled: false,
     controlGestureBaseline: '',
+    controlGestureOutcome: 'idle',
     selectedStageId: '',
     authoringMode: 'guided',
     saveState: 'saved',
   }),
   getters: {
     isDirty: state => Boolean(state.draft) && serialize(state.draft) !== state.baseline,
+    isControlGestureActive: state => Boolean(state.controlGestureBaseline),
     canUndo: state => state.undoStack.length > 0,
     canRedo: state => state.redoStack.length > 0,
     selectedKeyframeCount: state => state.selectedKeyframeIds.length,
@@ -400,6 +403,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.interruptionPending = false
       this.playbackDirection = 1
       this.controlGestureBaseline = ''
+      this.controlGestureOutcome = 'idle'
       const recipe = readSimpleMotionRecipe(this.draft)
       this.selectedStageId = recipe?.stages[0]?.id || ''
       this.authoringMode = recipe ? 'guided' : 'advanced'
@@ -425,6 +429,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.interruptionPending = false
       this.playbackDirection = 1
       this.controlGestureBaseline = ''
+      this.controlGestureOutcome = 'idle'
       const recipe = readSimpleMotionRecipe(this.draft)
       this.selectedStageId = recipe?.stages.some(stage => stage.id === previousStageId)
         ? previousStageId
@@ -450,6 +455,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.interruptionPending = false
       this.playbackDirection = 1
       this.controlGestureBaseline = ''
+      this.controlGestureOutcome = 'idle'
       this.selectedStageId = ''
       this.authoringMode = 'guided'
       this.saveState = 'saved'
@@ -846,6 +852,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       if (!this.draft || this.controlGestureBaseline) return false
       // 开始阶段只记录草稿基线；提前改写历史会让取消或无变化手势破坏 redo 与满额 undo。
       this.controlGestureBaseline = serialize(this.draft)
+      this.controlGestureOutcome = 'active'
       return true
     },
     previewControlGesture(edits: readonly { controlId: MotionControlId; delta: number }[]) {
@@ -872,17 +879,20 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
     endControlGesture() {
       if (!this.controlGestureBaseline) return
       // 仅在最终草稿真实变化时提交一个撤销事务，取消和无变化路径因而完整保留既有历史。 / Commit one undo transaction only when the final draft changed so cancellation and no-op paths preserve history.
-      if (serialize(this.draft) !== this.controlGestureBaseline) {
+      const changed = serialize(this.draft) !== this.controlGestureBaseline
+      if (changed) {
         if (this.undoStack.at(-1) !== this.controlGestureBaseline) this.undoStack.push(this.controlGestureBaseline)
         if (this.undoStack.length > 100) this.undoStack.shift()
         this.redoStack = []
       }
       this.controlGestureBaseline = ''
+      this.controlGestureOutcome = changed ? 'committed' : 'cancelled'
     },
     cancelControlGesture() {
       if (!this.controlGestureBaseline) return
       this.draft = parse(this.controlGestureBaseline)
       this.controlGestureBaseline = ''
+      this.controlGestureOutcome = 'cancelled'
       this.syncSimpleAuthoringState()
     },
 
@@ -1175,6 +1185,7 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
       this.draft = duplicateMotionAssetForDraft(asset)
       this.baseline = serialize(this.draft)
       this.saveState = 'saved'
+      this.controlGestureOutcome = 'idle'
       this.syncSimpleAuthoringState()
     },
   },

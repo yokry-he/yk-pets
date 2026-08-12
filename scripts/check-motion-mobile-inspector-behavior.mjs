@@ -51,11 +51,20 @@ function hasExplicitFocusLifecycle(source) {
     && focusFrame.includes('target.getClientRects().length')
     && focusFrame.includes('target.focus({ preventScroll: true })')
     && focusFrame.includes('panel.contains(document.activeElement)')
-    && focusFrame.includes('requestAnimationFrame(focusPartInspectorOnFrame)')
+    && source.includes('MAX_INSPECTOR_FOCUS_FRAMES = 3')
+    && focusFrame.includes('inspectorFocusAttempts < MAX_INSPECTOR_FOCUS_FRAMES')
     && source.includes('cancelPendingInspectorFocus()')
     && close.includes('nextTick')
     && close.includes('compactPartInspector.value?.focusOpenButton()')
     && !source.includes('visibility .2s')
+}
+
+function hasInteractiveKeyboardBoundary(source) {
+  const keyboard = functionBody(source, 'keyboard')
+  return source.includes('INTERACTIVE_KEYBOARD_SELECTOR')
+    && ["'input'", "'select'", "'textarea'", "'button'", "'a'", "'summary'", '[contenteditable', '[role="button"]', '[role="slider"]', '[role="tab"]'].every(token => source.includes(token))
+    && keyboard.includes('target.closest(INTERACTIVE_KEYBOARD_SELECTOR)')
+    && keyboard.includes("event.code === 'Space'")
 }
 
 function hasDualOverflowLifecycle(source) {
@@ -86,6 +95,7 @@ const checks = [
   ['打开后聚焦关闭按钮且关闭后恢复到更多参数触发器', hasExplicitFocusLifecycle(motionPage)],
   ['documentElement 与 body 的滚动样式在关闭、卸载和跨断点时恢复', hasDualOverflowLifecycle(motionPage)],
   ['窄屏摘要复用同一部位组件与语义参数组件动态显示前三项', hasCompactThreeControlSummary(partInspector)],
+  ['全局动作快捷键避让原生控件、链接、摘要、可编辑区和交互 role', hasInteractiveKeyboardBoundary(motionPage)],
 ]
 
 const mutations = [
@@ -93,8 +103,9 @@ const mutations = [
   ['移除 body 滚动恢复', hasDualOverflowLifecycle(motionPage.replaceAll('document.body', 'document.documentElement'))],
   ['恢复窄屏提前返回', hasDualOverflowLifecycle(motionPage.replace("if (!import.meta.client) return", "if (!import.meta.client || !narrowViewport.value) return"))],
   ['把常用参数扩大为四项', hasCompactThreeControlSummary(partInspector.replace('visibleParameters.value.slice(0, 3)', 'visibleParameters.value.slice(0, 4)'))],
-  ['移除布局帧聚焦', hasExplicitFocusLifecycle(motionPage.replaceAll('requestAnimationFrame(focusPartInspectorOnFrame)', 'focusPartInspectorOnFrame()'))],
+  ['移除有限布局帧聚焦上限', hasExplicitFocusLifecycle(motionPage.replace('inspectorFocusAttempts < MAX_INSPECTOR_FOCUS_FRAMES', 'true'))],
   ['不再确认焦点进入 panel', hasExplicitFocusLifecycle(motionPage.replace('panel.contains(document.activeElement)', 'document.activeElement === target'))],
+  ['重新允许按钮抢占 Space', hasInteractiveKeyboardBoundary(motionPage.replace("'button'", "'canvas'"))],
 ]
 
 for (const [name, survived] of mutations) checks.push([`负向变异必须失败：${name}`, !survived])
