@@ -63,3 +63,28 @@ pnpm build:extension
 - [ ] Domain code has no infrastructure dependency.
 - [ ] Network master-switch and sensitive-data boundaries remain intact.
 - [ ] User documentation is updated.
+
+## 9. Documentation responsibilities and naming
+
+- `README.en.md` provides product positioning, quick start, and primary navigation.
+- `TECH-STACK.md` explains dependency purpose, version baselines, and selection boundaries.
+- `ARCHITECTURE.md` explains modules, dependency direction, and data flow.
+- `DEVELOPMENT.md` defines commands, change locations, and the validation matrix.
+- `PROJECT-STATUS.md` tracks completed, incomplete, and next-phase work.
+- Feature guides remain focused on their feature, data, operations, or acceptance criteria.
+
+Chinese documents under `docs/zh-CN/` use Chinese filenames; ADRs retain their four-digit number and use a Chinese topic. English documents retain English filenames under `docs/en/`. Register new bilingual pairs in `scripts/check-documentation.mjs` and add them to `docs/README.md`.
+
+Document renames must update README files, internal links, focused scripts, `.ai` state, and session handoff. Run:
+
+```bash
+pnpm check:documentation
+```
+
+The gate validates Chinese filenames, required sections, and local Markdown links. Do not retain empty legacy shells to hide broken references.
+
+## 10. Technology-stack changes
+
+Framework upgrades, new production dependencies, or build-tool changes require synchronized review of affected manifests, `pnpm-lock.yaml`, Node/pnpm baselines, `TECH-STACK.md`, architecture boundaries, development and release commands, type checks, tests, production builds, and real-browser acceptance.
+
+A version-only edit without behavior, typing, bundle, and browser-compatibility verification is not a completed stack upgrade.

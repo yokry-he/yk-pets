@@ -6,6 +6,12 @@
 import type { AuditCategory, AuditIssue, AuditIssueCode, AuditReport } from './audit'
 import type { NetworkEntry, NetworkRule, NetworkSiteSettings, NetworkSnapshot } from './network'
 import type { PetIdentity } from './brand'
+import type {
+  PetMemoryCard,
+  PetMemoryCreateInput,
+  PetMemoryRelocateInput,
+  PetMemoryUpdatePatch,
+} from './pet-memory'
 
 export type YkPetAction =
   | 'audit'
@@ -14,6 +20,7 @@ export type YkPetAction =
   | 'preview-current'
   | 'rollback-preview'
   | 'open-report'
+  | 'open-memory'
   | 'network-lab'
   | 'connect-agent'
   | 'generate-patch'
@@ -66,11 +73,13 @@ export interface YkPetVisualState {
   previewActive: boolean
   busy: boolean
   agentConnected: boolean
+  /** 当前页面关联的未归档记忆数量。 / Number of non-archived memories linked to the current page. */
+  memoryCount?: number
 }
 
 /**
- * Wire Message 在一个兼容周期内保留 v0.6.10 的 NOVA 前缀。
- * Wire messages retain the v0.6.10 NOVA prefix for one compatibility cycle.
+ * Wire Message 在一个兼容周期内保留 v0.6.10 的 NOVA 前缀；新领域使用 YK_PET 前缀。
+ * Wire messages retain the v0.6.10 NOVA prefix for one compatibility cycle; new domains use the YK_PET prefix.
  */
 export type YkPetsRuntimeMessage =
   | { type: 'NOVA_OPEN_SIDE_PANEL'; action?: YkPetAction; issueId?: string }
@@ -94,6 +103,16 @@ export type YkPetsRuntimeMessage =
   | { type: 'NOVA_NETWORK_UPDATED'; pageUrl: string; entryCount: number }
   | { type: 'NOVA_NETWORK_ENTRY'; entry: NetworkEntry }
   | { type: 'NOVA_NETWORK_SNAPSHOT'; snapshot: NetworkSnapshot }
+  | { type: 'YK_PET_MEMORY_LIST' }
+  | { type: 'YK_PET_MEMORY_CREATE'; input: PetMemoryCreateInput }
+  | { type: 'YK_PET_MEMORY_IMPORT'; payload: unknown }
+  | { type: 'YK_PET_MEMORY_HIGHLIGHT'; input: PetMemoryRelocateInput }
+  | { type: 'YK_PET_MEMORY_UPDATE'; cardId: string; patch: PetMemoryUpdatePatch }
+  | { type: 'YK_PET_MEMORY_ARCHIVE'; cardId: string }
+  | { type: 'YK_PET_MEMORY_UPDATED'; reason: 'created' | 'updated' | 'archived'; card: PetMemoryCard }
+  | { type: 'YK_PET_MEMORY_UPDATED'; reason: 'imported' }
+  | { type: 'YK_PET_MEMORY_DRAFT_READY'; tabId: number }
+  | { type: 'YK_PET_MEMORY_GET_CONTEXT' }
 
 /** @deprecated Use YkPetAction. */
 export type NovaPetAction = YkPetAction

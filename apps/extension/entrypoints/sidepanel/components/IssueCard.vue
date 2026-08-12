@@ -17,6 +17,7 @@ const emit = defineEmits<{
   highlight: [issue: AuditIssue]
   preview: [issue: AuditIssue]
   rollbackPreview: [issue: AuditIssue]
+  remember: [issue: AuditIssue]
   patch: [issue: AuditIssue]
 }>()
 
@@ -36,7 +37,13 @@ const categoryLabel: Record<AuditIssue['category'], string> = {
 </script>
 
 <template>
-  <article class="issue-card" :data-severity="issue.severity">
+  <article
+    class="issue-card"
+    :data-severity="issue.severity"
+    :data-issue-id="issue.id"
+    :data-agent-connected="agentConnected"
+    tabindex="-1"
+  >
     <header>
       <span class="severity">{{ severityLabel[issue.severity] }}</span>
       <span class="category">{{ categoryLabel[issue.category] }}</span>
@@ -55,7 +62,16 @@ const categoryLabel: Record<AuditIssue['category'], string> = {
       >
         {{ previewing ? '撤销预览' : '预览修改' }}
       </button>
-      <button type="button" :disabled="!agentConnected || busy" @click="emit('patch', issue)">
+      <button type="button" @click="emit('remember', issue)">记住</button>
+      <button
+        type="button"
+        data-issue-action="generate-patch"
+        :data-agent-connected="agentConnected"
+        :aria-label="agentConnected ? '生成源码补丁' : '连接 Local Agent 并生成源码补丁'"
+        :aria-busy="busy"
+        :disabled="busy"
+        @click="emit('patch', issue)"
+      >
         源码补丁
       </button>
     </footer>

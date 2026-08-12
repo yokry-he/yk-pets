@@ -33,10 +33,12 @@ export function useLocalAgent() {
   const proposal = ref<PatchProposal | null>(null)
   const checks = ref<CheckResult[]>([])
   const pending = new Map<string, PendingRequest>()
+  let patchGenerationPending = false
 
   const connected = computed(() => status.value === 'connected')
 
   async function connect(url: string, token: string) {
+    if (status.value === 'connecting') return
     disconnect()
     status.value = 'connecting'
     error.value = ''
@@ -90,8 +92,15 @@ export function useLocalAgent() {
   }
 
   async function generatePatch(issue: AuditIssue, pageUrl: string) {
-    proposal.value = await request<PatchProposal>({ type: 'patch.generate', issue, pageUrl })
-    return proposal.value
+    if (patchGenerationPending) throw new Error('已有源码补丁正在生成，请等待完成后再试')
+    patchGenerationPending = true
+    try {
+      proposal.value = await request<PatchProposal>({ type: 'patch.generate', issue, pageUrl })
+      return proposal.value
+    }
+    finally {
+      patchGenerationPending = false
+    }
   }
 
   async function applyPatch() {

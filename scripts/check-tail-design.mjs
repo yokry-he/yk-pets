@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 const extensionTail = readFileSync(new URL('../apps/extension/components/avatar/CloudFox.vue', import.meta.url), 'utf8')
 const playgroundTail = readFileSync(new URL('../apps/playground/app/components/pet/CloudFox.vue', import.meta.url), 'utf8')
-const zhDoc = readFileSync(new URL('../docs/zh-CN/TAIL-DESIGN.md', import.meta.url), 'utf8')
+const zhDoc = readFileSync(new URL('../docs/zh-CN/尾巴设计.md', import.meta.url), 'utf8')
 const enDoc = readFileSync(new URL('../docs/en/TAIL-DESIGN.md', import.meta.url), 'utf8')
 
 const requirements = [

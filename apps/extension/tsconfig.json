@@ -3,6 +3,15 @@
   "compilerOptions": {
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": [
+        "./*"
+      ],
+      "yk-pets-unified-cloud-fox": [
+        "types/unified-cloud-fox.d.ts"
+      ]
+    },
     "types": [
       "chrome"
     ]

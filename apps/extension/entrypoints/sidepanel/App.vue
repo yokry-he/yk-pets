@@ -19,6 +19,7 @@ import type { CheckResult } from '@nova/shared/protocol'
 import AgentConnection from './components/AgentConnection.vue'
 import IssueCard from './components/IssueCard.vue'
 import NetworkLab from '../../features/network-lab/presentation/components/NetworkLab.vue'
+import PetMemory from '../../features/pet-memory/presentation/components/PetMemory.vue'
 import { useLocalAgent } from './composables/useLocalAgent'
 
 const NOVA_VERSION = '0.6.10'
@@ -36,7 +37,7 @@ const previewIssueId = ref<string | null>(null)
 const patchBusy = ref(false)
 const patchError = ref('')
 const showAgent = ref(false)
-const workspace = ref<'audit' | 'network'>('audit')
+const workspace = ref<'memory' | 'audit' | 'network'>('memory')
 const agentUrl = ref('ws://127.0.0.1:4736')
 const agentToken = ref('')
 const petVoicePreset = ref<NovaPetVoicePreset>('alien')
@@ -218,6 +219,30 @@ async function previewIssue(issue: AuditIssue) {
 async function rollbackPreview(issue: AuditIssue) {
   await sendToPage({ type: 'NOVA_ROLLBACK_PREVIEW', issueId: issue.id })
   if (previewIssueId.value === issue.id) previewIssueId.value = null
+}
+
+async function rememberIssue(issue: AuditIssue) {
+  const response = await chrome.runtime.sendMessage({
+    type: 'YK_PET_MEMORY_CREATE',
+    input: {
+      type: 'audit-issue',
+      title: issue.title,
+      content: issue.description,
+      selector: issue.selector,
+      pageUrl: report.value?.url || currentTab.value?.url,
+      pageTitle: report.value?.title || currentTab.value?.title,
+      status: 'todo',
+      priority: issue.severity === 'high' ? 'high' : issue.severity === 'low' ? 'low' : 'medium',
+      tags: ['页面审计', auditCategoryLabel(issue.category)],
+      relatedAuditIssueId: issue.id,
+    },
+  } satisfies NovaRuntimeMessage) as { ok?: boolean; error?: string } | undefined
+  if (!response?.ok) {
+    pageError.value = response?.error || '无法保存审计问题。'
+    return
+  }
+  workspace.value = 'memory'
+  await syncPetState({ behavior: 'greeting', speech: '这个审计问题已经加入宠物记忆和待办。', busy: false })
 }
 
 async function generatePatch(issue: AuditIssue) {
@@ -500,6 +525,11 @@ async function sendToPage(message: unknown): Promise<any> {
 }
 
 function onRuntimeMessage(message: NovaRuntimeMessage) {
+  if (message.type === 'YK_PET_MEMORY_DRAFT_READY' && message.tabId === currentTab.value?.id) {
+    workspace.value = 'memory'
+    return
+  }
+
   if (message.type === 'NOVA_REPORT_UPDATED' && message.tabId === currentTab.value?.id) {
     report.value = message.report
     return
@@ -527,6 +557,15 @@ async function consumePendingPetAction() {
 
 // 宠物工程动作在此映射为 Side Panel 用例，避免页面覆盖层直接访问 Agent。 / Pet engineering actions map to Side Panel use cases here so the page overlay never accesses the Agent directly.
 async function executePetAction(action: NovaPetAction, issueId?: string) {
+  if (action === 'open-memory') {
+    workspace.value = 'memory'
+    showAgent.value = false
+    await nextTick()
+    document.querySelector('.memory-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    await syncPetState({ behavior: 'greeting', speech: '宠物记忆已经打开。', busy: false })
+    return
+  }
+
   if (action === 'open-report') {
     await nextTick()
     document.querySelector('.report-section, .page-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -655,11 +694,19 @@ function compactOutput(result: CheckResult) {
     </section>
 
     <nav class="workspace-tabs" aria-label="工作区切换">
+      <button type="button" :class="{ active: workspace === 'memory' }" @click="workspace = 'memory'">宠物记忆</button>
       <button type="button" :class="{ active: workspace === 'audit' }" @click="workspace = 'audit'">页面审计</button>
       <button type="button" :class="{ active: workspace === 'network' }" @click="workspace = 'network'">网络实验室</button>
     </nav>
 
-    <template v-if="workspace === 'audit'">
+    <PetMemory
+      v-if="workspace === 'memory'"
+      :tab="currentTab"
+      :active="workspace === 'memory'"
+      @pet-state="syncPetState"
+    />
+
+    <template v-else-if="workspace === 'audit'">
     <section class="page-card">
       <div class="page-meta">
         <div>
@@ -778,6 +825,7 @@ function compactOutput(result: CheckResult) {
           @highlight="highlightIssue"
           @preview="previewIssue"
           @rollback-preview="rollbackPreview"
+          @remember="rememberIssue"
           @patch="generatePatch"
         />
       </div>

@@ -64,7 +64,7 @@ http://localhost:3000/audit-lab
 - 四向视角、三种背景和六项动作测试；
 - 本地保存、重置、随机生成、JSON 导入与导出。
 
-完整设计和数据结构见 [`docs/zh-CN/CLOUD-FOX-STUDIO.md`](../../docs/zh-CN/CLOUD-FOX-STUDIO.md)。
+完整设计和数据结构见 [`docs/zh-CN/云狐工坊.md`](../../docs/zh-CN/云狐工坊.md)。
 
 ## 品牌与身份约束
 

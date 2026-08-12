@@ -13,6 +13,9 @@
   },
   "dependencies": {
     "@nova/shared": "workspace:*",
+    "@yk-pets/pet-core": "workspace:*",
+    "@yk-pets/pet-vue-adapter": "workspace:*",
+    "@yk-pets/pet-web-component": "workspace:*",
     "@tresjs/core": "5.8.3",
     "three": "0.185.1",
     "vue": "3.5.40"

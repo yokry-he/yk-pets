@@ -1,4 +1,4 @@
-# NOVA Cloud Fox Tail Design
+# YK-PETS Cloud Fox Tail Design
 
 ## 1. Current problem
 

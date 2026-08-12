@@ -1,0 +1,587 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "classic-default-front",
+      "route": "/studio-visual-audit?body=ellipsoid&head=classic-round&eyes=round&belly=ellipse&view=front",
+      "automatedChecks": [
+        "belly-front-facing-winding",
+        "belly-surface-offset",
+        "eye-surface-exposure"
+      ],
+      "manualChecks": [
+        "belly-visible",
+        "front-paws-at-classic-anchor",
+        "hind-paws-balanced",
+        "mouth-not-floating"
+      ]
+    },
+    {
+      "id": "classic-default-left",
+      "route": "/studio-visual-audit?body=ellipsoid&head=classic-round&eyes=round&belly=ellipse&view=left",
+      "automatedChecks": [
+        "belly-curves-with-body",
+        "muzzle-anchor-follows-head-surface"
+      ],
+      "manualChecks": [
+        "belly-not-flat-or-floating",
+        "nose-and-mouth-not-detached",
+        "paws-occlude-belly-naturally"
+      ]
+    },
+    {
+      "id": "spark-eye-left",
+      "route": "/studio-visual-audit?body=ellipsoid&head=classic-round&eyes=spark&belly=ellipse&view=left",
+      "automatedChecks": [
+        "spark-minimum-projected-size",
+        "spark-blink-floor",
+        "eye-outside-head-surface"
+      ],
+      "manualChecks": [
+        "spark-shape-readable",
+        "outline-visible",
+        "eye-not-buried-in-head"
+      ]
+    },
+    {
+      "id": "rounded-cube-belly-front",
+      "route": "/studio-visual-audit?body=rounded-cube&head=rounded-cube&eyes=diamond&belly=rounded-rectangle&view=front",
+      "automatedChecks": [
+        "belly-coplanar-with-flat-front",
+        "triangle-normal-direction"
+      ],
+      "manualChecks": [
+        "belly-visible-on-flat-front",
+        "diamond-eyes-readable",
+        "no-z-fighting"
+      ]
+    },
+    {
+      "id": "asymmetric-paws-manual",
+      "route": "/studio/appearance",
+      "recipeOverrides": {
+        "frontPawDesign.mirror": false,
+        "frontPawDesign.leftOffsetY": 0.2,
+        "frontPawDesign.rightOffsetY": -0.16,
+        "hindPawDesign.mirror": false,
+        "hindPawDesign.leftOffsetX": -0.18,
+        "hindPawDesign.rightOffsetX": 0.16
+      },
+      "automatedChecks": [
+        "front-and-hind-paw-values-survive-normalization"
+      ],
+      "manualChecks": [
+        "left-and-right-paws-are-visibly-independent",
+        "no-unintended-mirroring",
+        "no-paw-detachment"
+      ]
+    },
+    {
+      "id": "custom-motion-timeline-preview",
+      "route": "/studio/motion",
+      "setup": {
+        "createMotion": true,
+        "keyframes": [
+          "root.position.y@0=0",
+          "root.position.y@600=1",
+          "mouth.open@300=1"
+        ]
+      },
+      "automatedChecks": [
+        "single-canonical-tres-canvas",
+        "semantic-pose-propagation",
+        "timeline-keyframe-selection",
+        "un-authored-channel-preservation"
+      ],
+      "manualChecks": [
+        "playhead-drives-preview",
+        "mouth-keyframe-does-not-disable-un-authored-blink",
+        "body-and-belly-move-together",
+        "refresh-restores-saved-motion"
+      ]
+    },
+    {
+      "id": "motion-prop-hold-throw-catch",
+      "route": "/studio/motion",
+      "setup": {
+        "propKind": "composite",
+        "events": [
+          "create@0",
+          "attach:right-front-paw@0",
+          "detach:world@500",
+          "move@800",
+          "attach:left-front-paw@1200",
+          "destroy@1800"
+        ]
+      },
+      "automatedChecks": [
+        "prop-event-time-resolution",
+        "single-tres-canvas-prop-instance",
+        "missing-dependency-diagnostic"
+      ],
+      "manualChecks": [
+        "prop-attaches-to-right-paw",
+        "detached-prop-moves-in-world-space",
+        "prop-catches-on-left-paw",
+        "destroy-removes-instance"
+      ]
+    },
+    {
+      "id": "prop-entity-material-anchor",
+      "route": "/studio/props",
+      "automatedChecks": [
+        "prop-component-budget",
+        "prop-hierarchy-cycle-cleanup",
+        "prop-material-range-normalization",
+        "prop-anchor-transform-persistence",
+        "sole-scene-prop-model"
+      ],
+      "manualChecks": [
+        "component-tree-edits-visible",
+        "materials-readable-on-dark-and-light",
+        "grip-display-emitter-anchors-align",
+        "no-depth-order-regression"
+      ]
+    },
+    {
+      "id": "advanced-motion-guides-glb",
+      "route": "/studio/motion",
+      "automatedChecks": [
+        "smooth-bezier-curve-evaluation",
+        "motion-layer-weight-composition",
+        "semantic-onion-guide-single-scene",
+        "motion-path-sample-budget",
+        "local-glb-header-uri-validation"
+      ],
+      "manualChecks": [
+        "curve-controls-usable",
+        "onion-guides-readable-not-pet-clones",
+        "motion-path-does-not-obscure-pet",
+        "local-audio-user-gesture-works",
+        "safe-glb-renders-without-network"
+      ]
+    },
+    {
+      "id": "motion-direct-body-part-authoring",
+      "route": "/studio/motion",
+      "setup": {
+        "createMotion": true,
+        "selectedPart": "root",
+        "scope": "current-frame",
+        "mode": "scale"
+      },
+      "automatedChecks": [
+        "body-part-control-registry",
+        "three-authoring-scopes",
+        "uniform-scale-three-channel-write",
+        "whole-clip-additive-correction-layer",
+        "symmetry-channel-pairing"
+      ],
+      "manualChecks": [
+        "direct-pad-drag-is-responsive",
+        "part-tree-and-preview-selection-stay-synchronized",
+        "whole-pet-scale-reads-as-multiplier",
+        "selected-keyframe-scope-only-edits-selection",
+        "undo-restores-one-complete-drag-gesture"
+      ]
+    },
+    {
+      "id": "motion-preview-transform-and-chinese-ui",
+      "route": "/studio/motion",
+      "setup": {
+        "previewScale": 0.72,
+        "previewRotationDegrees": [
+          18,
+          -35,
+          8
+        ],
+        "viewport": [
+          1920,
+          1080
+        ]
+      },
+      "automatedChecks": [
+        "canonical-preview-transform-wrapper",
+        "preview-scale-bounds",
+        "pointer-drag-rotation-contract",
+        "property-panel-no-horizontal-overflow",
+        "chinese-first-motion-copy"
+      ],
+      "manualChecks": [
+        "pet-fits-preview-at-default-scale",
+        "drag-rotation-feels-continuous",
+        "wheel-does-not-scale-preview-and-slider-remains-functional",
+        "right-panel-has-no-horizontal-scrollbar",
+        "motion-editor-primary-copy-is-chinese"
+      ]
+    },
+    {
+      "id": "motion-preview-upward-tabbed-properties",
+      "route": "/studio/motion",
+      "setup": {
+        "previewScale": 0.72,
+        "previewPositionY": 0.32,
+        "propertyTab": "pose",
+        "viewport": [
+          1920,
+          1080
+        ]
+      },
+      "automatedChecks": [
+        "preview-position-canonical-wrapper",
+        "four-property-tab-contract",
+        "desktop-sidebar-height-bound",
+        "tab-content-local-scroll"
+      ],
+      "manualChecks": [
+        "pet-appears-vertically-centered-above-bottom-edge",
+        "switching-tabs-does-not-change-the-playhead",
+        "property-panel-does-not-extend-page-height",
+        "each-tab-scrolls-independently-when-needed"
+      ]
+    },
+    {
+      "id": "motion-property-panel-scroll-and-alignment",
+      "route": "/studio/motion",
+      "setup": {
+        "propertyTab": "advanced",
+        "viewport": [
+          1920,
+          1080
+        ],
+        "advancedContentExceedsPanel": true
+      },
+      "automatedChecks": [
+        "workspace-height-is-viewport-bounded",
+        "property-panel-aligns-with-editor-top",
+        "tab-body-is-only-vertical-scroll-container",
+        "tab-body-keeps-floating-action-safe-inset"
+      ],
+      "manualChecks": [
+        "advanced-tab-scrolls-to-last-control",
+        "property-header-and-tabs-remain-visible",
+        "panel-top-aligns-with-main-editor",
+        "floating-style-button-does-not-cover-last-control"
+      ]
+    },
+    {
+      "id": "studio-shared-preview-orientation",
+      "route": "/studio/appearance",
+      "setup": {
+        "repeatRoutes": [
+          "/studio/motion",
+          "/studio/props"
+        ],
+        "dragOffsetDegrees": [
+          20,
+          -35,
+          0
+        ]
+      },
+      "automatedChecks": [
+        "shared-preview-orientation-controller",
+        "canonical-view-clears-free-rotation-offset",
+        "three-studio-preview-rotation-wiring",
+        "foreground-interaction-layer-exclusions",
+        "shared-preview-toolbar-component",
+        "canonical-view-and-transform-grouping",
+        "three-studio-preview-scale-wiring"
+      ],
+      "manualChecks": [
+        "drag-rotates-preview-in-all-three-studios",
+        "front-left-back-right-ignore-previous-drag-offset",
+        "active-view-button-clears-new-drag-offset",
+        "appearance-hotspots-and-prop-badge-remain-readable",
+        "toolbar-does-not-cover-pet-or-motion-direct-pad",
+        "toolbar-wraps-without-horizontal-overflow"
+      ]
+    },
+    {
+      "id": "studio-expression-motion-and-built-in-assets",
+      "route": "/studio/appearance",
+      "setup": {
+        "repeatRoutes": ["/studio/motion", "/studio/library"],
+        "viewport": [1920, 1080]
+      },
+      "automatedChecks": [
+        "expression-eye-and-nose-registration",
+        "motion-safe-channel-clamping",
+        "built-in-prop-and-motion-id-uniqueness",
+        "built-in-motion-prop-dependency-resolution"
+      ],
+      "manualChecks": [
+        "new-eyes-fit-all-head-shapes-from-front-and-side",
+        "new-noses-follow-muzzle-surface-and-glow",
+        "safe-deformation-returns-to-base-appearance",
+        "staff-and-glow-sticks-render-during-template-playback",
+        "library-copies-do-not-mutate-read-only-templates"
+      ]
+    },
+    {
+      "id": "studio-long-form-complex-motion-choreography",
+      "route": "/studio/library",
+      "setup": {
+        "repeatRoutes": ["/studio/motion"],
+        "viewport": [1440, 900]
+      },
+      "automatedChecks": [
+        "six-motion-duration-range",
+        "minimum-semantic-channel-and-keyframe-density",
+        "seamless-loop-boundaries",
+        "all-values-within-semantic-rig-ranges"
+      ],
+      "manualChecks": [
+        "play-all-six-copied-motion-templates",
+        "observe-preparation-main-transition-climax-and-recovery",
+        "confirm-gaze-limbs-tail-and-expression-coordination",
+        "confirm-staff-and-glow-stick-accent-events",
+        "confirm-no-horizontal-overflow-at-760px"
+      ]
+    },
+    {
+      "id": "studio-global-dual-model-mode",
+      "route": "/studio/appearance",
+      "setup": {
+        "repeatRoutes": ["/studio/motion", "/studio/props", "/studio/library"],
+        "viewports": [[1440, 900], [760, 900]],
+        "initialComplexStatus": "missing"
+      },
+      "automatedChecks": [
+        "dual-model-domain-normalization",
+        "non-destructive-complex-draft-creation",
+        "global-model-mode-session-persistence",
+        "three-workspace-model-mode-wiring",
+        "canonical-renderer-preservation"
+      ],
+      "manualChecks": [
+        "selecting-complex-creates-draft-without-extra-dialog",
+        "mode-persists-across-all-studio-routes-and-refresh",
+        "复杂模式会用实际双足模型替换简单兼容预览，且不叠加两个模型",
+        "三个工坊读取同一宠物的持久化复杂配方，切换路由后配方保持一致",
+        "人为触发编译或运行时失败时显示“生成失败，已回退简单模型”，简单预览仍可拖拽旋转",
+        "asset-library-reports-real-simple-and-complex-status",
+        "1440×900 与 760×900 下工具栏、状态和资产详情均无横向溢出"
+      ]
+    },
+    {
+      "id": "studio-complex-beginner-editor",
+      "route": "/studio/appearance",
+      "setup": {
+        "modelMode": "complex",
+        "viewports": [[1440, 900], [760, 900]],
+        "initialBodyStyle": "soft"
+      },
+      "automatedChecks": [
+        "complex-model-beginner-editor-static-gate",
+        "recipe-limit-driven-proportion-controls",
+        "complex-recipe-atomic-patch-clears-stale-compilation"
+      ],
+      "manualChecks": [
+        "切换复杂模式后自动生成默认模型并显示新手编辑器",
+        "用三步完成一次编辑：选择模板、拖动身高后松开、开关尾巴",
+        "每次滑块拖动只产生一次配方写入，尾巴长度和分段保持不变",
+        "展开只读高级信息可看到 Profile、生成器、骨骼数、顶点数、诊断和安全范围",
+        "1440×900 与 760×900 均为单列可操作布局且没有横向滚动"
+      ]
+    },
+    {
+      "id": "biped-pet-phase1-browser-acceptance",
+      "route": "/studio/appearance",
+      "setup": {
+        "modelMode": "complex",
+        "bodyStyles": [
+          "soft",
+          "athletic",
+          "round",
+          "slender"
+        ],
+        "repeatRoutes": [
+          "/studio/motion",
+          "/studio/props"
+        ],
+        "viewports": [
+          [
+            1440,
+            900
+          ],
+          [
+            760,
+            900
+          ]
+        ]
+      },
+      "automatedChecks": [
+        "corepack pnpm --filter @yk-pets/pet-core test",
+        "corepack pnpm run test:studio-model-variants",
+        "node scripts/check-studio-model-mode.mjs",
+        "corepack pnpm run test:studio-complex-biped-runtime",
+        "corepack pnpm run check:studio-complex-biped-model",
+        "node scripts/check-studio-workspace-shell.mjs",
+        "node scripts/check-unified-cloud-fox-renderer.mjs"
+      ],
+      "manualChecks": [
+        "manual: 在 1440×900 和 760×900 各选择柔软、运动、圆润、纤细四个模板，确认新手编辑器可操作且无横向溢出",
+        "manual: 修改比例与附属物、刷新并切换到动作和道具工坊，确认同一 petId 的复杂配方、编译状态和编辑值持续一致",
+        "manual: 使用键盘 Tab、Enter、Space 与范围输入操作模板、附属开关和比例，确认可见焦点和正确语义状态",
+        "manual: 人为触发复杂编译或运行时失败，确认提示“生成失败，已回退简单模型”，简单模型可继续显示与旋转，且复杂配方没有被删除",
+        "manual: 检查浏览器控制台无未处理错误，并记录 GPU/WebGL、跨浏览器渲染和最终像素验收；这些项目在主代理实际验收前均不得标记完成"
+      ]
+    },
+    {
+      "id": "biped-pet-complex-prop-socket-preview",
+      "route": "/studio/motion",
+      "setup": {
+        "modelMode": "complex",
+        "repeatRoutes": [
+          "/studio/props"
+        ],
+        "mounts": [
+          "left-front-paw",
+          "right-front-paw",
+          "left-hind-paw",
+          "right-hind-paw",
+          "head-top",
+          "muzzle",
+          "tail-tip",
+          "pet-root",
+          "world"
+        ]
+      },
+      "automatedChecks": [
+        "complex-runtime-socket-groups-follow-bones",
+        "legacy-paw-mounts-map-to-hand-and-foot-sockets",
+        "world-space-remains-in-character-root-space",
+        "complex-renderer-reuses-studio-prop-model",
+        "socket-groups-detach-on-runtime-dispose"
+      ],
+      "manualChecks": [
+        "passed-2026-07-28-chrome-functional: 在复杂模式把高对比青色方块挂到 right-front-paw，确认完整 Mesh 子树重挂到真实 hand.right Socket 后仍可见；控制台无应用错误、父子关系警告或 hydration mismatch，1440 宽度无横向溢出",
+        "pending: 逐个播放或预览前爪、后爪、头顶、口鼻、尾尖和角色根挂点的道具事件，确认所有道具随对应骨骼动作",
+        "pending: 分离为 world 空间后旋转或缩放整体预览，确认道具仍处于角色根空间且不错误落到全局场景",
+        "pending: 切换 preserve materials 并重复编辑、切换模式与路由，确认材质策略一致且控制台无资源或父子关系错误"
+      ]
+    },
+    {
+      "id": "studio-model-variant-lazy-hydration-review",
+      "route": "/studio/appearance",
+      "setup": {
+        "modelMode": "complex",
+        "historicalPetCounts": [10, 50, 100],
+        "storedSummaryStatuses": ["ready", "blocked"],
+        "viewports": [[1440, 900], [760, 900]]
+      },
+      "automatedChecks": [
+        "collection-hydration-discards-unverified-compilation-summaries",
+        "hundred-entry-structural-scale-regression",
+        "authoritative-collection-key-preserved",
+        "verified-in-memory-state-preserved",
+        "current-renderer-compilation-can-commit-ready"
+      ],
+      "manualChecks": [
+        "passed-2026-07-28-chrome-functional: 刷新含未验证复杂摘要的本地状态后进入当前宠物 renderer，确认真实编译回写 ready、completion=100 和 compilation hash；控制台无应用错误或 hydration mismatch，1440 宽度无横向溢出",
+        "pending: 分别注入 10、50、100 个历史复杂宠物与伪造 ready/blocked 摘要，确认除当前访问项外的历史条目保持待重新生成且页面交互流畅",
+        "pending: 在 760×900 复核该懒水合批次的模式切换、简单模型、控制台和刷新状态；自动测试与本次 1440 功能复测不替代窄屏和跨浏览器 GPU/WebGL 验收"
+      ]
+    },
+    {
+      "id": "biped-pet-semantic-motion-phase1",
+      "route": "/studio/motion",
+      "setup": {
+        "modelMode": "complex",
+        "templates": ["待机呼吸", "行走循环", "起跳与落地", "招手", "直拳组合"],
+        "viewports": [[1440, 900], [760, 900]]
+      },
+      "automatedChecks": [
+        "quaternion-normalization-and-shortest-path-slerp",
+        "semantic-pose-to-profile-bone-mapping",
+        "joint-limit-clamping-before-quaternion",
+        "deterministic-clip-compilation-and-sampling",
+        "bind-pose-relative-three-runtime-controller",
+        "five-basic-motion-template-registration",
+        "single-canvas-complex-preview-wiring"
+      ],
+      "manualChecks": [
+        "passed-2026-07-28-chrome-1440: 五个基础模板均可一键复制为本地可编辑动作，复杂模型保持 ready，并显示 3600/1200/2400/3200/4000 ms 对应时长",
+        "passed-2026-07-28-chrome-playback: 行走循环播放指针从 0 前进，暂停后稳定在同一毫秒，停止后回到 0；简单/复杂模式切换后 Canvas 模式与复杂状态一致",
+        "passed-2026-07-28-responsive-and-console: 1440×900 与 760×900 均满足 clientWidth === scrollWidth，窄屏五个模板按钮全部可见，控制台无 error",
+        "pending: 在真实复杂角色拓扑完成后逐动作复核足底滑动、重心、穿模、肢体弧线和最终像素；当前低细节程序化网格只能证明编译与播放链路",
+        "pending: Safari/Firefox、不同 GPU/WebGL 驱动与最终像素仍属于 cross-browser-gpu-manual-acceptance，不由本次 Chrome 功能验收替代"
+      ]
+    },
+    {
+      "id": "biped-pet-hybrid-ik-foot-lock",
+      "route": "/studio/motion",
+      "setup": {
+        "modelMode": "complex",
+        "templates": ["待机呼吸", "行走循环", "起跳与落地", "招手", "直拳组合"],
+        "viewports": [[1440, 900], [760, 900]]
+      },
+      "automatedChecks": [
+        "hybrid-ik-profile-and-compiled-contract",
+        "analytic-two-bone-reach-and-pole-constraints",
+        "constrained-fabrik-complete-reach-domain",
+        "deterministic-contact-phase-sampling",
+        "three-runtime-foot-anchor-locking",
+        "renderer-controller-lifecycle-and-fallback",
+        "walk-clamped-residual-remains-finite"
+      ],
+      "manualChecks": [
+        "passed-2026-07-28-chromium-1440: 在本地开发环境实际选择并播放待机、行走、起跳落地、招手和直拳；行走暂停/停止、起跳中切换招手归零、3000ms 回拖到 300ms、简单与复杂模式切换均正常，未见旧足锚残留",
+        "passed-2026-07-28-chromium-motion-quality: 未见明显支撑脚水平漂移、膝盖翻折、踝朝向突变、落地穿插或双支撑骨盆突跳；跳跃离地符合动作语义",
+        "passed-2026-07-28-chromium-responsive-console: 1440×900 与 760×900 均满足 scrollWidth === clientWidth；窄屏工具栏、动作列表和编辑器单列可操作，播放/暂停/停止可用；两个新标签 reload 后控制台 error 为空，未见 hydration mismatch",
+        "pending: 行走单支撑超出纯旋转可达域时允许有限 clamped 残差，不得把它描述为完整 Root Motion 已完成",
+        "pending: Safari/Firefox、不同 GPU/WebGL 驱动、高细节拓扑与最终像素仍属于后续人工验收"
+      ]
+    },
+    {
+      "id": "biped-pet-root-motion-motion-vfx",
+      "route": "/studio/motion",
+      "setup": {
+        "modelMode": "complex",
+        "templates": ["行走循环", "冲刺急停挑战", "起跳与落地"],
+        "viewports": [[1440, 900], [760, 900]]
+      },
+      "automatedChecks": [
+        "corepack pnpm typecheck",
+        "corepack pnpm test",
+        "corepack pnpm build:playground",
+        "node scripts/check-documentation.mjs",
+        "node scripts/check-ai-handoff.mjs",
+        "git diff --check",
+        "pull-request-history-event-simulation"
+      ],
+      "manualChecks": [
+        "passed-2026-07-29-chromium-1440: Chromium 1440×900 下复杂模型 ready 且 canvas=1、横向溢出=0；新建行走默认实际位移与自动特效，播放跨两个周期连续，暂停冻结、停止归零、反向回拖无崩溃；冲刺默认距离 2.40×身高，浏览器可见连续位移与制动姿态，实际运行时探针确认 speed-trail/brake-sparks 共 304 个信号但截图粒子较细微；跳跃默认高度 0.28×身高且可见腾空与落地；简单/复杂互斥、干净标签页 console error=0、hydration/mismatch=0",
+        "passed-2026-07-29-chromium-760: Chromium 760×900 修复后设置面板宽 708px，移动方式实际 columns=674px 单列、摘要实际 columns=684px 单列；overflow=0、canvas=1，跳跃播放/暂停/停止与简单/复杂切换正常，console error=0、hydration/mismatch=0；桌面同步复测无布局回归",
+        "pending: Safari/Firefox 与不同 GPU/WebGL 驱动的渲染、资源释放、最终像素和性能验收未执行，Chromium 双视口结果不能替代该边界",
+        "pending: 高细节拓扑、正式关节体积保持、四足与机甲 Profile 以及高级动作适配仍未完成，当前证据只覆盖低细节双足萌宠站内 runtime"
+      ]
+    },
+    {
+      "id": "biped-pet-nebula-staff-adaptation",
+      "route": "/studio/motion",
+      "setup": {
+        "modelMode": "complex",
+        "template": "星云棍术组合",
+        "checkpointsMs": [450, 2100, 3800, 6100, 8500, 9700, 11200],
+        "viewports": [[1440, 900], [760, 900]]
+      },
+      "automatedChecks": [
+        "corepack pnpm typecheck",
+        "corepack pnpm test",
+        "corepack pnpm build:playground",
+        "node scripts/check-documentation.mjs",
+        "node scripts/check-ai-handoff.mjs",
+        "git diff --check",
+        "pull-request-history-event-simulation"
+      ],
+      "manualChecks": [
+        "passed-2026-07-29-chromium-1440: Chromium 1440×900 下新复制“星云棍术组合”无需额外配置即可播放；450/2100/3800/6100/8500/9700/11200ms 七个检查点覆盖准备、棍花、换手、横扫、腾空、下劈与收势，主手保持握棍，副手在三段声明阶段加入，支撑、腾空和恢复姿态连续，棍花/横扫轨迹可见，9700ms 明确可见青白冲击环与黄色火花；播放推进、暂停冻结、停止归零、9700→2100ms 回拖无旧特效残留；简单/复杂互斥、canvas=1、无横向溢出，干净标签页 console error=0、hydration mismatch=0",
+        "passed-2026-07-29-chromium-760: Chromium 760×900 下 scrollWidth === clientWidth，编辑器工具栏正常换行，自动适配摘要和技术信息按单列展示；播放/暂停/停止与简单/复杂切换可操作，浮动按钮未遮挡主要操作，canvas=1，新复制动作仍无需手工 Rig、蒙皮或特效配置",
+        "pending: Safari/Firefox 与不同 GPU/WebGL 驱动的资源释放、渲染一致性、性能和最终像素尚未人工验收，Chromium 双视口证据不能替代该边界",
+        "pending: 高细节拓扑、正式关节体积保持和最终蒙皮质量尚未完成；本次只证明低细节程序化双足模型的站内运行时链路",
+        "pending: 舞蹈、组合拳、体操、冲刺等完整高级动作库以及四足/机甲动作适配仍未完成；星云棍术纵向样板不能冒充全部体型和动作均已交付"
+      ]
+    }
+  ]
+}
