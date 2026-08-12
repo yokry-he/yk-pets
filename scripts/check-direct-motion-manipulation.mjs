@@ -79,7 +79,7 @@ const hasCanvasProjectionLifecycle = source => {
   const frameReadIndex = publishBody.indexOf('renderer.info?.render?.frame')
   const frameGuardIndex = publishBody.indexOf('frame === lastProjectionFrame')
   const frameWriteIndex = publishBody.indexOf('lastProjectionFrame = frame')
-  const emitIndex = publishBody.indexOf("emit('part-anchors'")
+  const emitIndex = publishBody.lastIndexOf("emit('part-anchors'")
   return frameReadIndex >= 0
     && frameGuardIndex > frameReadIndex
     && frameWriteIndex > frameGuardIndex
@@ -88,6 +88,23 @@ const hasCanvasProjectionLifecycle = source => {
     && !resizeBody.includes("emit('part-anchors'")
     && !resizeBody.includes('publishPartAnchorsAfterRender(')
     && !source.includes('requestAnimationFrame')
+}
+const hasInactiveProjectionGuard = source => {
+  const publishBody = functionBody(source, 'publishPartAnchorsAfterRender')
+  const editableReadIndex = publishBody.indexOf('const editableParts = props.editableParts || []')
+  const emptyGuardIndex = publishBody.indexOf('if (!editableParts.length)')
+  const rendererReadIndex = publishBody.indexOf('context.renderer.instance')
+  const cameraReadIndex = publishBody.indexOf('context.camera.activeCamera.value')
+  const emptyEmitIndex = publishBody.indexOf("emit('part-anchors', Object.freeze([]))")
+  return editableReadIndex >= 0
+    && emptyGuardIndex > editableReadIndex
+    && emptyGuardIndex < rendererReadIndex
+    && emptyGuardIndex < cameraReadIndex
+    && emptyEmitIndex > emptyGuardIndex
+    && publishBody.includes('if (!anchorProjectionDirty || !hasPublishedEditableProjection) return')
+    && publishBody.includes('hasPublishedEditableProjection = false')
+    && publishBody.includes('anchorProjectionDirty = false')
+    && publishBody.includes('hasPublishedEditableProjection = true')
 }
 const hasManipulatorCancellationLifecycle = source => {
   const lostCaptureBody = functionBody(source, 'onLostPointerCapture')
@@ -101,6 +118,23 @@ const hasManipulatorCancellationLifecycle = source => {
     && lostCaptureBody.includes('cancelPointerManipulation()')
     && blurBody.includes('cancelPointerManipulation()')
     && unmountBody.includes('cancelPointerManipulation()')
+}
+const hasStableManipulatorInteraction = source => {
+  const hotspotKeyBody = functionBody(source, 'onHotspotKeydown')
+  const nudgeBody = functionBody(source, 'nudgeWithKeyboard')
+  const anchorGuardBody = blockAfter(source, 'watch([')
+  return hasAll(source, [
+    '1 - anchor.depth',
+    "flush: 'sync'",
+    'selectedAnchor?.visible',
+  ])
+    && /props\.editableParts\s*\.map\(partId\s*=>\s*anchorByPartId\.value\.get\(partId\)\)/.test(source)
+    && !source.includes('.sort((left, right) => left.depth - right.depth)')
+    && !source.includes('@keydown.stop')
+    && anchorGuardBody.includes('cancelPointerManipulation()')
+    && !hotspotKeyBody.includes("event.key === 'Enter'")
+    && hotspotKeyBody.includes("event.key === 'Escape' && editor.directManipulation.active")
+    && nudgeBody.indexOf("event.key === 'ArrowLeft'") < nudgeBody.indexOf('selectPart(partId)')
 }
 const switchingActions = [
   ['open', 'replaceFromSaved', 'this.motionId = asset.id'],
@@ -190,6 +224,7 @@ const checks = [
     && (canvas.match(/<TresCanvas\b/g) || []).length === 1
     && !/export interface StudioMotionPartAnchor\s*{[^}]*\b(?:Object3D|Vector3|Group|Mesh)\b[^}]*}/.test(canvas)],
   ['Canvas 投影按 renderer frame 去重且 Resize 只标脏', hasCanvasProjectionLifecycle(canvas)],
+  ['Canvas 无可编辑部位时不投影且仅在非空转空时清理一次', hasInactiveProjectionGuard(canvas)],
   ['语义节点注册表只在渲染树内部保存 Object3D 且覆盖正式部位真实节点', hasAll(registry, [
     'Map<MotionBodyPartId, Object3D>',
     'provideStudioMotionPartNodes',
@@ -242,6 +277,7 @@ const checks = [
     'releasingPointerCapture',
     'editor.cancelDirectManipulation()',
   ])],
+  ['活动部位失效会同步取消且热点顺序、深度层级和键盘传播稳定', hasStableManipulatorInteraction(manipulator)],
   ['生命周期门禁自身拒绝删除帧去重、新增 RAF、Resize 直发和删除卸载取消',
     !hasCanvasProjectionLifecycle(canvas.replace("if (typeof frame === 'number' && frame === lastProjectionFrame) return", ''))
     && !hasCanvasProjectionLifecycle(`${canvas}\nrequestAnimationFrame(() => {})`)
@@ -253,6 +289,14 @@ const checks = [
       'onBeforeUnmount(() => {\n  cancelPointerManipulation()',
       'onBeforeUnmount(() => {',
     ))],
+  ['交互稳定性门禁自身拒绝空闲持续投影、深度正序、删除活动部位取消和恢复根级键盘拦截',
+    !hasInactiveProjectionGuard(canvas.replace('if (!editableParts.length)', 'if (false)'))
+    && !hasStableManipulatorInteraction(manipulator.replace('1 - anchor.depth', '1 + anchor.depth'))
+    && !hasStableManipulatorInteraction(manipulator.replace(
+      'if (!stillEditable || !selectedAnchor?.visible) cancelPointerManipulation()',
+      'if (!stillEditable || !selectedAnchor?.visible) { /* 取消已删除 */ }',
+    ))
+    && !hasStableManipulatorInteraction(manipulator.replace('aria-label="3D 宠物部位直接操控层"', 'aria-label="3D 宠物部位直接操控层" @keydown.stop'))],
 ]
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)

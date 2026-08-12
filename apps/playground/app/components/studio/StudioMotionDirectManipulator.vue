@@ -35,9 +35,10 @@ const pointerGesture = reactive({
 let resizeObserver: ResizeObserver | undefined
 
 const editablePartSet = computed(() => new Set(props.editableParts))
-const visibleAnchors = computed(() => props.anchors
-  .filter(anchor => anchor.visible && editablePartSet.value.has(anchor.bodyPartId))
-  .sort((left, right) => left.depth - right.depth))
+const anchorByPartId = computed(() => new Map(props.anchors.map(anchor => [anchor.bodyPartId, anchor])))
+const visibleAnchors = computed(() => props.editableParts
+  .map(partId => anchorByPartId.value.get(partId))
+  .filter((anchor): anchor is StudioMotionPartAnchor => Boolean(anchor?.visible)))
 const selectedAnchor = computed(() => visibleAnchors.value.find(anchor => anchor.bodyPartId === editor.selectedBodyPartId))
 const selectedPart = computed(() => getMotionBodyPart(editor.selectedBodyPartId))
 const selectedCapability = computed(() => getDirectMotionCapability(editor.selectedBodyPartId))
@@ -71,7 +72,7 @@ function hotspotStyle(anchor: StudioMotionPartAnchor) {
     top: `${anchor.y}px`,
     width: `${size}px`,
     height: `${size}px`,
-    zIndex: String(20 + Math.round((anchor.depth + 4) * 10)),
+    zIndex: String(20 + Math.round((1 - anchor.depth) * 10)),
   }
 }
 
@@ -164,8 +165,7 @@ function onLostPointerCapture(event: PointerEvent) {
   cancelPointerManipulation()
 }
 
-function nudgeWithKeyboard(anchor: StudioMotionPartAnchor, event: KeyboardEvent) {
-  if (!selectPart(anchor.bodyPartId)) return
+function nudgeWithKeyboard(partId: MotionBodyPartId, event: KeyboardEvent) {
   const amount = event.ctrlKey || event.metaKey ? 4 : 16
   let x = 0
   let y = 0
@@ -176,6 +176,7 @@ function nudgeWithKeyboard(anchor: StudioMotionPartAnchor, event: KeyboardEvent)
   else if (event.key === 'ArrowUp') y = -amount
   else if (event.key === 'ArrowDown') y = amount
   else return
+  if (!selectPart(partId)) return
   event.preventDefault()
   event.stopPropagation()
   const keyboardPointerId = -1
@@ -191,7 +192,7 @@ function nudgeWithKeyboard(anchor: StudioMotionPartAnchor, event: KeyboardEvent)
 }
 
 function onHotspotKeydown(anchor: StudioMotionPartAnchor, event: KeyboardEvent) {
-  if (event.key === 'Enter' || event.key === ' ') {
+  if (event.key === ' ') {
     event.preventDefault()
     event.stopPropagation()
     selectPart(anchor.bodyPartId)
@@ -206,16 +207,62 @@ function onHotspotKeydown(anchor: StudioMotionPartAnchor, event: KeyboardEvent) 
     event.stopPropagation()
     setMode('rotate')
   }
-  else if (event.key === 'Escape') {
+  else if (event.key === 'Escape' && editor.directManipulation.active) {
     event.preventDefault()
     event.stopPropagation()
     cancelPointerManipulation()
   }
-  else nudgeWithKeyboard(anchor, event)
+  else nudgeWithKeyboard(anchor.bodyPartId, event)
+}
+
+function onPartListKeydown(partId: MotionBodyPartId, event: KeyboardEvent) {
+  if (event.key === ' ') {
+    event.preventDefault()
+    event.stopPropagation()
+    selectPart(partId)
+  }
+  else if (event.key === 'm' || event.key === 'M') {
+    event.preventDefault()
+    event.stopPropagation()
+    setMode('translate')
+  }
+  else if (event.key === 'r' || event.key === 'R') {
+    event.preventDefault()
+    event.stopPropagation()
+    setMode('rotate')
+  }
+  else if (event.key === 'Escape' && editor.directManipulation.active) {
+    event.preventDefault()
+    event.stopPropagation()
+    cancelPointerManipulation()
+  }
+  else nudgeWithKeyboard(partId, event)
+}
+
+function onFloatingToolKeydown(event: KeyboardEvent) {
+  if (event.key === 'm' || event.key === 'M') {
+    event.preventDefault()
+    event.stopPropagation()
+    setMode('translate')
+  }
+  else if (event.key === 'r' || event.key === 'R') {
+    event.preventDefault()
+    event.stopPropagation()
+    setMode('rotate')
+  }
+  else if (event.key === 'Escape' && editor.directManipulation.active) {
+    event.preventDefault()
+    event.stopPropagation()
+    cancelPointerManipulation()
+  }
+  else nudgeWithKeyboard(editor.selectedBodyPartId, event)
 }
 
 function onWindowKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && editor.directManipulation.active) cancelPointerManipulation()
+  if (event.key !== 'Escape' || !editor.directManipulation.active) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  cancelPointerManipulation()
 }
 
 function onWindowBlur() {
@@ -230,8 +277,19 @@ onMounted(() => {
   window.addEventListener('blur', onWindowBlur)
 })
 watch(() => props.disabled, disabled => {
-  if (disabled && pointerGesture.active) cancelPointerManipulation()
+  if (disabled && (pointerGesture.active || editor.directManipulation.active)) cancelPointerManipulation()
 })
+watch([
+  () => editor.directManipulation.active,
+  () => editor.selectedBodyPartId,
+  () => props.editableParts,
+  () => props.anchors,
+], ([active]) => {
+  if (!active) return
+  const stillEditable = props.editableParts.includes(editor.selectedBodyPartId)
+  const selectedAnchor = anchorByPartId.value.get(editor.selectedBodyPartId)
+  if (!stillEditable || !selectedAnchor?.visible) cancelPointerManipulation()
+}, { deep: true, flush: 'sync' })
 onBeforeUnmount(() => {
   cancelPointerManipulation()
   resizeObserver?.disconnect()
@@ -241,7 +299,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="overlay" class="studio-motion-direct-manipulator" aria-label="3D 宠物部位直接操控层" @keydown.stop>
+  <div ref="overlay" class="studio-motion-direct-manipulator" aria-label="3D 宠物部位直接操控层">
     <button
       v-for="anchor in visibleAnchors"
       :key="anchor.bodyPartId"
@@ -275,6 +333,7 @@ onBeforeUnmount(() => {
       role="toolbar"
       :aria-label="`${selectedPart.labelZh}操控方式`"
       @pointerdown.stop
+      @keydown="onFloatingToolKeydown"
     >
       <strong class="direct-floating-tool__part">{{ selectedPart.labelZh }}</strong>
       <div class="direct-floating-tool__modes">
@@ -286,6 +345,7 @@ onBeforeUnmount(() => {
           :aria-pressed="editor.directManipulationMode === 'translate'"
           aria-label="切换为移动部位"
           @click.stop="setMode('translate')"
+          @keydown.space.stop.prevent="setMode('translate')"
         ><span aria-hidden="true">↔</span>移动</button>
         <button
           v-if="selectedCapability?.modes.includes('rotate')"
@@ -295,15 +355,16 @@ onBeforeUnmount(() => {
           :aria-pressed="editor.directManipulationMode === 'rotate'"
           aria-label="切换为旋转部位"
           @click.stop="setMode('rotate')"
+          @keydown.space.stop.prevent="setMode('rotate')"
         ><span aria-hidden="true">↻</span>旋转</button>
       </div>
-      <button type="button" class="direct-reset-button" aria-label="恢复当前部位" @click.stop="editor.resetSelectedDirectPart()">重置</button>
+      <button type="button" class="direct-reset-button" aria-label="恢复当前部位" @click.stop="editor.resetSelectedDirectPart()" @keydown.space.stop.prevent="editor.resetSelectedDirectPart()">重置</button>
       <span v-if="editor.directManipulation.status === 'clamped'" class="direct-floating-tool__status" role="status">已到安全范围</span>
       <span v-else-if="editor.directManipulation.active" class="direct-floating-tool__status" role="status">拖动中 · Shift 前后</span>
     </div>
 
     <details class="direct-part-fallback">
-      <summary class="direct-part-fallback__summary">完整部位列表</summary>
+      <summary class="direct-part-fallback__summary" @keydown.space.stop>完整部位列表</summary>
       <div class="direct-part-fallback__list" role="list" aria-label="所有可编辑部位">
         <button
           v-for="partId in editableParts"
@@ -314,6 +375,7 @@ onBeforeUnmount(() => {
           :aria-current="editor.selectedBodyPartId === partId ? 'true' : undefined"
           :disabled="disabled"
           @click.stop="selectPart(partId)"
+          @keydown="onPartListKeydown(partId, $event)"
         >{{ getMotionBodyPart(partId).labelZh }}</button>
       </div>
     </details>

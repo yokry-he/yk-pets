@@ -181,6 +181,7 @@ let canvasResizeObserver: ResizeObserver | undefined
 const projectedWorldPosition = new Vector3()
 let anchorProjectionDirty = true
 let lastProjectionFrame = -1
+let hasPublishedEditableProjection = false
 
 function nodeAndAncestorsVisible(node: Object3D) {
   let current: Object3D | null = node
@@ -196,6 +197,14 @@ function nodeAndAncestorsVisible(node: Object3D) {
  * 动作姿势与阻尼；这里只读取真实 world matrix 并用当前 active camera 投影为纯数值。
  */
 function publishPartAnchorsAfterRender(context: TresContext) {
+  const editableParts = props.editableParts || []
+  if (!editableParts.length) {
+    if (!anchorProjectionDirty || !hasPublishedEditableProjection) return
+    anchorProjectionDirty = false
+    hasPublishedEditableProjection = false
+    emit('part-anchors', Object.freeze([]))
+    return
+  }
   const renderer = context.renderer.instance as typeof context.renderer.instance & { info?: { render?: { frame?: number } } }
   const frame = renderer.info?.render?.frame
   if (typeof frame === 'number' && frame === lastProjectionFrame) return
@@ -206,7 +215,7 @@ function publishPartAnchorsAfterRender(context: TresContext) {
   const height = element?.clientHeight || 0
   if (!camera || !(width > 0 && height > 0)) return
   camera.updateMatrixWorld()
-  const anchors = (props.editableParts || []).map((bodyPartId): StudioMotionPartAnchor => {
+  const anchors = editableParts.map((bodyPartId): StudioMotionPartAnchor => {
     const node = studioMotionPartNodes.get(bodyPartId)
     if (!node) return Object.freeze({ bodyPartId, x: 0, y: 0, depth: 1, visible: false })
     node.updateWorldMatrix(true, false)
@@ -228,6 +237,7 @@ function publishPartAnchorsAfterRender(context: TresContext) {
     })
   })
   anchorProjectionDirty = false
+  hasPublishedEditableProjection = true
   emit('part-anchors', Object.freeze(anchors))
 }
 
