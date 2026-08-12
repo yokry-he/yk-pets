@@ -80,7 +80,7 @@ export interface DirectMotionDragInput {
   delta: Readonly<{ x: number, y: number, depth: number }>
   viewport: Readonly<{ width: number, height: number }>
   pose: Readonly<Partial<Record<MotionControlId, number>>>
-  intensity?: number
+  intensity: number
 }
 
 export interface DirectMotionSolveResult {
@@ -409,9 +409,21 @@ function isFiniteRead(result: SafeReadResult): result is FiniteReadResult {
 function rawControlRange(controlId: MotionControlId, intensity = 1): readonly [number, number] {
   const channels = getMotionControl(controlId).channelIds.map(getCloudFoxRigChannel)
   return [
-    Math.max(...channels.map(channel => channel.minimum)) / intensity,
-    Math.min(...channels.map(channel => channel.maximum)) / intensity,
+    finiteSaturation(Math.max(...channels.map(channel => channel.minimum)) / intensity),
+    finiteSaturation(Math.min(...channels.map(channel => channel.maximum)) / intensity),
   ]
+}
+
+function finiteSaturation(value: number): number {
+  if (Number.isFinite(value)) return value
+  if (Number.isNaN(value)) return 0
+  return Math.sign(value) * Number.MAX_VALUE
+}
+
+function saturatingAdd(left: number, right: number): readonly [number, boolean] {
+  const sum = left + right
+  if (Number.isFinite(sum)) return [sum, false]
+  return [Math.sign(left || right || 1) * Number.MAX_VALUE, true]
 }
 
 function clampControlValue(controlId: MotionControlId, value: number, intensity = 1): readonly [number, boolean] {
@@ -491,7 +503,7 @@ export function solveDirectMotionDrag(input: DirectMotionDragInput): DirectMotio
   const deltaRead = safeRead(input, 'delta')
   const viewportRead = safeRead(input, 'viewport')
   const intensityRead = safeRead(input, 'intensity')
-  const intensity = intensityRead.ok && intensityRead.value === undefined ? 1 : intensityRead.value
+  const intensity = intensityRead.value
   const validIntensity = typeof intensity === 'number'
     && Number.isFinite(intensity)
     && intensity > 0
@@ -504,7 +516,10 @@ export function solveDirectMotionDrag(input: DirectMotionDragInput): DirectMotio
     return frozenSolveResult('blocked', false, normalizedPose.pose, diagnostics)
   }
   if (!validIntensity) {
-    addDiagnostic(diagnostics, `拖拽强度必须在 0 到 ${SIMPLE_MOTION_STAGE_MAX_INTENSITY} 之间，已安全阻断。`, true)
+    const message = intensity === 0
+      ? '当前阶段力度为 0，请先提高动作力度。'
+      : `拖拽强度必须大于 0 且不超过 ${SIMPLE_MOTION_STAGE_MAX_INTENSITY}，已安全阻断。`
+    addDiagnostic(diagnostics, message, true)
     return frozenSolveResult('blocked', false, normalizedPose.pose, diagnostics)
   }
 
@@ -549,9 +564,9 @@ export function solveDirectMotionDrag(input: DirectMotionDragInput): DirectMotio
     const delta = (normalized[binding.source] ?? 0) * binding.sign * binding.weight
     if (delta === 0) continue
     const baseline = pose[binding.controlId] ?? 0
-    const requested = baseline + delta
+    const [requested, additionOverflow] = saturatingAdd(baseline, delta)
     const [safeValue, didClamp] = clampControlValue(binding.controlId, requested, intensity)
-    clamped ||= didClamp
+    clamped ||= didClamp || additionOverflow
     if (safeValue === baseline) continue
     pose[binding.controlId] = safeValue
     changed = true

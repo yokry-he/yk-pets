@@ -212,6 +212,7 @@ test('直接拖拽求解稳定、无副作用且输出冻结的有限姿势', ()
     delta: { x: 40, y: -20, depth: 10 },
     viewport: { width: 900, height: 600 },
     pose: { 'head.rotate.x': .2, 'body.translate.x': .1 },
+    intensity: 1,
   }
   const before = structuredClone(input)
 
@@ -242,6 +243,7 @@ test('旋转拖拽只写入能力中精确声明的主控和辅助绑定', () =>
     delta: { x: 12, y: -24, depth: 8 },
     viewport: { width: 1_000, height: 500 },
     pose: {},
+    intensity: 1,
   })
 
   assert.equal(result.status, 'ready')
@@ -259,6 +261,7 @@ test('零拖动与未绑定方向不实体化控制，且不被超大未使用�
     delta: { x: 0, y: 0, depth: 0 },
     viewport: { width: 800, height: 600 },
     pose: {},
+    intensity: 1,
   })
   const unusedDepth = solveDirectMotionDrag({
     partId: 'head',
@@ -266,6 +269,7 @@ test('零拖动与未绑定方向不实体化控制，且不被超大未使用�
     delta: { x: 0, y: 0, depth: 1e300 },
     viewport: { width: 800, height: 600 },
     pose: {},
+    intensity: 1,
   })
   const existing = solveDirectMotionDrag({
     partId: 'body',
@@ -273,6 +277,7 @@ test('零拖动与未绑定方向不实体化控制，且不被超大未使用�
     delta: { x: 0, y: 0, depth: 0 },
     viewport: { width: 800, height: 600 },
     pose: { 'body.rotate.x': 0, 'body.rotate.y': .2 },
+    intensity: 1,
   })
 
   assert.deepEqual(zero.pose, {})
@@ -335,14 +340,62 @@ test('非法强度阻断，并保留非有限拖拽的关键诊断', () => {
     delta: { x: Number.NaN, y: 0, depth: 0 },
     viewport: { width: 800, height: 600 },
     pose: { 'body.translate.x': 99, 'body.translate.y': 99, 'body.translate.z': 99 },
+    intensity: 1,
   })
 
   assert.equal(intensity.status, 'blocked')
+  assert.ok(intensity.diagnostics.includes('当前阶段力度为 0，请先提高动作力度。'))
   assert.equal(nonFiniteIntensity.status, 'blocked')
   assert.equal(excessiveIntensity.status, 'blocked')
   assert.equal(delta.status, 'blocked')
   assert.ok(delta.diagnostics.includes('拖拽增量或视口含非有限数值，已安全阻断。'))
   assert.equal(new Set(delta.diagnostics).size, delta.diagnostics.length)
+})
+
+test('极端有限强度、基线和拖拽始终返回有限姿势', () => {
+  const result = solveDirectMotionDrag({
+    partId: 'body',
+    mode: 'translate',
+    delta: { x: Number.MAX_VALUE, y: 0, depth: 0 },
+    viewport: { width: Number.MIN_VALUE, height: Number.MIN_VALUE },
+    pose: { 'body.translate.x': Number.MAX_VALUE },
+    intensity: Number.MIN_VALUE,
+  })
+
+  assert.equal(result.status, 'clamped')
+  assertFinitePose(result.pose)
+  assert.equal(result.pose['body.translate.x'], Number.MAX_VALUE)
+})
+
+test('有限输入代表集始终产生有限姿势', () => {
+  const inputs = [
+    {
+      partId: 'root' as const,
+      mode: 'translate' as const,
+      delta: { x: -Number.MAX_VALUE, y: Number.MAX_VALUE, depth: 0 },
+      viewport: { width: Number.MIN_VALUE, height: 1 },
+      pose: { 'root.translate.x': -Number.MAX_VALUE },
+      intensity: Number.MIN_VALUE,
+    },
+    {
+      partId: 'front-paw-left' as const,
+      mode: 'rotate' as const,
+      delta: { x: Number.MAX_VALUE, y: -Number.MAX_VALUE, depth: Number.MAX_VALUE },
+      viewport: { width: 1, height: Number.MAX_VALUE },
+      pose: { 'front-paw-left.rotate.z': Number.MAX_VALUE },
+      intensity: 1.5,
+    },
+    {
+      partId: 'head' as const,
+      mode: 'rotate' as const,
+      delta: { x: 0, y: 0, depth: Number.MAX_VALUE },
+      viewport: { width: 1, height: 1 },
+      pose: {},
+      intensity: 1,
+    },
+  ]
+
+  for (const input of inputs) assertFinitePose(solveDirectMotionDrag(input).pose)
 })
 
 test('超大有限拖拽按真实 Rig 通道范围钳制，而非通用角度范围', () => {
@@ -352,6 +405,7 @@ test('超大有限拖拽按真实 Rig 通道范围钳制，而非通用角度范
     delta: { x: 1e12, y: 0, depth: 0 },
     viewport: { width: 1, height: 1 },
     pose: {},
+    intensity: 1,
   })
 
   assert.equal(result.status, 'clamped')
@@ -372,6 +426,7 @@ test('畸形拖拽输入安全阻断并返回独立的有限冻结姿势', () =>
       delta: { x: Number.NaN, y: 0, depth: 0 },
       viewport: { width: 800, height: 600 },
       pose: {},
+      intensity: 1,
     },
     {
       partId: 'body' as MotionBodyPartId,
@@ -379,6 +434,7 @@ test('畸形拖拽输入安全阻断并返回独立的有限冻结姿势', () =>
       delta: { x: 0, y: 0, depth: 0 },
       viewport: { width: 0, height: 600 },
       pose: {},
+      intensity: 1,
     },
     {
       partId: 'body' as MotionBodyPartId,
@@ -386,6 +442,7 @@ test('畸形拖拽输入安全阻断并返回独立的有限冻结姿势', () =>
       delta: { x: 0, y: 0, depth: 0 },
       viewport: { width: 800, height: 600 },
       pose: { 'body.rotate.x': Number.POSITIVE_INFINITY, unknown: 1 } as never,
+      intensity: 1,
     },
     {
       partId: 'body' as MotionBodyPartId,
@@ -393,6 +450,7 @@ test('畸形拖拽输入安全阻断并返回独立的有限冻结姿势', () =>
       delta: { x: 0, y: 0, depth: 0 },
       viewport: { width: 800, height: 600 },
       pose: throwingPose,
+      intensity: 1,
     },
   ]
 
@@ -418,6 +476,7 @@ test('撤销后的 Proxy 姿势不会让拖拽求解抛出', () => {
     delta: { x: 0, y: 0, depth: 0 },
     viewport: { width: 800, height: 600 },
     pose: revocable.proxy as Readonly<Partial<Record<MotionControlId, number>>>,
+    intensity: 1,
   })
 
   assert.equal(result.status, 'blocked')
