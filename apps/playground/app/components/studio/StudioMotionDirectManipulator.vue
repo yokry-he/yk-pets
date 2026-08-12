@@ -30,6 +30,7 @@ const pointerGesture = reactive({
   startX: 0,
   startY: 0,
   target: undefined as HTMLElement | undefined,
+  releasingPointerCapture: false,
 })
 let resizeObserver: ResizeObserver | undefined
 
@@ -100,7 +101,10 @@ function updateOverlaySize() {
 
 function releasePointerCapture() {
   const { target, pointerId } = pointerGesture
-  if (target?.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId)
+  if (target?.hasPointerCapture(pointerId)) {
+    pointerGesture.releasingPointerCapture = true
+    target.releasePointerCapture(pointerId)
+  }
   pointerGesture.active = false
   pointerGesture.target = undefined
 }
@@ -115,6 +119,7 @@ function beginPointerManipulation(anchor: StudioMotionPartAnchor, event: Pointer
   pointerGesture.pointerId = event.pointerId
   pointerGesture.startX = event.clientX
   pointerGesture.startY = event.clientY
+  pointerGesture.releasingPointerCapture = false
   pointerGesture.target = event.currentTarget as HTMLElement
   pointerGesture.target.focus({ preventScroll: true })
   pointerGesture.target.setPointerCapture(event.pointerId)
@@ -148,6 +153,15 @@ function cancelPointerManipulation(event?: PointerEvent) {
   event?.stopPropagation()
   editor.cancelDirectManipulation()
   releasePointerCapture()
+}
+
+function onLostPointerCapture(event: PointerEvent) {
+  if (event.pointerId !== pointerGesture.pointerId) return
+  if (pointerGesture.releasingPointerCapture || !pointerGesture.active) {
+    pointerGesture.releasingPointerCapture = false
+    return
+  }
+  cancelPointerManipulation()
 }
 
 function nudgeWithKeyboard(anchor: StudioMotionPartAnchor, event: KeyboardEvent) {
@@ -204,11 +218,16 @@ function onWindowKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && editor.directManipulation.active) cancelPointerManipulation()
 }
 
+function onWindowBlur() {
+  if (pointerGesture.active || editor.directManipulation.active) cancelPointerManipulation()
+}
+
 onMounted(() => {
   resizeObserver = new ResizeObserver(updateOverlaySize)
   if (overlay.value) resizeObserver.observe(overlay.value)
   updateOverlaySize()
   window.addEventListener('keydown', onWindowKeydown)
+  window.addEventListener('blur', onWindowBlur)
 })
 watch(() => props.disabled, disabled => {
   if (disabled && pointerGesture.active) cancelPointerManipulation()
@@ -217,6 +236,7 @@ onBeforeUnmount(() => {
   cancelPointerManipulation()
   resizeObserver?.disconnect()
   window.removeEventListener('keydown', onWindowKeydown)
+  window.removeEventListener('blur', onWindowBlur)
 })
 </script>
 
@@ -242,6 +262,7 @@ onBeforeUnmount(() => {
       @pointermove="movePointerManipulation"
       @pointerup="endPointerManipulation"
       @pointercancel="cancelPointerManipulation"
+      @lostpointercapture="onLostPointerCapture"
     >
       <span class="direct-part-hotspot__dot" aria-hidden="true" />
       <span v-if="editor.selectedBodyPartId === anchor.bodyPartId" class="direct-part-hotspot__label">{{ getMotionBodyPart(anchor.bodyPartId).labelZh }}</span>
@@ -280,9 +301,25 @@ onBeforeUnmount(() => {
       <span v-if="editor.directManipulation.status === 'clamped'" class="direct-floating-tool__status" role="status">已到安全范围</span>
       <span v-else-if="editor.directManipulation.active" class="direct-floating-tool__status" role="status">拖动中 · Shift 前后</span>
     </div>
+
+    <details class="direct-part-fallback">
+      <summary class="direct-part-fallback__summary">完整部位列表</summary>
+      <div class="direct-part-fallback__list" role="list" aria-label="所有可编辑部位">
+        <button
+          v-for="partId in editableParts"
+          :key="partId"
+          type="button"
+          class="direct-part-fallback__button"
+          :class="{ 'direct-part-fallback__button--active': editor.selectedBodyPartId === partId }"
+          :aria-current="editor.selectedBodyPartId === partId ? 'true' : undefined"
+          :disabled="disabled"
+          @click.stop="selectPart(partId)"
+        >{{ getMotionBodyPart(partId).labelZh }}</button>
+      </div>
+    </details>
   </div>
 </template>
 
 <style scoped>
-.studio-motion-direct-manipulator{position:absolute;z-index:8;inset:0;overflow:hidden;border-radius:inherit;pointer-events:none}.direct-part-hotspot{position:absolute;display:grid;place-items:center;min-width:36px;min-height:36px;padding:0;transform:translate(-50%,-50%);border:1px solid transparent;border-radius:50%;color:#effffc;background:transparent;cursor:grab;pointer-events:auto;touch-action:none;transition:border-color .16s ease,background-color .16s ease,box-shadow .16s ease}.direct-part-hotspot:hover,.direct-part-hotspot:focus-visible{border-color:#70efe0a8;background:#5ce9d51b;box-shadow:0 0 0 5px #52e9d313;outline:none}.direct-part-hotspot--selected{border-color:#72f5e5;background:#59e6d421;box-shadow:0 0 0 5px #52e9d318,0 0 22px #5de8d82f}.direct-part-hotspot--dragging{cursor:grabbing}.direct-part-hotspot:disabled{cursor:not-allowed;opacity:.42}.direct-part-hotspot__dot{width:10px;height:10px;border:2px solid #b9fff6;border-radius:50%;background:#09201f;box-shadow:0 0 12px #67f4e2}.direct-part-hotspot__label{position:absolute;top:calc(100% + 4px);left:50%;padding:3px 7px;transform:translateX(-50%);border:1px solid #70efe052;border-radius:999px;color:#dffffa;background:#07111de8;font-size:10px;font-weight:700;line-height:1;white-space:nowrap}.direct-floating-tool{position:absolute;display:flex;align-items:center;gap:6px;min-height:42px;padding:6px 7px 6px 10px;transform:translate(-50%,-50%);border:1px solid #78f3e34a;border-radius:14px;background:#07111eea;box-shadow:0 14px 36px #0008,0 0 0 1px #ffffff0b inset;backdrop-filter:blur(16px);pointer-events:auto}.direct-floating-tool__part{max-width:72px;overflow:hidden;color:#edfffc;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.direct-floating-tool__modes{display:flex;gap:3px;padding:3px;border-radius:10px;background:#020711b8}.direct-mode-button,.direct-reset-button{min-height:30px;border:1px solid transparent;border-radius:8px;color:#aebad1;background:transparent;font-size:10px;font-weight:750;cursor:pointer}.direct-mode-button{display:flex;align-items:center;gap:4px;padding:0 8px}.direct-mode-button--active{border-color:#66e9d965;color:#eafffb;background:#46d6c52c}.direct-mode-button:focus-visible,.direct-reset-button:focus-visible{outline:2px solid #7ef8e8;outline-offset:2px}.direct-reset-button{padding:0 7px;border-color:#ffffff17}.direct-floating-tool__status{position:absolute;top:calc(100% + 5px);left:50%;padding:4px 8px;transform:translateX(-50%);border:1px solid #f3d4763b;border-radius:999px;color:#f6df99;background:#0a101de8;font-size:9px;white-space:nowrap}@media(prefers-reduced-motion:reduce){.direct-part-hotspot{transition:none}}
+.studio-motion-direct-manipulator{position:absolute;z-index:8;inset:0;overflow:hidden;border-radius:inherit;pointer-events:none}.direct-part-hotspot{position:absolute;display:grid;place-items:center;min-width:36px;min-height:36px;padding:0;transform:translate(-50%,-50%);border:1px solid transparent;border-radius:50%;color:#effffc;background:transparent;cursor:grab;pointer-events:auto;touch-action:none;transition:border-color .16s ease,background-color .16s ease,box-shadow .16s ease}.direct-part-hotspot:hover,.direct-part-hotspot:focus-visible{border-color:#70efe0a8;background:#5ce9d51b;box-shadow:0 0 0 5px #52e9d313;outline:none}.direct-part-hotspot--selected{border-color:#72f5e5;background:#59e6d421;box-shadow:0 0 0 5px #52e9d318,0 0 22px #5de8d82f}.direct-part-hotspot--dragging{cursor:grabbing}.direct-part-hotspot:disabled{cursor:not-allowed;opacity:.42}.direct-part-hotspot__dot{width:10px;height:10px;border:2px solid #b9fff6;border-radius:50%;background:#09201f;box-shadow:0 0 12px #67f4e2}.direct-part-hotspot__label{position:absolute;top:calc(100% + 4px);left:50%;padding:3px 7px;transform:translateX(-50%);border:1px solid #70efe052;border-radius:999px;color:#dffffa;background:#07111de8;font-size:10px;font-weight:700;line-height:1;white-space:nowrap}.direct-floating-tool{position:absolute;display:flex;align-items:center;gap:6px;min-height:42px;padding:6px 7px 6px 10px;transform:translate(-50%,-50%);border:1px solid #78f3e34a;border-radius:14px;background:#07111eea;box-shadow:0 14px 36px #0008,0 0 0 1px #ffffff0b inset;backdrop-filter:blur(16px);pointer-events:auto}.direct-floating-tool__part{max-width:72px;overflow:hidden;color:#edfffc;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.direct-floating-tool__modes{display:flex;gap:3px;padding:3px;border-radius:10px;background:#020711b8}.direct-mode-button,.direct-reset-button{min-height:30px;border:1px solid transparent;border-radius:8px;color:#aebad1;background:transparent;font-size:10px;font-weight:750;cursor:pointer}.direct-mode-button{display:flex;align-items:center;gap:4px;padding:0 8px}.direct-mode-button--active{border-color:#66e9d965;color:#eafffb;background:#46d6c52c}.direct-mode-button:focus-visible,.direct-reset-button:focus-visible,.direct-part-fallback__summary:focus-visible,.direct-part-fallback__button:focus-visible{outline:2px solid #7ef8e8;outline-offset:2px}.direct-reset-button{padding:0 7px;border-color:#ffffff17}.direct-floating-tool__status{position:absolute;top:calc(100% + 5px);left:50%;padding:4px 8px;transform:translateX(-50%);border:1px solid #f3d4763b;border-radius:999px;color:#f6df99;background:#0a101de8;font-size:9px;white-space:nowrap}.direct-part-fallback{position:absolute;top:12px;right:12px;width:min(180px,calc(100% - 24px));border:1px solid #78f3e32e;border-radius:11px;color:#dffefa;background:#07111ed9;backdrop-filter:blur(14px);pointer-events:auto}.direct-part-fallback__summary{padding:8px 10px;font-size:10px;font-weight:750;cursor:pointer;list-style-position:inside}.direct-part-fallback__list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;max-height:210px;padding:0 7px 7px;overflow:auto}.direct-part-fallback__button{min-height:30px;padding:4px 6px;overflow:hidden;border:1px solid #ffffff14;border-radius:7px;color:#aebad1;background:#0207118f;font-size:9px;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}.direct-part-fallback__button--active{border-color:#66e9d965;color:#eafffb;background:#46d6c52c}.direct-part-fallback__button:disabled{cursor:not-allowed;opacity:.42}@media(prefers-reduced-motion:reduce){.direct-part-hotspot{transition:none}}
 </style>

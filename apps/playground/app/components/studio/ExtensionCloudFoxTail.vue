@@ -13,6 +13,7 @@ import { createExtensionCloudFoxMotionFrame, smoothStep } from '~/domain/chrome-
 import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-fox-motions'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 import { customPoseScale, customPoseValue } from '~/domain/custom-motion-pose'
+import { useStudioMotionPartNodeRegistration } from '~/composables/useStudioMotionPartNodes'
 
 const props = defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
@@ -20,6 +21,7 @@ const props = defineProps<{
   motionKey: number
   customPose?: EvaluatedCloudFoxPose | null
 }>()
+const registerStudioMotionPartNode = useStudioMotionPartNodeRegistration()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vector = (values: readonly number[]) => new Vector3(values[0] || 0, values[1] || 0, values[2] || 0)
 const rotation = (values: readonly number[]) => new Euler(values[0] || 0, values[1] || 0, values[2] || 0)
@@ -41,6 +43,18 @@ const tailEnergy = shallowRef<Mesh>()
 const tailAura = shallowRef<Mesh>()
 const tipMaterial = shallowRef<MeshStandardMaterial>()
 function setTipMaterial(reference: unknown) { tipMaterial.value = reference as MeshStandardMaterial }
+function setTailRef(node: unknown) {
+  tail.value = node as Group | undefined
+  registerStudioMotionPartNode('tail-root', node)
+}
+function setMidTailRef(node: unknown) {
+  midTail.value = node as Group | undefined
+  registerStudioMotionPartNode('tail-mid', node)
+}
+function setTipTailRef(node: unknown) {
+  tipTail.value = node as Group | undefined
+  registerStudioMotionPartNode('tail-tip', node)
+}
 
 const segments = computed(() => props.appearance.tailDesign.segments)
 const baseSegment = computed(() => segments.value[0] || {
@@ -302,7 +316,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 </script>
 
 <template>
-  <TresGroup ref="tail" :position="backAnchor" :rotation="directionRotation">
+  <TresGroup :ref="setTailRef" :position="backAnchor" :rotation="directionRotation">
     <TresMesh :position="vector([0, 0, socketRadius * .08])" :scale="vector([socketRadius * 1.18, socketRadius * 1.08, socketRadius * 1.26])" cast-shadow>
       <TresSphereGeometry :args="[1, 28, 28]" />
       <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness=".34" :metalness=".02" />
@@ -338,7 +352,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
         <TresMeshStandardMaterial :color="appearance.palette.coatShadow" :roughness=".3" />
       </TresMesh>
 
-      <TresGroup ref="midTail" :position="midPosition" :rotation="midRotation">
+      <TresGroup :ref="setMidTailRef" :position="midPosition" :rotation="midRotation">
         <TresMesh :scale="vector([midSegment.width * tailWidth * 1.08, midSegment.width * tailWidth * 1.08, midSegment.width * tailWidth * 1.08])" cast-shadow>
           <TresSphereGeometry :args="[1, 26, 26]" />
           <TresMeshStandardMaterial :color="appearance.palette.coat" :roughness=".28" />
@@ -352,7 +366,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
           <TresMeshStandardMaterial :color="appearance.palette.coat" :roughness=".26" />
         </TresMesh>
 
-        <TresGroup ref="tipTail" :position="tipPosition" :rotation="tipRotation">
+        <TresGroup :ref="setTipTailRef" :position="tipPosition" :rotation="tipRotation">
           <TresMesh :scale="vector([tipSegment.width * tailWidth * 1.1, tipSegment.width * tailWidth * 1.1, tipSegment.width * tailWidth * 1.1])" cast-shadow>
             <TresSphereGeometry :args="[1, 26, 26]" />
             <TresMeshStandardMaterial :color="tipColor" :emissive="tipGlow.enabled ? tipGlow.color : '#000000'" :emissive-intensity="tipGlow.enabled ? tipGlow.intensity * .25 : 0" :roughness=".2" />

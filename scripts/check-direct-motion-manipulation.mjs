@@ -12,6 +12,12 @@ const store = read('apps/playground/app/stores/studio-motion-editor.ts')
 const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const manipulatorPath = new URL('../apps/playground/app/components/studio/StudioMotionDirectManipulator.vue', import.meta.url)
 const manipulator = existsSync(manipulatorPath) ? readFileSync(manipulatorPath, 'utf8') : ''
+const registryPath = new URL('../apps/playground/app/composables/useStudioMotionPartNodes.ts', import.meta.url)
+const registry = existsSync(registryPath) ? readFileSync(registryPath, 'utf8') : ''
+const alignedCloudFox = read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue')
+const cloudFoxBody = read('apps/playground/app/components/studio/ExtensionCloudFoxBody.vue')
+const cloudFoxHead = read('apps/playground/app/components/studio/ExtensionCloudFoxHead.vue')
+const cloudFoxTail = read('apps/playground/app/components/studio/ExtensionCloudFoxTail.vue')
 
 const hasAll = (source, tokens) => tokens.every(token => source.includes(token))
 const actionBody = (name, nextName) => {
@@ -43,6 +49,15 @@ const directBaselineSourceChain = baselineParseIndex >= 0
   && baselineStageSourceIndex >= baselineRecipeReadIndex
   && baselinePoseIndex > baselineStageSourceIndex
 const commitUsesLatestSolve = /if\s*\(latestChanged\)\s*this\.endControlGesture\(\)\s*else\s*this\.cancelControlGesture\(\)/.test(commit)
+const hasRealNodeProjection = source => hasAll(source, [
+  'provideStudioMotionPartNodes',
+  '@render="publishPartAnchorsAfterRender"',
+  'context.camera.activeCamera.value',
+  'setFromMatrixPosition(node.matrixWorld)',
+  '.project(camera)',
+  'anchorProjectionDirty = true',
+]) && !source.includes('SEMANTIC_WORLD_ANCHORS')
+  && !source.includes('semanticWorldAnchor')
 const switchingActions = [
   ['open', 'replaceFromSaved', 'this.motionId = asset.id'],
   ['replaceFromSaved', 'close', 'this.motionId = asset.id'],
@@ -121,14 +136,26 @@ const checks = [
     && action.cancelIndex >= 0
     && action.firstStateWriteIndex >= 0
     && action.cancelIndex < action.firstStateWriteIndex)],
-  ['唯一 Studio Canvas 暴露语义部位锚点且不泄漏 Three 对象', hasAll(canvas, [
+  ['唯一 Studio Canvas 从真实节点世界矩阵和当前相机发布纯数值锚点', hasAll(canvas, [
     'export interface StudioMotionPartAnchor',
     'editableParts?: readonly MotionBodyPartId[]',
     "'part-anchors': [anchors: readonly StudioMotionPartAnchor[]]",
     "emit('part-anchors'",
     'ResizeObserver',
-  ]) && (canvas.match(/<TresCanvas\b/g) || []).length === 1
+  ]) && hasRealNodeProjection(canvas)
+    && (canvas.match(/<TresCanvas\b/g) || []).length === 1
     && !/export interface StudioMotionPartAnchor\s*{[^}]*\b(?:Object3D|Vector3|Group|Mesh)\b[^}]*}/.test(canvas)],
+  ['语义节点注册表只在渲染树内部保存 Object3D 且覆盖正式部位真实节点', hasAll(registry, [
+    'Map<MotionBodyPartId, Object3D>',
+    'provideStudioMotionPartNodes',
+    'useStudioMotionPartNodes',
+  ]) && hasAll(alignedCloudFox, ["registerStudioMotionPartNode('root'", ':ref="setMotionRef"'])
+    && hasAll(cloudFoxBody, ["registerStudioMotionPartNode('body'", "'front-paw-left'", "'hind-paw-left'", 'setPawTipRef', 'setHindTipRef'])
+    && hasAll(cloudFoxHead, ["registerStudioMotionPartNode('head'", "'ear-left'", 'setEarRef'])
+    && hasAll(cloudFoxTail, ["registerStudioMotionPartNode('tail-root'", "registerStudioMotionPartNode('tail-mid'", "registerStudioMotionPartNode('tail-tip'"])],
+  ['真实投影门禁自身拒绝缺失相机投影和硬编码锚点回退', !hasRealNodeProjection(canvas.replace('.project(camera)', ''))
+    && !hasRealNodeProjection(canvas.replace('setFromMatrixPosition(node.matrixWorld)', 'set(0, 0, 0)'))
+    && !hasRealNodeProjection(`${canvas}\nconst SEMANTIC_WORLD_ANCHORS = { root: [0, 0, 0] }`)],
   ['直接操控覆盖层只让热点和工具接收指针并提供中文键盘语义', hasAll(manipulator, [
     'studio-motion-direct-manipulator',
     'tabindex="0"',
@@ -158,6 +185,20 @@ const checks = [
     '已到安全范围',
     '@pointercancel="cancelPointerManipulation"',
     "event.key === 'Escape'",
+  ])],
+  ['不可见部位仍可从折叠式完整列表键盘选择', hasAll(manipulator, [
+    '<details class="direct-part-fallback"',
+    'v-for="partId in editableParts"',
+    ':aria-current="editor.selectedBodyPartId === partId',
+    'selectPart(partId)',
+    '完整部位列表',
+  ])],
+  ['指针捕获丢失、窗口失焦和卸载都取消事务且正常释放不会重复取消', hasAll(manipulator, [
+    '@lostpointercapture="onLostPointerCapture"',
+    'releasingPointerCapture',
+    "window.addEventListener('blur', onWindowBlur)",
+    "window.removeEventListener('blur', onWindowBlur)",
+    'editor.cancelDirectManipulation()',
   ])],
 ]
 

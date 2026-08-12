@@ -27,6 +27,7 @@ import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-
 import type { CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 import { CUSTOM_MOTION_DISTANCE_SCALE, customPoseScale, customPoseValue } from '~/domain/custom-motion-pose'
+import { useStudioMotionPartNodeRegistration } from '~/composables/useStudioMotionPartNodes'
 
 const props = withDefaults(defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
@@ -52,6 +53,7 @@ const vector = (value: readonly number[]) => new Vector3(value[0] || 0, value[1]
 const damp = (current: number, target: number, speed: number, delta: number) => current + (target - current) * Math.min(1, 1 - Math.exp(-speed * delta))
 const TAU = Math.PI * 2
 const loop = useLoop()
+const registerStudioMotionPartNode = useStudioMotionPartNodeRegistration()
 
 const presentation = shallowRef<Group>()
 const motion = shallowRef<Group>()
@@ -68,6 +70,11 @@ let previousMotionKey = effectiveMotionKey.value
 let startedAt = 0
 let spinStart = 0
 let flipStart = 0
+
+function setMotionRef(node: unknown) {
+  motion.value = node as Group | undefined
+  registerStudioMotionPartNode('root', node)
+}
 
 watch(
   () => [props.behavior, effectiveMotionKey.value] as const,
@@ -242,7 +249,7 @@ loop.onBeforeRender(({ elapsed, delta }) => {
     <ExtensionCloudFoxMotionEffects :appearance="appearance" :behavior="effectsBehavior" :motion-key="effectiveMotionKey" />
     <ProductionCloudFoxFireworks :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" :seed="fireworkSeed" />
     <ExtensionCloudFoxMealOverlay :appearance="appearance" :behavior="behavior" :motion-key="effectiveMotionKey" />
-    <TresGroup ref="motion" :position="vector(scheme.model.rootPosition)">
+    <TresGroup :ref="setMotionRef" :position="vector(scheme.model.rootPosition)">
       <ExtensionCloudFoxOrbit :appearance="appearance" :behavior="behavior" />
       <ExtensionCloudFoxMotionGuides :appearance="appearance" :onion-poses="onionPoses" :motion-path-points="motionPathPoints" />
       <ExtensionCloudFoxPropInstances :appearance="appearance" :instances="propInstances" :prop-assets="propAssets" :preserve-asset-materials="preservePropMaterials" />

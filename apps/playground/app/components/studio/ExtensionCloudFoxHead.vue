@@ -20,6 +20,7 @@ import { resolveCloudFoxEyeSurfaceAnchor, sampleCloudFoxHeadFrontSurfaceAtLocalX
 import { resolvePetCustomization } from '~/domain/pet-part-customization'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 import { CUSTOM_MOTION_DISTANCE_SCALE, customPoseScale, customPoseValue, hasAuthoredPoseChannel } from '~/domain/custom-motion-pose'
+import { useStudioMotionPartNodeRegistration } from '~/composables/useStudioMotionPartNodes'
 
 const props = defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
@@ -27,6 +28,7 @@ const props = defineProps<{
   motionKey: number
   customPose?: EvaluatedCloudFoxPose | null
 }>()
+const registerStudioMotionPartNode = useStudioMotionPartNodeRegistration()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vector = (values: readonly number[]) => new Vector3(values[0] || 0, values[1] || 0, values[2] || 0)
 const rotation = (values: readonly number[]) => new Euler(values[0] || 0, values[1] || 0, values[2] || 0)
@@ -109,6 +111,11 @@ function setEyeRef(node: unknown, side: number) {
 function setEarRef(node: unknown, side: number) {
   if (side < 0) leftEar.value = node as Group | undefined
   else rightEar.value = node as Group | undefined
+  registerStudioMotionPartNode(side < 0 ? 'ear-left' : 'ear-right', node)
+}
+function setHeadRef(node: unknown) {
+  head.value = node as Group | undefined
+  registerStudioMotionPartNode('head', node)
 }
 function setAntennaRef(node: unknown, side: number) {
   if (side < 0) leftAntenna.value = node as Group | undefined
@@ -234,7 +241,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 </script>
 
 <template>
-  <TresGroup ref="head" :position="headPosition">
+  <TresGroup :ref="setHeadRef" :position="headPosition">
     <ExtensionCloudFoxHeadShape :appearance="appearance" />
 
     <TresGroup

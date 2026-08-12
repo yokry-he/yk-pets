@@ -17,8 +17,9 @@ export interface StudioMotionPartAnchor {
 </script>
 
 <script setup lang="ts">
-import { TresCanvas } from '@tresjs/core'
+import { TresCanvas, type TresContext } from '@tresjs/core'
 import { Euler, Vector3 } from 'three'
+import type { Object3D } from 'three'
 import ComplexBipedPetRenderer from './ComplexBipedPetRenderer.vue'
 import ProceduralPet from './ProceduralPet.vue'
 import PetSceneEffects from './PetSceneEffects.vue'
@@ -32,6 +33,7 @@ import type { ExtensionCloudFoxMotionId } from '~/domain/chrome-extension-cloud-
 import type { CloudFoxStudioBackground, CloudFoxStudioView } from '~/domain/pet-studio-phase4'
 import type { MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 import type { StudioModelMode } from '~/domain/studio-model-variants'
+import { provideStudioMotionPartNodes } from '~/composables/useStudioMotionPartNodes'
 
 const props = withDefaults(defineProps<{
   appearance: MultiSpeciesAppearanceRecipe
@@ -73,6 +75,7 @@ const emit = defineEmits<{
   'complex-compiled': [payload: ComplexCompilationPayload]
   'part-anchors': [anchors: readonly StudioMotionPartAnchor[]]
 }>()
+const studioMotionPartNodes = provideStudioMotionPartNodes()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const vec3 = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
@@ -175,123 +178,63 @@ const sceneStyle = computed(() => ({
 
 const canvasRoot = ref<HTMLElement>()
 let canvasResizeObserver: ResizeObserver | undefined
+const projectedWorldPosition = new Vector3()
+let anchorProjectionDirty = true
+let lastProjectionFrame = -1
 
-type SemanticWorldAnchor = readonly [number, number, number]
-const SEMANTIC_WORLD_ANCHORS: Readonly<Partial<Record<MotionBodyPartId, SemanticWorldAnchor>>> = Object.freeze({
-  root: [0, -.12, 0],
-  body: [0, -.28, .44],
-  head: [0, .98, .5],
-  'front-paw-left': [-.58, -.42, .72],
-  'front-paw-right': [.58, -.42, .72],
-  'hind-paw-left': [-.42, -1.23, .34],
-  'hind-paw-right': [.42, -1.23, .34],
-  'ear-left': [-.56, 1.64, .34],
-  'ear-right': [.56, 1.64, .34],
-  'tail-root': [-.72, -.42, -.3],
-  'tail-mid': [-1.14, -.1, -.34],
-  'tail-tip': [-1.55, .36, -.28],
-})
-
-function poseValue(channelId: string) {
-  const value = props.customPose?.values[channelId as keyof EvaluatedCloudFoxPose['values']]
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+function nodeAndAncestorsVisible(node: Object3D) {
+  let current: Object3D | null = node
+  while (current) {
+    if (!current.visible) return false
+    current = current.parent
+  }
+  return true
 }
 
 /**
- * 锚点与渲染器共享同一语义 Rig、固定视角和预览变换。这里用保守的语义关节中心投影，
- * 避免把 Three 节点或另一条渲染循环泄漏给 DOM 交互层。
+ * Tres 在现有渲染循环完成一次 render 后触发该回调。此时节点已经消费外观比例、父链、
+ * 动作姿势与阻尼；这里只读取真实 world matrix 并用当前 active camera 投影为纯数值。
  */
-function semanticWorldAnchor(partId: MotionBodyPartId): SemanticWorldAnchor | undefined {
-  const base = SEMANTIC_WORLD_ANCHORS[partId]
-  if (!base) return undefined
-  let [x, y, z] = base
-  const rootX = poseValue('root.position.x') * .45
-  const rootY = poseValue('root.position.y') * .45
-  const rootZ = poseValue('root.position.z') * .45
-  x += rootX
-  y += rootY
-  z += rootZ
-  if (partId !== 'root') {
-    x += poseValue('body.position.x') * .45
-    y += poseValue('body.position.y') * .45
-    z += poseValue('body.position.z') * .45
-  }
-  if (partId === 'head' || partId === 'ear-left' || partId === 'ear-right') {
-    x += poseValue('head.position.x') * .45
-    y += poseValue('head.position.y') * .45
-    z += poseValue('head.position.z') * .45
-  }
-  const limbPrefix = partId === 'front-paw-left' ? 'frontPaw.left'
-    : partId === 'front-paw-right' ? 'frontPaw.right'
-      : partId === 'hind-paw-left' ? 'hindPaw.left'
-        : partId === 'hind-paw-right' ? 'hindPaw.right'
-          : undefined
-  if (limbPrefix) {
-    x += Math.sin(poseValue(`${limbPrefix}.rotation.z`)) * .34
-    y -= Math.sin(poseValue(`${limbPrefix}.rotation.x`)) * .3
-    z += Math.sin(poseValue(`${limbPrefix}.rotation.y`)) * .3
-  }
-  const tailPrefix = partId === 'tail-root' ? 'tail.root'
-    : partId === 'tail-mid' ? 'tail.mid'
-      : partId === 'tail-tip' ? 'tail.tip'
-        : undefined
-  if (tailPrefix) {
-    x -= Math.sin(poseValue(`${tailPrefix}.rotation.z`)) * .38
-    y += Math.sin(poseValue(`${tailPrefix}.rotation.x`)) * .3
-  }
-  return [x, y, z]
-}
-
-function projectSemanticAnchor(partId: MotionBodyPartId, width: number, height: number): StudioMotionPartAnchor | undefined {
-  const world = semanticWorldAnchor(partId)
-  if (!world) return undefined
-  const yaw = CANONICAL_VIEW_YAW[props.view] + props.previewRotation[1]
-  const pitch = props.previewRotation[0]
-  const yawX = world[0] * Math.cos(yaw) + world[2] * Math.sin(yaw)
-  const yawZ = -world[0] * Math.sin(yaw) + world[2] * Math.cos(yaw)
-  const pitchedY = world[1] * Math.cos(pitch) - yawZ * Math.sin(pitch)
-  const pitchedDepth = world[1] * Math.sin(pitch) + yawZ * Math.cos(pitch)
-  const scale = clamp(props.previewScale, .25, 1.5)
-  const x = width * .5 + yawX * Math.min(width, height) * .19 * scale + props.previewPosition[0] * width * .04
-  const y = height * .51 - pitchedY * Math.min(width, height) * .19 * scale - props.previewPosition[1] * height * .04
-  const edge = 12
-  return Object.freeze({
-    bodyPartId: partId,
-    x: Number(x.toFixed(2)),
-    y: Number(y.toFixed(2)),
-    depth: Number(pitchedDepth.toFixed(4)),
-    visible: x >= edge && x <= width - edge && y >= edge && y <= height - edge,
-  })
-}
-
-function publishPartAnchors() {
+function publishPartAnchorsAfterRender(context: TresContext) {
+  const renderer = context.renderer.instance as typeof context.renderer.instance & { info?: { render?: { frame?: number } } }
+  const frame = renderer.info?.render?.frame
+  if (typeof frame === 'number' && frame === lastProjectionFrame) return
+  if (typeof frame === 'number') lastProjectionFrame = frame
   const element = canvasRoot.value
-  if (!element || !props.editableParts?.length) {
-    emit('part-anchors', Object.freeze([]))
-    return
-  }
-  const bounds = element.getBoundingClientRect()
-  if (!(bounds.width > 0 && bounds.height > 0)) return
-  const anchors = props.editableParts
-    .map(partId => projectSemanticAnchor(partId, bounds.width, bounds.height))
-    .filter((anchor): anchor is StudioMotionPartAnchor => Boolean(anchor))
+  const camera = context.camera.activeCamera.value
+  const width = element?.clientWidth || 0
+  const height = element?.clientHeight || 0
+  if (!camera || !(width > 0 && height > 0)) return
+  camera.updateMatrixWorld()
+  const anchors = (props.editableParts || []).map((bodyPartId): StudioMotionPartAnchor => {
+    const node = studioMotionPartNodes.get(bodyPartId)
+    if (!node) return Object.freeze({ bodyPartId, x: 0, y: 0, depth: 1, visible: false })
+    node.updateWorldMatrix(true, false)
+    projectedWorldPosition.setFromMatrixPosition(node.matrixWorld).project(camera)
+    const finite = [projectedWorldPosition.x, projectedWorldPosition.y, projectedWorldPosition.z].every(Number.isFinite)
+    const x = (projectedWorldPosition.x + 1) * width / 2
+    const y = (1 - projectedWorldPosition.y) * height / 2
+    const visible = finite
+      && projectedWorldPosition.z >= -1
+      && projectedWorldPosition.z <= 1
+      && x >= 0 && x <= width && y >= 0 && y <= height
+      && nodeAndAncestorsVisible(node)
+    return Object.freeze({
+      bodyPartId,
+      x: Number((finite ? x : 0).toFixed(2)),
+      y: Number((finite ? y : 0).toFixed(2)),
+      depth: Number((finite ? projectedWorldPosition.z : 1).toFixed(6)),
+      visible,
+    })
+  })
+  anchorProjectionDirty = false
   emit('part-anchors', Object.freeze(anchors))
 }
 
-const anchorProjectionSignal = computed(() => JSON.stringify({
-  editableParts: props.editableParts,
-  view: props.view,
-  previewScale: props.previewScale,
-  previewRotation: props.previewRotation,
-  previewPosition: props.previewPosition,
-  pose: props.customPose?.values,
-}))
-
-watch(anchorProjectionSignal, () => nextTick(publishPartAnchors), { immediate: true })
+watch(() => props.editableParts, () => { anchorProjectionDirty = true }, { deep: true })
 onMounted(() => {
-  canvasResizeObserver = new ResizeObserver(publishPartAnchors)
+  canvasResizeObserver = new ResizeObserver(() => { anchorProjectionDirty = true })
   if (canvasRoot.value) canvasResizeObserver.observe(canvasRoot.value)
-  publishPartAnchors()
 })
 onBeforeUnmount(() => canvasResizeObserver?.disconnect())
 </script>
@@ -301,7 +244,7 @@ onBeforeUnmount(() => canvasResizeObserver?.disconnect())
     <div v-if="!activeScene.transparent" class="scene-surface" />
     <div v-if="!activeScene.transparent" class="scene-gradient" />
     <div v-if="extensionScene" class="extension-nebula" />
-    <TresCanvas :clear-color="clearColor" :clear-alpha="activeScene.transparent ? 0 : 1" :dpr="canvasDpr" alpha antialias shadows>
+    <TresCanvas :clear-color="clearColor" :clear-alpha="activeScene.transparent ? 0 : 1" :dpr="canvasDpr" alpha antialias shadows @render="publishPartAnchorsAfterRender">
       <TresPerspectiveCamera :position="cameraPosition" :fov="scheme.scene.camera.normalFov" />
       <TresAmbientLight :intensity="contrast === 'light' ? 1.7 : scheme.scene.lights.ambientIntensity" />
       <TresDirectionalLight :position="vec3(scheme.scene.lights.directionalPosition)" :intensity="contrast === 'light' ? 2.7 : scheme.scene.lights.directionalIntensity" cast-shadow />

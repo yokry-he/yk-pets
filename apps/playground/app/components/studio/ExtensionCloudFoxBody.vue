@@ -23,8 +23,10 @@ import {
 import type { SymbolChannelRecipe } from '~/domain/pet-studio-phase4'
 import type { FrontPawStyle, MultiSpeciesAppearanceRecipe } from '~/domain/pet-species-registry'
 import { customPoseScale, customPoseValue } from '~/domain/custom-motion-pose'
+import { useStudioMotionPartNodeRegistration } from '~/composables/useStudioMotionPartNodes'
 
 const props = defineProps<{ appearance: MultiSpeciesAppearanceRecipe; behavior: ExtensionCloudFoxMotionId; motionKey: number; customPose?: EvaluatedCloudFoxPose | null }>()
+const registerStudioMotionPartNode = useStudioMotionPartNodeRegistration()
 const scheme = EXTENSION_CLASSIC_CLOUD_FOX_SCHEME
 const upAxis = new Vector3(0, 1, 0)
 const vector = (value: readonly number[]) => new Vector3(value[0] || 0, value[1] || 0, value[2] || 0)
@@ -173,8 +175,15 @@ const energyCorePosition = computed(() => vector([
   scheme.model.body.position[2] + bodyHalfDepth.value * profile.value.chestDepth + .08,
 ]))
 function setPawMotionRef(node: unknown, side: number) { if (side < 0) leftMotion.value = node as Group | undefined; else rightMotion.value = node as Group | undefined }
-function setPawTipRef(node: unknown, side: number) { if (side < 0) leftTip.value = node as Group | undefined; else rightTip.value = node as Group | undefined }
+function setPawTipRef(node: unknown, side: number) {
+  if (side < 0) leftTip.value = node as Group | undefined
+  else rightTip.value = node as Group | undefined
+  registerStudioMotionPartNode(side < 0 ? 'front-paw-left' : 'front-paw-right', node)
+}
 function setHindRef(node: unknown, side: number) { if (side < 0) leftHind.value = node as Group | undefined; else rightHind.value = node as Group | undefined }
+function setHindTipRef(node: unknown, side: number) {
+  registerStudioMotionPartNode(side < 0 ? 'hind-paw-left' : 'hind-paw-right', node)
+}
 function texture(channel: SymbolChannelRecipe) {
   if (!import.meta.client) return
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256
@@ -218,6 +227,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
 </script>
 
 <template>
+  <TresGroup :ref="node => registerStudioMotionPartNode('body', node)" :position="vector(scheme.model.body.position)" />
   <ExtensionCloudFoxBodyShape :appearance="appearance" />
 
   <TresGroup v-for="side in [-1, 1]" :key="`fp${side}`" :position="pawPosition(side)">
@@ -252,7 +262,7 @@ useLoop().onBeforeRender(({ elapsed, delta }) => {
             <TresSphereGeometry :args="[hindAnkleRadius * (hindPaw.style === 'mechanical' ? 1.18 : 1.08), 20, 20]" />
             <TresMeshStandardMaterial :color="hindPaw.style === 'mechanical' ? colors.body : colors.limbs" :roughness="hindPaw.style === 'mechanical' ? .2 : .3" :metalness="hindPaw.style === 'mechanical' ? .38 : .03" />
           </TresMesh>
-          <TresGroup :position="hindFootPositionFromAnkle" :rotation="hindFootRotation(side)">
+          <TresGroup :ref="node => setHindTipRef(node, side)" :position="hindFootPositionFromAnkle" :rotation="hindFootRotation(side)">
             <TresMesh :scale="hindFootScale" cast-shadow>
               <TresSphereGeometry :args="[scheme.model.hindPaw.tipRadius, 28, 28]" />
               <TresMeshStandardMaterial :color="colors.paws" :roughness="hindPaw.style === 'mechanical' ? .2 : .3" :metalness="hindPaw.style === 'mechanical' ? .28 : .02" />
