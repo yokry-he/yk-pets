@@ -12,3 +12,4 @@ coverage
 .yk-pets
 .nova
 .DS_Store
+.worktrees/
