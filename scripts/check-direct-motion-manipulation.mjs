@@ -27,6 +27,18 @@ const unchangedGuardIndex = preview.indexOf('if (!latestChanged) return false')
 const compileIndex = preview.indexOf('compileSimpleMotionRecipe')
 const nextRecipeIndex = preview.indexOf('const nextRecipe: SimpleMotionRecipeV1')
 const beforeUnchangedGuard = unchangedGuardIndex >= 0 ? preview.slice(0, unchangedGuardIndex) : preview
+const baselineParseIndex = directBegin.indexOf('const baseline = parse(this.controlGestureBaseline)')
+const baselineRecipeReadIndex = directBegin.indexOf('readSimpleMotionRecipe(baseline)')
+const baselineStageDeclarationIndex = directBegin.indexOf('const baselineStage =')
+const inlineBaselineStageIndex = directBegin.indexOf('readSimpleMotionRecipe(baseline)?.stages.find')
+const namedBaselineStageIndex = directBegin.indexOf('baselineRecipe?.stages.find')
+const baselineStageSourceIndex = inlineBaselineStageIndex >= 0 ? inlineBaselineStageIndex : namedBaselineStageIndex
+const baselinePoseIndex = directBegin.indexOf('baselinePose: Object.freeze({ ...baselineStage.pose })')
+const directBaselineSourceChain = baselineParseIndex >= 0
+  && baselineRecipeReadIndex > baselineParseIndex
+  && baselineStageDeclarationIndex > baselineParseIndex
+  && baselineStageSourceIndex >= baselineRecipeReadIndex
+  && baselinePoseIndex > baselineStageSourceIndex
 const commitUsesLatestSolve = /if\s*\(latestChanged\)\s*this\.endControlGesture\(\)\s*else\s*this\.cancelControlGesture\(\)/.test(commit)
 const switchingActions = [
   ['open', 'replaceFromSaved', 'this.motionId = asset.id'],
@@ -70,7 +82,7 @@ const checks = [
     'latestChanged:',
   ])],
   ['Store direct session reuses the control gesture transaction baseline', preview.includes('controlGestureBaseline') && store.includes('this.beginControlGesture()') && store.includes('this.endControlGesture()')],
-  ['direct session baseline pose is copied from the parsed baseline stage', directBegin.includes('baselinePose: Object.freeze({ ...baselineStage.pose })')],
+  ['direct session pose follows the parsed baseline recipe stage source chain', directBaselineSourceChain],
   ['gesture begin and cancel preserve undo redo history', !controlBegin.includes('this.snapshot()')
     && !controlBegin.includes('undoStack')
     && !controlBegin.includes('redoStack')
