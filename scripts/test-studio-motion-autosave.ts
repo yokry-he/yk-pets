@@ -81,6 +81,7 @@ test('有效提交结束手势后显式调度并只保存一次', () => {
 
 test('取消手势清理候选任务并且不保存', () => {
   const fixture = setup()
+  fixture.setDirty(false)
   fixture.setGestureActive(true)
   fixture.controller.schedule()
   fixture.setGestureActive(false)
@@ -88,4 +89,35 @@ test('取消手势清理候选任务并且不保存', () => {
   fixture.clock.advance(2_000)
   assert.equal(fixture.saves, 0)
   assert.deepEqual(fixture.states, [])
+})
+
+test('先有有效修改再进入手势，取消或零变化后仍保存既有脏草稿', () => {
+  for (const outcome of ['cancelled', 'committed'] as const) {
+    const fixture = setup()
+    fixture.controller.schedule()
+    fixture.clock.advance(300)
+    fixture.setGestureActive(true)
+    fixture.controller.schedule()
+    fixture.clock.advance(2_000)
+    assert.equal(fixture.saves, 0)
+    fixture.setGestureActive(false)
+    fixture.controller.settleGesture(outcome)
+    fixture.clock.advance(500)
+    assert.equal(fixture.saves, 1)
+  }
+})
+
+test('卸载前取消手势后脏草稿可同步 flush，纯净草稿不保存', () => {
+  const dirty = setup()
+  dirty.setGestureActive(true)
+  dirty.controller.schedule()
+  dirty.setGestureActive(false)
+  dirty.controller.settleGesture('cancelled')
+  assert.equal(dirty.controller.flush(), true)
+  assert.equal(dirty.saves, 1)
+
+  const clean = setup()
+  clean.setDirty(false)
+  clean.controller.dispose()
+  assert.equal(clean.saves, 0)
 })

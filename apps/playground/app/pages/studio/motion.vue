@@ -470,10 +470,10 @@ onMounted(() => {
   window.addEventListener('keydown', keyboard)
 })
 onBeforeUnmount(() => {
-  const cancelledActiveEditing = editor.cancelActiveControlEditing()
+  editor.cancelActiveControlEditing()
   closePartInspector(false)
-  if (cancelledActiveEditing) autoSaveController.dispose()
-  else flushAutoSave()
+  if (editor.isDirty) flushAutoSave()
+  else autoSaveController.dispose()
   cancelAnimationFrame(raf)
   narrowViewportQuery?.removeEventListener('change', syncNarrowViewport)
   restoreDocumentOverflow()

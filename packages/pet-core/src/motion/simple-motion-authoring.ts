@@ -5,7 +5,7 @@
  */
 import {
   MOTION_CONTROLS,
-  getIntensityAdjustedMotionControlRange,
+  getPersistedMotionControlRange,
   type MotionControlId,
 } from './motion-controls'
 import type { StudioMotionAssetV2 } from './motion-asset'
@@ -207,7 +207,7 @@ function normalizePose(value: unknown, path: string, diagnostics: SimpleMotionDi
       diagnostics.push({ code: 'control-value-repaired', path: `${path}.${id}`, message: '非有限姿势数值已忽略。' })
       continue
     }
-    const [minimum, maximum] = getIntensityAdjustedMotionControlRange(id as MotionControlId, intensity)
+    const [minimum, maximum] = getPersistedMotionControlRange(id as MotionControlId, intensity)
     pose[id as MotionControlId] = clamp(rawValue, minimum, maximum)
   }
   return pose

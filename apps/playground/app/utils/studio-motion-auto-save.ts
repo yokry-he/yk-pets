@@ -22,6 +22,7 @@ export interface StudioMotionAutoSaveOptions<TTimer> {
 
 export function createStudioMotionAutoSaveController<TTimer>(options: StudioMotionAutoSaveOptions<TTimer>) {
   let timer: TTimer | undefined
+  let saveRequested = false
 
   function clearPending() {
     if (timer === undefined) return
@@ -33,6 +34,7 @@ export function createStudioMotionAutoSaveController<TTimer>(options: StudioMoti
     if (options.isGestureActive() || !options.isDirty()) return true
     try {
       const saved = options.persist()
+      if (saved) saveRequested = false
       options.setState(saved ? 'saved' : 'failed')
       return saved
     }
@@ -44,7 +46,9 @@ export function createStudioMotionAutoSaveController<TTimer>(options: StudioMoti
 
   function schedule() {
     clearPending()
-    if (options.isGestureActive() || !options.isDirty()) return
+    if (!options.isDirty()) return
+    saveRequested = true
+    if (options.isGestureActive()) return
     options.setState('saving')
     timer = options.clock.setTimeout(() => {
       timer = undefined
@@ -60,7 +64,8 @@ export function createStudioMotionAutoSaveController<TTimer>(options: StudioMoti
     },
     settleGesture(outcome: StudioMotionGestureOutcome) {
       clearPending()
-      if (outcome === 'committed') schedule()
+      if ((outcome === 'committed' || saveRequested) && options.isDirty()) schedule()
+      else if (!options.isDirty()) saveRequested = false
     },
     dispose: clearPending,
   }

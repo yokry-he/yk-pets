@@ -231,6 +231,14 @@ export function getIntensityAdjustedMotionControlRange(
   ] as const)
 }
 
+/** 持久化规范化在零力度时保留原始安全姿势，避免临时禁用阶段破坏可恢复数据。 */
+export function getPersistedMotionControlRange(
+  controlId: MotionControlId,
+  intensity = 1,
+): readonly [number, number] {
+  return getIntensityAdjustedMotionControlRange(controlId, intensity > 0 ? intensity : 1)
+}
+
 export function toMotionControlDisplayValue(value: number, unit: MotionControlDisplayUnit): number {
   return unit === 'degree' ? value * 180 / Math.PI : value
 }

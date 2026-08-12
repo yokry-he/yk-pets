@@ -74,6 +74,27 @@ test('阶段力度先规范化再收紧已有姿势且保持幂等稀疏', () =>
   assert.equal(soft.pose['front-paw-left.rotate.z'], channel.minimum / 1.5, '降低力度不能反向放大旧姿势')
 })
 
+test('零力度规范化保留安全姿势以支持恢复且不物化缺失控制', () => {
+  const recipe = createSimpleMotionRecipe('custom')
+  recipe.stages[0] = {
+    ...recipe.stages[0]!,
+    intensity: 0,
+    pose: { 'head.rotate.x': Math.PI, 'front-paw-left.rotate.z': -Math.PI },
+  }
+  const disabled = normalizeSimpleMotionRecipe(recipe).value
+  const stage = disabled.stages[0]!
+  assert.equal(stage.pose['head.rotate.x'], Math.PI)
+  assert.equal(stage.pose['front-paw-left.rotate.z'], -Math.PI)
+  assert.equal(Object.hasOwn(stage.pose, 'body.rotate.x'), false)
+
+  const restored = normalizeSimpleMotionRecipe({
+    ...disabled,
+    stages: disabled.stages.map((item, index) => index === 0 ? { ...item, intensity: 1 } : item),
+  }).value
+  assert.equal(restored.stages[0]?.pose['head.rotate.x'], Math.PI)
+  assert.equal(restored.stages[0]?.pose['front-paw-left.rotate.z'], -Math.PI)
+})
+
 test('旧资产读取会按保存的阶段力度规范已有姿势', () => {
   const recipe = createSimpleMotionRecipe('custom')
   recipe.stages[0] = { ...recipe.stages[0]!, intensity: 1.5, pose: { 'head.rotate.x': Math.PI } }

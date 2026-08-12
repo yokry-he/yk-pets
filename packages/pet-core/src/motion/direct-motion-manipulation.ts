@@ -221,23 +221,35 @@ const DIRECT_MOTION_DRAG_BINDINGS_BY_PART: Readonly<Partial<Record<MotionBodyPar
     { mode: 'rotate', controlId: 'head.rotate.y', source: 'x', sign: 1, weight: 1, role: 'primary' },
   ],
   'front-paw-left': [
+    { mode: 'translate', controlId: 'front-paw-left.rotate.z', source: 'x', sign: 1, weight: .85, role: 'primary' },
+    { mode: 'translate', controlId: 'front-paw-left.rotate.x', source: 'y', sign: -1, weight: .8, role: 'primary' },
+    { mode: 'translate', controlId: 'front-paw-left.rotate.y', source: 'depth', sign: 1, weight: .65, role: 'primary' },
     { mode: 'rotate', controlId: 'front-paw-left.rotate.z', source: 'x', sign: 1, weight: 1, role: 'primary' },
     { mode: 'rotate', controlId: 'front-paw-left.rotate.x', source: 'y', sign: -1, weight: 1, role: 'primary' },
     { mode: 'rotate', controlId: 'front-paw-left.rotate.y', source: 'depth', sign: 1, weight: 1, role: 'primary' },
     { mode: 'rotate', controlId: 'front-paw-left.rotate.tip-x', source: 'y', sign: -1, weight: .25, role: 'auxiliary' },
   ],
   'front-paw-right': [
+    { mode: 'translate', controlId: 'front-paw-right.rotate.z', source: 'x', sign: 1, weight: .85, role: 'primary' },
+    { mode: 'translate', controlId: 'front-paw-right.rotate.x', source: 'y', sign: -1, weight: .8, role: 'primary' },
+    { mode: 'translate', controlId: 'front-paw-right.rotate.y', source: 'depth', sign: 1, weight: .65, role: 'primary' },
     { mode: 'rotate', controlId: 'front-paw-right.rotate.z', source: 'x', sign: 1, weight: 1, role: 'primary' },
     { mode: 'rotate', controlId: 'front-paw-right.rotate.x', source: 'y', sign: -1, weight: 1, role: 'primary' },
     { mode: 'rotate', controlId: 'front-paw-right.rotate.y', source: 'depth', sign: 1, weight: 1, role: 'primary' },
     { mode: 'rotate', controlId: 'front-paw-right.rotate.tip-x', source: 'y', sign: -1, weight: .25, role: 'auxiliary' },
   ],
   'hind-paw-left': [
+    { mode: 'translate', controlId: 'hind-paw-left.rotate.z', source: 'x', sign: 1, weight: .75, role: 'primary' },
+    { mode: 'translate', controlId: 'hind-paw-left.rotate.x', source: 'y', sign: -1, weight: .9, role: 'primary' },
+    { mode: 'translate', controlId: 'hind-paw-left.rotate.y', source: 'depth', sign: 1, weight: .6, role: 'primary' },
     { mode: 'rotate', controlId: 'hind-paw-left.rotate.z', source: 'x', sign: 1, weight: 1, role: 'primary' },
     { mode: 'rotate', controlId: 'hind-paw-left.rotate.x', source: 'y', sign: -1, weight: 1, role: 'primary' },
     { mode: 'rotate', controlId: 'hind-paw-left.rotate.y', source: 'depth', sign: 1, weight: 1, role: 'primary' },
   ],
   'hind-paw-right': [
+    { mode: 'translate', controlId: 'hind-paw-right.rotate.z', source: 'x', sign: 1, weight: .75, role: 'primary' },
+    { mode: 'translate', controlId: 'hind-paw-right.rotate.x', source: 'y', sign: -1, weight: .9, role: 'primary' },
+    { mode: 'translate', controlId: 'hind-paw-right.rotate.y', source: 'depth', sign: 1, weight: .6, role: 'primary' },
     { mode: 'rotate', controlId: 'hind-paw-right.rotate.z', source: 'x', sign: 1, weight: 1, role: 'primary' },
     { mode: 'rotate', controlId: 'hind-paw-right.rotate.x', source: 'y', sign: -1, weight: 1, role: 'primary' },
     { mode: 'rotate', controlId: 'hind-paw-right.rotate.y', source: 'depth', sign: 1, weight: 1, role: 'primary' },
@@ -337,12 +349,13 @@ function createCapability(partId: MotionBodyPartId): DirectMotionCapability | un
   const symmetryPartnerId = bodyPart.symmetryPartnerId && FORMAL_PART_ID_SET.has(bodyPart.symmetryPartnerId)
     ? bodyPart.symmetryPartnerId
     : undefined
+  const dragBindings = DIRECT_MOTION_DRAG_BINDINGS_BY_PART[partId] || []
   return freezeCapability({
     partId,
-    modes: DIRECT_MOTION_MODES.filter(mode => controls.some(control => control.mode === mode)),
+    modes: DIRECT_MOTION_MODES.filter(mode => controls.some(control => control.mode === mode) || dragBindings.some(binding => binding.mode === mode)),
     controlIds: controls.map(control => control.id),
     parameters: controls.map(directParameter),
-    dragBindings: DIRECT_MOTION_DRAG_BINDINGS_BY_PART[partId] || [],
+    dragBindings,
     symmetryBindings: DIRECT_MOTION_SYMMETRY_BINDINGS_BY_PART[partId] || [],
     ...(symmetryPartnerId ? { symmetryPartnerId } : {}),
     endEffector: END_EFFECTOR_PART_IDS.has(partId),

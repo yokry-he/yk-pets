@@ -348,6 +348,34 @@ test('旋转拖拽只写入能力中精确声明的主控和辅助绑定', () =>
   assert.equal(result.pose['front-paw-left.rotate.tip-z'], undefined, '未绑定爪尖方向不得被实体化')
 })
 
+test('四只爪都暴露移动模式并通过显式绑定写入既有旋转控制', () => {
+  for (const partId of ['front-paw-left', 'front-paw-right', 'hind-paw-left', 'hind-paw-right'] as const) {
+    const capability = getDirectMotionCapability(partId)!
+    assert.deepEqual(capability.modes, ['translate', 'rotate'])
+    const bindings = capability.dragBindings.filter(binding => binding.mode === 'translate')
+    assert.deepEqual(bindings.map(binding => binding.source), ['x', 'y', 'depth'])
+    assert.ok(bindings.every(binding => binding.controlId.startsWith(`${partId}.rotate.`)))
+
+    const result = solveDirectMotionDrag({
+      partId,
+      mode: 'translate',
+      delta: { x: 36, y: -24, depth: 12 },
+      viewport: { width: 600, height: 400 },
+      pose: {},
+      intensity: 1,
+    })
+    assert.equal(result.changed, true)
+    assert.ok(Object.keys(result.pose).every(id => id.startsWith(`${partId}.rotate.`)))
+    assertFinitePose(result.pose)
+
+    const recipe = createSimpleMotionRecipe('custom')
+    recipe.stages[0] = { ...recipe.stages[0]!, pose: { ...result.pose } }
+    const compiled = compileSimpleMotionRecipe(createStudioMotionAsset({ id: `paw-${partId}` }), recipe).asset
+    assert.ok(compiled.tracks.flatMap(track => track.keyframes).every(keyframe => Number.isFinite(keyframe.value)))
+    assert.ok(Object.keys(result.pose).every(isMotionControlId))
+  }
+})
+
 test('零拖动与未绑定方向不实体化控制，且不被超大未使用方向钳制', () => {
   const zero = solveDirectMotionDrag({
     partId: 'body',

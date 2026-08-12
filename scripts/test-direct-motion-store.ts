@@ -148,6 +148,20 @@ test('3D 拖拽开启对称后同步伙伴并维持单次撤销', () => {
   assert.deepEqual(editor.undoStack, [baseline])
 })
 
+test('四爪移动拖拽只写合法旋转控制且一次手势只有一个撤销', () => {
+  for (const partId of ['front-paw-left', 'front-paw-right', 'hind-paw-left', 'hind-paw-right'] as const) {
+    const editor = createEditor()
+    const baseline = JSON.stringify(editor.draft)
+    editor.selectBodyPart(partId)
+    assert.equal(editor.setDirectManipulationMode('translate'), true)
+    assert.equal(editor.beginDirectManipulation(21, 100, 100), true)
+    assert.equal(editor.previewDirectManipulation(21, 150, 70, viewport, 10), true)
+    assert.ok(Object.keys(pose(editor)).every(id => id.startsWith(`${partId}.rotate.`)))
+    assert.equal(editor.commitDirectManipulation(21), true)
+    assert.deepEqual(editor.undoStack, [baseline])
+  }
+})
+
 test('对称预览取消恢复双侧姿势且不改写历史', () => {
   const editor = createEditor()
   const baseline = JSON.stringify(editor.draft)
@@ -203,6 +217,23 @@ test('提高阶段力度会同步收紧已保存的双侧姿势', () => {
   assert.equal(pose(editor)['front-paw-left.rotate.z'], -Math.PI / 1.5)
   assert.equal(pose(editor)['front-paw-right.rotate.z'], Math.PI / 1.5)
   assert.equal(Object.hasOwn(pose(editor), 'head.rotate.x'), false)
+})
+
+test('零力度阶段往返保留双侧姿势并可恢复动作', () => {
+  const editor = createEditor()
+  editor.selectBodyPart('front-paw-left')
+  editor.symmetryEnabled = true
+  editor.writeControlValue('front-paw-left.rotate.z', -1)
+  editor.updateSelectedSimpleStage({ intensity: 0 })
+  assert.equal(pose(editor)['front-paw-left.rotate.z'], -1)
+  assert.equal(pose(editor)['front-paw-right.rotate.z'], 1)
+
+  const saved = JSON.parse(JSON.stringify(editor.draft!))
+  editor.replaceFromSaved(saved)
+  assert.equal(pose(editor)['front-paw-left.rotate.z'], -1)
+  editor.updateSelectedSimpleStage({ intensity: 1 })
+  assert.equal(pose(editor)['front-paw-left.rotate.z'], -1)
+  assert.equal(pose(editor)['front-paw-right.rotate.z'], 1)
 })
 
 test('姿势卡和部位复位遵循同一对称写入边界', () => {
