@@ -296,6 +296,26 @@ test('畸形拖拽输入安全阻断并返回独立的有限冻结姿势', () =>
   }
 })
 
+test('撤销后的 Proxy 姿势不会让拖拽求解抛出', () => {
+  const revocable = Proxy.revocable({ 'body.rotate.x': .1 }, {})
+  revocable.revoke()
+
+  const result = solveDirectMotionDrag({
+    partId: 'body',
+    mode: 'rotate',
+    delta: { x: 0, y: 0, depth: 0 },
+    viewport: { width: 800, height: 600 },
+    pose: revocable.proxy as Readonly<Partial<Record<MotionControlId, number>>>,
+  })
+
+  assert.equal(result.status, 'blocked')
+  assert.ok(result.diagnostics.length > 0 && result.diagnostics.length <= 4)
+  assert.ok(result.diagnostics.every(item => /[\u4e00-\u9fff]/u.test(item)))
+  assertFinitePose(result.pose)
+  assert.ok(Object.isFrozen(result.pose))
+  assert.ok(Object.isFrozen(result.diagnostics))
+})
+
 test('姿势卡精确合并、保留其余姿势并保持不可变边界', () => {
   const pose = { 'head.rotate.x': .18, 'front-paw-left.rotate.z': -.1 }
   const before = structuredClone(pose)
@@ -324,4 +344,21 @@ test('未知姿势卡安全阻断，左右镜像卡分别写入正确的真实�
   assert.equal(right.pose['front-paw-right.rotate.z'], .85)
   assert.equal(left.pose['front-paw-right.rotate.z'], undefined)
   assert.equal(right.pose['front-paw-left.rotate.z'], undefined)
+})
+
+test('撤销后的 Proxy 姿势不会让姿势卡应用抛出', () => {
+  const revocable = Proxy.revocable({ 'head.rotate.x': .1 }, {})
+  revocable.revoke()
+
+  const result = applyDirectMotionPoseCard(
+    revocable.proxy as Readonly<Partial<Record<MotionControlId, number>>>,
+    'head-nod',
+  )
+
+  assert.equal(result.status, 'blocked')
+  assert.ok(result.diagnostics.length > 0 && result.diagnostics.length <= 4)
+  assert.ok(result.diagnostics.every(item => /[\u4e00-\u9fff]/u.test(item)))
+  assertFinitePose(result.pose)
+  assert.ok(Object.isFrozen(result.pose))
+  assert.ok(Object.isFrozen(result.diagnostics))
 })

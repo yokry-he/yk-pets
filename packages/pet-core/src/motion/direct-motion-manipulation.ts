@@ -340,13 +340,12 @@ function clampControlValue(controlId: MotionControlId, value: number): readonly 
 
 function normalizeDirectMotionPose(source: unknown, diagnostics: string[]): PoseNormalizationResult {
   const pose: Partial<Record<MotionControlId, number>> = {}
-  if (!source || typeof source !== 'object' || Array.isArray(source)) {
-    addDiagnostic(diagnostics, '姿势输入格式异常，已安全阻断。')
-    return { pose, malformed: true, clamped: false }
-  }
-
   let entries: [string, unknown][]
   try {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+      addDiagnostic(diagnostics, '姿势输入格式异常，已安全阻断。')
+      return { pose, malformed: true, clamped: false }
+    }
     entries = Object.entries(source).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
   }
   catch {
