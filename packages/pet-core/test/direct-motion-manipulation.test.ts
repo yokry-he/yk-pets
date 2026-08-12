@@ -6,11 +6,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  applyDirectMotionPoseCard,
   DIRECT_MOTION_POSE_CARDS,
+  getCloudFoxRigChannel,
   getDirectMotionCapability,
   getMotionBodyPartControls,
   getDirectMotionPoseCards,
   isMotionControlId,
+  solveDirectMotionDrag,
   type MotionBodyPartId,
   type MotionControlId,
 } from '../src/index.ts'
@@ -54,6 +57,10 @@ function parameterFor(partId: MotionBodyPartId, controlId: MotionControlId) {
   const parameter = getDirectMotionCapability(partId)?.parameters.find(item => item.controlId === controlId)
   assert.ok(parameter, `${partId} 应提供 ${controlId} 的直接操控参数`)
   return parameter
+}
+
+function assertFinitePose(pose: Readonly<Partial<Record<MotionControlId, number>>>) {
+  assert.ok(Object.values(pose).every(value => Number.isFinite(value)), '姿势中的每个值都必须是有限数')
 }
 
 test('正式身体部位都有仅含位移或旋转的直接操控能力', () => {
@@ -185,4 +192,136 @@ test('关键左右姿势卡使用真实的镜像反号', () => {
   assert.equal(leftEar.pose['ear-left.rotate.z'], .3)
   assert.equal(rightEar.pose['ear-right.rotate.z'], -.3)
   assert.equal(leftEar.pose['ear-left.rotate.z'], -rightEar.pose['ear-right.rotate.z']!)
+})
+
+test('直接拖拽求解稳定、无副作用且输出冻结的有限姿势', () => {
+  const input = {
+    partId: 'body' as const,
+    mode: 'translate' as const,
+    delta: { x: 40, y: -20, depth: 10 },
+    viewport: { width: 900, height: 600 },
+    pose: { 'head.rotate.x': .2, 'body.translate.x': .1 },
+  }
+  const before = structuredClone(input)
+
+  const first = solveDirectMotionDrag(input)
+  const second = solveDirectMotionDrag(input)
+
+  assert.deepEqual(first, second)
+  assert.notEqual(first.pose, second.pose)
+  assert.notEqual(first.diagnostics, second.diagnostics)
+  assert.deepEqual(input, before)
+  assert.equal(first.status, 'ready')
+  assertFinitePose(first.pose)
+  assert.ok(Object.isFrozen(first.pose))
+  assert.ok(Object.isFrozen(first.diagnostics))
+})
+
+test('旋转拖拽通过能力的显式语义映射前爪控制', () => {
+  const result = solveDirectMotionDrag({
+    partId: 'front-paw-left',
+    mode: 'rotate',
+    delta: { x: 12, y: -24, depth: 8 },
+    viewport: { width: 1_000, height: 500 },
+    pose: {},
+  })
+
+  assert.equal(result.status, 'ready')
+  assert.ok(result.pose['front-paw-left.rotate.x']! > 0, 'swing 应使用 -dy')
+  assert.ok(result.pose['front-paw-left.rotate.y']! > 0, 'twist 应使用 depth')
+  assert.ok(result.pose['front-paw-left.rotate.z']! > 0, 'spread 应使用 dx')
+  assert.ok(result.pose['front-paw-left.rotate.tip-x']! > 0, 'bend 应使用 -dy')
+})
+
+test('超大有限拖拽按真实 Rig 通道范围钳制，而非通用角度范围', () => {
+  const result = solveDirectMotionDrag({
+    partId: 'root',
+    mode: 'translate',
+    delta: { x: 1e12, y: 0, depth: 0 },
+    viewport: { width: 1, height: 1 },
+    pose: {},
+  })
+
+  assert.equal(result.status, 'clamped')
+  assert.equal(result.pose['root.translate.x'], getCloudFoxRigChannel('root.position.x').maximum)
+  assert.ok(result.pose['root.translate.x']! > Math.PI)
+})
+
+test('畸形拖拽输入安全阻断并返回独立的有限冻结姿势', () => {
+  const throwingPose = new Proxy({}, {
+    ownKeys() {
+      throw new Error('不可枚举')
+    },
+  }) as Readonly<Partial<Record<MotionControlId, number>>>
+  const inputs = [
+    {
+      partId: 'body' as MotionBodyPartId,
+      mode: 'translate' as const,
+      delta: { x: Number.NaN, y: 0, depth: 0 },
+      viewport: { width: 800, height: 600 },
+      pose: {},
+    },
+    {
+      partId: 'body' as MotionBodyPartId,
+      mode: 'translate' as const,
+      delta: { x: 0, y: 0, depth: 0 },
+      viewport: { width: 0, height: 600 },
+      pose: {},
+    },
+    {
+      partId: 'body' as MotionBodyPartId,
+      mode: 'scale' as never,
+      delta: { x: 0, y: 0, depth: 0 },
+      viewport: { width: 800, height: 600 },
+      pose: { 'body.rotate.x': Number.POSITIVE_INFINITY, unknown: 1 } as never,
+    },
+    {
+      partId: 'body' as MotionBodyPartId,
+      mode: 'translate' as const,
+      delta: { x: 0, y: 0, depth: 0 },
+      viewport: { width: 800, height: 600 },
+      pose: throwingPose,
+    },
+  ]
+
+  for (const input of inputs) {
+    const result = solveDirectMotionDrag(input)
+    assert.equal(result.status, 'blocked')
+    assert.ok(result.diagnostics.length > 0 && result.diagnostics.length <= 4)
+    assert.ok(result.diagnostics.every(item => /[\u4e00-\u9fff]/u.test(item)))
+    assertFinitePose(result.pose)
+    assert.ok(Object.isFrozen(result.pose))
+    assert.ok(Object.isFrozen(result.diagnostics))
+    assert.notEqual(result.pose, input.pose)
+  }
+})
+
+test('姿势卡精确合并、保留其余姿势并保持不可变边界', () => {
+  const pose = { 'head.rotate.x': .18, 'front-paw-left.rotate.z': -.1 }
+  const before = structuredClone(pose)
+  const result = applyDirectMotionPoseCard(pose, 'front-paw-left-raise-hand')
+
+  assert.equal(result.status, 'ready')
+  assert.equal(result.pose['head.rotate.x'], .18)
+  assert.equal(result.pose['front-paw-left.rotate.z'], -.85)
+  assert.deepEqual(pose, before)
+  assert.notEqual(result.pose, pose)
+  assert.ok(Object.isFrozen(result.pose))
+  assert.ok(Object.isFrozen(result.diagnostics))
+})
+
+test('未知姿势卡安全阻断，左右镜像卡分别写入正确的真实控制', () => {
+  const source = { 'head.rotate.x': .1 }
+  const unknown = applyDirectMotionPoseCard(source, 'missing-card')
+  const left = applyDirectMotionPoseCard({}, 'front-paw-left-raise-hand')
+  const right = applyDirectMotionPoseCard({}, 'front-paw-right-raise-hand')
+
+  assert.equal(unknown.status, 'blocked')
+  assert.deepEqual(unknown.pose, source)
+  assert.notEqual(unknown.pose, source)
+  assert.ok(unknown.diagnostics.length > 0 && unknown.diagnostics.length <= 4)
+  assert.equal(left.pose['front-paw-left.rotate.z'], -.85)
+  assert.equal(right.pose['front-paw-right.rotate.z'], .85)
+  assert.equal(left.pose['front-paw-right.rotate.z'], undefined)
+  assert.equal(right.pose['front-paw-left.rotate.z'], undefined)
 })

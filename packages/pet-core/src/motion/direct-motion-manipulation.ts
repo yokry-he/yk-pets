@@ -4,6 +4,7 @@
  * Defines simple-motion direct manipulation capabilities and quick pose cards without drag solving or UI behavior.
  */
 import {
+  getMotionControl,
   getMotionBodyPart,
   getMotionBodyPartControls,
   isMotionControlId,
@@ -11,6 +12,7 @@ import {
   type MotionControlDefinition,
   type MotionControlId,
 } from './motion-controls'
+import { getCloudFoxRigChannel } from './cloud-fox-rig'
 import type { SimpleMotionIntent } from './simple-motion-authoring'
 
 export type DirectMotionMode = 'translate' | 'rotate'
@@ -57,6 +59,20 @@ export interface DirectMotionPoseCard {
   readonly pose: Readonly<Partial<Record<MotionControlId, number>>>
 }
 
+export interface DirectMotionDragInput {
+  partId: MotionBodyPartId
+  mode: DirectMotionMode
+  delta: Readonly<{ x: number, y: number, depth: number }>
+  viewport: Readonly<{ width: number, height: number }>
+  pose: Readonly<Partial<Record<MotionControlId, number>>>
+}
+
+export interface DirectMotionSolveResult {
+  status: 'ready' | 'clamped' | 'blocked'
+  pose: Readonly<Partial<Record<MotionControlId, number>>>
+  diagnostics: readonly string[]
+}
+
 type DirectMotionParameterMetadata = Omit<DirectMotionParameter, 'controlId'>
 
 const DIRECT_MOTION_MODES = ['translate', 'rotate'] as const satisfies readonly DirectMotionMode[]
@@ -85,6 +101,27 @@ const END_EFFECTOR_PART_IDS = new Set<MotionBodyPartId>([
   'ear-right',
   'tail-tip',
 ])
+const DIRECT_MOTION_DIAGNOSTIC_LIMIT = 4
+const DIRECT_MOTION_DRAG_SENSITIVITY = 1
+const DIRECT_MOTION_SEMANTIC_INPUT = {
+  horizontal: 'x',
+  vertical: 'y',
+  depth: 'depth',
+  swing: 'y',
+  spread: 'x',
+  twist: 'depth',
+  bend: 'y',
+  pitch: 'y',
+  turn: 'x',
+  lean: 'x',
+  nod: 'y',
+  'head-turn': 'x',
+  'head-tilt': 'x',
+  'tip-direction': 'x',
+  'ear-perk': 'y',
+  'tail-lift': 'y',
+  'tail-sway': 'x',
+} as const satisfies Record<DirectMotionSemantic, 'x' | 'y' | 'depth'>
 
 function isRegisteredMotionControl(control: MotionControlDefinition): control is MotionControlDefinition<MotionControlId> {
   return isMotionControlId(control.id)
@@ -254,4 +291,207 @@ export function getDirectMotionPoseCards(partId: MotionBodyPartId, intent: Simpl
       .filter(card => card.partId === partId && card.intents.includes(intent))
       .map(card => freezePoseCard(card)),
   )
+}
+
+interface PoseNormalizationResult {
+  readonly pose: Partial<Record<MotionControlId, number>>
+  readonly malformed: boolean
+  readonly clamped: boolean
+}
+
+interface SafeReadResult {
+  readonly ok: boolean
+  readonly value: unknown
+}
+
+interface FiniteReadResult {
+  readonly ok: true
+  readonly value: number
+}
+
+function addDiagnostic(diagnostics: string[], message: string) {
+  if (diagnostics.length < DIRECT_MOTION_DIAGNOSTIC_LIMIT) diagnostics.push(message)
+}
+
+function safeRead(source: unknown, key: string): SafeReadResult {
+  if (!source || (typeof source !== 'object' && typeof source !== 'function')) return { ok: false, value: undefined }
+  try {
+    return { ok: true, value: (source as Record<string, unknown>)[key] }
+  }
+  catch {
+    return { ok: false, value: undefined }
+  }
+}
+
+function isFiniteRead(result: SafeReadResult): result is FiniteReadResult {
+  return result.ok && typeof result.value === 'number' && Number.isFinite(result.value)
+}
+
+function finiteControlRange(controlId: MotionControlId): readonly [number, number] {
+  const channels = getMotionControl(controlId).channelIds.map(getCloudFoxRigChannel)
+  return [Math.max(...channels.map(channel => channel.minimum)), Math.min(...channels.map(channel => channel.maximum))]
+}
+
+function clampControlValue(controlId: MotionControlId, value: number): readonly [number, boolean] {
+  const [minimum, maximum] = finiteControlRange(controlId)
+  const clamped = Math.max(minimum, Math.min(maximum, value))
+  return [clamped, clamped !== value]
+}
+
+function normalizeDirectMotionPose(source: unknown, diagnostics: string[]): PoseNormalizationResult {
+  const pose: Partial<Record<MotionControlId, number>> = {}
+  if (!source || typeof source !== 'object' || Array.isArray(source)) {
+    addDiagnostic(diagnostics, '姿势输入格式异常，已安全阻断。')
+    return { pose, malformed: true, clamped: false }
+  }
+
+  let entries: [string, unknown][]
+  try {
+    entries = Object.entries(source).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+  }
+  catch {
+    addDiagnostic(diagnostics, '姿势输入无法安全读取，已安全阻断。')
+    return { pose, malformed: true, clamped: false }
+  }
+
+  let malformed = false
+  let clamped = false
+  for (const [id, value] of entries) {
+    if (!isMotionControlId(id)) {
+      malformed = true
+      addDiagnostic(diagnostics, '姿势含未知控制，已忽略。')
+      continue
+    }
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      malformed = true
+      addDiagnostic(diagnostics, '姿势含非有限数值，已忽略。')
+      continue
+    }
+    const [safeValue, didClamp] = clampControlValue(id, value)
+    pose[id] = safeValue
+    if (didClamp) {
+      clamped = true
+      addDiagnostic(diagnostics, '姿势数值已钳制到 Rig 安全范围。')
+    }
+  }
+  return { pose, malformed, clamped }
+}
+
+function frozenSolveResult(
+  status: DirectMotionSolveResult['status'],
+  pose: Readonly<Partial<Record<MotionControlId, number>>>,
+  diagnostics: readonly string[],
+): DirectMotionSolveResult {
+  return Object.freeze({
+    status,
+    pose: Object.freeze({ ...pose }),
+    diagnostics: Object.freeze([...diagnostics]),
+  })
+}
+
+function normalizedDragValue(value: number, shortSide: number): readonly [number, boolean] {
+  const normalized = value / shortSide * DIRECT_MOTION_DRAG_SENSITIVITY
+  if (Number.isFinite(normalized)) return [normalized, false]
+  return [Math.sign(value || 1) * Number.MAX_VALUE, true]
+}
+
+function semanticDragValue(
+  semantic: DirectMotionSemantic,
+  normalized: Readonly<{ x: number, y: number, depth: number }>,
+): number {
+  const source = DIRECT_MOTION_SEMANTIC_INPUT[semantic]
+  return source === 'y' ? -normalized.y : normalized[source]
+}
+
+/**
+ * 把屏幕拖拽保守映射到已注册的语义控制；这不是 IK，也不会改变缩放或骨骼长度。
+ */
+export function solveDirectMotionDrag(input: DirectMotionDragInput): DirectMotionSolveResult {
+  const diagnostics: string[] = []
+  const poseRead = safeRead(input, 'pose')
+  const normalizedPose = normalizeDirectMotionPose(poseRead.ok ? poseRead.value : undefined, diagnostics)
+  if (!poseRead.ok) addDiagnostic(diagnostics, '拖拽姿势无法安全读取，已安全阻断。')
+
+  const partRead = safeRead(input, 'partId')
+  const modeRead = safeRead(input, 'mode')
+  const deltaRead = safeRead(input, 'delta')
+  const viewportRead = safeRead(input, 'viewport')
+  if (!partRead.ok || !modeRead.ok || !deltaRead.ok || !viewportRead.ok) {
+    addDiagnostic(diagnostics, '拖拽输入无法安全读取，已安全阻断。')
+    return frozenSolveResult('blocked', normalizedPose.pose, diagnostics)
+  }
+
+  const capability = typeof partRead.value === 'string'
+    ? DIRECT_MOTION_CAPABILITIES.get(partRead.value as MotionBodyPartId)
+    : undefined
+  if (!capability || (modeRead.value !== 'translate' && modeRead.value !== 'rotate') || !capability.modes.includes(modeRead.value)) {
+    addDiagnostic(diagnostics, '当前部位不支持该直接操控模式，已安全阻断。')
+    return frozenSolveResult('blocked', normalizedPose.pose, diagnostics)
+  }
+
+  const deltaX = safeRead(deltaRead.value, 'x')
+  const deltaY = safeRead(deltaRead.value, 'y')
+  const deltaDepth = safeRead(deltaRead.value, 'depth')
+  const viewportWidth = safeRead(viewportRead.value, 'width')
+  const viewportHeight = safeRead(viewportRead.value, 'height')
+  if (!isFiniteRead(deltaX) || !isFiniteRead(deltaY) || !isFiniteRead(deltaDepth) || !isFiniteRead(viewportWidth) || !isFiniteRead(viewportHeight)) {
+    addDiagnostic(diagnostics, '拖拽增量或视口含非有限数值，已安全阻断。')
+    return frozenSolveResult('blocked', normalizedPose.pose, diagnostics)
+  }
+  const shortSide = Math.min(viewportWidth.value, viewportHeight.value)
+  if (!(shortSide > 0)) {
+    addDiagnostic(diagnostics, '视口尺寸必须为正有限数，已安全阻断。')
+    return frozenSolveResult('blocked', normalizedPose.pose, diagnostics)
+  }
+  if (normalizedPose.malformed) return frozenSolveResult('blocked', normalizedPose.pose, diagnostics)
+
+  const [x, xOverflow] = normalizedDragValue(deltaX.value, shortSide)
+  const [y, yOverflow] = normalizedDragValue(deltaY.value, shortSide)
+  const [depth, depthOverflow] = normalizedDragValue(deltaDepth.value, shortSide)
+  let clamped = normalizedPose.clamped || xOverflow || yOverflow || depthOverflow
+  if (xOverflow || yOverflow || depthOverflow) addDiagnostic(diagnostics, '拖拽增量过大，已按 Rig 安全范围钳制。')
+
+  const pose: Partial<Record<MotionControlId, number>> = { ...normalizedPose.pose }
+  for (const parameter of capability.parameters) {
+    const control = getMotionControl(parameter.controlId)
+    if (control.mode !== modeRead.value) continue
+    const baseline = pose[parameter.controlId] ?? 0
+    const requested = baseline + semanticDragValue(parameter.semantic, { x, y, depth })
+    const [safeValue, didClamp] = clampControlValue(parameter.controlId, requested)
+    pose[parameter.controlId] = Number.isFinite(safeValue) ? safeValue : 0
+    clamped ||= didClamp
+  }
+  if (clamped) addDiagnostic(diagnostics, '拖拽结果已钳制到 Rig 安全范围。')
+  return frozenSolveResult(clamped ? 'clamped' : 'ready', pose, diagnostics)
+}
+
+/**
+ * 精确叠加注册姿势卡，并复用与拖拽相同的 Rig 范围与不可变输出边界。
+ */
+export function applyDirectMotionPoseCard(
+  pose: Readonly<Partial<Record<MotionControlId, number>>>,
+  cardId: string,
+): DirectMotionSolveResult {
+  const diagnostics: string[] = []
+  const normalizedPose = normalizeDirectMotionPose(pose, diagnostics)
+  const card = typeof cardId === 'string' ? DIRECT_MOTION_POSE_CARDS.find(item => item.id === cardId) : undefined
+  if (!card) {
+    addDiagnostic(diagnostics, '未知姿势卡，已安全阻断。')
+    return frozenSolveResult('blocked', normalizedPose.pose, diagnostics)
+  }
+  if (normalizedPose.malformed) return frozenSolveResult('blocked', normalizedPose.pose, diagnostics)
+
+  const merged: Partial<Record<MotionControlId, number>> = { ...normalizedPose.pose }
+  let clamped = normalizedPose.clamped
+  for (const [id, value] of Object.entries(card.pose)) {
+    if (!isMotionControlId(id) || typeof value !== 'number' || !Number.isFinite(value)) {
+      addDiagnostic(diagnostics, '姿势卡包含无效控制，已安全阻断。')
+      return frozenSolveResult('blocked', normalizedPose.pose, diagnostics)
+    }
+    const [safeValue, didClamp] = clampControlValue(id, value)
+    merged[id] = safeValue
+    clamped ||= didClamp
+  }
+  if (clamped) addDiagnostic(diagnostics, '姿势卡结果已钳制到 Rig 安全范围。')
+  return frozenSolveResult(clamped ? 'clamped' : 'ready', merged, diagnostics)
 }
