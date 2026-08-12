@@ -309,6 +309,26 @@ test('强度按阶段编译范围提前收紧 raw pose，并与编译结果一�
   assert.ok(track?.keyframes.every(keyframe => keyframe.value === getCloudFoxRigChannel('body.position.x').maximum))
 })
 
+test('低于一的强度不会放宽阶段 raw pose 的 Rig 范围', () => {
+  const result = solveDirectMotionDrag({
+    partId: 'body',
+    mode: 'translate',
+    delta: { x: 1.5, y: 0, depth: 0 },
+    viewport: { width: 1, height: 1 },
+    pose: {},
+    intensity: .5,
+  })
+  const recipe = createSimpleMotionRecipe('custom')
+  recipe.stages = recipe.stages.map(stage => ({ ...stage, intensity: .5, pose: result.pose }))
+  const asset = createStudioMotionAsset({ id: 'drag-low-intensity', nameZh: '低力度拖拽', nameEn: 'Low intensity drag', createdAt: 1, updatedAt: 1 })
+  const compiled = compileSimpleMotionRecipe(asset, recipe, { now: 2 }).asset
+  const track = compiled.tracks.find(item => item.channelId === 'body.position.x')
+
+  assert.equal(result.status, 'clamped')
+  assert.equal(result.pose['body.translate.x'], getCloudFoxRigChannel('body.position.x').maximum)
+  assert.ok(track?.keyframes.every(keyframe => keyframe.value === getCloudFoxRigChannel('body.position.x').maximum * .5))
+})
+
 test('非法强度阻断，并保留非有限拖拽的关键诊断', () => {
   const intensity = solveDirectMotionDrag({
     partId: 'body',
@@ -364,7 +384,7 @@ test('极端有限强度、基线和拖拽始终返回有限姿势', () => {
 
   assert.equal(result.status, 'clamped')
   assertFinitePose(result.pose)
-  assert.equal(result.pose['body.translate.x'], Number.MAX_VALUE)
+  assert.equal(result.pose['body.translate.x'], getCloudFoxRigChannel('body.position.x').maximum)
 })
 
 test('有限输入代表集始终产生有限姿势', () => {

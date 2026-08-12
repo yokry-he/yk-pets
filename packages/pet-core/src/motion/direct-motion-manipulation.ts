@@ -408,9 +408,11 @@ function isFiniteRead(result: SafeReadResult): result is FiniteReadResult {
 
 function rawControlRange(controlId: MotionControlId, intensity = 1): readonly [number, number] {
   const channels = getMotionControl(controlId).channelIds.map(getCloudFoxRigChannel)
+  const rawMinimum = Math.max(...channels.map(channel => channel.minimum))
+  const rawMaximum = Math.min(...channels.map(channel => channel.maximum))
   return [
-    finiteSaturation(Math.max(...channels.map(channel => channel.minimum)) / intensity),
-    finiteSaturation(Math.min(...channels.map(channel => channel.maximum)) / intensity),
+    Math.max(rawMinimum, finiteSaturation(rawMinimum / intensity)),
+    Math.min(rawMaximum, finiteSaturation(rawMaximum / intensity)),
   ]
 }
 
