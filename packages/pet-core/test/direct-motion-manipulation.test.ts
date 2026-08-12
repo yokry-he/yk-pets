@@ -10,7 +10,9 @@ import {
   getDirectMotionCapability,
   getMotionBodyPartControls,
   getDirectMotionPoseCards,
+  isMotionControlId,
   type MotionBodyPartId,
+  type MotionControlId,
 } from '../src/index.ts'
 
 const formalPartIds: readonly MotionBodyPartId[] = [
@@ -44,6 +46,16 @@ const expectedPoseCardIds = [
   'tail-tip-flick',
 ]
 
+function isOwnedControlId(controlIds: readonly MotionControlId[], value: string): value is MotionControlId {
+  return isMotionControlId(value) && controlIds.includes(value)
+}
+
+function parameterFor(partId: MotionBodyPartId, controlId: MotionControlId) {
+  const parameter = getDirectMotionCapability(partId)?.parameters.find(item => item.controlId === controlId)
+  assert.ok(parameter, `${partId} 应提供 ${controlId} 的直接操控参数`)
+  return parameter
+}
+
 test('正式身体部位都有仅含位移或旋转的直接操控能力', () => {
   for (const partId of formalPartIds) {
     const capability = getDirectMotionCapability(partId)
@@ -65,7 +77,7 @@ test('快速姿势卡覆盖六类部位且只引用所属能力的控制，功�
     const capability = getDirectMotionCapability(card.partId)
     assert.ok(capability, `${card.partId} 应具有直接操控能力`)
     for (const controlId of Object.keys(card.pose)) {
-      assert.ok(capability.controlIds.includes(controlId as never), `${card.id} 不应引用 ${card.partId} 以外的控制`)
+      assert.ok(isOwnedControlId(capability.controlIds, controlId), `${card.id} 不应引用 ${card.partId} 以外的控制`)
     }
   }
   assert.ok(getDirectMotionPoseCards('front-paw-left', 'martial-arts').some(card => card.labelZh === '抬手'))
@@ -83,7 +95,7 @@ test('快速姿势卡覆盖六类部位且只引用所属能力的控制，功�
       const cards = DIRECT_MOTION_POSE_CARDS.filter(card => card.partId === partId)
       const capability = getDirectMotionCapability(partId)!
       assert.ok(cards.length > 0, `${partId} 应具有快速姿势卡`)
-      assert.ok(cards.every(card => Object.keys(card.pose).every(controlId => capability.controlIds.includes(controlId as never))))
+      assert.ok(cards.every(card => Object.keys(card.pose).every(controlId => isOwnedControlId(capability.controlIds, controlId))))
     }
   }
 })
@@ -125,4 +137,52 @@ test('能力和姿势卡保持唯一、显式镜像、冻结边界和稳定顺�
   assert.notEqual(firstCards[0]?.pose, secondCards[0]?.pose)
   assert.ok(Object.isFrozen(firstCards))
   assert.deepEqual(firstCards, secondCards)
+})
+
+test('直接操控参数使用明确的新手语义，且同一部位同一模式不重名', () => {
+  assert.deepEqual(parameterFor('body', 'body.rotate.z'), {
+    semantic: 'lean',
+    labelZh: '身体侧倾',
+    controlId: 'body.rotate.z',
+  })
+  assert.deepEqual(parameterFor('head', 'head.rotate.z'), {
+    semantic: 'head-tilt',
+    labelZh: '头部歪斜',
+    controlId: 'head.rotate.z',
+  })
+  assert.deepEqual(parameterFor('tail-root', 'tail-root.rotate.z'), {
+    semantic: 'tail-sway',
+    labelZh: '尾巴摆动',
+    controlId: 'tail-root.rotate.z',
+  })
+  assert.deepEqual(parameterFor('front-paw-left', 'front-paw-left.rotate.tip-z'), {
+    semantic: 'tip-direction',
+    labelZh: '爪尖方向',
+    controlId: 'front-paw-left.rotate.tip-z',
+  })
+
+  for (const partId of formalPartIds) {
+    const capability = getDirectMotionCapability(partId)!
+    for (const mode of capability.modes) {
+      const controlIds = new Set(getMotionBodyPartControls(partId, mode).map(control => control.id))
+      const semantics = capability.parameters
+        .filter(parameter => controlIds.has(parameter.controlId))
+        .map(parameter => parameter.semantic)
+      assert.equal(new Set(semantics).size, semantics.length, `${partId} 的 ${mode} 参数语义必须唯一`)
+    }
+  }
+})
+
+test('关键左右姿势卡使用真实的镜像反号', () => {
+  const leftFrontPaw = DIRECT_MOTION_POSE_CARDS.find(card => card.id === 'front-paw-left-raise-hand')!
+  const rightFrontPaw = DIRECT_MOTION_POSE_CARDS.find(card => card.id === 'front-paw-right-raise-hand')!
+  const leftEar = DIRECT_MOTION_POSE_CARDS.find(card => card.id === 'ear-left-perk')!
+  const rightEar = DIRECT_MOTION_POSE_CARDS.find(card => card.id === 'ear-right-perk')!
+
+  assert.equal(leftFrontPaw.pose['front-paw-left.rotate.z'], -.85)
+  assert.equal(rightFrontPaw.pose['front-paw-right.rotate.z'], .85)
+  assert.equal(leftFrontPaw.pose['front-paw-left.rotate.z'], -rightFrontPaw.pose['front-paw-right.rotate.z']!)
+  assert.equal(leftEar.pose['ear-left.rotate.z'], .3)
+  assert.equal(rightEar.pose['ear-right.rotate.z'], -.3)
+  assert.equal(leftEar.pose['ear-left.rotate.z'], -rightEar.pose['ear-right.rotate.z']!)
 })
