@@ -25,6 +25,21 @@ const actionBody = (name, nextName) => {
   const end = store.indexOf(`    ${nextName}(`, start + 1)
   return start >= 0 && end > start ? store.slice(start, end) : ''
 }
+const blockAfter = (source, marker) => {
+  const markerIndex = source.indexOf(marker)
+  const start = source.indexOf('{', markerIndex + marker.length)
+  if (markerIndex < 0 || start < 0) return ''
+  let depth = 0
+  for (let index = start; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1
+    else if (source[index] === '}') {
+      depth -= 1
+      if (depth === 0) return source.slice(start + 1, index)
+    }
+  }
+  return ''
+}
+const functionBody = (source, name) => blockAfter(source, `function ${name}(`)
 
 const preview = actionBody('previewDirectManipulation', 'commitDirectManipulation')
 const directBegin = actionBody('beginDirectManipulation', 'previewDirectManipulation')
@@ -58,6 +73,35 @@ const hasRealNodeProjection = source => hasAll(source, [
   'anchorProjectionDirty = true',
 ]) && !source.includes('SEMANTIC_WORLD_ANCHORS')
   && !source.includes('semanticWorldAnchor')
+const hasCanvasProjectionLifecycle = source => {
+  const publishBody = functionBody(source, 'publishPartAnchorsAfterRender')
+  const resizeBody = blockAfter(source, 'new ResizeObserver(() =>')
+  const frameReadIndex = publishBody.indexOf('renderer.info?.render?.frame')
+  const frameGuardIndex = publishBody.indexOf('frame === lastProjectionFrame')
+  const frameWriteIndex = publishBody.indexOf('lastProjectionFrame = frame')
+  const emitIndex = publishBody.indexOf("emit('part-anchors'")
+  return frameReadIndex >= 0
+    && frameGuardIndex > frameReadIndex
+    && frameWriteIndex > frameGuardIndex
+    && emitIndex > frameWriteIndex
+    && resizeBody.includes('anchorProjectionDirty = true')
+    && !resizeBody.includes("emit('part-anchors'")
+    && !resizeBody.includes('publishPartAnchorsAfterRender(')
+    && !source.includes('requestAnimationFrame')
+}
+const hasManipulatorCancellationLifecycle = source => {
+  const lostCaptureBody = functionBody(source, 'onLostPointerCapture')
+  const blurBody = functionBody(source, 'onWindowBlur')
+  const unmountBody = blockAfter(source, 'onBeforeUnmount(() =>')
+  return hasAll(source, [
+    '@lostpointercapture="onLostPointerCapture"',
+    "window.addEventListener('blur', onWindowBlur)",
+    "window.removeEventListener('blur', onWindowBlur)",
+  ])
+    && lostCaptureBody.includes('cancelPointerManipulation()')
+    && blurBody.includes('cancelPointerManipulation()')
+    && unmountBody.includes('cancelPointerManipulation()')
+}
 const switchingActions = [
   ['open', 'replaceFromSaved', 'this.motionId = asset.id'],
   ['replaceFromSaved', 'close', 'this.motionId = asset.id'],
@@ -145,6 +189,7 @@ const checks = [
   ]) && hasRealNodeProjection(canvas)
     && (canvas.match(/<TresCanvas\b/g) || []).length === 1
     && !/export interface StudioMotionPartAnchor\s*{[^}]*\b(?:Object3D|Vector3|Group|Mesh)\b[^}]*}/.test(canvas)],
+  ['Canvas 投影按 renderer frame 去重且 Resize 只标脏', hasCanvasProjectionLifecycle(canvas)],
   ['语义节点注册表只在渲染树内部保存 Object3D 且覆盖正式部位真实节点', hasAll(registry, [
     'Map<MotionBodyPartId, Object3D>',
     'provideStudioMotionPartNodes',
@@ -193,13 +238,21 @@ const checks = [
     'selectPart(partId)',
     '完整部位列表',
   ])],
-  ['指针捕获丢失、窗口失焦和卸载都取消事务且正常释放不会重复取消', hasAll(manipulator, [
-    '@lostpointercapture="onLostPointerCapture"',
+  ['指针捕获丢失、窗口失焦和卸载都取消事务且正常释放不会重复取消', hasManipulatorCancellationLifecycle(manipulator) && hasAll(manipulator, [
     'releasingPointerCapture',
-    "window.addEventListener('blur', onWindowBlur)",
-    "window.removeEventListener('blur', onWindowBlur)",
     'editor.cancelDirectManipulation()',
   ])],
+  ['生命周期门禁自身拒绝删除帧去重、新增 RAF、Resize 直发和删除卸载取消',
+    !hasCanvasProjectionLifecycle(canvas.replace("if (typeof frame === 'number' && frame === lastProjectionFrame) return", ''))
+    && !hasCanvasProjectionLifecycle(`${canvas}\nrequestAnimationFrame(() => {})`)
+    && !hasCanvasProjectionLifecycle(canvas.replace(
+      'new ResizeObserver(() => { anchorProjectionDirty = true })',
+      "new ResizeObserver(() => { emit('part-anchors', Object.freeze([])) })",
+    ))
+    && !hasManipulatorCancellationLifecycle(manipulator.replace(
+      'onBeforeUnmount(() => {\n  cancelPointerManipulation()',
+      'onBeforeUnmount(() => {',
+    ))],
 ]
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)
