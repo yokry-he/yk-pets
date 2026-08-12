@@ -42,6 +42,7 @@ export interface DirectMotionParameter {
   readonly semantic: DirectMotionSemantic
   readonly labelZh: string
   readonly controlId: MotionControlId
+  readonly interactionMode: DirectMotionMode
 }
 
 export type DirectMotionDragSource = 'x' | 'y' | 'depth'
@@ -97,7 +98,7 @@ export interface DirectMotionSolveResult {
   diagnostics: readonly string[]
 }
 
-type DirectMotionParameterMetadata = Omit<DirectMotionParameter, 'controlId'>
+type DirectMotionParameterMetadata = Omit<DirectMotionParameter, 'controlId' | 'interactionMode'>
 
 const DIRECT_MOTION_MODES = ['translate', 'rotate'] as const satisfies readonly DirectMotionMode[]
 const FORMAL_PART_IDS = [
@@ -322,7 +323,26 @@ const DIRECT_MOTION_SYMMETRY_BINDINGS_BY_PART: Readonly<Partial<Record<MotionBod
 function directParameter(control: MotionControlDefinition<MotionControlId>): DirectMotionParameter {
   const metadata = DIRECT_MOTION_PARAMETER_METADATA_BY_ID[control.id]
   if (!metadata) throw new Error(`缺少直接操控参数元数据：${control.id}`)
-  return { controlId: control.id, ...metadata }
+  return { controlId: control.id, interactionMode: control.mode === 'translate' ? 'translate' : 'rotate', ...metadata }
+}
+
+function interactionParameters(
+  partId: MotionBodyPartId,
+  controls: readonly MotionControlDefinition<MotionControlId>[],
+  dragBindings: readonly DirectMotionDragBinding[],
+): readonly DirectMotionParameter[] {
+  const parameters = controls.map(directParameter)
+  const seen = new Set(parameters.map(parameter => `${parameter.interactionMode}:${parameter.controlId}`))
+  const partLabel = getMotionBodyPart(partId).labelZh
+  for (const binding of dragBindings) {
+    const key = `${binding.mode}:${binding.controlId}`
+    if (binding.role !== 'primary' || seen.has(key)) continue
+    seen.add(key)
+    const semantic = binding.source === 'x' ? 'horizontal' : binding.source === 'y' ? 'vertical' : 'depth'
+    const direction = binding.source === 'x' ? '左右拖动' : binding.source === 'y' ? '上下拖动' : '前后拖动'
+    parameters.push({ controlId: binding.controlId, interactionMode: binding.mode, semantic, labelZh: `${partLabel}${direction}` })
+  }
+  return Object.freeze(parameters)
 }
 
 function freezeCapability(capability: DirectMotionCapability): DirectMotionCapability {
@@ -354,7 +374,7 @@ function createCapability(partId: MotionBodyPartId): DirectMotionCapability | un
     partId,
     modes: DIRECT_MOTION_MODES.filter(mode => controls.some(control => control.mode === mode) || dragBindings.some(binding => binding.mode === mode)),
     controlIds: controls.map(control => control.id),
-    parameters: controls.map(directParameter),
+    parameters: interactionParameters(partId, controls, dragBindings),
     dragBindings,
     symmetryBindings: DIRECT_MOTION_SYMMETRY_BINDINGS_BY_PART[partId] || [],
     ...(symmetryPartnerId ? { symmetryPartnerId } : {}),

@@ -169,21 +169,25 @@ test('能力和姿势卡保持唯一、显式镜像、冻结边界和稳定顺�
 
 test('直接操控参数使用明确的新手语义，且同一部位同一模式不重名', () => {
   assert.deepEqual(parameterFor('body', 'body.rotate.z'), {
+    interactionMode: 'rotate',
     semantic: 'lean',
     labelZh: '身体侧倾',
     controlId: 'body.rotate.z',
   })
   assert.deepEqual(parameterFor('head', 'head.rotate.z'), {
+    interactionMode: 'rotate',
     semantic: 'head-tilt',
     labelZh: '头部歪斜',
     controlId: 'head.rotate.z',
   })
   assert.deepEqual(parameterFor('tail-root', 'tail-root.rotate.z'), {
+    interactionMode: 'rotate',
     semantic: 'tail-sway',
     labelZh: '尾巴摆动',
     controlId: 'tail-root.rotate.z',
   })
   assert.deepEqual(parameterFor('front-paw-left', 'front-paw-left.rotate.tip-z'), {
+    interactionMode: 'rotate',
     semantic: 'tip-direction',
     labelZh: '爪尖方向',
     controlId: 'front-paw-left.rotate.tip-z',
@@ -192,9 +196,8 @@ test('直接操控参数使用明确的新手语义，且同一部位同一模�
   for (const partId of formalPartIds) {
     const capability = getDirectMotionCapability(partId)!
     for (const mode of capability.modes) {
-      const controlIds = new Set(getMotionBodyPartControls(partId, mode).map(control => control.id))
       const semantics = capability.parameters
-        .filter(parameter => controlIds.has(parameter.controlId))
+        .filter(parameter => parameter.interactionMode === mode)
         .map(parameter => parameter.semantic)
       assert.equal(new Set(semantics).size, semantics.length, `${partId} 的 ${mode} 参数语义必须唯一`)
     }
@@ -352,6 +355,13 @@ test('四只爪都暴露移动模式并通过显式绑定写入既有旋转控�
   for (const partId of ['front-paw-left', 'front-paw-right', 'hind-paw-left', 'hind-paw-right'] as const) {
     const capability = getDirectMotionCapability(partId)!
     assert.deepEqual(capability.modes, ['translate', 'rotate'])
+    const translateParameters = capability.parameters.filter(parameter => parameter.interactionMode === 'translate')
+    const rotateParameters = capability.parameters.filter(parameter => parameter.interactionMode === 'rotate')
+    assert.equal(translateParameters.length, 3)
+    assert.ok(rotateParameters.length >= 3)
+    assert.equal(new Set(translateParameters.map(parameter => parameter.controlId)).size, 3)
+    assert.deepEqual(translateParameters.map(parameter => parameter.semantic), ['horizontal', 'vertical', 'depth'])
+    assert.ok(translateParameters.every(parameter => parameter.labelZh.includes('拖动')))
     const bindings = capability.dragBindings.filter(binding => binding.mode === 'translate')
     assert.deepEqual(bindings.map(binding => binding.source), ['x', 'y', 'depth'])
     assert.ok(bindings.every(binding => binding.controlId.startsWith(`${partId}.rotate.`)))
