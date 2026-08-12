@@ -7,6 +7,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   applyDirectMotionPoseCard,
+  compileSimpleMotionRecipe,
+  createSimpleMotionRecipe,
+  createStudioMotionAsset,
   DIRECT_MOTION_POSE_CARDS,
   getCloudFoxRigChannel,
   getDirectMotionCapability,
@@ -75,6 +78,14 @@ test('正式身体部位都有仅含位移或旋转的直接操控能力', () =>
     )]
     assert.deepEqual(capability.controlIds, registeredControlIds)
     assert.ok(capability.parameters.every(parameter => registeredControlIds.includes(parameter.controlId)))
+    assert.ok(capability.dragBindings.every(binding => isOwnedControlId(capability.controlIds, binding.controlId)))
+    for (const mode of capability.modes) {
+      const bindings = capability.dragBindings.filter(binding => binding.mode === mode)
+      assert.ok(bindings.some(binding => binding.role === 'primary'), `${partId} 的 ${mode} 至少应有一个主拖拽绑定`)
+      for (const source of ['x', 'y', 'depth'] as const) {
+        assert.ok(bindings.filter(binding => binding.source === source && binding.role === 'primary').length <= 1)
+      }
+    }
   }
 })
 
@@ -212,12 +223,19 @@ test('直接拖拽求解稳定、无副作用且输出冻结的有限姿势', ()
   assert.notEqual(first.diagnostics, second.diagnostics)
   assert.deepEqual(input, before)
   assert.equal(first.status, 'ready')
+  assert.equal(first.changed, true)
   assertFinitePose(first.pose)
   assert.ok(Object.isFrozen(first.pose))
   assert.ok(Object.isFrozen(first.diagnostics))
 })
 
-test('旋转拖拽通过能力的显式语义映射前爪控制', () => {
+test('旋转拖拽只写入能力中精确声明的主控和辅助绑定', () => {
+  const headBindings = getDirectMotionCapability('head')!.dragBindings.filter(binding => binding.mode === 'rotate')
+  assert.deepEqual(headBindings, [
+    { mode: 'rotate', controlId: 'head.rotate.x', source: 'y', sign: -1, weight: 1, role: 'primary' },
+    { mode: 'rotate', controlId: 'head.rotate.y', source: 'x', sign: 1, weight: 1, role: 'primary' },
+  ])
+
   const result = solveDirectMotionDrag({
     partId: 'front-paw-left',
     mode: 'rotate',
@@ -231,6 +249,100 @@ test('旋转拖拽通过能力的显式语义映射前爪控制', () => {
   assert.ok(result.pose['front-paw-left.rotate.y']! > 0, 'twist 应使用 depth')
   assert.ok(result.pose['front-paw-left.rotate.z']! > 0, 'spread 应使用 dx')
   assert.ok(result.pose['front-paw-left.rotate.tip-x']! > 0, 'bend 应使用 -dy')
+  assert.equal(result.pose['front-paw-left.rotate.tip-z'], undefined, '未绑定爪尖方向不得被实体化')
+})
+
+test('零拖动与未绑定方向不实体化控制，且不被超大未使用方向钳制', () => {
+  const zero = solveDirectMotionDrag({
+    partId: 'body',
+    mode: 'translate',
+    delta: { x: 0, y: 0, depth: 0 },
+    viewport: { width: 800, height: 600 },
+    pose: {},
+  })
+  const unusedDepth = solveDirectMotionDrag({
+    partId: 'head',
+    mode: 'rotate',
+    delta: { x: 0, y: 0, depth: 1e300 },
+    viewport: { width: 800, height: 600 },
+    pose: {},
+  })
+  const existing = solveDirectMotionDrag({
+    partId: 'body',
+    mode: 'rotate',
+    delta: { x: 0, y: 0, depth: 0 },
+    viewport: { width: 800, height: 600 },
+    pose: { 'body.rotate.x': 0, 'body.rotate.y': .2 },
+  })
+
+  assert.deepEqual(zero.pose, {})
+  assert.equal(zero.changed, false)
+  assert.equal(unusedDepth.status, 'ready')
+  assert.deepEqual(unusedDepth.pose, {})
+  assert.equal(unusedDepth.changed, false)
+  assert.deepEqual(existing.pose, { 'body.rotate.x': 0, 'body.rotate.y': .2 })
+  assert.equal(existing.changed, false)
+})
+
+test('强度按阶段编译范围提前收紧 raw pose，并与编译结果一致', () => {
+  const result = solveDirectMotionDrag({
+    partId: 'body',
+    mode: 'translate',
+    delta: { x: 1, y: 0, depth: 0 },
+    viewport: { width: 1, height: 1 },
+    pose: {},
+    intensity: 1.5,
+  })
+  const recipe = createSimpleMotionRecipe('custom')
+  recipe.stages = recipe.stages.map(stage => ({ ...stage, intensity: 1.5, pose: result.pose }))
+  const asset = createStudioMotionAsset({ id: 'drag-intensity', nameZh: '拖拽强度', nameEn: 'Drag intensity', createdAt: 1, updatedAt: 1 })
+  const compiled = compileSimpleMotionRecipe(asset, recipe, { now: 2 }).asset
+  const track = compiled.tracks.find(item => item.channelId === 'body.position.x')
+
+  assert.equal(result.status, 'clamped')
+  assert.equal(result.pose['body.translate.x'], getCloudFoxRigChannel('body.position.x').maximum / 1.5)
+  assert.ok(track?.keyframes.every(keyframe => keyframe.value === getCloudFoxRigChannel('body.position.x').maximum))
+})
+
+test('非法强度阻断，并保留非有限拖拽的关键诊断', () => {
+  const intensity = solveDirectMotionDrag({
+    partId: 'body',
+    mode: 'translate',
+    delta: { x: 0, y: 0, depth: 0 },
+    viewport: { width: 800, height: 600 },
+    pose: {},
+    intensity: 0,
+  })
+  const nonFiniteIntensity = solveDirectMotionDrag({
+    partId: 'body',
+    mode: 'translate',
+    delta: { x: 0, y: 0, depth: 0 },
+    viewport: { width: 800, height: 600 },
+    pose: {},
+    intensity: Number.NaN,
+  })
+  const excessiveIntensity = solveDirectMotionDrag({
+    partId: 'body',
+    mode: 'translate',
+    delta: { x: 0, y: 0, depth: 0 },
+    viewport: { width: 800, height: 600 },
+    pose: {},
+    intensity: 1.500001,
+  })
+  const delta = solveDirectMotionDrag({
+    partId: 'body',
+    mode: 'translate',
+    delta: { x: Number.NaN, y: 0, depth: 0 },
+    viewport: { width: 800, height: 600 },
+    pose: { 'body.translate.x': 99, 'body.translate.y': 99, 'body.translate.z': 99 },
+  })
+
+  assert.equal(intensity.status, 'blocked')
+  assert.equal(nonFiniteIntensity.status, 'blocked')
+  assert.equal(excessiveIntensity.status, 'blocked')
+  assert.equal(delta.status, 'blocked')
+  assert.ok(delta.diagnostics.includes('拖拽增量或视口含非有限数值，已安全阻断。'))
+  assert.equal(new Set(delta.diagnostics).size, delta.diagnostics.length)
 })
 
 test('超大有限拖拽按真实 Rig 通道范围钳制，而非通用角度范围', () => {
@@ -322,6 +434,7 @@ test('姿势卡精确合并、保留其余姿势并保持不可变边界', () =>
   const result = applyDirectMotionPoseCard(pose, 'front-paw-left-raise-hand')
 
   assert.equal(result.status, 'ready')
+  assert.equal(result.changed, true)
   assert.equal(result.pose['head.rotate.x'], .18)
   assert.equal(result.pose['front-paw-left.rotate.z'], -.85)
   assert.deepEqual(pose, before)
@@ -337,6 +450,7 @@ test('未知姿势卡安全阻断，左右镜像卡分别写入正确的真实�
   const right = applyDirectMotionPoseCard({}, 'front-paw-right-raise-hand')
 
   assert.equal(unknown.status, 'blocked')
+  assert.equal(unknown.changed, false)
   assert.deepEqual(unknown.pose, source)
   assert.notEqual(unknown.pose, source)
   assert.ok(unknown.diagnostics.length > 0 && unknown.diagnostics.length <= 4)

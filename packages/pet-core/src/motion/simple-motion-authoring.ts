@@ -18,6 +18,7 @@ export const SIMPLE_MOTION_COMPILER_VERSION = 1 as const
 export const SIMPLE_MOTION_STAGE_LIMIT = 16
 export const SIMPLE_MOTION_STAGE_MIN_DURATION_MS = 100
 export const SIMPLE_MOTION_STAGE_MAX_DURATION_MS = 10000
+export const SIMPLE_MOTION_STAGE_MAX_INTENSITY = 1.5
 export const SIMPLE_MOTION_MAX_DURATION_MS = 60000
 
 export type SimpleMotionIntent = 'daily' | 'dance' | 'martial-arts' | 'sports' | 'custom'
@@ -243,7 +244,7 @@ function normalizeStages(value: unknown, fallback: SimpleMotionStage[], diagnost
       labelZh: text(raw.labelZh, fallbackStage.labelZh || `阶段 ${index + 1}`),
       durationMs,
       transition: typeof raw.transition === 'string' && TRANSITIONS.has(raw.transition as SimpleMotionTransition) ? raw.transition as SimpleMotionTransition : fallbackStage.transition,
-      intensity: clamp(finite(raw.intensity, fallbackStage.intensity), 0, 1.5),
+      intensity: clamp(finite(raw.intensity, fallbackStage.intensity), 0, SIMPLE_MOTION_STAGE_MAX_INTENSITY),
       pose: normalizePose(raw.pose ?? fallbackStage.pose, `stages[${index}].pose`, diagnostics),
       effects: normalizeEffects(raw.effects ?? fallbackStage.effects),
     }
