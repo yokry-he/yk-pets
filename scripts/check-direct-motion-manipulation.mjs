@@ -51,6 +51,7 @@ const blockAfter = (source, marker) => {
 const functionBody = (source, name) => blockAfter(source, `function ${name}(`)
 
 const preview = actionBody('previewDirectManipulation', 'commitDirectManipulation')
+const controlPreview = actionBody('previewControlGesture', 'endControlGesture')
 const directBegin = actionBody('beginDirectManipulation', 'previewDirectManipulation')
 const controlBegin = actionBody('beginControlGesture', 'previewControlGesture')
 const controlEnd = actionBody('endControlGesture', 'cancelControlGesture')
@@ -172,6 +173,8 @@ const checks = [
     'export function getDirectMotionCapability',
     'export function solveDirectMotionDrag',
     'export function applyDirectMotionPoseCard',
+    'export function applyDirectMotionSymmetry',
+    'symmetryBindings:',
   ])],
   ['Store exposes direct manipulation state and commands', hasAll(store, [
     'directManipulationMode:',
@@ -187,6 +190,17 @@ const checks = [
     'latestChanged:',
   ])],
   ['Store direct session reuses the control gesture transaction baseline', preview.includes('controlGestureBaseline') && store.includes('this.beginControlGesture()') && store.includes('this.endControlGesture()')],
+  ['参数预览和 3D 拖拽共用核心显式对称展开', hasAll(controlPreview, [
+    'applyDirectMotionSymmetry(',
+    'stage.pose,',
+    'this.selectedBodyPartId,',
+    'this.symmetryEnabled,',
+  ]) && hasAll(preview, [
+    'applyDirectMotionSymmetry(',
+    'session.baselinePose,',
+    'this.selectedBodyPartId,',
+    'this.symmetryEnabled,',
+  ])],
   ['direct session pose follows the parsed baseline recipe stage source chain', directBaselineSourceChain],
   ['gesture begin and cancel preserve undo redo history', !controlBegin.includes('this.snapshot()')
     && !controlBegin.includes('undoStack')

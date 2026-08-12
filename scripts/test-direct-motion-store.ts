@@ -29,8 +29,14 @@ function createEditor() {
 
 const viewport = Object.freeze({ width: 400, height: 300 })
 
+function pose(editor: ReturnType<typeof createEditor>) {
+  return editor.selectedSimpleStage?.pose || {}
+}
+
 test('已有 redo 时零位移提交完整保留 undo 与 redo', () => {
   const editor = createEditor()
+  editor.selectBodyPart('front-paw-left')
+  editor.symmetryEnabled = true
   editor.undoStack = ['existing-undo']
   editor.redoStack = ['existing-redo']
 
@@ -84,4 +90,78 @@ test('100 条 undo 边界取消不会挤出或删除旧记录', () => {
 
   assert.deepEqual(editor.undoStack, undoHistory)
   assert.deepEqual(editor.redoStack, redoHistory)
+})
+
+test('参数手势按显式正负规则写入对称部位且只提交一次撤销', () => {
+  const editor = createEditor()
+  const baseline = JSON.stringify(editor.draft)
+  editor.selectBodyPart('front-paw-left')
+  editor.symmetryEnabled = true
+
+  assert.equal(editor.beginControlGesture(), true)
+  editor.previewControlGesture([
+    { controlId: 'front-paw-left.rotate.x', delta: .3 },
+    { controlId: 'front-paw-left.rotate.z', delta: -.6 },
+  ])
+  assert.equal(pose(editor)['front-paw-left.rotate.x'], .3)
+  assert.equal(pose(editor)['front-paw-right.rotate.x'], .3)
+  assert.equal(pose(editor)['front-paw-left.rotate.z'], -.6)
+  assert.equal(pose(editor)['front-paw-right.rotate.z'], .6)
+  editor.endControlGesture()
+
+  assert.deepEqual(editor.undoStack, [baseline])
+})
+
+test('参数手势关闭对称或选择无伙伴部位时只修改当前部位', () => {
+  const disabled = createEditor()
+  disabled.selectBodyPart('front-paw-left')
+  disabled.symmetryEnabled = false
+  assert.equal(disabled.beginControlGesture(), true)
+  disabled.previewControlGesture([{ controlId: 'front-paw-left.rotate.z', delta: -.4 }])
+  disabled.endControlGesture()
+  assert.equal(pose(disabled)['front-paw-left.rotate.z'], -.4)
+  assert.equal(pose(disabled)['front-paw-right.rotate.z'], undefined)
+
+  const noPartner = createEditor()
+  noPartner.selectBodyPart('body')
+  noPartner.symmetryEnabled = true
+  assert.equal(noPartner.beginControlGesture(), true)
+  noPartner.previewControlGesture([{ controlId: 'body.rotate.x', delta: .2 }])
+  noPartner.endControlGesture()
+  assert.equal(pose(noPartner)['body.rotate.x'], .2)
+  assert.deepEqual(Object.keys(pose(noPartner)).filter(id => id !== 'body.rotate.x'), [])
+})
+
+test('3D 拖拽开启对称后同步伙伴并维持单次撤销', () => {
+  const editor = createEditor()
+  const baseline = JSON.stringify(editor.draft)
+  editor.selectBodyPart('front-paw-left')
+  editor.symmetryEnabled = true
+
+  assert.equal(editor.beginDirectManipulation(8, 100, 100), true)
+  assert.equal(editor.previewDirectManipulation(8, 160, 100, viewport), true)
+  const left = pose(editor)['front-paw-left.rotate.z']
+  const right = pose(editor)['front-paw-right.rotate.z']
+  assert.ok(typeof left === 'number' && left > 0)
+  assert.equal(right, -left)
+  assert.equal(editor.commitDirectManipulation(8), true)
+  assert.deepEqual(editor.undoStack, [baseline])
+})
+
+test('对称预览取消恢复双侧姿势且不改写历史', () => {
+  const editor = createEditor()
+  const baseline = JSON.stringify(editor.draft)
+  editor.selectBodyPart('front-paw-left')
+  editor.symmetryEnabled = true
+  editor.undoStack = ['existing-undo']
+  editor.redoStack = ['existing-redo']
+
+  assert.equal(editor.beginDirectManipulation(9, 100, 100), true)
+  assert.equal(editor.previewDirectManipulation(9, 160, 100, viewport), true)
+  assert.notEqual(pose(editor)['front-paw-right.rotate.z'], undefined)
+  assert.equal(editor.cancelDirectManipulation(), true)
+
+  assert.equal(JSON.stringify(editor.draft), baseline)
+  assert.deepEqual(editor.undoStack, ['existing-undo'])
+  assert.deepEqual(editor.redoStack, ['existing-redo'])
 })

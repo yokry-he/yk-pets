@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  applyDirectMotionSymmetry,
   applyDirectMotionPoseCard,
   compileSimpleMotionRecipe,
   createSimpleMotionRecipe,
@@ -79,6 +80,13 @@ test('正式身体部位都有仅含位移或旋转的直接操控能力', () =>
     assert.deepEqual(capability.controlIds, registeredControlIds)
     assert.ok(capability.parameters.every(parameter => registeredControlIds.includes(parameter.controlId)))
     assert.ok(capability.dragBindings.every(binding => isOwnedControlId(capability.controlIds, binding.controlId)))
+    assert.ok(capability.symmetryBindings.every(binding => isOwnedControlId(capability.controlIds, binding.controlId)))
+    if (capability.symmetryPartnerId) {
+      const partner = getDirectMotionCapability(capability.symmetryPartnerId)
+      assert.ok(partner)
+      assert.ok(capability.symmetryBindings.every(binding => partner.controlIds.includes(binding.partnerControlId)))
+    }
+    else assert.deepEqual(capability.symmetryBindings, [])
     for (const mode of capability.modes) {
       const bindings = capability.dragBindings.filter(binding => binding.mode === mode)
       assert.ok(bindings.some(binding => binding.role === 'primary'), `${partId} 的 ${mode} 至少应有一个主拖拽绑定`)
@@ -134,6 +142,7 @@ test('能力和姿势卡保持唯一、显式镜像、冻结边界和稳定顺�
     assert.ok(Object.isFrozen(capability.modes))
     assert.ok(Object.isFrozen(capability.controlIds))
     assert.ok(Object.isFrozen(capability.parameters))
+    assert.ok(Object.isFrozen(capability.symmetryBindings))
     assert.ok(capability.parameters.every(parameter => Object.isFrozen(parameter)))
   }
 
@@ -203,6 +212,53 @@ test('关键左右姿势卡使用真实的镜像反号', () => {
   assert.equal(leftEar.pose['ear-left.rotate.z'], .3)
   assert.equal(rightEar.pose['ear-right.rotate.z'], -.3)
   assert.equal(leftEar.pose['ear-left.rotate.z'], -rightEar.pose['ear-right.rotate.z']!)
+})
+
+test('直接操控能力显式声明对称控制与镜像符号', () => {
+  const left = getDirectMotionCapability('front-paw-left')!
+  const right = getDirectMotionCapability('front-paw-right')!
+  const body = getDirectMotionCapability('body')!
+
+  assert.equal(left.symmetryPartnerId, 'front-paw-right')
+  assert.deepEqual(left.symmetryBindings, [
+    { controlId: 'front-paw-left.rotate.x', partnerControlId: 'front-paw-right.rotate.x', sign: 1 },
+    { controlId: 'front-paw-left.rotate.y', partnerControlId: 'front-paw-right.rotate.y', sign: -1 },
+    { controlId: 'front-paw-left.rotate.z', partnerControlId: 'front-paw-right.rotate.z', sign: -1 },
+    { controlId: 'front-paw-left.rotate.tip-x', partnerControlId: 'front-paw-right.rotate.tip-x', sign: 1 },
+    { controlId: 'front-paw-left.rotate.tip-z', partnerControlId: 'front-paw-right.rotate.tip-z', sign: -1 },
+  ])
+  assert.deepEqual(right.symmetryBindings.map(binding => binding.sign), left.symmetryBindings.map(binding => binding.sign))
+  assert.deepEqual(body.symmetryBindings, [])
+  assert.ok(Object.isFrozen(left.symmetryBindings))
+  assert.ok(left.symmetryBindings.every(binding => Object.isFrozen(binding)))
+})
+
+test('对称纯函数只镜像本次变化并保持正负规则和不可变输入', () => {
+  const baseline = {
+    'head.rotate.x': .1,
+    'front-paw-left.rotate.x': .05,
+    'front-paw-right.rotate.x': .2,
+    'front-paw-right.rotate.z': .4,
+  } as const
+  const next = {
+    ...baseline,
+    'front-paw-left.rotate.x': .35,
+    'front-paw-left.rotate.z': -.6,
+  }
+  const before = structuredClone(next)
+
+  const mirrored = applyDirectMotionSymmetry(baseline, next, 'front-paw-left', true)
+  const disabled = applyDirectMotionSymmetry(baseline, next, 'front-paw-left', false)
+  const noPartner = applyDirectMotionSymmetry({}, { 'body.rotate.x': .2 }, 'body', true)
+
+  assert.equal(mirrored['front-paw-right.rotate.x'], .35)
+  assert.equal(mirrored['front-paw-right.rotate.z'], .6)
+  assert.equal(mirrored['head.rotate.x'], .1)
+  assert.equal(disabled['front-paw-right.rotate.x'], .2)
+  assert.equal(disabled['front-paw-right.rotate.z'], .4)
+  assert.deepEqual(noPartner, { 'body.rotate.x': .2 })
+  assert.deepEqual(next, before)
+  assert.ok(Object.isFrozen(mirrored))
 })
 
 test('直接拖拽求解稳定、无副作用且输出冻结的有限姿势', () => {

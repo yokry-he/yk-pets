@@ -1,9 +1,10 @@
 /**
  * 文件职责 / File responsibility
- * 定义简单动作模式的直接操控能力和快速姿势卡，不包含拖拽求解或界面行为。
- * Defines simple-motion direct manipulation capabilities and quick pose cards without drag solving or UI behavior.
+ * 定义简单动作模式的直接操控能力、快速姿势卡、拖拽与对称纯函数，不包含界面行为。
+ * Defines simple-motion capabilities, quick pose cards, and pure drag/symmetry solvers without UI behavior.
  */
 import {
+  clampMotionControlValue,
   getMotionControl,
   getMotionBodyPart,
   getMotionBodyPartControls,
@@ -55,12 +56,19 @@ export interface DirectMotionDragBinding {
   readonly role: 'primary' | 'auxiliary'
 }
 
+export interface DirectMotionSymmetryBinding {
+  readonly controlId: MotionControlId
+  readonly partnerControlId: MotionControlId
+  readonly sign: 1 | -1
+}
+
 export interface DirectMotionCapability {
   readonly partId: MotionBodyPartId
   readonly modes: readonly DirectMotionMode[]
   readonly controlIds: readonly MotionControlId[]
   readonly parameters: readonly DirectMotionParameter[]
   readonly dragBindings: readonly DirectMotionDragBinding[]
+  readonly symmetryBindings: readonly DirectMotionSymmetryBinding[]
   readonly symmetryPartnerId?: MotionBodyPartId
   readonly endEffector: boolean
 }
@@ -260,6 +268,46 @@ const DIRECT_MOTION_DRAG_BINDINGS_BY_PART: Readonly<Partial<Record<MotionBodyPar
   ],
 } as const satisfies Partial<Record<MotionBodyPartId, readonly DirectMotionDragBinding[]>>
 
+/**
+ * 对称控制对和符号是 Rig 能力的一部分。这里显式声明，Store 与界面不得通过控制 ID 文本猜测左右关系。
+ */
+const DIRECT_MOTION_SYMMETRY_BINDINGS_BY_PART: Readonly<Partial<Record<MotionBodyPartId, readonly DirectMotionSymmetryBinding[]>>> = {
+  'front-paw-left': [
+    { controlId: 'front-paw-left.rotate.x', partnerControlId: 'front-paw-right.rotate.x', sign: 1 },
+    { controlId: 'front-paw-left.rotate.y', partnerControlId: 'front-paw-right.rotate.y', sign: -1 },
+    { controlId: 'front-paw-left.rotate.z', partnerControlId: 'front-paw-right.rotate.z', sign: -1 },
+    { controlId: 'front-paw-left.rotate.tip-x', partnerControlId: 'front-paw-right.rotate.tip-x', sign: 1 },
+    { controlId: 'front-paw-left.rotate.tip-z', partnerControlId: 'front-paw-right.rotate.tip-z', sign: -1 },
+  ],
+  'front-paw-right': [
+    { controlId: 'front-paw-right.rotate.x', partnerControlId: 'front-paw-left.rotate.x', sign: 1 },
+    { controlId: 'front-paw-right.rotate.y', partnerControlId: 'front-paw-left.rotate.y', sign: -1 },
+    { controlId: 'front-paw-right.rotate.z', partnerControlId: 'front-paw-left.rotate.z', sign: -1 },
+    { controlId: 'front-paw-right.rotate.tip-x', partnerControlId: 'front-paw-left.rotate.tip-x', sign: 1 },
+    { controlId: 'front-paw-right.rotate.tip-z', partnerControlId: 'front-paw-left.rotate.tip-z', sign: -1 },
+  ],
+  'hind-paw-left': [
+    { controlId: 'hind-paw-left.rotate.x', partnerControlId: 'hind-paw-right.rotate.x', sign: 1 },
+    { controlId: 'hind-paw-left.rotate.y', partnerControlId: 'hind-paw-right.rotate.y', sign: -1 },
+    { controlId: 'hind-paw-left.rotate.z', partnerControlId: 'hind-paw-right.rotate.z', sign: -1 },
+  ],
+  'hind-paw-right': [
+    { controlId: 'hind-paw-right.rotate.x', partnerControlId: 'hind-paw-left.rotate.x', sign: 1 },
+    { controlId: 'hind-paw-right.rotate.y', partnerControlId: 'hind-paw-left.rotate.y', sign: -1 },
+    { controlId: 'hind-paw-right.rotate.z', partnerControlId: 'hind-paw-left.rotate.z', sign: -1 },
+  ],
+  'ear-left': [
+    { controlId: 'ear-left.rotate.x', partnerControlId: 'ear-right.rotate.x', sign: 1 },
+    { controlId: 'ear-left.rotate.y', partnerControlId: 'ear-right.rotate.y', sign: -1 },
+    { controlId: 'ear-left.rotate.z', partnerControlId: 'ear-right.rotate.z', sign: -1 },
+  ],
+  'ear-right': [
+    { controlId: 'ear-right.rotate.x', partnerControlId: 'ear-left.rotate.x', sign: 1 },
+    { controlId: 'ear-right.rotate.y', partnerControlId: 'ear-left.rotate.y', sign: -1 },
+    { controlId: 'ear-right.rotate.z', partnerControlId: 'ear-left.rotate.z', sign: -1 },
+  ],
+} as const satisfies Partial<Record<MotionBodyPartId, readonly DirectMotionSymmetryBinding[]>>
+
 function directParameter(control: MotionControlDefinition<MotionControlId>): DirectMotionParameter {
   const metadata = DIRECT_MOTION_PARAMETER_METADATA_BY_ID[control.id]
   if (!metadata) throw new Error(`缺少直接操控参数元数据：${control.id}`)
@@ -273,6 +321,7 @@ function freezeCapability(capability: DirectMotionCapability): DirectMotionCapab
     controlIds: Object.freeze([...capability.controlIds]),
     parameters: Object.freeze(capability.parameters.map(parameter => Object.freeze({ ...parameter }))),
     dragBindings: Object.freeze(capability.dragBindings.map(binding => Object.freeze({ ...binding }))),
+    symmetryBindings: Object.freeze(capability.symmetryBindings.map(binding => Object.freeze({ ...binding }))),
   })
 }
 
@@ -295,6 +344,7 @@ function createCapability(partId: MotionBodyPartId): DirectMotionCapability | un
     controlIds: controls.map(control => control.id),
     parameters: controls.map(directParameter),
     dragBindings: DIRECT_MOTION_DRAG_BINDINGS_BY_PART[partId] || [],
+    symmetryBindings: DIRECT_MOTION_SYMMETRY_BINDINGS_BY_PART[partId] || [],
     ...(symmetryPartnerId ? { symmetryPartnerId } : {}),
     endEffector: END_EFFECTOR_PART_IDS.has(partId),
   })
@@ -364,6 +414,27 @@ export function getDirectMotionPoseCards(partId: MotionBodyPartId, intent: Simpl
       .filter(card => card.partId === partId && card.intents.includes(intent))
       .map(card => freezePoseCard(card)),
   )
+}
+
+/**
+ * 仅把当前手势相对基线真正改变的控制镜像到伙伴部位，避免覆盖伙伴侧未参与本次编辑的姿势。
+ */
+export function applyDirectMotionSymmetry(
+  baselinePose: Readonly<Partial<Record<MotionControlId, number>>>,
+  pose: Readonly<Partial<Record<MotionControlId, number>>>,
+  partId: MotionBodyPartId,
+  enabled: boolean,
+): Readonly<Partial<Record<MotionControlId, number>>> {
+  const mirrored: Partial<Record<MotionControlId, number>> = { ...pose }
+  const capability = DIRECT_MOTION_CAPABILITIES.get(partId)
+  if (!enabled || !capability?.symmetryPartnerId) return Object.freeze(mirrored)
+
+  for (const binding of capability.symmetryBindings) {
+    const value = pose[binding.controlId]
+    if (typeof value !== 'number' || !Number.isFinite(value) || value === baselinePose[binding.controlId]) continue
+    mirrored[binding.partnerControlId] = clampMotionControlValue(binding.partnerControlId, value * binding.sign)
+  }
+  return Object.freeze(mirrored)
 }
 
 interface PoseNormalizationResult {

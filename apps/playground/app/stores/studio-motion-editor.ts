@@ -5,6 +5,7 @@
  */
 import {
   addMotionLayer,
+  applyDirectMotionSymmetry,
   applyDirectMotionPoseCard,
   applyMotionPosePreset,
   assignTrackToLayer,
@@ -824,9 +825,15 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
         if (!recipe || !stage) return
         const pose = { ...stage.pose }
         for (const edit of edits) pose[edit.controlId] = (pose[edit.controlId] ?? 0) + edit.delta
+        const symmetricPose = applyDirectMotionSymmetry(
+          stage.pose,
+          pose,
+          this.selectedBodyPartId,
+          this.symmetryEnabled,
+        )
         const nextRecipe = {
           ...recipe,
-          stages: recipe.stages.map(item => item.id === stage.id ? { ...item, pose } : item),
+          stages: recipe.stages.map(item => item.id === stage.id ? { ...item, pose: symmetricPose } : item),
         }
         this.apply(compileSimpleMotionRecipe(baseline, nextRecipe, { now: Date.now() }).asset)
         return
@@ -918,10 +925,16 @@ export const useStudioMotionEditorStore = defineStore('studio-motion-editor', {
         latestChanged,
       }
       if (!latestChanged) return false
+      const symmetricPose = applyDirectMotionSymmetry(
+        session.baselinePose,
+        result.pose,
+        this.selectedBodyPartId,
+        this.symmetryEnabled,
+      )
       const nextRecipe: SimpleMotionRecipeV1 = {
         ...baselineRecipe,
         stages: baselineRecipe.stages.map(item => item.id === baselineStage.id
-          ? { ...item, pose: { ...result.pose } }
+          ? { ...item, pose: { ...symmetricPose } }
           : item),
       }
       this.apply(compileSimpleMotionRecipe(baseline, nextRecipe, { now: Date.now() }).asset)
