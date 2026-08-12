@@ -12,6 +12,15 @@ const store = read('apps/playground/app/stores/studio-motion-editor.ts')
 const canvas = read('apps/playground/app/components/studio/CloudFoxStudioCanvas.vue')
 const manipulatorPath = new URL('../apps/playground/app/components/studio/StudioMotionDirectManipulator.vue', import.meta.url)
 const manipulator = existsSync(manipulatorPath) ? readFileSync(manipulatorPath, 'utf8') : ''
+const poseCardsPath = new URL('../apps/playground/app/components/studio/StudioMotionPoseCards.vue', import.meta.url)
+const poseCards = existsSync(poseCardsPath) ? readFileSync(poseCardsPath, 'utf8') : ''
+const partInspectorPath = new URL('../apps/playground/app/components/studio/StudioMotionPartInspector.vue', import.meta.url)
+const partInspector = existsSync(partInspectorPath) ? readFileSync(partInspectorPath, 'utf8') : ''
+const semanticControlPath = new URL('../apps/playground/app/components/studio/StudioDirectSemanticControl.vue', import.meta.url)
+const semanticControl = existsSync(semanticControlPath) ? readFileSync(semanticControlPath, 'utf8') : ''
+const exactControlPath = new URL('../apps/playground/app/components/studio/StudioDirectExactControl.vue', import.meta.url)
+const exactControl = existsSync(exactControlPath) ? readFileSync(exactControlPath, 'utf8') : ''
+const stageInspector = read('apps/playground/app/components/studio/StudioMotionStageInspector.vue')
 const registryPath = new URL('../apps/playground/app/composables/useStudioMotionPartNodes.ts', import.meta.url)
 const registry = existsSync(registryPath) ? readFileSync(registryPath, 'utf8') : ''
 const alignedCloudFox = read('apps/playground/app/components/studio/ExtensionAlignedCloudFox.vue')
@@ -297,6 +306,53 @@ const checks = [
       'if (!stillEditable || !selectedAnchor?.visible) { /* 取消已删除 */ }',
     ))
     && !hasStableManipulatorInteraction(manipulator.replace('aria-label="3D 宠物部位直接操控层"', 'aria-label="3D 宠物部位直接操控层" @keydown.stop'))],
+  ['快速姿势按当前部位和意图过滤并只通过 Store 应用', hasAll(poseCards, [
+    'getDirectMotionPoseCards',
+    'editor.selectedBodyPartId',
+    'editor.applyDirectPoseCard(card.id)',
+    '快速姿势',
+    '应用后仍可拖动和微调',
+  ]) && !poseCards.includes('.draft =')],
+  ['固定部位面板组合姿势、模式、语义与精确控制且保留高级入口', hasAll(partInspector, [
+    'getDirectMotionCapability',
+    'getMotionBodyPart',
+    'StudioMotionPoseCards',
+    'StudioDirectSemanticControl',
+    'StudioDirectExactControl',
+    'editor.setDirectManipulationMode(mode)',
+    'editor.resetSelectedDirectPart()',
+    '对称编辑',
+    '精确参数',
+    '高级编辑',
+  ]) && !partInspector.includes('.draft =')],
+  ['语义滑杆从控制与 Rig 元数据推导安全范围并使用单手势事务', hasAll(semanticControl, [
+    'getMotionControl',
+    'getCloudFoxRigChannel',
+    'clampMotionControlValue',
+    'parameter.controlId',
+    'control.fineStep',
+    'editor.beginControlGesture()',
+    'editor.previewControlGesture',
+    'editor.endControlGesture()',
+    'editor.cancelControlGesture()',
+    '@pointercancel="cancelGesture"',
+    "window.addEventListener('blur', cancelGesture)",
+  ]) && !semanticControl.includes('editor.writeControlValue') && !semanticControl.includes('.draft =')],
+  ['精确参数复用显示单位、核心范围与 Store 单手势事务并支持复位', hasAll(exactControl, [
+    'toMotionControlDisplayValue',
+    'fromMotionControlDisplayValue',
+    'getCloudFoxRigChannel',
+    'clampMotionControlValue',
+    'editor.beginControlGesture()',
+    'editor.previewControlGesture',
+    'editor.endControlGesture()',
+    'editor.cancelControlGesture()',
+    'editor.resetControl(control.id',
+    "window.addEventListener('pointerdown', onWindowPointerDown, true)",
+    "window.addEventListener('blur', cancelGesture)",
+  ]) && !exactControl.includes('.draft =')],
+  ['阶段属性不再呈现旧引导变换树且仍保留节奏和效果', !stageInspector.includes('<StudioMotionTransformEditor guided')
+    && hasAll(stageInspector, ['节奏', '效果', 'updateDuration', 'toggleEffect'])],
 ]
 
 const failures = checks.filter(([, passed]) => !passed).map(([name]) => name)

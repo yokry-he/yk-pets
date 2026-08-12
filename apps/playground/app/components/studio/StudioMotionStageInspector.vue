@@ -1,7 +1,7 @@
 <!--
   文件职责 / File responsibility
-  以姿势、节奏和效果三组新手语言编辑当前动作阶段，并把变化作为不可变补丁上报。
-  Edits the selected stage through pose, rhythm, and effect groups and emits immutable patches.
+  以节奏和效果两组新手语言编辑当前动作阶段，并把变化作为不可变补丁上报。
+  Edits the selected stage through rhythm and effect groups and emits immutable patches.
 -->
 <script setup lang="ts">
 import type {
@@ -75,17 +75,6 @@ function toggleEffect(effect: SimpleMotionEffect) {
       </label>
     </header>
 
-    <section class="inspector-group pose-group" aria-labelledby="pose-group-title">
-      <div class="group-heading">
-        <span aria-hidden="true">◇</span>
-        <div>
-          <h3 id="pose-group-title">姿势</h3>
-          <p>选择身体部位后，直接调整当前阶段的样子。</p>
-        </div>
-      </div>
-      <StudioMotionTransformEditor guided />
-    </section>
-
     <section class="inspector-group" aria-labelledby="rhythm-group-title">
       <div class="group-heading">
         <span aria-hidden="true">◷</span>
@@ -156,7 +145,6 @@ function toggleEffect(effect: SimpleMotionEffect) {
 .stage-name{display:grid;gap:4px;color:#7d87a6;font-size:8px}
 .stage-name input{width:150px;min-height:30px;padding:0 8px;border:1px solid #ffffff1c;border-radius:8px;color:#fff;background:#080d18}
 .inspector-group{display:grid;gap:9px;padding:10px;border:1px solid #ffffff14;border-radius:13px;background:#ffffff04}
-.pose-group{padding:0;border:0;background:transparent}
 .group-heading{display:grid;grid-template-columns:28px minmax(0,1fr);align-items:center;gap:7px}
 .group-heading>span{display:grid;width:26px;height:26px;place-items:center;border-radius:8px;color:#c6fff8;background:#52e0d016}
 .group-heading>div{display:grid;gap:2px}
